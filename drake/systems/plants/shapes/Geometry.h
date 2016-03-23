@@ -8,6 +8,8 @@
 
 #include "drake/drakeShapes_export.h"
 
+#include "drake/core/Macros.h"
+
 namespace DrakeShapes {
 enum DRAKESHAPES_EXPORT Shape {
   UNKNOWN = 0,
@@ -16,7 +18,8 @@ enum DRAKESHAPES_EXPORT Shape {
   CYLINDER = 3,
   MESH = 4,
   MESH_POINTS = 5,
-  CAPSULE = 6
+  CAPSULE = 6,
+  HEIGHT_MAP_TERRAIN = 7
 };
 
 const double MIN_RADIUS = 1e-7;
@@ -127,5 +130,6 @@ class DRAKESHAPES_EXPORT MeshPoints : public Geometry {
 
   Eigen::Matrix3Xd points;
 };
+
 }
 #endif

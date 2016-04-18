@@ -5,10 +5,14 @@
 using namespace std;
 using namespace Eigen;
 
+#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
+
 namespace DrakeCollision {
 ElementId Model::addElement(const Element& element) {
   unique_ptr<Element> element_local(element.clone());
   ElementId id = element_local->getId();
+  PRINT_VAR(element_local->getId());
+  PRINT_VAR(element.getId());
   this->elements.insert(make_pair(id, move(element_local)));
   return id;
 }

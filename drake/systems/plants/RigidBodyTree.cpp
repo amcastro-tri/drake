@@ -296,6 +296,9 @@ map<string, int> RigidBodyTree::computePositionNameToIndexMap() const {
   return name_to_index_map;
 }
 
+/*
+ * TODO(amcastro-tri): Change naming to follow Google's style guide
+ */
 DrakeCollision::ElementId RigidBodyTree::addCollisionElement(
     const RigidBody::CollisionElement& element, RigidBody& body,
     const string& group_name) {
@@ -305,6 +308,11 @@ DrakeCollision::ElementId RigidBodyTree::addCollisionElement(
     body.collision_element_groups[group_name].push_back(id);
   }
   return id;
+}
+
+DrakeCollision::ElementId RigidBodyTree::add_collision_element(
+    const RigidBody::CollisionElement& collision_element) {
+  return collision_model->addElement(collision_element);
 }
 
 void RigidBodyTree::updateCollisionElements(

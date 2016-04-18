@@ -291,7 +291,16 @@ bool parseLink(RigidBodyTree* model, std::string robot_name, XMLElement* node,
   const char* attr = node->Attribute("drake_ignore");
   if (attr && strcmp(attr, "true") == 0) return false;
 
+  //Options 1: simplest. Though it doesn't ensure somewhere else in the code
+  //creates a RigidBody without an RBT parent (catastrophic)
   shared_ptr<RigidBody> body(new RigidBody());
+  body->set_parent_rbt(model);
+
+  //Option 2:
+  shared_ptr<RigidBody> body = model->make_rigid_body(); //and Hide RigidBody constructors interface
+  //Probably the best (ideally) solution would be to have a RBTRigidBody inheriting from RigidBody
+  //Since a RBTBRigidBody would have connectivities to joints and parent RBT.
+
   body->model_name = robot_name;
 
   attr = node->Attribute("name");

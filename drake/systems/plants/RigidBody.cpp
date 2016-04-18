@@ -1,5 +1,6 @@
 
 #include "RigidBody.h"
+#include "drake/systems/plants/RigidBodyTree.h"
 #include <stdexcept>
 
 using namespace std;
@@ -107,6 +108,23 @@ bool RigidBody::CollisionElement::CollidesWith(
   return collides;
 }
 
+RigidBody::CollisionElement &RigidBody::CollisionElement::add_to_collision_group(
+    string &group_name) {
+
+  // Add group_name to the list of collision elements where the CollisionElement
+  // belongs.
+  DrakeCollision::Element::add_to_collision_group(group_name);
+
+  // This RigidBody::CollisionElement may have not been assigned to a body
+  // yet and therefore a check is needed.
+  // If the CollisionElement does not belong to a body then the collection of
+  // groups where it belongs will be added to the RigidBody when calling the
+  // method RigidBody::add_collision_element(const CollisionElement&).
+  if(body)
+    body->collision_element_groups[group_name].push_back(getId());
+  return *this;
+}
+
 ostream& operator<<(ostream& out, const RigidBody& b) {
   std::string parent_joint_name =
       b.hasParent() ? b.getJoint().getName() : "no parent joint";
@@ -125,4 +143,19 @@ ostream& operator<<(ostream& out, const RigidBody& b) {
       << "  - Collision elements IDs: " << collision_element_str.str();
 
   return out;
+}
+
+void RigidBody::update_collision_groups(const RigidBody::CollisionElement& collision_element) {
+  for(auto it=collision_element.collision_groups_begin(); it!=collision_element.collision_groups_end();++it){
+    collision_element_groups[*it].push_back(collision_element.getId());
+  }
+}
+
+void RigidBody::add_collision_element(RigidBody::CollisionElement& collision_element) {
+  auto id = get_RBT()->add_collision_element(collision_element);
+  if (id != 0) {
+    collision_element_ids.push_back(id);
+    collision_element.body = this; // this is NOT a share_ptr<RigidBody> and therefore this does NOT compile
+    update_collision_groups(collision_element);
+  }
 }

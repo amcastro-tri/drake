@@ -770,6 +770,16 @@ class DRAKERBM_EXPORT RigidBodyTree {
       const std::shared_ptr<RigidBodyFrame> weld_to_frame = nullptr,
       const PoseMap* pose_map = nullptr);
 
+  /** \brief Add collision element to the collision model for this RigidBodyTree
+   *
+   * \param collision_element Collision element to be added.
+   *
+   * \see RigidBody::add_collision_element
+   */
+  DrakeCollision::ElementId
+      add_collision_element(
+      const RigidBody::CollisionElement& collision_element);
+
  public:
   static const std::set<int> default_robot_num_set;
 

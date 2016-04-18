@@ -570,6 +570,8 @@ class DRAKERBM_EXPORT RigidBodyTree {
 
   void updateStaticCollisionElements();
 
+  void UpdateCollisionElements();
+
   void updateDynamicCollisionElements(const KinematicsCache<double>& kin_cache);
 
   void getTerrainContactPoints(const RigidBody& body,

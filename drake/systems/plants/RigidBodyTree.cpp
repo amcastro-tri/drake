@@ -333,6 +333,30 @@ void RigidBodyTree::updateStaticCollisionElements() {
   }
 }
 
+void RigidBodyTree::UpdateCollisionElements() {
+  // Loop over RBT bodies
+  for (auto it = bodies.begin(); it != bodies.end(); ++it) {
+    std::shared_ptr<RigidBody> body = *it;
+
+    // Loop over RigidBody collision elements id's
+    for (auto id_iter = body->collision_element_ids.begin();
+         id_iter != body->collision_element_ids.end(); ++id_iter) {
+      DrakeCollision::ElementId id = *id_iter;
+
+      // Retrieve DrakeCollision::Element from RigidBodyTree::collision_model
+      // so that you can work with it.
+      DrakeCollision::Element* collision_element = collision_model->element(id);
+
+      RigidBody::CollisionElement* rigid_body_collision_element =
+          dynamic_cast<RigidBody::CollisionElement*>(collision_element);
+
+      // Set the RigidBody owner of this RigidBody::CollisionElement
+      rigid_body_collision_element->setBody(body);
+
+    } // end loop over collision element id's
+  } // end loop over RBT bodies
+}
+
 void RigidBodyTree::updateDynamicCollisionElements(
     const KinematicsCache<double>& cache) {
   // todo: this is currently getting called many times with the same cache

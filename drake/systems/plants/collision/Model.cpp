@@ -30,6 +30,14 @@ const Element* Model::readElement(ElementId id) const {
   }
 }
 
+Element* Model::element(ElementId id) {
+  try{
+    return elements.at(id).get();
+  }catch (std::out_of_range& e){
+    throw e;
+  }
+}
+
 void Model::getTerrainContactPoints(ElementId id0,
                                     Eigen::Matrix3Xd& terrain_points) {
   auto element_iter = elements.find(id0);

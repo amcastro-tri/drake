@@ -36,6 +36,8 @@ class DRAKECOLLISION_EXPORT Model {
    */
   virtual const Element* readElement(ElementId id) const;
 
+  Element* element(ElementId id);
+
   virtual void getTerrainContactPoints(ElementId id0,
                                        Eigen::Matrix3Xd& terrain_points);
 

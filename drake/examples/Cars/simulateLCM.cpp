@@ -143,6 +143,7 @@ int main(int argc, char* argv[]) {
     // Steps:
     // 1) Make addCollisionElement parallel to addVisualElement
     RigidBody::CollisionElement world_collision_element(geom, T_element_to_link);
+    world_collision_element.add_to_collision_group("terrain");
 
     // TODO(amcastro-tri): Check what happens with ElementId here.
     // Because the call before RigidBody::CollisionElement::add_to_collision_group will use a given id

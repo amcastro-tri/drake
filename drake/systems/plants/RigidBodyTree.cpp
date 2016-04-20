@@ -296,6 +296,9 @@ map<string, int> RigidBodyTree::computePositionNameToIndexMap() const {
   return name_to_index_map;
 }
 
+/*
+ * TODO(amcastro-tri): Change naming to follow Google's style guide
+ */
 DrakeCollision::ElementId RigidBodyTree::addCollisionElement(
     const RigidBody::CollisionElement& element, RigidBody& body,
     const string& group_name) {
@@ -305,6 +308,11 @@ DrakeCollision::ElementId RigidBodyTree::addCollisionElement(
     body.collision_element_groups[group_name].push_back(id);
   }
   return id;
+}
+
+DrakeCollision::ElementId RigidBodyTree::add_collision_element(
+    const RigidBody::CollisionElement& collision_element) {
+  return collision_model->addElement(collision_element);
 }
 
 void RigidBodyTree::updateCollisionElements(
@@ -323,6 +331,30 @@ void RigidBodyTree::updateStaticCollisionElements() {
       updateCollisionElements(body, Isometry3d::Identity());
     }
   }
+}
+
+void RigidBodyTree::UpdateCollisionElements() {
+  // Loop over RBT bodies
+  for (auto it = bodies.begin(); it != bodies.end(); ++it) {
+    std::shared_ptr<RigidBody> body = *it;
+
+    // Loop over RigidBody collision elements id's
+    for (auto id_iter = body->collision_element_ids.begin();
+         id_iter != body->collision_element_ids.end(); ++id_iter) {
+      DrakeCollision::ElementId id = *id_iter;
+
+      // Retrieve DrakeCollision::Element from RigidBodyTree::collision_model
+      // so that you can work with it.
+      DrakeCollision::Element* collision_element = collision_model->element(id);
+
+      RigidBody::CollisionElement* rigid_body_collision_element =
+          dynamic_cast<RigidBody::CollisionElement*>(collision_element);
+
+      // Set the RigidBody owner of this RigidBody::CollisionElement
+      rigid_body_collision_element->setBody(body);
+
+    } // end loop over collision element id's
+  } // end loop over RBT bodies
 }
 
 void RigidBodyTree::updateDynamicCollisionElements(

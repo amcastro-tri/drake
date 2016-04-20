@@ -10,11 +10,14 @@
 #include "drake/systems/plants/collision/DrakeCollision.h"
 #include "drake/systems/plants/joints/DrakeJoint.h"
 
+class RigidBodyTree; // forward declaration
+
 class DRAKERBM_EXPORT RigidBody {
  private:
   std::unique_ptr<DrakeJoint> joint;
   DrakeCollision::bitmask collision_filter_group;
   DrakeCollision::bitmask collision_filter_ignores;
+  std::shared_ptr<RigidBodyTree> rbt_parent_; /*!< The RigidBodyTree where this body belongs */
 
  public:
   RigidBody();
@@ -24,7 +27,57 @@ class DRAKERBM_EXPORT RigidBody {
 
   bool hasParent() const;
 
-  void addVisualElement(const DrakeShapes::VisualElement& elements);
+  /**
+   * \brief Returns the RigidBodyTree where this RigidBody belongs
+   * (const version).
+   *
+   * The parent RigidBodyTree is well defined since each RigidBody can only
+   * belong to one RigidBodyTree.
+   *
+   * \return The parent RigidBodyTree.
+   *
+   * \throw A std::runtime_error if the RigidBody does not have a parent
+   * RigidBodyTree
+   */
+  std::shared_ptr<RigidBodyTree> get_RBT() const {
+    if(rbt_parent_) return rbt_parent_;
+    throw std::runtime_error("Bug?: RigidBody \""+linkname+
+        "\" does not belong to a RigidBodyTree.");
+  }
+
+  /**
+   * \brief Returns the RigidBodyTree where this RigidBody belongs
+   * (non-const version).
+   *
+   * The parent RigidBodyTree is well defined since each RigidBody can only
+   * belong to one RigidBodyTree.
+   *
+   * \return The parent RigidBodyTree.
+   *
+   * \throw A std::runtime_error if the RigidBody does not have a parent
+   * RigidBodyTree
+   */
+  std::shared_ptr<RigidBodyTree> get_RBT() {
+    if(rbt_parent_) return rbt_parent_;
+    throw std::runtime_error("Bug?: RigidBody \""+linkname+
+        "\" does not belong to a RigidBodyTree.");
+  }
+
+  /**
+   * \brief Add a visual element to this rigid body.
+   *
+   * Each RigidBody can have more than one visual element and be visualized as
+   * the union of several DrakeShapes::VisualElement's. Therefore this
+   * method can be called multiple times on a single RigidBody.
+   *
+   * \param visual_element The CollisionElement being added to this RigidBody.
+   *
+   * \see addCollisionElement.
+   *
+   * TODO(amcastro-tri): rename to follow Google's style guide.
+   */
+  void addVisualElement(const DrakeShapes::VisualElement& visual_element);
+
 
   const DrakeShapes::VectorOfVisualElements& getVisualElements() const;
 
@@ -117,13 +170,14 @@ class DRAKERBM_EXPORT RigidBody {
 
   // FIXME: move to a better place:
   class DRAKERBM_EXPORT CollisionElement : public DrakeCollision::Element {
+    friend class RigidBody;
    public:
     CollisionElement(const CollisionElement& other);
     CollisionElement(const Eigen::Isometry3d& T_element_to_link,
                      std::shared_ptr<RigidBody> body);
     CollisionElement(const DrakeShapes::Geometry& geometry,
                      const Eigen::Isometry3d& T_element_to_link,
-                     std::shared_ptr<RigidBody> body);
+                     std::shared_ptr<RigidBody> body = std::shared_ptr<RigidBody>());
     virtual ~CollisionElement() {}
 
     CollisionElement* clone() const override;
@@ -132,6 +186,18 @@ class DRAKERBM_EXPORT RigidBody {
 
     bool CollidesWith(const DrakeCollision::Element* other) const override;
 
+    /**
+     * \brief Adds to a collision group.
+     *
+     * Objects within the provided collision group are not checked for
+     * collisions.
+     *
+     * \param[in] group_name The name of the collision group.
+     *
+     * \return this
+     */
+    RigidBody::CollisionElement& add_to_collision_group(std::string& group_name);
+
 #ifndef SWIG
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 #endif
@@ -139,6 +205,29 @@ class DRAKERBM_EXPORT RigidBody {
    private:
     std::shared_ptr<RigidBody> body;
   };
+
+  /**
+   * \brief Add a collision element to this rigid body.
+   *
+   * Each RigidBody can have more than one CollisionElement in the same way each
+   * RigidBody can also have more than one DrakeShapes::VisualElement.
+   * Therefore this method can be called multiple times on a same RigidBody to
+   * add multiple RigidBody::CollisionElements.
+   * Notice the parallelism of the interface provided with that for
+   * RigidBody::addVisualElement.
+   *
+   * \param collision_element The CollisionElement being added to this RigidBody.
+   *
+   * \see addVisualElement.
+   *
+   * TODO(amcastro-tri): To have an interface entirely parallel to that for
+   * VisualElement's, CollisionElement should taken out from RigidBody and be
+   * moved to the namespace DrakeCollision.
+   *
+   */
+  void add_collision_element(CollisionElement& collision_element);
+
+  void update_collision_groups(const CollisionElement &collision_element);
 
  public:
 #ifndef SWIG

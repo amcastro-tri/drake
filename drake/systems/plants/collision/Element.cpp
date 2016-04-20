@@ -35,4 +35,8 @@ ostream& operator<<(ostream& out, const Element& ee) {
   return out;
 }
 
+void Element::add_to_collision_group(std::string &group_name) {
+  collision_groups_.push_back(group_name);
+}
+
 }  // namespace DrakeCollision

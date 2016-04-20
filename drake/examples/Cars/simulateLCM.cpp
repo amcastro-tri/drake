@@ -136,7 +136,36 @@ int main(int argc, char* argv[]) {
     tree->addCollisionElement(
         RigidBody::CollisionElement(geom, T_element_to_link, world), *world,
         "terrain");
+
+
+  // NEW PARALLEL API IMPLEMENTATION
+
+    // Steps:
+    // 1) Make addCollisionElement parallel to addVisualElement
+    RigidBody::CollisionElement world_collision_element(geom, T_element_to_link);
+
+    // TODO(amcastro-tri): Check what happens with ElementId here.
+    // Because the call before RigidBody::CollisionElement::add_to_collision_group will use a given id
+    // However the call bellow RigidBody::add_collision_element clones this collision element?
+    // see line 10 in Model.cpp, method Model::addElement
+    // Does the id change? is that what we want?
+    world->add_collision_element(world_collision_element);
+    world_collision_element.add_to_collision_group("terrain");
+
+    // 2) Mover RigidBody::CollisionElement to DrakeCollision::CollisionElement
+    // 2b) Alternatively we could have a RigidBody::VisualElement? and then having an extra level of abstraction on the VisualElement side
+    //DrakeCollision::CollisionElement world_collision_element(geom, T_element_to_link);
+    //world_collision_element.add_to_collision_group("terrain");
+    //world->addCollisionElement(RigidBody::CollisionElement(geom, T_element_to_link));
+
+    //world->addToCollisionFilterGroup() //Notice that we have RigidBody::collision_filter_group and RigidBody::collision_filter_ignores, both bitmasks
+    //Probably we want these collision bitmasks inside CollisionElement? and then let RigidBody use that functionality
+
+    tree->UpdateCollisionElements();
+
     tree->updateStaticCollisionElements();
+
+    tree->Initialize();
   }
 
   shared_ptr<lcm::LCM> lcm = make_shared<lcm::LCM>();

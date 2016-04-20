@@ -241,6 +241,7 @@ class DRAKERBSYSTEM_EXPORT RigidBodySystem {
   double friction_coefficient;   // mu
 
  private:
+  // TODO(amcastro-tri): should this be a unique_ptr?
   std::shared_ptr<RigidBodyTree> tree;
   std::vector<std::shared_ptr<RigidBodyForceElement>> force_elements;
   std::vector<std::shared_ptr<RigidBodySensor>> sensors;

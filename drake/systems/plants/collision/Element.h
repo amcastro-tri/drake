@@ -31,6 +31,19 @@ class DRAKECOLLISION_EXPORT Element : public DrakeShapes::Element {
   virtual bool isStatic() const { return false; }
 
   /**
+   * \brief Add to a given collision group by group name.
+   *
+   * \param[in] group_name The name of the group where the Element is assigned.
+   *
+   * \see RigidBody::CollisionElement::add_to_collision_group
+   * \see RigidBody::add_collision_element
+   */
+  void add_to_collision_group(std::string &group_name);
+
+  std::vector<std::string>::const_iterator collision_groups_begin() const {return collision_groups_.begin();}
+  std::vector<std::string>::const_iterator collision_groups_end() const {return collision_groups_.end();}
+
+  /**
    * Returns true if this element should be checked for collisions
    * with the other object.  CollidesWith should be symmetric: if
    * A collides with B, B collides with A.
@@ -45,6 +58,7 @@ class DRAKECOLLISION_EXPORT Element : public DrakeShapes::Element {
 
  protected:
   Element(const Element& other);
+  std::vector<std::string> collision_groups_;
 
  private:
   ElementId id;

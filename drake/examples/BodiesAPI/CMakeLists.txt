@@ -1,0 +1,5 @@
+if (LCM_FOUND)
+  include_directories(${PROJECT_SOURCE_DIR}/pod-build/lcmgen)
+  add_executable(bodies_api_test bodies_api_test.cpp)
+  target_link_libraries(bodies_api_test drakeRBSystem drakeLCMSystem)
+endif (LCM_FOUND)

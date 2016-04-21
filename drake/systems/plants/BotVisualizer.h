@@ -14,11 +14,11 @@ namespace Drake {
 
 /** BotVisualizer<RobotStateVector>
  * @brief A system which takes the robot state as input and publishes an lcm
- *draw command to the drake visualizer
+ * draw command to the drake visualizer
  * @concept{system_concept}
  *
  * The resulting system has no internal state; the publish command is executed
- *on every call to the output method.
+ * on every call to the output method.
  * For convenience, the input is passed directly through as an output.
  *
  */
@@ -34,8 +34,8 @@ class BotVisualizer {
   using InputVector = RobotStateVector<ScalarType>;
 
   BotVisualizer(std::shared_ptr<lcm::LCM> _lcm,
-                std::shared_ptr<RigidBodyTree> tree)
-      : tree(tree), lcm(_lcm) {
+                RigidBodyTree& tree)
+      : tree(&tree), lcm(_lcm) {
     init();
   }
 
@@ -173,8 +173,7 @@ class BotVisualizer {
   bool isDirectFeedthrough() const { return true; }
 
  private:
-  mutable std::shared_ptr<RigidBodyTree>
-      tree;  // todo: remove mutable tag after RBM cleanup
+  RigidBodyTree* tree;
   std::shared_ptr<lcm::LCM> lcm;
   mutable drake::lcmt_viewer_draw draw_msg;
 };

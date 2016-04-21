@@ -188,8 +188,33 @@ class DRAKERBSYSTEM_EXPORT RigidBodySystem {
 
   void addSensor(std::shared_ptr<RigidBodySensor> s);
 
+  /**
+   * Returns a shared pointer to the underlying RigidBodyTree.
+   *
+   * TODO (amcastro-tri): Remove this method. Now replaced by get_rigid_body().
+   * Currently there are 36 usages of this method in:
+   * examples/Quadrotor (1 usage)
+   * systems/plants (17 usages)
+   * systems/plants/test (18 usages)
+   */
   const std::shared_ptr<RigidBodyTree>& getRigidBodyTree(void) const {
     return tree;
+  }
+
+  /**
+   * @brief Returns a constant reference to the underlying RigidBodyTree.
+   */
+  RigidBodyTree& get_rigid_body_tree() const {
+    assert(tree && "Pointer to the RigidBodyTree was not initialized.");
+    return *tree;
+  }
+
+  /**
+   * @brief Returns a non-constant reference to the underlying RigidBodyTree.
+   */
+  RigidBodyTree& get_rigid_body_tree() {
+    assert(tree && "Pointer to the RigidBodyTree was not initialized.");
+    return *tree;
   }
 
   size_t getNumStates() const {

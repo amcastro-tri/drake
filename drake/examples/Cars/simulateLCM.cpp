@@ -116,9 +116,10 @@ int main(int argc, char* argv[]) {
 
   rigid_body_sys->addRobotFromFile(argv[1], floating_base_type, weld_to_frame);
 
-  auto const& tree = rigid_body_sys->getRigidBodyTree();
+  RigidBodyTree& tree = rigid_body_sys->get_rigid_body_tree();
+
   for (int i = 2; i < argc; i++)
-    tree->addRobotFromSDF(argv[i], DrakeJoint::FIXED);  // add environment
+    tree.addRobotFromSDF(argv[i], DrakeJoint::FIXED);  // add environment
 
   if (argc < 3) {  // add flat terrain
     double box_width = 1000;
@@ -127,36 +128,36 @@ int main(int argc, char* argv[]) {
     Isometry3d T_element_to_link = Isometry3d::Identity();
     T_element_to_link.translation() << 0, 0,
         -box_depth / 2;  // top of the box is at z=0
-    auto& world = tree->bodies[0];
+    auto& world = tree.bodies[0]; // TODO(amcastro-tri): change to use get_body
     Vector4d color;
     color << 0.9297, 0.7930, 0.6758,
         1;  // was hex2dec({'ee','cb','ad'})'/256 in matlab
     world->addVisualElement(
         DrakeShapes::VisualElement(geom, T_element_to_link, color));
-    tree->addCollisionElement(
+    tree.addCollisionElement(
         RigidBody::CollisionElement(geom, T_element_to_link, world), *world,
         "terrain");
-    tree->updateStaticCollisionElements();
+    tree.updateStaticCollisionElements();
   }
 
   shared_ptr<lcm::LCM> lcm = make_shared<lcm::LCM>();
 
-  MatrixXd Kp(getNumInputs(*rigid_body_sys), tree->num_positions),
-      Kd(getNumInputs(*rigid_body_sys), tree->num_velocities);
+  MatrixXd Kp(getNumInputs(*rigid_body_sys), tree.num_positions),
+      Kd(getNumInputs(*rigid_body_sys), tree.num_velocities);
   Matrix<double, Eigen::Dynamic, 3> map_driving_cmd_to_x_d(
-      tree->num_positions + tree->num_velocities, 3);
+      tree.num_positions + tree.num_velocities, 3);
   {  // setup PD controller for throttle and steering
     double kpSteering = 400, kdSteering = 80, kThrottle = 100;
     Kp.setZero();
     Kd.setZero();
     map_driving_cmd_to_x_d.setZero();
 
-    for (int actuator_idx = 0; actuator_idx < tree->actuators.size();
+    for (int actuator_idx = 0; actuator_idx < tree.actuators.size();
          actuator_idx++) {
-      const std::string& actuator_name = tree->actuators[actuator_idx].name;
+      const std::string& actuator_name = tree.actuators[actuator_idx].name;
 
       if (actuator_name == "steering") {
-        auto const& b = tree->actuators[actuator_idx].body;
+        auto const& b = tree.actuators[actuator_idx].body;
         Kp(actuator_idx, b->position_num_start) = kpSteering;  // steering
         Kd(actuator_idx, b->velocity_num_start) = kdSteering;  // steeringdot
         map_driving_cmd_to_x_d(b->position_num_start, 0) =
@@ -164,11 +165,11 @@ int main(int argc, char* argv[]) {
 
       } else if (actuator_name == "right_wheel_joint" ||
                  actuator_name == "left_wheel_joint") {
-        auto const& b = tree->actuators[actuator_idx].body;
+        auto const& b = tree.actuators[actuator_idx].body;
         Kd(actuator_idx, b->velocity_num_start) = kThrottle;  // throttle
-        map_driving_cmd_to_x_d(tree->num_positions + b->velocity_num_start, 1) =
+        map_driving_cmd_to_x_d(tree.num_positions + b->velocity_num_start, 1) =
             20;  // throttle (velocity) command
-        map_driving_cmd_to_x_d(tree->num_positions + b->velocity_num_start, 2) =
+        map_driving_cmd_to_x_d(tree.num_positions + b->velocity_num_start, 2) =
             -20;  // braking (velocity) command
       }
     }
@@ -193,7 +194,7 @@ int main(int argc, char* argv[]) {
   options.timeout_seconds = numeric_limits<double>::infinity();
 
   VectorXd x0 = VectorXd::Zero(rigid_body_sys->getNumStates());
-  x0.head(tree->num_positions) = tree->getZeroConfiguration();
+  x0.head(tree.num_positions) = tree.getZeroConfiguration();
   // todo:  call getInitialState instead?  (but currently, that would require
   // snopt).  needs #1627
   // I'm getting away without it, but might be generating large internal forces

@@ -62,16 +62,16 @@ class DRAKECOLLISION_EXPORT Model {
   virtual bool updateElementWorldTransform(
       const ElementId id, const Eigen::Isometry3d& T_local_to_world);
 
-  /** \brief Compute the points of closest approach between all eligible
+  /** @brief Compute the points of closest approach between all eligible
    * pairs of collision elements drawn from a specified set of elements
-   * \param ids_to_check the vector of ElementId for which the all-to-all
+   * @param ids_to_check the vector of ElementId for which the all-to-all
    * collision detection should be performed
-   * \param use_margins flag indicating whether or not to use the version
+   * @param use_margins flag indicating whether or not to use the version
    * of this model with collision margins
-   * \param[out] closest_points reference to a vector of PointPair objects
+   * @param[out] closest_points reference to a vector of PointPair objects
    * that contains the closest point information after this method is
    * called
-   * \return true if this method ran successfully
+   * @return true if collisions were found. False if there are no collisions.
    */
   virtual bool closestPointsAllToAll(const std::vector<ElementId>& ids_to_check,
                                      const bool use_margins,

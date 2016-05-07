@@ -448,8 +448,8 @@ bool RigidBodyTree::collisionDetect(
     // collision_model->readElement(points[i].getIdA()) = " <<
     // collision_model->readElement(points[i].getIdA()) << endl;
     // cout << "RigidBodyTree::collisionDetect:
-    // collision_model->readElement(points[i].getIdA())->getId() = " <<
-    // collision_model->readElement(points[i].getIdA())->getId() << endl;
+    // collision_model->readElement(points[i].getIdA())->id() = " <<
+    // collision_model->readElement(points[i].getIdA())->id() << endl;
     // cout << "RigidBodyTree::collisionDetect: elementA = " << elementA <<
     // endl;
     // END_DEBUG

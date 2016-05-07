@@ -11,7 +11,7 @@
 #include "drake/systems/plants/shapes/DrakeShapes.h"
 
 namespace DrakeCollision {
-typedef uintptr_t ElementId;
+typedef int ElementId;
 
 class DRAKECOLLISION_EXPORT Element : public DrakeShapes::Element {
  public:
@@ -26,7 +26,9 @@ class DRAKECOLLISION_EXPORT Element : public DrakeShapes::Element {
 
   virtual Element* clone() const;
 
-  ElementId getId() const;
+  ElementId id() const;
+
+  void set_id(int id);
 
   virtual bool isStatic() const { return false; }
 
@@ -47,7 +49,7 @@ class DRAKECOLLISION_EXPORT Element : public DrakeShapes::Element {
   Element(const Element& other);
 
  private:
-  ElementId id;
+  ElementId id_;
 
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW

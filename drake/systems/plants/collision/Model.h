@@ -26,6 +26,15 @@ class DRAKECOLLISION_EXPORT Model {
   */
   virtual ElementId addElement(const Element& element);
 
+#if 0
+  /** @brief Add a collision element to this model.
+  * @param[in] element The collision element to be added to this model.
+  * @return An ElementId that uniquely identifies the added element within
+  * this model
+  */
+  virtual ElementId add_element(std::unique_ptr<Element> element);
+#endif
+
   bool removeElement(const ElementId& id);
 
   /** \brief Get a read-only pointer to a collision element in this model.
@@ -198,7 +207,14 @@ class DRAKECOLLISION_EXPORT Model {
   // Protected member variables are forbidden by the style guide.
   // Please do not add new references to this member.  Instead, use
   // the accessors.
+  // TODO(amcastro-tri): Remove unordered_map and transition to elements_.
   std::unordered_map<ElementId, std::unique_ptr<Element>> elements;
+
+  // There is no need for an unordered_map of elements. A simple (faster) vector
+  // of elements is enough as long as the ElementId is simply the i-th position
+  // in this array. The user SHOULD NOT have access to the ElementId.
+  // see: drake/systems/plants/collision/test/model_test.cc
+  std::vector<std::unique_ptr<Element>> elements_;
 
  private:
   Model(const Model&) {}

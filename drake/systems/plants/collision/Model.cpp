@@ -8,10 +8,19 @@ using namespace Eigen;
 namespace DrakeCollision {
 ElementId Model::addElement(const Element& element) {
   unique_ptr<Element> element_local(element.clone());
-  ElementId id = element_local->getId();
+  int id = elements.size();
+  element_local->set_id(id);
   this->elements.insert(make_pair(id, move(element_local)));
-  return id;
+  return element_local->id();
 }
+
+#if 0
+ElementId Model::add_element(std::unique_ptr<Element> element) {
+  element->set_id(elements_.size());
+  elements_.push_back(std::move(element));
+  return element->id_();
+}
+#endif
 
 bool Model::removeElement(const ElementId& id) {
   return elements.erase(id) > 0;

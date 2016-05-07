@@ -279,8 +279,8 @@ std::vector<PointPair> BulletModel::potentialCollisionPoints(bool use_margins) {
     DrakeShapes::Shape shapeA = elementA->getShape();
     DrakeShapes::Shape shapeB = elementB->getShape();
 
-    ElementId idA = elementA->getId();
-    ElementId idB = elementB->getId();
+    ElementId idA = elementA->id();
+    ElementId idB = elementB->id();
 
     double marginA = 0;
     double marginB = 0;
@@ -704,7 +704,7 @@ bool BulletModel::collisionPointsAllToAll(
         const btVector3& normalOnB = pt.m_normalWorldOnB;
         const btVector3& ptA = pt.getPositionWorldOnA() + normalOnB * marginA;
         const btVector3& ptB = pt.getPositionWorldOnB() - normalOnB * marginB;
-        c.addSingleResult(elementA->getId(), elementB->getId(), toVector3d(ptA),
+        c.addSingleResult(elementA->id(), elementB->id(), toVector3d(ptA),
                           toVector3d(ptB), toVector3d(normalOnB),
                           static_cast<double>(pt.getDistance()));
       }

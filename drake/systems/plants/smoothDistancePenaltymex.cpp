@@ -219,7 +219,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
       model->collisionDetect(cache, dist, normals, ptsA, ptsB, bodyA_idx,
                              bodyB_idx, active_bodies_idx, active_group_names);
     } else {
-      model->collisionDetect(cache, dist, normals, ptsA, ptsB, bodyA_idx,
+      model->CollisionDetectBodySet(cache, dist, normals, ptsA, ptsB, bodyA_idx,
                              bodyB_idx, active_bodies_idx);
     }
   } else {

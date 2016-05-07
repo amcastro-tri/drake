@@ -624,7 +624,26 @@ class DRAKERBM_EXPORT RigidBodyTree {
                        const std::set<std::string>& active_element_groups,
                        bool use_margins = true);
 
-  bool collisionDetect(const KinematicsCache<double>& cache,
+  /**
+   * @brief It performs an all-to-all collision check between bodies listed in
+   * bodies_idx
+   *
+   * The result of the collision detection is returned in arrays phi, normal,
+   * xA, xB, bodyA_idx, bodyB_idx. On output all of these arrays will have the
+   * same size with one entry per collision pair.
+   *
+   * @param[in] cache Cache with the current state of the tree.
+   * @param[in] bodies_idx List of body indexes between which all-to-all
+   * collision detect will be performed.
+   * @param[out] phi Array of distances.
+   * @param[out] normal Array of normal vectors.
+   * @param[out] xA Point on body A.
+   * @param[out] xB Point on body B.
+   * @param[out] bodyA_idx Index of body A.
+   * @param[out] bodyB_idx Index of body B.
+   * @return true if collisions were found. False if there are no collisions.
+   */
+  bool CollisionDetectBodySet(const KinematicsCache<double>& cache,
                        Eigen::VectorXd& phi, Eigen::Matrix3Xd& normal,
                        Eigen::Matrix3Xd& xA, Eigen::Matrix3Xd& xB,
                        std::vector<int>& bodyA_idx, std::vector<int>& bodyB_idx,

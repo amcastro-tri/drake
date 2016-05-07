@@ -482,7 +482,7 @@ bool RigidBodyTree::collisionDetect(
                          ids_to_check, use_margins);
 }
 
-bool RigidBodyTree::collisionDetect(
+bool RigidBodyTree::CollisionDetectBodySet(
     const KinematicsCache<double>& cache, VectorXd& phi, Matrix3Xd& normal,
     Matrix3Xd& xA, Matrix3Xd& xB, vector<int>& bodyA_idx,
     vector<int>& bodyB_idx, const vector<int>& bodies_idx, bool use_margins) {

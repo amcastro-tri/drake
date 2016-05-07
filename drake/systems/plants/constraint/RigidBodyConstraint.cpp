@@ -1957,7 +1957,7 @@ void AllBodiesClosestDistanceConstraint::eval(const double *t,
         robot->collisionDetect(cache, c, normal, xA, xB, idxA, idxB,
                                active_bodies_idx, active_group_names);
       } else {
-        robot->collisionDetect(cache, c, normal, xA, xB, idxA, idxB,
+        robot->CollisionDetectBodySet(cache, c, normal, xA, xB, idxA, idxB,
                                active_bodies_idx);
       }
     } else {
@@ -2038,7 +2038,7 @@ void MinDistanceConstraint::eval(const double *t,
         robot->collisionDetect(cache, dist, normal, xA, xB, idxA, idxB,
                                active_bodies_idx, active_group_names);
       } else {
-        robot->collisionDetect(cache, dist, normal, xA, xB, idxA, idxB,
+        robot->CollisionDetectBodySet(cache, dist, normal, xA, xB, idxA, idxB,
                                active_bodies_idx);
       }
     } else {

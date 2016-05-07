@@ -11,7 +11,7 @@ ElementId Model::addElement(const Element& element) {
   int id = elements.size();
   element_local->set_id(id);
   this->elements.insert(make_pair(id, move(element_local)));
-  return element_local->id();
+  return id;
 }
 
 #if 0

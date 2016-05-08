@@ -24,7 +24,7 @@ class DRAKECOLLISION_EXPORT Model {
   * \return an ElementId that uniquely identifies the added element within
   * this model
   */
-  virtual ElementId addElement(const Element& element);
+  virtual ElementId addElement(std::unique_ptr<Element> element);
 
 #if 0
   /** @brief Add a collision element to this model.

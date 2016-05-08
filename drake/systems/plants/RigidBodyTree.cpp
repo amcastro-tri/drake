@@ -299,7 +299,9 @@ map<string, int> RigidBodyTree::computePositionNameToIndexMap() const {
 DrakeCollision::ElementId RigidBodyTree::addCollisionElement(
     const RigidBody::CollisionElement& element, RigidBody& body,
     const string& group_name) {
-  DrakeCollision::ElementId id = collision_model->addElement(element);
+  DrakeCollision::ElementId id = collision_model->addElement(
+  std::unique_ptr<DrakeCollision::Element>(
+  static_cast<DrakeCollision::Element*>(element.clone())));
   if (id != 0) {
     body.collision_element_ids.push_back(id);
     body.collision_element_groups[group_name].push_back(id);

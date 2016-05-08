@@ -6,11 +6,10 @@ using namespace std;
 using namespace Eigen;
 
 namespace DrakeCollision {
-ElementId Model::addElement(const Element& element) {
-  unique_ptr<Element> element_local(element.clone());
+ElementId Model::addElement(std::unique_ptr<Element> element) {
   int id = elements.size();
-  element_local->set_id(id);
-  this->elements.insert(make_pair(id, move(element_local)));
+  element->set_id(id);
+  elements.insert(std::make_pair(id, std::move(element)));
   return id;
 }
 

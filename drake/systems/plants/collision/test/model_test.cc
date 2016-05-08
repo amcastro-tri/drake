@@ -51,15 +51,15 @@ TEST(ModelTest, ClosestPointsAllToAll) {
   DrakeShapes::Box geometry_1(Vector3d(1, 1, 1));
   DrakeShapes::Sphere geometry_2(0.5);
   DrakeShapes::Sphere geometry_3(0.5);
-  Element element_1(geometry_1);
-  Element element_2(geometry_2, T_elem2_to_body);
-  Element element_3(geometry_3);
+  Element* element_1 = new Element(geometry_1);
+  Element* element_2 = new Element(geometry_2, T_elem2_to_body);
+  Element* element_3 = new Element(geometry_3);
 
   // Populate the model.
   std::shared_ptr<Model> model = newModel();
-  ElementId id1 = model->addElement(element_1);
-  ElementId id2 = model->addElement(element_2);
-  ElementId id3 = model->addElement(element_3);
+  ElementId id1 = model->addElement(std::unique_ptr<Element>(element_1));
+  ElementId id2 = model->addElement(std::unique_ptr<Element>(element_2));
+  ElementId id3 = model->addElement(std::unique_ptr<Element>(element_3));
   model->updateElementWorldTransform(id1, T_body1_to_world);
   model->updateElementWorldTransform(id2, T_body2_to_world);
   model->updateElementWorldTransform(id3, T_body3_to_world);

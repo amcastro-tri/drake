@@ -167,7 +167,7 @@ std::unique_ptr<btCollisionShape> BulletModel::newBulletMeshPointsShape(
 ElementId BulletModel::addElement(const Element& element) {
   ElementId id = Model::addElement(element);
 
-  if (id != 0) {
+  if (id != -1) {
     std::unique_ptr<btCollisionShape> bt_shape;
     std::unique_ptr<btCollisionShape> bt_shape_no_margin;
     switch (elements[id]->getShape()) {

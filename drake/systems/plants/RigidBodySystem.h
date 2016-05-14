@@ -222,6 +222,10 @@ class DRAKERBSYSTEM_EXPORT RigidBodySystem {
    */
   int number_of_velocities() const;
 
+  DrakeCollision::Model* const collision_model() const {
+    return tree->collision_model();
+  }
+
   /** dynamics
    * Formulates the forward dynamics of the rigid body system as an optimization
    *   find vdot, f  (feasibility problem ok for now => implicit objective is

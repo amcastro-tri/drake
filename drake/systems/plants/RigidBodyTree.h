@@ -563,7 +563,7 @@ class DRAKERBM_EXPORT RigidBodyTree {
           auto& ids = body_ptr->collision_element_ids;
           for (const auto& id : group.second) {
             ids.erase(std::find(ids.begin(), ids.end(), id));
-            collision_model->removeElement(id);
+            collision_model_->removeElement(id);
           }
           names_of_groups_to_delete.push_back(group_name);
         }
@@ -861,9 +861,9 @@ class DRAKERBM_EXPORT RigidBodyTree {
   // See RigidBodyTree::compile
   void SortTree();
 
-  // collision_model and collision_model_no_margins both maintain
+  // collision_model_ and collision_model_no_margins both maintain
   // a collection of the collision geometry in the RBM for use in
-  // collision detection of different kinds. collision_model has
+  // collision detection of different kinds. collision_model_ has
   // small margins applied to all collision geometry when that
   // geometry is added, to improve the numerical stability of
   // contact gradients taken using the model. collision_model_no_margins
@@ -871,7 +871,7 @@ class DRAKERBM_EXPORT RigidBodyTree {
   // precise raycasting, e.g. for simulating a laser scanner
   // These models are switched between with the use_margins flag
   // to collision-relevant methods of the RBM.
-  std::unique_ptr<DrakeCollision::Model> collision_model;
+  std::unique_ptr<DrakeCollision::Model> collision_model_;
   // std::shared_ptr< DrakeCollision::Model > collision_model_no_margins;
  public:
 #ifndef SWIG

@@ -812,6 +812,10 @@ class DRAKERBM_EXPORT RigidBodyTree {
   int number_of_velocities() const { return num_velocities_; }
 
 
+  DrakeCollision::Model* const collision_model() const {
+    return collision_model_.get();
+  }
+
  public:
   static const std::set<int> default_robot_num_set;
 

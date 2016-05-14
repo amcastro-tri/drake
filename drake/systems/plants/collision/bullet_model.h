@@ -127,6 +127,9 @@ class BulletModel : public Model {
     GjkConvexCast
   };
 
+  void set_ray_cast_algorithm(RayCastAlgorithm algorithm) {
+    ray_cast_algorithm_ = algorithm; }
+
  private:
   /**
    * \brief Finds the points where elements A and B are closest.

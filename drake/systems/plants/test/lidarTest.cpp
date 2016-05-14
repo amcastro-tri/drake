@@ -7,6 +7,16 @@
 #include "drake/util/testUtil.h"
 #include "lcmtypes/bot_core/planar_lidar_t.hpp"
 
+// This macro is not available in the scope of lidarTest.cpp
+// #define BULLET_COLLISION
+// This does not work. The reason is that bullet_model.h includes Bullet's
+// headers and these are not in the search path for lidarTest.cpp
+// TODO(amcastro-tri): allow user to access collision solver specific options
+// through API. See example below.
+#ifdef BULLET_COLLISION
+#include "drake/systems/plants/collision/bullet_model.h"
+#endif
+
 using Eigen::VectorXd;
 using std::make_shared;
 
@@ -26,6 +36,23 @@ int do_main(int argc, char* argv[]) {
               << " expected 1.";
     throw std::runtime_error(error_msg.str());
   }
+
+  // TODO(amcastro-tri): BulletModel should be available to the user so that
+  // specific Bullet options can be set.
+  // However this causes dependency problems when the user includes
+  // bullet_model.h.
+  // The solution is to use a PIMPL implementation for BulletModel. Therefore
+  // bullet_model.h will only contain Bullet independent definitions and the
+  // implementation, not available to the user, will contain all the Bullet
+  // dependencies.
+#ifdef BULLET_COLLISION
+  DrakeCollision::BulletModel* collision_model =
+      dynamic_cast<DrakeCollision::BulletModel*>(
+          rigid_body_sys->collision_model());
+  collision_model->set_ray_cast_algorithm(DrakeCollision::BulletModel::GjkCast);
+  //collision_model_->set_ray_cast_algorithm(BulletModel::SubSimplexConvexCast);
+  std::cout << "Setting options for bullet" << std::endl;
+#endif
 
   auto lidar_sensor =
       dynamic_cast<const Drake::RigidBodyDepthSensor*>(sensors[0]);

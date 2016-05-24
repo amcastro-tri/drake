@@ -100,6 +100,7 @@ std::shared_ptr<RigidBodySystem> CreateRigidBodySystem(int argc,
   rigid_body_sys->penetration_damping =
       rigid_body_sys->penetration_stiffness / 10.0;
   rigid_body_sys->friction_coefficient = 10.0;  // essentially infinite friction
+  rigid_body_sys->use_multi_contact = true;
 
   return rigid_body_sys;
 }

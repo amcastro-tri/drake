@@ -4,6 +4,17 @@
     <pose>0 0 0 0 0 0</pose>
     <link name='large_box'>
       <pose>0 2.5 0 0 0 0</pose>
+      <inertial>
+        <mass>1.0</mass>
+        <inertia>
+          <ixx>1.0</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>1.0</iyy>
+          <iyz>0.0</iyz>
+          <izz>1.0</izz>
+        </inertia>
+      </inertial>
       <visual name='box'>
         <geometry>
           <box>
@@ -20,6 +31,39 @@
       </collision>
     </link>
 
+    <link name='cylinder'>
+      <pose>0.5 5.4 0 0.7 0 0.0 </pose>
+      <inertial>
+        <mass>1.0</mass>
+        <inertia>
+          <ixx>1.0</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>1.0</iyy>
+          <iyz>0.0</iyz>
+          <izz>1.0</izz>
+        </inertia>
+      </inertial>
+      <visual name='cyl_visual'>
+        <geometry>
+          <cylinder>
+            <length>0.1</length>
+            <radius>0.5</radius>
+          </cylinder>
+        </geometry>
+      </visual>
+      <collision name='cyl_collision'>
+	<pose>0 0.0 0.0 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <length>0.1</length>
+            <radius>0.5</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+    </link>
+
+<!--
     <link name='small_box'>
       <pose>0 5.5 0 1.570796326794897 0 0</pose>
       <visual name='box'>
@@ -37,6 +81,6 @@
           </box>
         </geometry>
       </collision>
-    </link>
+    </link> -->
   </model>
 </sdf>

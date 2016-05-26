@@ -13,7 +13,7 @@ if (bullet_FOUND)
   target_link_libraries(urdfCollisionTest drakeRBM)
 
   add_executable(rbt_compute_collisions rbt_compute_collisions.cc)
-  target_link_libraries(rbt_compute_collisions drakeRBM ${GTEST_BOTH_LIBRARIES})
+  target_link_libraries(rbt_compute_collisions drakeRBSystem ${GTEST_BOTH_LIBRARIES})
   add_test(NAME rbt_compute_collisions COMMAND rbt_compute_collisions)
 endif()
 

@@ -155,7 +155,7 @@ RigidBodySystem::StateVector<double> RigidBodySystem::dynamics(
                                 bodyB_idx);
     else
       tree->ComputeMaximumDepthCollisionPoints(
-          kinsol, phi, normal, xA, xB, bodyA_idx, bodyB_idx);
+          kinsol, phi, normal, xA, xB, bodyA_idx, bodyB_idx, false);
     //tree->collisionDetect(kinsol, phi, normal, xA, xB, bodyA_idx, bodyB_idx);
 
 
@@ -206,6 +206,14 @@ RigidBodySystem::StateVector<double> RigidBodySystem::dynamics(
         } else { // body is static.
           TB = Isometry3d::Identity();
         }
+
+#if   LIANG_LOOK_AT_THIS
+        xA = TA.translation();
+        torque_A = (pc-xA).cros(fA);
+        fB = -fA; //action/reaction
+        xB = TB.translation();
+        torque_B = (pc-xB).cros(fB); // NOTE: torque_B != torque_A !!!
+#endif
 
         PRINT_VAR(TA.translation().transpose());
         PRINT_VAR(TB.translation().transpose());

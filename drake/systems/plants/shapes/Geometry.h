@@ -150,6 +150,8 @@ class DRAKESHAPES_EXPORT Mesh : public Geometry {
   std::string resolved_filename;
   bool extractMeshVertices(Eigen::Matrix3Xd &vertex_coordinates) const;
 
+  bool ReadMeshConnectivities(Eigen::Matrix3Xi& connectivities) const;
+
  protected:
   std::string root_dir;
 };

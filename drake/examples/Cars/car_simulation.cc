@@ -80,9 +80,9 @@ std::shared_ptr<RigidBodySystem> CreateRigidBodySystem(int argc,
   if (argc < 3) {
     //double box_width = 1000;
     //double box_depth = 10;
-    DrakeShapes::Mesh geom("DrivingSurface_simpler_allTris.obj", "/home/amcastro/Documents/NvidiaTerrain/DrivingSurface_simpler_allTris.obj");
+    DrakeShapes::Mesh geom("DrivingSurface_simpler_allTris.obj", "/home/amcastro/Documents/NvidiaTerrain/PaloAltoLoop.obj");
     Eigen::Isometry3d T_element_to_link = Eigen::Isometry3d::Identity();
-    T_element_to_link.linear() = Eigen::AngleAxisd(M_PI_2, Eigen::Vector3d::UnitX()).toRotationMatrix();
+    T_element_to_link.linear() = Eigen::AngleAxisd(-M_PI_2, Eigen::Vector3d::UnitX()).toRotationMatrix();
     //DrakeShapes::Box geom(Eigen::Vector3d(box_width, box_width, box_depth));
     //Eigen::Isometry3d T_element_to_link = Eigen::Isometry3d::Identity();
     //T_element_to_link.translation() << 0, 0,

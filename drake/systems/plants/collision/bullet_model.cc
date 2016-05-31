@@ -15,6 +15,8 @@ using Eigen::Matrix3Xd;
 using Eigen::MatrixXd;
 using Eigen::Vector3d;
 using Eigen::VectorXd;
+using Eigen::Vector3i;
+using Eigen::Matrix3Xi;
 
 namespace DrakeCollision {
 
@@ -152,6 +154,42 @@ std::unique_ptr<btCollisionShape> BulletModel::newBulletMeshShape(
   }
 }
 
+std::unique_ptr<btCollisionShape> BulletModel::newBulletStaticMeshShape(
+    const DrakeShapes::Mesh& geometry, bool use_margins) {
+  Matrix3Xd vertices;
+  Matrix3Xi connectivities;
+
+  geometry.extractMeshVertices(vertices);
+  geometry.ReadMeshConnectivities(connectivities);
+
+  btTriangleMesh* mesh = new btTriangleMesh();
+  int ntris = connectivities.cols();
+  int nverts = vertices.cols();
+
+  mesh->preallocateIndices(ntris);
+  mesh->preallocateVertices(nverts);
+
+  for(int itri=0; itri <  ntris; ++itri) {
+    Vector3i tri = connectivities.col(itri);
+    btVector3 vertex0(vertices(0,tri(0)),vertices(1,tri(0)),vertices(2,tri(0)));
+    btVector3 vertex1(vertices(0,tri(1)),vertices(1,tri(1)),vertices(2,tri(1)));
+    btVector3 vertex2(vertices(0,tri(2)),vertices(1,tri(2)),vertices(2,tri(2)));
+    mesh->addTriangle(vertex0, vertex1, vertex2);
+  }
+
+  bool useQuantizedAabbCompression = true;
+  btBvhTriangleMeshShape* bvh_mesh_shape =
+      new btBvhTriangleMeshShape(mesh,useQuantizedAabbCompression);
+  std::unique_ptr<btCollisionShape> bt_shape(bvh_mesh_shape);
+
+  if (use_margins)
+      bt_shape->setMargin(kLargeMargin);
+  else
+      bt_shape->setMargin(kSmallMargin);
+
+  return bt_shape;
+}
+
 std::unique_ptr<btCollisionShape> BulletModel::newBulletMeshPointsShape(
     const DrakeShapes::MeshPoints& geometry, bool use_margins) {
   std::unique_ptr<btCollisionShape> bt_shape(new btConvexHullShape());
@@ -198,8 +236,8 @@ ElementId BulletModel::addElement(const Element& element) {
       case DrakeShapes::MESH: {
         const auto mesh =
             static_cast<const DrakeShapes::Mesh&>(elements[id]->getGeometry());
-        bt_shape = newBulletMeshShape(mesh, true);
-        bt_shape_no_margin = newBulletMeshShape(mesh, false);
+        bt_shape = newBulletStaticMeshShape(mesh, true);
+        bt_shape_no_margin = newBulletStaticMeshShape(mesh, false);
       } break;
       case DrakeShapes::MESH_POINTS: {
         const auto mesh = static_cast<const DrakeShapes::MeshPoints&>(
@@ -234,6 +272,7 @@ ElementId BulletModel::addElement(const Element& element) {
       bullet_world_no_margin_.bt_collision_world->addCollisionObject(
           bt_obj_no_margin.get());
 
+#if 0
       if (elements[id]->isStatic()) {
         bt_obj->setCollisionFlags(btCollisionObject::CF_KINEMATIC_OBJECT);
         bt_obj->activate();
@@ -245,6 +284,7 @@ ElementId BulletModel::addElement(const Element& element) {
         bt_obj_no_margin->setCollisionFlags(
             btCollisionObject::CF_STATIC_OBJECT);
       }
+#endif
 
       // Take ownership of the Bullet collision objects.
       bullet_world_.bt_collision_objects.insert(

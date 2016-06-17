@@ -20,6 +20,9 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using Eigen::VectorXi;
 
+using drake::solvers::Constraint;
+using drake::solvers::DecisionVariableView;
+using drake::solvers::OptimizationProblem;
 using drake::solvers::SolutionResult;
 
 /// NOTE: The contents of this class are for the most part direct ports of
@@ -179,7 +182,7 @@ void inverseKinMode1(
 
         typedef Eigen::Triplet<double> T;
         std::vector<T> triplet_list;
-        for (size_t i = 0; i < iAfun.size(); i++) {
+        for (int i = 0; i < iAfun.size(); i++) {
           triplet_list.push_back(T(iAfun[i], jAvar[i], A[i]));
         }
 

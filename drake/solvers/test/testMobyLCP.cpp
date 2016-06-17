@@ -36,13 +36,14 @@ Eigen::SparseMatrix<double> MakeSparseMatrix(
 template <typename Derived>
 void RunBasicLcp(const Eigen::MatrixBase<Derived>& M, const Eigen::VectorXd& q,
                  const Eigen::VectorXd& expected_z_in, bool expect_fast_pass) {
-  Drake::MobyLCPSolver l;
+  MobyLCPSolver l;
   l.SetLoggingEnabled(verbose);
 
   Eigen::VectorXd expected_z = expected_z_in;
 
   Eigen::VectorXd fast_z;
   bool result = l.SolveLcpFast(M, q, &fast_z);
+  (void)(result);  // TODO(sammy-tri) Either use, or remove.
   if (expected_z.size() == 0) {
     ASSERT_TRUE(expect_fast_pass)
         << "Expected Z not provided and expect_fast_pass unset.";
@@ -76,7 +77,7 @@ void RunRegularizedLcp(const Eigen::MatrixBase<Derived>& M,
                        const Eigen::VectorXd& q,
                        const Eigen::VectorXd& expected_z_in,
                        bool expect_fast_pass) {
-  Drake::MobyLCPSolver l;
+  MobyLCPSolver l;
   l.SetLoggingEnabled(verbose);
 
   Eigen::VectorXd expected_z = expected_z_in;
@@ -222,7 +223,7 @@ GTEST_TEST(testMobyLCP, testProblem4) {
   Eigen::VectorXd z(4);
   z << 1. / 90., 2. / 45., 1. / 90., 2. / 45.;
 
-  Drake::MobyLCPSolver l;
+  MobyLCPSolver l;
   l.SetLoggingEnabled(verbose);
 
   Eigen::VectorXd fast_z;
@@ -286,7 +287,7 @@ GTEST_TEST(testMobyLCP, testEmpty) {
   Eigen::MatrixXd empty_M(0, 0);
   Eigen::VectorXd empty_q(0);
   Eigen::VectorXd z;
-  Drake::MobyLCPSolver l;
+  MobyLCPSolver l;
   l.SetLoggingEnabled(verbose);
 
   bool result = l.SolveLcpFast(empty_M, empty_q, &z);

@@ -35,8 +35,8 @@ TEST_P(LoadModelTest, TestNoOffset) {
       DrakeJoint::QUATERNION);
 
   // Verifies that RigidBodyTree cannot find a link thatn does not exist.
-  auto nonexistent_body = rbs.getRigidBodyTree()->findLink("not_a_link");
-  EXPECT_TRUE(nonexistent_body == nullptr);
+  EXPECT_THROW(rbs.getRigidBodyTree()->findLink("not_a_link"),
+    std::logic_error);
 
   // Verifies that the world link within the rigid body tree
   // can be found and obtained.
@@ -300,18 +300,11 @@ class ModelToWorldTransformTestParams {
  */
 class ModelToWorldTransformTest
     : public ::testing::TestWithParam<ModelToWorldTransformTestParams> {
- public:
-  ModelToWorldTransformTest() :
-    rbs(new RigidBodySystem()) {
-  }
-
- protected:
-  // Stores the rigid body system on the heap to ensure it is 16-bit aligned.
-  std::unique_ptr<RigidBodySystem> rbs;
-  Eigen::Isometry3d T_model_to_world;
 };
 
 TEST_P(ModelToWorldTransformTest, TestModelToWorldTransform) {
+  std::unique_ptr<RigidBodySystem> rbs(new RigidBodySystem());
+
   ModelToWorldTransformTestParams params = GetParam();
 
   rbs->addRobotFromFile(params.urdf_path_);
@@ -320,6 +313,7 @@ TEST_P(ModelToWorldTransformTest, TestModelToWorldTransform) {
   // as expected.
 
   // Defines the expected model-to-world transform.
+  Eigen::Isometry3d T_model_to_world;
   {
     Eigen::Vector3d xyz, rpy;
     xyz << params.x_, params.y_, params.z_;

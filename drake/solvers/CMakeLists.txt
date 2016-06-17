@@ -1,14 +1,18 @@
+# TODO: still build something useful if Gurobi does not exist
 
-# todo: still build something useful if gurobi does not exist
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  # TODO(#2372) These are warnings that we can't handle yet.
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-sign-compare")
+endif()
 
 pods_find_pkg_config(gurobi)
 
-if (gurobi_FOUND)
+if(gurobi_FOUND)
 
   add_library_with_exports(LIB_NAME drakeQP SOURCE_FILES QP.cpp)
   pods_use_pkg_config_packages(drakeQP gurobi)
 
-  if (MATLAB_FOUND)
+  if(MATLAB_FOUND)
     add_mex(fastQPmex fastQPmex.cpp)
     target_link_libraries(fastQPmex drakeQP)
     add_mex(gurobiQPmex gurobiQPmex.cpp)
@@ -31,28 +35,59 @@ endif()
 
 set(optimization_files)
 list(APPEND optimization_files MathematicalProgram.cpp MobyLCP.cpp system_identification.cpp)
+pods_find_pkg_config(ipopt)
+if (ipopt_FOUND)
+  list(APPEND optimization_files IpoptSolver.cpp)
+else()
+  list(APPEND optimization_files NoIpopt.cpp)
+endif(ipopt_FOUND)
 pods_find_pkg_config(nlopt)
-if (nlopt_FOUND)
+if(nlopt_FOUND)
   list(APPEND optimization_files NloptSolver.cpp)
 else()
   list(APPEND optimization_files NoNlopt.cpp)
-endif(nlopt_FOUND)
+endif()
 pods_find_pkg_config(snopt_c)
-if (snopt_c_FOUND)
+if(snopt_c_FOUND)
   list(APPEND optimization_files SnoptSolver.cpp)
 else()
   list(APPEND optimization_files NoSnopt.cpp)
-endif(snopt_c_FOUND)
+endif()
+
 add_library_with_exports(LIB_NAME drakeOptimization SOURCE_FILES ${optimization_files})
 target_link_libraries(drakeOptimization drakePolynomial)
 drake_install_headers(MathematicalProgram.h Optimization.h system_identification.h)
 pods_install_libraries(drakeOptimization)
-if (nlopt_FOUND)
+pods_install_pkg_config_file(drake-optimization
+  LIBS -ldrakeOptimization
+  REQUIRES
+  VERSION 0.0.1)
+
+if(ipopt_FOUND)
+  pods_use_pkg_config_packages(drakeOptimization ipopt)
+  # IPOPT builds its own version of BLAS during compilation, and links
+  # it into the output library.  On (at least some) ELF systems, you
+  # wind up with a symbol name collision between IPOPT's BLAS and
+  # other BLAS implementations in other dynamic libraries (MATLAB, I'm
+  # looking in your direction...)  Since the actual implementations
+  # are incompatible, this does not end well.  Linking with the
+  # -Bsymbolic flags causes the internal references to these symbols
+  # inside libdrakeOptimization to be handled at compile time, and
+  # prevents the dynamic linker from hijacking IPOPT's calls into
+  # BLAS.
+  #
+  # This should probably be a test for the GNU linker instead of a platform.
+  if (NOT (APPLE OR WIN32))
+    set(CMAKE_SHARED_LINKER_FLAGS
+      "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-Bsymbolic -Wl,-Bsymbolic-functions")
+  endif()
+endif()
+if(nlopt_FOUND)
   pods_use_pkg_config_packages(drakeOptimization nlopt)
-endif(nlopt_FOUND)
-if (snopt_c_FOUND)
+endif()
+if(snopt_c_FOUND)
   pods_use_pkg_config_packages(drakeOptimization snopt_c)
-endif(snopt_c_FOUND)
+endif()
 
 if(snopt_c_FOUND AND MATLAB_FOUND)
   add_mex(NonlinearProgramSnoptmex NonlinearProgramSnoptmex.cpp)

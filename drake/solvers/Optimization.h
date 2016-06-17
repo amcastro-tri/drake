@@ -16,8 +16,8 @@
 #include "drake/solvers/solution_result.h"
 #include "drake/util/Polynomial.h"
 
-
-namespace Drake {
+namespace drake {
+namespace solvers {
 
 /**
  * DecisionVariable
@@ -213,30 +213,30 @@ class DRAKEOPTIMIZATION_EXPORT OptimizationProblem {
     // Construct by copying from an lvalue.
     template <typename... Args>
     ConstraintImpl(F const& f, Args&&... args)
-        : Constraint(FunctionTraits<F>::numOutputs(f),
+        : Constraint(Drake::FunctionTraits<F>::numOutputs(f),
                      std::forward<Args>(args)...),
           f_(f) {}
 
     // Construct by moving from an rvalue.
     template <typename... Args>
     ConstraintImpl(F&& f, Args&&... args)
-        : Constraint(FunctionTraits<F>::numOutputs(f),
+        : Constraint(Drake::FunctionTraits<F>::numOutputs(f),
                      std::forward<Args>(args)...),
           f_(std::forward<F>(f)) {}
 
     void eval(const Eigen::Ref<const Eigen::VectorXd>& x,
-                      Eigen::VectorXd& y) const override {
-      y.resize(FunctionTraits<F>::numOutputs(f_));
-      assert(x.rows() == FunctionTraits<F>::numInputs(f_));
-      assert(y.rows() == FunctionTraits<F>::numOutputs(f_));
-      FunctionTraits<F>::eval(f_, x, y);
+              Eigen::VectorXd& y) const override {
+      y.resize(Drake::FunctionTraits<F>::numOutputs(f_));
+      assert(x.rows() == Drake::FunctionTraits<F>::numInputs(f_));
+      assert(y.rows() == Drake::FunctionTraits<F>::numOutputs(f_));
+      Drake::FunctionTraits<F>::eval(f_, x, y);
     }
-    void eval(const Eigen::Ref<const TaylorVecXd>& x,
-                      TaylorVecXd& y) const override {
-      y.resize(FunctionTraits<F>::numOutputs(f_));
-      assert(x.rows() == FunctionTraits<F>::numInputs(f_));
-      assert(y.rows() == FunctionTraits<F>::numOutputs(f_));
-      FunctionTraits<F>::eval(f_, x, y);
+    void eval(const Eigen::Ref<const Drake::TaylorVecXd>& x,
+              Drake::TaylorVecXd& y) const override {
+      y.resize(Drake::FunctionTraits<F>::numOutputs(f_));
+      assert(x.rows() == Drake::FunctionTraits<F>::numInputs(f_));
+      assert(y.rows() == Drake::FunctionTraits<F>::numOutputs(f_));
+      Drake::FunctionTraits<F>::eval(f_, x, y);
     }
   };
 
@@ -247,10 +247,10 @@ class DRAKEOPTIMIZATION_EXPORT OptimizationProblem {
       // to int so it is odr-used (see
   // https://gcc.gnu.org/wiki/VerboseDiagnostics#missing_static_const_definition)
   OptimizationProblem()
-      : problem_type_(MathematicalProgramInterface::GetLeastSquaresProgram()),
-        num_vars_(0),
+      : num_vars_(0),
         x_initial_guess_(
             static_cast<Eigen::Index>(INITIAL_VARIABLE_ALLOCATION_NUM)),
+        problem_type_(MathematicalProgramInterface::GetLeastSquaresProgram()),
       solver_result_(0) {}
 
   const DecisionVariableView AddContinuousVariables(std::size_t num_new_vars,
@@ -562,9 +562,9 @@ class DRAKEOPTIMIZATION_EXPORT OptimizationProblem {
    */
   std::shared_ptr<PolynomialConstraint>
       AddPolynomialConstraint(
-          const Polynomiald& polynomial,
+          const VectorXPoly& polynomials,
           const std::vector<Polynomiald::VarType>& poly_vars,
-          double lb, double ub,
+          const Eigen::VectorXd& lb, const Eigen::VectorXd& ub,
           const VariableList& vars) {
     // TODO(ggould-tri) We treat polynomial constraints as generic for now,
     // but that need not be so.  Polynomials of degree 1 are linear
@@ -576,7 +576,7 @@ class DRAKEOPTIMIZATION_EXPORT OptimizationProblem {
     problem_type_.reset(
         problem_type_->AddGenericConstraint());
     std::shared_ptr<PolynomialConstraint>
-        constraint(new PolynomialConstraint(polynomial, poly_vars, lb, ub));
+        constraint(new PolynomialConstraint(polynomials, poly_vars, lb, ub));
     AddGenericConstraint(constraint, vars);
     return constraint;
   }
@@ -588,11 +588,11 @@ class DRAKEOPTIMIZATION_EXPORT OptimizationProblem {
    */
   std::shared_ptr<PolynomialConstraint>
       AddPolynomialConstraint(
-          const Polynomiald& polynomial,
+          const VectorXPoly& polynomials,
           const std::vector<Polynomiald::VarType>& poly_vars,
-          double lb, double ub) {
+          const Eigen::VectorXd& lb, const Eigen::VectorXd& ub) {
     return AddPolynomialConstraint(
-        polynomial, poly_vars, lb, ub, variable_views_);
+        polynomials, poly_vars, lb, ub, variable_views_);
   }
 
   // template <typename FunctionType>
@@ -612,7 +612,7 @@ class DRAKEOPTIMIZATION_EXPORT OptimizationProblem {
    *
    * @return SolutionResult indicating if the solution was successful.
    */
-  drake::solvers::SolutionResult Solve() {
+  SolutionResult Solve() {
     return problem_type_->Solve(*this);
   }  // todo: add argument for options
 
@@ -652,6 +652,10 @@ class DRAKEOPTIMIZATION_EXPORT OptimizationProblem {
    * "SNOPT" -- Paramater names and values as specified in SNOPT
    * User's Guide section 7.7 "Description ofthe optional parameters",
    * used as described in section 7.5 for snSet().
+   *
+   * "IPOPT" -- Paramater names and values as specified in IPOPT users
+   * guide section "Options Reference"
+   * http://www.coin-or.org/Ipopt/documentation/node40.html
    */
   void SetSolverOption(const std::string& solver_name,
                        const std::string& solver_option,
@@ -665,6 +669,12 @@ class DRAKEOPTIMIZATION_EXPORT OptimizationProblem {
     solver_options_int_[solver_name][solver_option] = option_value;
   }
 
+  void SetSolverOption(const std::string& solver_name,
+                       const std::string& solver_option,
+                       const std::string& option_value) {
+    solver_options_str_[solver_name][solver_option] = option_value;
+  }
+
   const std::map<std::string, double>& GetSolverOptionsDouble(
       const std::string& solver_name) {
     return solver_options_double_[solver_name];
@@ -673,6 +683,11 @@ class DRAKEOPTIMIZATION_EXPORT OptimizationProblem {
   const std::map<std::string, int>& GetSolverOptionsInt(
       const std::string& solver_name) {
     return solver_options_int_[solver_name];
+  }
+
+  const std::map<std::string, std::string>& GetSolverOptionsStr(
+      const std::string& solver_name) {
+    return solver_options_str_[solver_name];
   }
 
   /**
@@ -770,6 +785,8 @@ class DRAKEOPTIMIZATION_EXPORT OptimizationProblem {
   int solver_result_;
   std::map<std::string, std::map<std::string, double>> solver_options_double_;
   std::map<std::string, std::map<std::string, int>> solver_options_int_;
+  std::map<std::string, std::map<std::string, std::string>> solver_options_str_;
 };
 
-}  // end namespace Drake
+}  // end namespace solvers
+}  // end namespace drake

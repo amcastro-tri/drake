@@ -1,6 +1,15 @@
+.. _developer_notes:
+
 **************
 For Developers
 **************
+
+.. contents:: `Table of contents`
+   :depth: 3
+   :local:
+
+Introduction
+============
 
 If you have improvements to Drake, send us your pull requests!
 
@@ -27,7 +36,12 @@ agreeing to do so under those same terms.
 Testing
 =======
 
-See :doc:`unit_testing_instructions`
+.. toctree::
+    :maxdepth: 1
+
+    unit_testing_instructions
+
+.. See :doc:`unit_testing_instructions`
 
 .. _supported-configurations:
 
@@ -38,9 +52,12 @@ The following table shows the configurations and platforms that Drake
 officially supports. Supported configurations are tested in continuous
 integration. All other configurations are provided on a best-effort basis.
 
-On Ubuntu and OS X, only the "Unix Makefiles" CMake generator is supported.
-On Windows, only the "Visual Studio 14 2015" and "Visual Studio 14 2015 Win64"
-CMake generators are supported.
+On Ubuntu and OS X, the "Unix Makefiles" and "Ninja" CMake generators are
+supported. On Windows, the "Visual Studio 14 2015",
+"Visual Studio 14 2015 Win64", and "Ninja" CMake generators are supported.
+
+The supported version of MATLAB is R2015b. The supported version of the
+Java Development Kit is 7.
 
 +-----------------------------------------+--------------------+-------------------+---------+
 | Operating System                        | Compiler           | Superbuild Deps   | Build   |
@@ -58,20 +75,27 @@ CMake generators are supported.
 | | Windows Server 2012 R2 or Windows 8.1 | MSVC 14 32-bit     | Default           | Debug   |
 | | Visual Studio 2015 (any edition)      |                    |                   +---------+
 |                                         |                    |                   | Release |
+|                                         |                    +-------------------+---------+
+|                                         |                    | Default + MATLAB  | Release |
 |                                         +--------------------+-------------------+---------+
 |                                         | MSVC 14 64-bit     | Default           | Debug   |
 |                                         |                    |                   +---------+
 |                                         |                    |                   | Release |
+|                                         |                    +-------------------+---------+
+|                                         |                    | Default + MATLAB  | Release |
 +-----------------------------------------+--------------------+-------------------+---------+
 | OS X 10.10                              | Apple Clang 7.0    | Default           | Debug   |
 |                                         |                    |                   +---------+
 |                                         |                    |                   | Release |
+|                                         |                    +-------------------+---------+
+|                                         |                    | Default + MATLAB  | Release |
 +-----------------------------------------+--------------------+-------------------+---------+
-
-Official support for MATLAB on Windows and OS X is planned for 2016 Q2.
 
 Code Review
 ===========
+
+Review Process
+--------------
 
 For complex changes, especially those that will span multiple PRs, please
 open a GitHub issue and solicit design feedback before you invest a lot of
@@ -118,6 +142,14 @@ ask your platform reviewer to perform the merge for you.
 
 **After Merge.** If your PR breaks continuous integration, the :doc:`buildcop`
 will contact you to work out a resolution.
+
+Review Process Tooling
+----------------------
+
+.. toctree::
+    :maxdepth: 1
+
+    reviewable
 
 Continuous Integration Notes
 ============================

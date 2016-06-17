@@ -126,7 +126,8 @@ bool parseSDFGeometry(XMLElement* node, const PackageMap& package_map,
     string resolved_filename = resolveFilename(uri, package_map, root_dir);
     DrakeShapes::Mesh mesh(uri, resolved_filename);
 
-    parseScalarValue(shape_node, "scale", mesh.scale);
+    if (shape_node->FirstChildElement("scale") != nullptr)
+      ParseThreeVectorValue(shape_node, "scale", &mesh.scale);
     element.setGeometry(mesh);
   } else {
     cerr << std::string(__FILE__) + ": " + __func__ + ": WARNING: "
@@ -226,13 +227,15 @@ void parseSDFCollision(RigidBody* body, XMLElement* node, RigidBodyTree* model,
 
 bool parseSDFLink(RigidBodyTree* model, std::string model_name,
                   XMLElement* node, const PackageMap& package_map,
-                  PoseMap& pose_map, const string& root_dir, int* index) {
+                  PoseMap& pose_map, const string& root_dir, int* index,
+                  int model_id) {
   const char* attr = node->Attribute("drake_ignore");
   if (attr && strcmp(attr, "true") == 0) return false;
 
   RigidBody* body{nullptr};
   std::unique_ptr<RigidBody> owned_body(body = new RigidBody());
   body->model_name_ = model_name;
+  body->set_model_id(model_id);
 
   attr = node->Attribute("name");
   if (!attr) {
@@ -303,8 +306,8 @@ void setSDFDynamics(RigidBodyTree* model, XMLElement* node,
   }
 }
 
-void parseSDFFrame(RigidBodyTree* model, std::string model_name,
-                   XMLElement* node) {
+void parseSDFFrame(RigidBodyTree* rigid_body_tree, XMLElement* node,
+                   int model_id) {
   const char* attr = node->Attribute("drake_ignore");
   if (attr && strcmp(attr, "true") == 0) return;
 
@@ -324,7 +327,7 @@ void parseSDFFrame(RigidBodyTree* model, std::string model_name,
   }
 
   // The following will throw a std::runtime_error if the link doesn't exist.
-  RigidBody* link = model->findLink(link_name, model_name);
+  RigidBody* link = rigid_body_tree->findLink(link_name, "", model_id);
 
   // Get the frame's pose
   XMLElement* pose = node->FirstChildElement("pose");
@@ -347,11 +350,11 @@ void parseSDFFrame(RigidBodyTree* model, std::string model_name,
   std::shared_ptr<RigidBodyFrame> frame = allocate_shared<RigidBodyFrame>(
       Eigen::aligned_allocator<RigidBodyFrame>(), name, link, xyz, rpy);
 
-  model->addFrame(frame);
+  rigid_body_tree->addFrame(frame);
 }
 
 void parseSDFJoint(RigidBodyTree* model, std::string model_name,
-                   XMLElement* node, PoseMap& pose_map) {
+                   XMLElement* node, PoseMap& pose_map, int model_id) {
   const char* attr = node->Attribute("drake_ignore");
   if (attr && strcmp(attr, "true") == 0) return;
 
@@ -378,7 +381,7 @@ void parseSDFJoint(RigidBodyTree* model, std::string model_name,
                         "\" doesn't have a parent node.");
   }
 
-  auto parent = model->findLink(parent_name, model_name);
+  auto parent = model->findLink(parent_name, "", model_id);
   if (!parent) {
     throw runtime_error(std::string(__FILE__) + ": " + __func__ +
                         ": ERROR: Failed to find a parent link named \"" +
@@ -393,7 +396,7 @@ void parseSDFJoint(RigidBodyTree* model, std::string model_name,
                         "\" doesn't have a child node.");
   }
 
-  auto child = model->findLink(child_name, model_name);
+  auto child = model->findLink(child_name, "", model_id);
   if (!child) {
     throw runtime_error(std::string(__FILE__) + ": " + __func__ +
                         ": ERROR: Failed to find a child link named " +
@@ -585,7 +588,9 @@ void parseSDFJoint(RigidBodyTree* model, std::string model_name,
 /**
  * Parses a model and adds it to the rigid body tree.
  *
- * @param model A pointer to the rigid body tree to which to add the model.
+ * @param rigid_body_tree A pointer to the rigid body tree to which to add the
+ * model.
+ * @param node The XML node containing the model information.
  * @param package_map A map containing information about the ROS workspace
  * in which to search for meshes.
  * @param root_dir The root directory from which to search for mesh files.
@@ -594,19 +599,22 @@ void parseSDFJoint(RigidBodyTree* model, std::string model_name,
  * @param weld_to_frame Specifies the initial pose of the newly added robot
  * relative to the link to which the robot is being welded.
  */
-void parseModel(RigidBodyTree* model, XMLElement* node,
+void parseModel(RigidBodyTree* rigid_body_tree, XMLElement* node,
                 const PackageMap& package_map, const string& root_dir,
                 const DrakeJoint::FloatingBaseType floating_base_type,
                 std::shared_ptr<RigidBodyFrame> weld_to_frame) {
-  PoseMap pose_map;  // because sdf specifies almost everything in the global
-                     // (actually model) coordinates instead of relative
-                     // coordinates.  sigh...
+  // The pose_map is needed because SDF specifies almost everything in the
+  // model's coordinate frame.
+  PoseMap pose_map;
 
   if (!node->Attribute("name")) {
     throw runtime_error(std::string(__FILE__) + ": " + __func__ +
-                        ": ERROR: Your model must have a name attribute.");
+                        ": ERROR: The model must have a name attribute.");
   }
+
   string model_name = node->Attribute("name");
+
+  int model_id = rigid_body_tree->get_next_model_id();
 
   // Maintains a list of links that were added to the rigid body tree.
   // This is iterated over by method AddFloatingJoint() to determine where
@@ -617,21 +625,23 @@ void parseModel(RigidBodyTree* model, XMLElement* node,
   for (XMLElement* link_node = node->FirstChildElement("link"); link_node;
        link_node = link_node->NextSiblingElement("link")) {
     int index;
-    if (parseSDFLink(model, model_name, link_node, package_map, pose_map,
-                     root_dir, &index)) {
+    if (parseSDFLink(rigid_body_tree, model_name, link_node, package_map,
+                     pose_map, root_dir, &index, model_id)) {
       link_indices.push_back(index);
     }
   }
 
   // Parses the model's joint elements.
   for (XMLElement* joint_node = node->FirstChildElement("joint"); joint_node;
-       joint_node = joint_node->NextSiblingElement("joint"))
-    parseSDFJoint(model, model_name, joint_node, pose_map);
+       joint_node = joint_node->NextSiblingElement("joint")) {
+    parseSDFJoint(rigid_body_tree, model_name, joint_node, pose_map, model_id);
+  }
 
   // Parses the model's Drake frame elements.
   for (XMLElement* frame_node = node->FirstChildElement("frame"); frame_node;
-       frame_node = frame_node->NextSiblingElement("frame"))
-    parseSDFFrame(model, model_name, frame_node);
+       frame_node = frame_node->NextSiblingElement("frame")) {
+    parseSDFFrame(rigid_body_tree, frame_node, model_id);
+  }
 
   XMLElement* pose = node->FirstChildElement("pose");
   if (pose) {
@@ -658,8 +668,8 @@ void parseModel(RigidBodyTree* model, XMLElement* node,
 
   // Adds the floating joint that connects the newly added robot model to the
   // rest of the rigid body tree.
-  model->AddFloatingJoint(floating_base_type, link_indices, weld_to_frame,
-                          &pose_map);
+  rigid_body_tree->AddFloatingJoint(floating_base_type, link_indices,
+                                    weld_to_frame, &pose_map);
 }
 
 void parseWorld(RigidBodyTree* model, XMLElement* node,
@@ -682,15 +692,16 @@ void parseSDF(RigidBodyTree* model, XMLDocument* xml_doc,
   XMLElement* node = xml_doc->FirstChildElement("sdf");
   if (!node) {
     throw std::runtime_error(
-        "ERROR: This xml file does not contain an sdf tag");
+        std::string(__FILE__) + ": " + __func__ +
+        ": ERROR: The XML file does not contain an sdf tag.");
   }
 
-  // If we have a world, load it.
+  // Loads the world if it is defined.
   XMLElement* world_node =
       node->FirstChildElement(RigidBodyTree::kWorldLinkName);
   if (world_node) {
     // If we have more than one world, it is ambiguous which one the user
-    // wishes.
+    // wishes to use.
     if (world_node->NextSiblingElement(RigidBodyTree::kWorldLinkName)) {
       throw runtime_error(std::string(__FILE__) + ": " + __func__ +
                           ": ERROR: Multiple worlds in one file.");

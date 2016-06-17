@@ -14,9 +14,9 @@ using std::stringstream;
 using std::vector;
 
 RigidBody::RigidBody()
-    : parent(nullptr),
-      collision_filter_group(DrakeCollision::DEFAULT_GROUP),
-      collision_filter_ignores(DrakeCollision::NONE_MASK) {
+    : collision_filter_group(DrakeCollision::DEFAULT_GROUP),
+      collision_filter_ignores(DrakeCollision::NONE_MASK),
+      parent(nullptr) {
   robotnum = 0;
   position_num_start = 0;
   velocity_num_start = 0;
@@ -29,6 +29,10 @@ RigidBody::RigidBody()
 const std::string& RigidBody::name() const { return name_; }
 
 const std::string& RigidBody::model_name() const { return model_name_; }
+
+const int RigidBody::get_model_id() const { return robotnum; }
+
+void RigidBody::set_model_id(int model_id) { robotnum = model_id; }
 
 void RigidBody::setJoint(std::unique_ptr<DrakeJoint> new_joint) {
   this->joint = move(new_joint);

@@ -89,13 +89,7 @@ include_directories(BEFORE ${PROJECT_BINARY_DIR}/exports/)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/..)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror=all")
-
-  # TODO(#2372) These are warnings that we can't handle yet.
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-missing-braces")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-private-field")
-  endif()
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror=all -Werror=ignored-qualifiers")
 elseif(MSVC)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4251")
   # disable warning C4251: e.g.'RigidBody::linkname' : class 'std::basic_string<_Elem,_Traits,_Ax>' needs to have dll-interface to be used by clients of class 'RigidBody'
@@ -299,6 +293,7 @@ endif()
 # Setup ROS if it is available on the local system
 find_package(roscpp QUIET)
 if(roscpp_FOUND)
+  set(ROS_FOUND ON)
   message(STATUS "Found roscpp installed at ${roscpp_DIR}, so building ROS-specific functionality.")
   include_directories(${roscpp_INCLUDE_DIRS})
 
@@ -317,6 +312,7 @@ if(roscpp_FOUND)
   find_package(tf REQUIRED)
   include_directories(${tf_INCLUDE_DIRS})
 else()
+  set(ROS_FOUND OFF)
   message(STATUS "Couldn't find roscpp so not building ROS-specific functionality. If you want ROS support, be sure to source the ROS setup.sh prior to building Drake.")
 endif()
 
@@ -324,6 +320,7 @@ include_directories(thirdParty/spruce/include)
 include_directories(thirdParty/cimg)
 
 add_subdirectory(common)
+add_subdirectory(math)
 add_subdirectory(core)
 add_subdirectory(util)
 add_subdirectory(solvers)
@@ -334,7 +331,7 @@ add_subdirectory(thirdParty/tinyxml2)
 add_subdirectory(examples)
 add_subdirectory(bindings)
 
-if(roscpp_FOUND AND catkin_FOUND AND genmsg_FOUND AND std_msgs_FOUND AND sensor_msgs_FOUND AND ackermann_msgs_FOUND AND tf_FOUND)
+if(ROS_FOUND)
   add_subdirectory(ros)
 endif()
 
@@ -385,9 +382,9 @@ if(MATLAB_FOUND)
     PROPERTIES TIMEOUT 300)
 endif()
 
-option(BUILD_DOCUMENTATION "Build Doxygen and Sphinx documentation." OFF)
+option(ENABLE_DOCUMENTATION "Enable build target for Doxygen and Sphinx documentation." ON)
 
-if(BUILD_DOCUMENTATION)
+if(ENABLE_DOCUMENTATION)
   add_subdirectory(doc)
 endif()
 

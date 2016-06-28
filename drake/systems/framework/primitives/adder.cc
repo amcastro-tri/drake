@@ -1,9 +1,9 @@
 #include "drake/systems/framework/primitives/adder.h"
 
-#include <cassert>
 #include <stdexcept>
 #include <string>
 
+#include "drake/common/drake_assert.h"
 #include "drake/drakeSystemFramework_export.h"
 #include "drake/systems/framework/basic_vector.h"
 
@@ -11,7 +11,7 @@ namespace drake {
 namespace systems {
 
 template <typename T>
-Adder<T>::Adder(size_t num_inputs, size_t length)
+Adder<T>::Adder(int num_inputs, int length)
     : num_inputs_(num_inputs), length_(length) {}
 
 template <typename T>
@@ -42,10 +42,10 @@ void Adder<T>::Output(const Context<T>& context,
   // since failures would reflect a bug in the Adder implementation, not
   // user error setting up the system graph. They do not require unit test
   // coverage, and should not run in release builds.
-  assert(output->ports.size() == 1);
+  DRAKE_ASSERT(output->ports.size() == 1);
   VectorInterface<T>* output_port = output->ports[0].vector_output.get();
-  assert(output_port != nullptr);
-  assert(output_port->get_value().rows() == length_);
+  DRAKE_ASSERT(output_port != nullptr);
+  DRAKE_ASSERT(output_port->get_value().rows() == length_);
   output_port->get_mutable_value() = VectorX<T>::Zero(length_);
 
   // Check that there are the expected number of input ports.
@@ -57,7 +57,7 @@ void Adder<T>::Output(const Context<T>& context,
 
   // Sum each input port into the output, after checking that it has the
   // expected length.
-  for (size_t i = 0; i < context.get_input().ports.size(); i++) {
+  for (int i = 0; i < context.get_input().ports.size(); i++) {
     const VectorInterface<T>* input =
         context.get_input().ports[i].vector_input;
     if (input == nullptr || input->get_value().rows() != length_) {

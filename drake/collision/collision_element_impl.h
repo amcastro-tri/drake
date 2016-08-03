@@ -8,10 +8,13 @@
 
 // Drake headers.
 #include "drake/systems/plants/shapes/DrakeShapes.h"
-#include "bullet_collision_element.h"
+#include "drake/collision/collision_element_interface.h"
 
 namespace drake {
 namespace collision {
+
+// Forward declarations to backend implementations to avoid headers inclusions.
+class BulletCollisionElement;
 
 // Forward declaration to the collision world so that we can make it a friend of
 // CollisionElementImpl.

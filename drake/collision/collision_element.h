@@ -8,13 +8,10 @@
 
 // Drake headers.
 #include "drake/systems/plants/shapes/DrakeShapes.h"
-#include "drake/collision/collision_element_interface.h"
+#include "drake/collision/collision_element_impl.h"
 
 namespace drake {
 namespace collision {
-
-// Forward declaration to implementation.
-//class CollisionElementImpl;
 
 // Forward declaration to the collision world so that we can make it a friend of
 // CollisionElement.
@@ -62,13 +59,7 @@ class CollisionElement: public CollisionElementInterface {
  private:
   // The underlying back end to CollisionElement.
   // The collision element owns its implementation.
-  // CollisionElementInterface is preferred here to CollisionElementImp to avoid
-  // inclusion of implementation headers.
-  // An alternative is to forward declare CollisionElementImp. However, the
-  // compiler is then unable to compile std::make_unique<CollisionElement> since
-  // by just including this header there is no enough information to infer
-  // CollisionElementImp' size.
-  std::unique_ptr<CollisionElementInterface> pimpl_{nullptr};
+  std::unique_ptr<CollisionElementImpl> pimpl_{nullptr};
 };
 
 }  // end namespace collision

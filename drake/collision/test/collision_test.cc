@@ -21,7 +21,7 @@ int main() {
           DrakeShapes::Box(Vector3d(1, 1, 1)) /* geometry */,
           Isometry3d::Identity() /* geometry to element transformation */));
 
-  // From now on elements can not be added.
+  // From now on elements cannot be added.
   world.Initialize();
 
   (void) box;

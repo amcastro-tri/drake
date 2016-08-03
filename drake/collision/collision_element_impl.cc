@@ -1,5 +1,7 @@
 #include "collision_element_impl.h"
 
+#include "drake/collision/bullet_collision_element.h"
+
 #include <iostream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
 

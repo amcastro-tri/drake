@@ -20,6 +20,8 @@ class CollisionWorldImpl: public CollisionWorldInterface {
 
   CollisionElementImpl* add_collision_element(CollisionElementImpl* e);
 
+  DrakeShapes::Geometry* add_geometry(std::unique_ptr<DrakeShapes::Geometry> g);
+
   int get_number_of_elements() const override;
 
   void Initialize() override;
@@ -38,6 +40,8 @@ class CollisionWorldImpl: public CollisionWorldInterface {
   // CollisionElementImpl's are owned by their CollisionElement handles which in
   // turn are owned by CollisionWorld.
   std::vector<CollisionElementImpl*> collision_elements_;
+
+  std::vector<std::unique_ptr<DrakeShapes::Geometry>> geometries_;
 };
 
 }  // end namespace collision

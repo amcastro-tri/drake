@@ -7,6 +7,7 @@
 #include <Eigen/Dense>
 
 // Drake headers.
+#include "drake/systems/plants/shapes/DrakeShapes.h"
 
 namespace drake {
 namespace collision {

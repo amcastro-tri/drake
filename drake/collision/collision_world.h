@@ -26,6 +26,8 @@ class CollisionWorld: public CollisionWorldInterface {
   @returns a non-owning pointer to the collision element just added. */
   CollisionElement* add_collision_element(std::unique_ptr<CollisionElement> e);
 
+  DrakeShapes::Geometry* add_geometry(std::unique_ptr<DrakeShapes::Geometry> g);
+
   int get_number_of_elements() const override;
 
   void Initialize() override;

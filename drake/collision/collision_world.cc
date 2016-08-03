@@ -38,6 +38,12 @@ CollisionElement* CollisionWorld::add_collision_element(
   return eptr;
 }
 
+DrakeShapes::Geometry* CollisionWorld::add_geometry(
+    std::unique_ptr<DrakeShapes::Geometry> g) {
+  PRINT_VAR(__PRETTY_FUNCTION__);
+  return pimpl_->add_geometry(move(g));
+}
+
 int CollisionWorld::get_number_of_elements() const {
   return pimpl_->get_number_of_elements();
 }

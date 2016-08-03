@@ -16,15 +16,16 @@ int main() {
 
   CollisionWorld world;
 
-  CollisionElement* box = world.add_collision_element(
-      make_unique<CollisionElement>(
-          DrakeShapes::Box(Vector3d(1, 1, 1)) /* geometry */,
-          Isometry3d::Identity() /* geometry to element transformation */));
+  // Create a new box and add it to the collision world.
+  auto box_geometry = DrakeShapes::Box::New(world, Vector3d(1, 1, 1));
+
+  // Add a collision element using the previously created geometry.
+  //auto box = CollisionElement::New(world, box_geometry, Isometry3d::Identity());
 
   // From now on elements cannot be added.
   world.Initialize();
 
-  (void) box;
+  (void) box_geometry;
 
   PRINT_VAR(world.get_number_of_elements());
 

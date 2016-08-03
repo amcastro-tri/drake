@@ -33,6 +33,14 @@ CollisionElementImpl* CollisionWorldImpl::add_collision_element(
   return e;
 }
 
+DrakeShapes::Geometry* CollisionWorldImpl::add_geometry(
+    std::unique_ptr<DrakeShapes::Geometry> g) {
+  PRINT_VAR(__PRETTY_FUNCTION__);
+  DrakeShapes::Geometry* gptr = g.get();
+  geometries_.push_back(move(g));
+  return gptr;
+}
+
 int CollisionWorldImpl::get_number_of_elements() const {
   return collision_elements_.size();
 }
@@ -40,7 +48,6 @@ int CollisionWorldImpl::get_number_of_elements() const {
 void CollisionWorldImpl::Initialize() {
   PRINT_VAR(__PRETTY_FUNCTION__);
   bullet_pimpl_.reset(new BulletCollisionWorld());
-  //InitializeBulletWorld();
 }
 
 #if 0

@@ -271,6 +271,7 @@ include_directories(thirdParty/bsd/spruce/include)
 
 add_subdirectory(common)
 add_subdirectory(math)
+add_subdirectory(collision)
 add_subdirectory(core)
 add_subdirectory(util)
 add_subdirectory(solvers)

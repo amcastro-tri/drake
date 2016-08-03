@@ -22,11 +22,13 @@ class CollisionWorld: public CollisionWorldInterface {
   CollisionWorld();
   ~CollisionWorld();
 
-  void Initialize() override;
-
   /** Adds CollisionElement @e to this CollisionWorld.
   @returns a non-owning pointer to the collision element just added. */
   CollisionElement* add_collision_element(std::unique_ptr<CollisionElement> e);
+
+  int get_number_of_elements() const override;
+
+  void Initialize() override;
 
   // This should take something like a ClosestPointsResult for output.
   void ClosestPointsAllToAll() override;

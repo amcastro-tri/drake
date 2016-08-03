@@ -14,7 +14,6 @@ using drake::collision::BulletCollisionWorld;
 #include <iostream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
 
-
 // The collision engine API then looks like ...
 int main() {
 
@@ -29,7 +28,7 @@ int main() {
   (void) box;
 
   PRINT_VAR(world.get_number_of_elements());
-  
+
   return 0;
 }
 

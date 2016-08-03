@@ -26,13 +26,30 @@ CollisionWorldImpl::~CollisionWorldImpl() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
+CollisionElementImpl* CollisionWorldImpl::add_collision_element(
+    CollisionElementImpl* e) {
+  PRINT_VAR(__PRETTY_FUNCTION__);
+  collision_elements_.push_back(e);
+  return e;
+}
+
 int CollisionWorldImpl::get_number_of_elements() const {
-  return bullet_pimpl_->get_number_of_elements();
+  return collision_elements_.size();
 }
 
 void CollisionWorldImpl::Initialize() {
-
+  PRINT_VAR(__PRETTY_FUNCTION__);
+  bullet_pimpl_.reset(new BulletCollisionWorld());
+  //InitializeBulletWorld();
 }
+
+#if 0
+void CollisionWorldImpl::InitializeBulletWorld() {
+  auto owned_bullet_element = make_unique<BulletCollisionElement>()
+  auto bullet_element = owned_bullet_element.get();
+  bullet_pimpl_->add_collision_element(owned_bullet_element);
+}
+#endif
 
 void CollisionWorldImpl::ClosestPointsAllToAll() {
 

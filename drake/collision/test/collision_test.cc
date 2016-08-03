@@ -6,37 +6,28 @@ using std::move;
 using Eigen::Vector3d;
 using Eigen::Isometry3d;
 using drake::collision::CollisionElement;
+using drake::collision::CollisionWorld;
+
+#include <iostream>
+#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
 
 // The collision engine API then looks like ...
 int main() {
 
   CollisionWorld world;
 
-  DrakeShapes::Box box(Vector3d(1, 1, 1));
-  //CollisionElement* colliding_box = world.create_collision_element(box, T_EG, mat);
-  // Collision element is very light weight.
-  // It does contain a vector of cliques and a transform matrix, but that's it.
-  CollisionElement* colliding_box = world.add_collision_element(
-      make_unique<CollisionElement>(box, T_EG, mat));
+  CollisionElement* box = world.add_collision_element(
+      make_unique<CollisionElement>(
+          DrakeShapes::Box(Vector3d(1, 1, 1)) /* geometry */,
+          Isometry3d::Identity() /* geometry to element transformation */));
 
+  // From now on elements can not be added.
+  world.Initialize();
 
+  (void) box;
 
+  PRINT_VAR(world.get_number_of_elements());
 
-  /*
-  // or you could've created like this instead:
-  CollisionElement* colliding_box = world->add_collision_element(
-   make_unique<CollisionElement>(box, Isometry3d::Identity()));
-
-  // The user still can perform actions on collision elements after they are
-  // added to the collision world.
-  colliding_box->update_geometry_to_element_transform(Isometry3d::Identity());
-  colliding_box->join_clique(3);
-*/
-
-  // No nasty id's needed to access my collision element!
-  //colliding_box->add_to_collision_clique(3);
-
-  // Cleans up properly.
   return 0;
 }
 

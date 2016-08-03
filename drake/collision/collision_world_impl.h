@@ -18,6 +18,8 @@ class CollisionWorldImpl: public CollisionWorldInterface {
   CollisionWorldImpl();
   virtual ~CollisionWorldImpl();
 
+  CollisionElementImpl* add_collision_element(CollisionElementImpl* e);
+
   int get_number_of_elements() const override;
 
   void Initialize() override;
@@ -31,6 +33,11 @@ class CollisionWorldImpl: public CollisionWorldInterface {
   // Back end implementations
   std::unique_ptr<BulletCollisionWorld> bullet_pimpl_;
   //std::unique_ptr<FCLCollisionWorld> fcl_pimpl_;
+
+  // Non-owned references to collision element implementations.
+  // CollisionElementImpl's are owned by their CollisionElement handles which in
+  // turn are owned by CollisionWorld.
+  std::vector<CollisionElementImpl*> collision_elements_;
 };
 
 }  // end namespace collision

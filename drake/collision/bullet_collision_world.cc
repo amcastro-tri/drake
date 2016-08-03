@@ -32,6 +32,7 @@ int BulletCollisionWorld::get_number_of_elements() const {
 
 BulletCollisionElement* BulletCollisionWorld::add_collision_element(
     std::unique_ptr<BulletCollisionElement> e) {
+  PRINT_VAR(__PRETTY_FUNCTION__);
   BulletCollisionElement* eptr = e.get();
   collision_elements_.push_back(move(e));
   return eptr;

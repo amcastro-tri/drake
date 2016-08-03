@@ -7,8 +7,8 @@ namespace drake {
 namespace collision {
 
 CollisionElementImpl::CollisionElementImpl(
-    const DrakeShapes::Geometry &geometry,
-    const Eigen::Isometry3d &T_EG) {
+    const DrakeShapes::Geometry& geometry,
+    const Eigen::Isometry3d& T_EG) {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 

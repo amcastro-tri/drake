@@ -13,14 +13,17 @@
 namespace drake {
 namespace collision {
 
+// Forward declaration to the collision world so that we can make it a friend of
+// CollisionElementImpl.
+class CollisionWorldImpl;
+
 // Base (abstract) class for implementations.
 class CollisionElementImpl: public CollisionElementInterface {
+  friend class CollisionWorldImpl;
  public:
   CollisionElementImpl(
       const DrakeShapes::Geometry &geometry,
       const Eigen::Isometry3d &T_EG);
-
-  void join_clique(int clique) override;
 
   void update_geometry_to_element_transform(
       const Eigen::Isometry3d &T_EG) override;

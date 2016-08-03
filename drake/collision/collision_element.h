@@ -16,6 +16,10 @@ namespace collision {
 // Forward declaration to implementation.
 class CollisionElementImpl;
 
+// Forward declaration to the collision world so that we can make it a friend of
+// CollisionElement.
+class CollisionWorld;
+
 // This is the collision element instantiated by the user.
 // The actual implementation (Bullet, FCL, others) is completely hidden.
 // There are no Bullet or FCL includes here.
@@ -23,6 +27,9 @@ class CollisionElementImpl;
 //class DRAKECOLLISIONENGINE_EXPORT CollisionElement {
 // Handle class. Should this "handle" description be part of the doxygen doc?
 class CollisionElement: public CollisionElementInterface {
+  // CollisionWorld has access to CollisionElement's internal implementation.
+  // In particular, it has access to its pimpl_.
+  friend class CollisionWorld;
  public:
   /**
   @param geometry[in] The geometric model of the collision element.
@@ -48,8 +55,6 @@ class CollisionElement: public CollisionElementInterface {
       const DrakeShapes::Geometry &geometry,
       const Eigen::Isometry3d &T_geo_to_element);
 #endif
-
-  void join_clique(int clique);
 
   void update_geometry_to_element_transform(
       const Eigen::Isometry3d &T_EG);

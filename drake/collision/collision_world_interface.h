@@ -15,7 +15,7 @@ class CollisionWorldInterface {
  public:
   virtual ~CollisionWorldInterface() {}
 
-  int get_number_of_elements() const = 0;
+  virtual int get_number_of_elements() const = 0;
 
   virtual void Initialize() = 0;
 

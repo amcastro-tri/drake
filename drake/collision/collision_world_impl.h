@@ -15,10 +15,10 @@ namespace collision {
 
 class CollisionWorldImpl: public CollisionWorldInterface {
  public:
+  CollisionWorldImpl();
   virtual ~CollisionWorldImpl();
 
-  CollisionElement* add_collision_element(
-      std::unique_ptr<CollisionElementImpl> e);
+  int get_number_of_elements() const override;
 
   void Initialize() override;
 

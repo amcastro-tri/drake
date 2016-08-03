@@ -20,10 +20,6 @@ CollisionElement::~CollisionElement() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
-void CollisionElement::join_clique(int clique) {
-  pimpl_->join_clique(clique);
-}
-
 void CollisionElement::update_geometry_to_element_transform(
     const Eigen::Isometry3d &T_EG) {
   pimpl_->update_geometry_to_element_transform(T_EG);

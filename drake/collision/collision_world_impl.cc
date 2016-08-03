@@ -12,24 +12,26 @@
 
 using std::make_unique;
 
+#include <iostream>
+#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
+
 namespace drake {
 namespace collision {
 
-void CollisionWorldImpl::Initialize() {
-
+CollisionWorldImpl::CollisionWorldImpl() {
+  PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
-CollisionElement* CollisionWorldImpl::add_collision_element(
-    std::unique_ptr<CollisionElement> e) {
-  if (bullet_pimpl_) {
-    BulletCollisionElement *bce = bullet_pimpl_->add_collision_element(
-        make_unique<BulletCollisionElement>(
-            e->get_geometry(), e->get_geometry_to_element_transform()));
-    static_cast<CollisionElementImpl*>(e.get()->pimpl_)->bullet_pimpl_ = bce;
-  } else {
-    throw std::runtime_error(
-        "No implementation instantiated for CollisionWorld.");
-  }
+CollisionWorldImpl::~CollisionWorldImpl() {
+  PRINT_VAR(__PRETTY_FUNCTION__);
+}
+
+int CollisionWorldImpl::get_number_of_elements() const {
+  return bullet_pimpl_->get_number_of_elements();
+}
+
+void CollisionWorldImpl::Initialize() {
+
 }
 
 void CollisionWorldImpl::ClosestPointsAllToAll() {

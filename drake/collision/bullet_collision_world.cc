@@ -17,11 +17,11 @@ using std::move;
 namespace drake {
 namespace collision {
 
-void BulletCollisionWorld::BulletCollisionWorld() {
+BulletCollisionWorld::BulletCollisionWorld() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
-void BulletCollisionWorld::~BulletCollisionWorld() {
+BulletCollisionWorld::~BulletCollisionWorld() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 

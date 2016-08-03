@@ -15,8 +15,6 @@ class CollisionElementInterface {
  public:
   virtual ~CollisionElementInterface() {}
 
-  virtual void join_clique(int clique) = 0;
-
   virtual void update_geometry_to_element_transform(
       const Eigen::Isometry3d &T_EG) = 0;
 };

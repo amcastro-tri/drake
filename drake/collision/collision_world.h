@@ -19,6 +19,7 @@ class CollisionWorldImpl;
 
 class CollisionWorld: public CollisionWorldInterface {
  public:
+  CollisionWorld();
   ~CollisionWorld();
 
   void Initialize() override;

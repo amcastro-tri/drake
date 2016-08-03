@@ -18,12 +18,12 @@ using std::move;
 namespace drake {
 namespace collision {
 
-void CollisionWorld::CollisionWorld() {
+CollisionWorld::CollisionWorld() {
   PRINT_VAR(__PRETTY_FUNCTION__);
   pimpl_.reset(new CollisionWorldImpl());
 }
 
-void CollisionWorld::~CollisionWorld() {
+CollisionWorld::~CollisionWorld() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
@@ -33,9 +33,9 @@ void CollisionWorld::Initialize() {
 
 CollisionElement* CollisionWorld::add_collision_element(
     std::unique_ptr<CollisionElement> e) {
-  pimpl_->add_collision_element(make_unique<CollisionElementImpl>);
-
+  CollisionElement* eptr = e.get();
   collision_elements_.push_back(move(e));
+  return eptr;
 }
 
 void CollisionWorld::ClosestPointsAllToAll() {

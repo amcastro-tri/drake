@@ -29,22 +29,7 @@ int main() {
   (void) box;
 
   PRINT_VAR(world.get_number_of_elements());
-
-  /*
-  // or you could've created like this instead:
-  CollisionElement* colliding_box = world->add_collision_element(
-   make_unique<CollisionElement>(box, Isometry3d::Identity()));
-
-  // The user still can perform actions on collision elements after they are
-  // added to the collision world.
-  colliding_box->update_geometry_to_element_transform(Isometry3d::Identity());
-  colliding_box->join_clique(3);
-*/
-
-  // No nasty id's needed to access my collision element!
-  //colliding_box->add_to_collision_clique(3);
-
-  // Cleans up properly.
+  
   return 0;
 }
 

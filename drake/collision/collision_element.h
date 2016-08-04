@@ -8,7 +8,6 @@
 
 // Drake headers.
 #include "drake/systems/plants/shapes/DrakeShapes.h"
-#include "drake/collision/collision_element_impl.h"
 
 namespace drake {
 namespace collision {
@@ -63,8 +62,9 @@ class CollisionElement {
 
  private:
   // The underlying back end to CollisionElement.
-  // The collision element owns its implementation.
-  std::unique_ptr<CollisionElementImpl> pimpl_{nullptr};
+  // The collision element manages its implementation ensuring it is properly
+  // deleted from its destructor.
+  class BulletCollisionElement* bullet_pimpl_{nullptr};
 };
 
 }  // end namespace collision

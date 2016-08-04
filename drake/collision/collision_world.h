@@ -40,11 +40,14 @@ class CollisionWorld {
   void RayCast();
 
  private:
-  // The underlying back end implementation to CollisionWorld.
-  std::unique_ptr<CollisionWorldImpl> pimpl_;
+  // The underlying back end implementations to CollisionWorld.
+  // These pointers are managed by CollisionWorld, the handle, and therefore
+  // properly deleted in its destructor.
+  class BulletCollisionWorld* bullet_pimpl_{nullptr};
 
   // CollisionWorld owns the collision elements' handles.
   std::vector<std::unique_ptr<CollisionElement>> collision_elements_;
+  std::vector<std::unique_ptr<DrakeShapes::Geometry>> collision_shapes_;
 };
 
 }  // end namespace collision

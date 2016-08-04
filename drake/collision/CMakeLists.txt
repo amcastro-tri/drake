@@ -1,5 +1,5 @@
-set(collision_files collision_element.cc collision_element_impl.cc)
-list(APPEND collision_files collision_world.cc collision_world_impl.cc)
+set(collision_files collision_element.cc)
+list(APPEND collision_files collision_world.cc)
 
 pods_find_pkg_config(bullet)
 if(bullet_FOUND)

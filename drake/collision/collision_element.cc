@@ -1,8 +1,7 @@
 #include "collision_element.h"
 
-#include "drake/collision/collision_element_impl.h"
+#include "drake/collision/bullet_collision_element.h"
 #include "drake/collision/collision_world.h"
-#include "drake/common/drake_assert.h"
 
 using std::make_unique;
 using std::move;
@@ -17,11 +16,12 @@ CollisionElement::CollisionElement(
     const DrakeShapes::Geometry& geometry,
     const Eigen::Isometry3d& T_EG) {
   PRINT_VAR(__PRETTY_FUNCTION__);
-  pimpl_.reset(new CollisionElementImpl(geometry, T_EG));
+  bullet_pimpl_ = new BulletCollisionElement(geometry, T_EG);
 }
 
 CollisionElement::~CollisionElement() {
   PRINT_VAR(__PRETTY_FUNCTION__);
+  if(bullet_pimpl_) delete bullet_pimpl_;
 }
 
 CollisionElement* CollisionElement::New(
@@ -37,7 +37,7 @@ CollisionElement* CollisionElement::New(
 
 void CollisionElement::update_geometry_to_element_transform(
     const Eigen::Isometry3d &T_EG) {
-  pimpl_->update_geometry_to_element_transform(T_EG);
+  bullet_pimpl_->update_geometry_to_element_transform(T_EG);
 }
 
 #if 0

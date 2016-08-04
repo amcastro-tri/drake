@@ -7,7 +7,7 @@
 #include <Eigen/Dense>
 
 // Drake headers.
-#include "drake/collision/collision_world_impl.h"
+#include "drake/collision/bullet_collision_world.h"
 
 using std::make_unique;
 using std::move;
@@ -20,11 +20,12 @@ namespace collision {
 
 CollisionWorld::CollisionWorld() {
   PRINT_VAR(__PRETTY_FUNCTION__);
-  pimpl_.reset(new CollisionWorldImpl());
+  bullet_pimpl_ = new BulletCollisionWorld();
 }
 
 CollisionWorld::~CollisionWorld() {
   PRINT_VAR(__PRETTY_FUNCTION__);
+  if(bullet_pimpl_) delete bullet_pimpl_;
 }
 
 CollisionElement* CollisionWorld::add_collision_element(
@@ -32,37 +33,33 @@ CollisionElement* CollisionWorld::add_collision_element(
   PRINT_VAR(__PRETTY_FUNCTION__);
   CollisionElement* eptr = e.get();
   collision_elements_.push_back(move(e));
-  // The implementation keeps a non-owning reference.
-  pimpl_->add_collision_element(
-      dynamic_cast<CollisionElementImpl*>(eptr->pimpl_.get()));
   return eptr;
 }
 
 DrakeShapes::Geometry* CollisionWorld::add_geometry(
     std::unique_ptr<DrakeShapes::Geometry> g) {
   PRINT_VAR(__PRETTY_FUNCTION__);
-  return pimpl_->add_geometry(move(g));
+  DrakeShapes::Geometry* gptr = g.get();
+  collision_shapes_.push_back(move(g));
+  return gptr;
 }
 
 int CollisionWorld::get_num_elements() const {
-  return pimpl_->get_num_elements();
+  return collision_elements_.size();
 }
 
 int CollisionWorld::get_num_geometries() const {
-  return pimpl_->get_num_geometries();
+  return collision_shapes_.size();
 }
 
 void CollisionWorld::Initialize() {
   PRINT_VAR(__PRETTY_FUNCTION__);
-  pimpl_->Initialize();
 }
 
 void CollisionWorld::ClosestPointsAllToAll() {
-  pimpl_->ClosestPointsAllToAll();
 }
 
 void CollisionWorld::RayCast() {
-  pimpl_->RayCast();
 }
 
 }  // end namespace collision

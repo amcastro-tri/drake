@@ -36,14 +36,6 @@ CollisionElement* CollisionWorld::add_collision_element(
   return eptr;
 }
 
-DrakeShapes::Geometry* CollisionWorld::add_geometry(
-    std::unique_ptr<DrakeShapes::Geometry> g) {
-  PRINT_VAR(__PRETTY_FUNCTION__);
-  DrakeShapes::Geometry* gptr = g.get();
-  collision_shapes_.push_back(move(g));
-  return gptr;
-}
-
 void CollisionWorld::InitializeBulletCollisionElements() {
   PRINT_VAR(__PRETTY_FUNCTION__);
   for(auto& element: collision_elements_) {

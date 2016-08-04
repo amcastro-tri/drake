@@ -10,6 +10,9 @@
 // Drake headers.
 #include "drake/collision/collision_element.h"
 
+#include <iostream>
+#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
+
 namespace drake {
 namespace collision {
 
@@ -22,7 +25,13 @@ class CollisionWorld {
   @returns a non-owning pointer to the collision element just added. */
   CollisionElement* add_collision_element(std::unique_ptr<CollisionElement> e);
 
-  DrakeShapes::Geometry* add_geometry(std::unique_ptr<DrakeShapes::Geometry> g);
+  template <class DerivedGeometry>
+  DerivedGeometry* add_geometry(std::unique_ptr<DerivedGeometry> g) {
+    PRINT_VAR(__PRETTY_FUNCTION__);
+    DerivedGeometry* gptr = g.get();
+    collision_shapes_.push_back(move(g));
+    return gptr;
+  }
 
   int get_num_elements() const;
 

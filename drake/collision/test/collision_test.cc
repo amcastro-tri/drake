@@ -18,7 +18,7 @@ int main() {
 
   // Create a new box and add it to the collision world.
   DrakeShapes::Box* box_geometry =
-      DrakeShapes::Box::New(world, Vector3d(1, 1, 1));
+      world.add_geometry(make_unique<DrakeShapes::Box>(Vector3d(1, 1, 1)));
 
   // Add a collision element using the previously created geometry.
   CollisionElement* box =

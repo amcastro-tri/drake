@@ -33,14 +33,14 @@ class CollisionElement {
   the element. In other words, a transformation from the geometry's frame into the
   collision element's frame.**/
   CollisionElement(
-      const DrakeShapes::Geometry &geometry,
+      DrakeShapes::Geometry* geometry,
       const Eigen::Isometry3d &T_EG);
 
   ~CollisionElement();
 
   static CollisionElement* New(
       CollisionWorld& world,
-      const DrakeShapes::Geometry &geometry,
+      DrakeShapes::Geometry &geometry,
       const Eigen::Isometry3d &T_EG);
 
 #if 0
@@ -57,14 +57,24 @@ class CollisionElement {
       const Eigen::Isometry3d &T_geo_to_element);
 #endif
 
-  void update_geometry_to_element_transform(
+  void set_geometry_to_element_transform(
       const Eigen::Isometry3d &T_EG);
 
  private:
   // The underlying back end to CollisionElement.
-  // The collision element manages its implementation ensuring it is properly
-  // deleted from its destructor.
+  // The collision element does not own its implementation, the appropriate
+  // implementation does.
+  // For instance, BulletCollisionWorld owns its BulletCollisionElement's.
   class BulletCollisionElement* bullet_pimpl_{nullptr};
+
+  // The geometry of this collision element. It is referenced by a non-owning
+  // raw pointer. The list of geometries is managed by the CollisionWorld.
+  DrakeShapes::Geometry* geometry_{nullptr};
+
+  // Geometry's frame to element's frame transformation. This is only used
+  // before implementations are initialized as a temporary copy for when
+  // implementations are instantiated.
+  Eigen::Isometry3d T_EG_;
 };
 
 }  // end namespace collision

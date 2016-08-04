@@ -13,31 +13,34 @@ namespace drake {
 namespace collision {
 
 CollisionElement::CollisionElement(
-    const DrakeShapes::Geometry& geometry,
-    const Eigen::Isometry3d& T_EG) {
+    DrakeShapes::Geometry* geometry,
+    const Eigen::Isometry3d& T_EG): geometry_(geometry), T_EG_(T_EG) {
   PRINT_VAR(__PRETTY_FUNCTION__);
-  bullet_pimpl_ = new BulletCollisionElement(geometry, T_EG);
 }
 
 CollisionElement::~CollisionElement() {
   PRINT_VAR(__PRETTY_FUNCTION__);
-  if(bullet_pimpl_) delete bullet_pimpl_;
 }
 
 CollisionElement* CollisionElement::New(
     CollisionWorld& world,
-    const DrakeShapes::Geometry &geometry,
+    DrakeShapes::Geometry &geometry,
     const Eigen::Isometry3d &T_EG) {
   PRINT_VAR(__PRETTY_FUNCTION__);
-  auto owned_element = make_unique<CollisionElement>(geometry, T_EG);
+  auto owned_element = make_unique<CollisionElement>(&geometry, T_EG);
   CollisionElement* element = owned_element.get();
   world.add_collision_element(move(owned_element));
   return element;
 }
 
-void CollisionElement::update_geometry_to_element_transform(
+void CollisionElement::set_geometry_to_element_transform(
     const Eigen::Isometry3d &T_EG) {
-  bullet_pimpl_->update_geometry_to_element_transform(T_EG);
+  if(bullet_pimpl_) {
+    bullet_pimpl_->set_geometry_to_element_transform(T_EG);
+    return;
+  }
+  // It only sets T_EG_ if no implementation was instantiated.
+  T_EG_ = T_EG;
 }
 
 #if 0

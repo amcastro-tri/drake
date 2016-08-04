@@ -7,7 +7,7 @@ namespace drake {
 namespace collision {
 
 BulletCollisionElement::BulletCollisionElement(
-    const DrakeShapes::Geometry& geometry,
+    DrakeShapes::Geometry* geometry,
     const Eigen::Isometry3d& T_geo_to_element) {
   PRINT_VAR(__PRETTY_FUNCTION__);
   // ... Here either use something similar to what happens right now in BulletModel::addElement (nasty) ...
@@ -19,8 +19,8 @@ BulletCollisionElement::~BulletCollisionElement() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
-void BulletCollisionElement::update_geometry_to_element_transform(
-    const Eigen::Isometry3d& T) {
+void BulletCollisionElement::set_geometry_to_element_transform(
+    const Eigen::Isometry3d &T) {
   //btTransform btT;
   // .. code to go from Eigen T to Bullet's btT
   //bt_obj_->setWorldTransform(btT);

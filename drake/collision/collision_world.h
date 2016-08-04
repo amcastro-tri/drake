@@ -13,9 +13,6 @@
 namespace drake {
 namespace collision {
 
-// Forward declaration to implementation.
-class CollisionWorldImpl;
-
 class CollisionWorld {
  public:
   CollisionWorld();
@@ -40,6 +37,9 @@ class CollisionWorld {
   void RayCast();
 
  private:
+
+  void InitializeBulletCollisionElements();
+
   // The underlying back end implementations to CollisionWorld.
   // These pointers are managed by CollisionWorld, the handle, and therefore
   // properly deleted in its destructor.

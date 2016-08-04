@@ -25,14 +25,14 @@ public:
   the element. In other words, a transformation from the geometry's frame into the
   collision element's frame.**/
   BulletCollisionElement(
-      const DrakeShapes::Geometry& geometry,
+      DrakeShapes::Geometry* geometry,
       const Eigen::Isometry3d& T_EG);
 
   ~BulletCollisionElement();
 
   void join_clique(int clique);
 
-  void update_geometry_to_element_transform(
+  void set_geometry_to_element_transform(
       const Eigen::Isometry3d &T_EG);
 
 private:

@@ -44,6 +44,16 @@ DrakeShapes::Geometry* CollisionWorld::add_geometry(
   return gptr;
 }
 
+void CollisionWorld::InitializeBulletCollisionElements() {
+  PRINT_VAR(__PRETTY_FUNCTION__);
+  for(auto& element: collision_elements_) {
+    element->bullet_pimpl_ =
+        bullet_pimpl_->add_collision_element(
+            make_unique<BulletCollisionElement>(
+            element->geometry_, element->T_EG_));
+  }
+}
+
 int CollisionWorld::get_num_elements() const {
   return collision_elements_.size();
 }
@@ -54,6 +64,7 @@ int CollisionWorld::get_num_geometries() const {
 
 void CollisionWorld::Initialize() {
   PRINT_VAR(__PRETTY_FUNCTION__);
+  InitializeBulletCollisionElements();
 }
 
 void CollisionWorld::ClosestPointsAllToAll() {

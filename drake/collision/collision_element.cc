@@ -1,7 +1,11 @@
 #include "collision_element.h"
 
-#include "collision_element_impl.h"
+#include "drake/collision/collision_element_impl.h"
+#include "drake/collision/collision_world.h"
 #include "drake/common/drake_assert.h"
+
+using std::make_unique;
+using std::move;
 
 #include <iostream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
@@ -18,6 +22,17 @@ CollisionElement::CollisionElement(
 
 CollisionElement::~CollisionElement() {
   PRINT_VAR(__PRETTY_FUNCTION__);
+}
+
+CollisionElement* CollisionElement::New(
+    CollisionWorld& world,
+    const DrakeShapes::Geometry &geometry,
+    const Eigen::Isometry3d &T_EG) {
+  PRINT_VAR(__PRETTY_FUNCTION__);
+  auto owned_element = make_unique<CollisionElement>(geometry, T_EG);
+  CollisionElement* element = owned_element.get();
+  world.add_collision_element(move(owned_element));
+  return element;
 }
 
 void CollisionElement::update_geometry_to_element_transform(

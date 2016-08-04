@@ -9,7 +9,6 @@
 
 // Drake headers.
 #include "drake/collision/collision_element.h"
-#include "drake/collision/collision_world_interface.h"
 
 namespace drake {
 namespace collision {
@@ -17,7 +16,7 @@ namespace collision {
 // Forward declaration to implementation.
 class CollisionWorldImpl;
 
-class CollisionWorld: public CollisionWorldInterface {
+class CollisionWorld {
  public:
   CollisionWorld();
   ~CollisionWorld();
@@ -28,17 +27,17 @@ class CollisionWorld: public CollisionWorldInterface {
 
   DrakeShapes::Geometry* add_geometry(std::unique_ptr<DrakeShapes::Geometry> g);
 
-  int get_num_elements() const override;
+  int get_num_elements() const;
 
-  int get_num_geometries() const override;
+  int get_num_geometries() const;
 
-  void Initialize() override;
+  void Initialize();
 
   // This should take something like a ClosestPointsResult for output.
-  void ClosestPointsAllToAll() override;
+  void ClosestPointsAllToAll();
 
   // This should take something like a RayCastResult for output.
-  void RayCast() override;
+  void RayCast();
 
  private:
   // The underlying back end implementation to CollisionWorld.

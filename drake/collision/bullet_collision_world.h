@@ -7,13 +7,12 @@
 #include <Eigen/Dense>
 
 // Drake headers.
-#include "drake/collision/collision_world_interface.h"
 #include "drake/collision/bullet_collision_element.h"
 
 namespace drake {
 namespace collision {
 
-class BulletCollisionWorld: public CollisionWorldInterface {
+class BulletCollisionWorld {
  public:
   BulletCollisionWorld();
   ~BulletCollisionWorld();
@@ -23,17 +22,17 @@ class BulletCollisionWorld: public CollisionWorldInterface {
   BulletCollisionElement* add_collision_element(
       std::unique_ptr<BulletCollisionElement> e);
 
-  int get_num_elements() const override;
+  int get_num_elements() const;
 
-  int get_num_geometries() const override;
+  int get_num_geometries() const;
 
-  void Initialize() override;
+  void Initialize() ;
 
   // This should take something like a ClosestPointsResult for output.
-  void ClosestPointsAllToAll() override;
+  void ClosestPointsAllToAll();
 
   // This should take something like a RayCastResult for output.
-  void RayCast() override;
+  void RayCast();
  private:
   // BulletCollisionWorld owns the Bullet collision elements.
   std::vector<std::unique_ptr<BulletCollisionElement>> collision_elements_;

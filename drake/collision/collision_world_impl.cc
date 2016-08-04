@@ -41,11 +41,11 @@ DrakeShapes::Geometry* CollisionWorldImpl::add_geometry(
   return gptr;
 }
 
-int CollisionWorldImpl::get_number_of_elements() const {
+int CollisionWorldImpl::get_num_elements() const {
   return collision_elements_.size();
 }
 
-int CollisionWorldImpl::get_number_of_geometries() const {
+int CollisionWorldImpl::get_num_geometries() const {
   return geometries_.size();
 }
 

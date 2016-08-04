@@ -23,9 +23,9 @@ class BulletCollisionWorld: public CollisionWorldInterface {
   BulletCollisionElement* add_collision_element(
       std::unique_ptr<BulletCollisionElement> e);
 
-  int get_number_of_elements() const override;
+  int get_num_elements() const override;
 
-  int get_number_of_geometries() const override;
+  int get_num_geometries() const override;
 
   void Initialize() override;
 

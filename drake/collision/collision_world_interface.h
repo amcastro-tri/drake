@@ -15,9 +15,9 @@ class CollisionWorldInterface {
  public:
   virtual ~CollisionWorldInterface() {}
 
-  virtual int get_number_of_elements() const = 0;
+  virtual int get_num_elements() const = 0;
 
-  virtual int get_number_of_geometries() const = 0;
+  virtual int get_num_geometries() const = 0;
 
   virtual void Initialize() = 0;
 

@@ -44,12 +44,12 @@ DrakeShapes::Geometry* CollisionWorld::add_geometry(
   return pimpl_->add_geometry(move(g));
 }
 
-int CollisionWorld::get_number_of_elements() const {
-  return pimpl_->get_number_of_elements();
+int CollisionWorld::get_num_elements() const {
+  return pimpl_->get_num_elements();
 }
 
-int CollisionWorld::get_number_of_geometries() const {
-  return pimpl_->get_number_of_geometries();
+int CollisionWorld::get_num_geometries() const {
+  return pimpl_->get_num_geometries();
 }
 
 void CollisionWorld::Initialize() {

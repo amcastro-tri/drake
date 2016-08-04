@@ -22,9 +22,9 @@ class CollisionWorldImpl: public CollisionWorldInterface {
 
   DrakeShapes::Geometry* add_geometry(std::unique_ptr<DrakeShapes::Geometry> g);
 
-  int get_number_of_elements() const override;
+  int get_num_elements() const override;
 
-  int get_number_of_geometries() const override;
+  int get_num_geometries() const override;
 
   void Initialize() override;
 

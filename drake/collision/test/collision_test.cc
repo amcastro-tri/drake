@@ -29,8 +29,8 @@ int main() {
 
   (void) box;
 
-  PRINT_VAR(world.get_number_of_elements());
-  PRINT_VAR(world.get_number_of_geometries());
+  PRINT_VAR(world.get_num_elements());
+  PRINT_VAR(world.get_num_geometries());
 
   return 0;
 }

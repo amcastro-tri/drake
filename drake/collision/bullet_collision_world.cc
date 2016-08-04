@@ -26,11 +26,11 @@ BulletCollisionWorld::~BulletCollisionWorld() {
 }
 
 
-int BulletCollisionWorld::get_number_of_elements() const {
+int BulletCollisionWorld::get_num_elements() const {
   return collision_elements_.size();
 }
 
-int BulletCollisionWorld::get_number_of_geometries() const {
+int BulletCollisionWorld::get_num_geometries() const {
   PRINT_VAR("DO SOMETHING USEFUL!");
   return 0;
 }

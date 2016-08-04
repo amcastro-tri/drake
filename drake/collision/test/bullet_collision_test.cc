@@ -27,7 +27,7 @@ int main() {
 
   (void) box;
 
-  PRINT_VAR(world.get_number_of_elements());
+  PRINT_VAR(world.get_num_elements());
 
   return 0;
 }

@@ -1,10 +1,8 @@
-set(collision_files collision_element.cc)
-list(APPEND collision_files collision_world.cc)
+set(collision_files collision_element.cc collision_world.cc)
 
 pods_find_pkg_config(bullet)
 if(bullet_FOUND)
   add_definitions(-DBULLET_COLLISION -DBT_USE_DOUBLE_PRECISION)
-  #set(collision_files ${collision_files} bullet_model.cc)
   list(APPEND collision_files bullet_collision_element.cc
           bullet_collision_world.cc)
   set(bullet "yes" CACHE STRING "yes")

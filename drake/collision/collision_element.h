@@ -34,20 +34,6 @@ class CollisionElement {
 
   ~CollisionElement();
 
-#if 0
-  void update_geometry_to_element_transform(const Eigen::Isometry3d &T) {
-    pimpl_->update_geometry_to_element_transform(T);
-  }
-
-  // Factory method provided so that users do not ever see a "new".
-  // CollsionWorld here is nothing but DrakeCollision::Model
-  // (the "model" world is used too much in drake and this change won't brake any API)
-  static CollisionElement *CreateAndAddToCollisionWorld(
-      const CollisionWorld &world,
-      const DrakeShapes::Geometry &geometry,
-      const Eigen::Isometry3d &T_geo_to_element);
-#endif
-
   void set_geometry_to_element_transform(
       const Eigen::Isometry3d &T_EG);
 

@@ -1,30 +1,21 @@
 #include "Geometry.h"
 
 #include <cstdio>
-#include <memory>
 #include <fstream>
 #include <stdexcept>
 
 #include "spruce.hh"
-#include "drake/collision/collision_world.h"
 
-using std::ifstream;
-using std::istringstream;
-using std::make_unique;
-using std::move;
-using std::ostream;
 using std::string;
+using std::ostream;
+using std::istringstream;
+using std::ifstream;
 
 using Eigen::Vector3i;
 using Eigen::Vector3d;
 using Eigen::RowVectorXd;
 using Eigen::Matrix3Xd;
 using Eigen::Matrix3Xi;
-
-using drake::collision::CollisionWorld;
-
-#include <iostream>
-#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
 
 namespace DrakeShapes {
 const int Geometry::NUM_BBOX_POINTS = 8;
@@ -114,13 +105,7 @@ ostream& operator<<(ostream& out, const Sphere& ss) {
   return out;
 }
 
-Box::Box(const Eigen::Vector3d& size_in) : Geometry(BOX), size(size_in) {
-  PRINT_VAR(__PRETTY_FUNCTION__);
-}
-
-Box::~Box() {
-  PRINT_VAR(__PRETTY_FUNCTION__);
-}
+Box::Box(const Eigen::Vector3d& size_in) : Geometry(BOX), size(size_in) {}
 
 Box* Box::clone() const { return new Box(*this); }
 

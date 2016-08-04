@@ -81,7 +81,7 @@ class DRAKESHAPES_EXPORT Sphere : public Geometry {
 class DRAKESHAPES_EXPORT Box : public Geometry {
  public:
   explicit Box(const Eigen::Vector3d& size);
-  virtual ~Box();
+  virtual ~Box() {}
   virtual Box* clone() const;
   virtual void getPoints(Eigen::Matrix3Xd& points) const;
   virtual void getBoundingBoxPoints(Eigen::Matrix3Xd& points) const;

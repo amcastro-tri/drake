@@ -30,6 +30,11 @@ int BulletCollisionWorld::get_number_of_elements() const {
   return collision_elements_.size();
 }
 
+int BulletCollisionWorld::get_number_of_geometries() const {
+  PRINT_VAR("DO SOMETHING USEFUL!");
+  return 0;
+}
+
 BulletCollisionElement* BulletCollisionWorld::add_collision_element(
     std::unique_ptr<BulletCollisionElement> e) {
   PRINT_VAR(__PRETTY_FUNCTION__);

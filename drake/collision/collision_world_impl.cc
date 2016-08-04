@@ -45,6 +45,10 @@ int CollisionWorldImpl::get_number_of_elements() const {
   return collision_elements_.size();
 }
 
+int CollisionWorldImpl::get_number_of_geometries() const {
+  return geometries_.size();
+}
+
 void CollisionWorldImpl::Initialize() {
   PRINT_VAR(__PRETTY_FUNCTION__);
   bullet_pimpl_.reset(new BulletCollisionWorld());

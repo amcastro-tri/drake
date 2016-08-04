@@ -48,6 +48,10 @@ int CollisionWorld::get_number_of_elements() const {
   return pimpl_->get_number_of_elements();
 }
 
+int CollisionWorld::get_number_of_geometries() const {
+  return pimpl_->get_number_of_geometries();
+}
+
 void CollisionWorld::Initialize() {
   PRINT_VAR(__PRETTY_FUNCTION__);
   pimpl_->Initialize();

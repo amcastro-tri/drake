@@ -17,6 +17,8 @@ class CollisionWorldInterface {
 
   virtual int get_number_of_elements() const = 0;
 
+  virtual int get_number_of_geometries() const = 0;
+
   virtual void Initialize() = 0;
 
   // This should take something like a ClosestPointsResult for output.

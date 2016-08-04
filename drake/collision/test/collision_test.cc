@@ -30,6 +30,7 @@ int main() {
   (void) box;
 
   PRINT_VAR(world.get_number_of_elements());
+  PRINT_VAR(world.get_number_of_geometries());
 
   return 0;
 }

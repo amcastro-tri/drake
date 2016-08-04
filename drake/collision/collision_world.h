@@ -30,6 +30,8 @@ class CollisionWorld: public CollisionWorldInterface {
 
   int get_number_of_elements() const override;
 
+  int get_number_of_geometries() const override;
+
   void Initialize() override;
 
   // This should take something like a ClosestPointsResult for output.

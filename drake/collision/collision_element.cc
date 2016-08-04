@@ -22,17 +22,6 @@ CollisionElement::~CollisionElement() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
-CollisionElement* CollisionElement::New(
-    CollisionWorld& world,
-    DrakeShapes::Geometry &geometry,
-    const Eigen::Isometry3d &T_EG) {
-  PRINT_VAR(__PRETTY_FUNCTION__);
-  auto owned_element = make_unique<CollisionElement>(&geometry, T_EG);
-  CollisionElement* element = owned_element.get();
-  world.add_collision_element(move(owned_element));
-  return element;
-}
-
 void CollisionElement::set_geometry_to_element_transform(
     const Eigen::Isometry3d &T_EG) {
   if(bullet_pimpl_) {

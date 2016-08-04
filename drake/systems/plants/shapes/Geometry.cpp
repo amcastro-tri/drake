@@ -124,15 +124,6 @@ Box::~Box() {
 
 Box* Box::clone() const { return new Box(*this); }
 
-Box* Box::New(
-    CollisionWorld& world, const Eigen::Vector3d& size) {
-  PRINT_VAR(__PRETTY_FUNCTION__);
-  auto owned_geometry = make_unique<Box>(size);
-  Box* geometry = owned_geometry.get();
-  world.add_geometry(move(owned_geometry));
-  return geometry;
-}
-
 void Box::getPoints(Matrix3Xd& points) const {
   Geometry::getBoundingBoxPoints(size(0) / 2.0, size(1) / 2.0, size(2) / 2.0,
                                  points);

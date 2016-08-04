@@ -22,7 +22,8 @@ int main() {
 
   // Add a collision element using the previously created geometry.
   CollisionElement* box =
-      CollisionElement::New(world, *box_geometry, Isometry3d::Identity());
+      world.add_collision_element(
+          make_unique<CollisionElement>(box_geometry, Isometry3d::Identity()));
 
   // From now on elements cannot be added.
   world.Initialize();

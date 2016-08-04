@@ -6,13 +6,6 @@
 
 #include "drake/drakeShapes_export.h"
 
-namespace drake {
-namespace collision {
-// Forward declaration used for Geometry::New() methods.
-class CollisionWorld;
-}
-}
-
 namespace DrakeShapes {
 enum DRAKESHAPES_EXPORT Shape {
   UNKNOWN = 0,
@@ -93,9 +86,6 @@ class DRAKESHAPES_EXPORT Box : public Geometry {
   virtual void getPoints(Eigen::Matrix3Xd& points) const;
   virtual void getBoundingBoxPoints(Eigen::Matrix3Xd& points) const;
   virtual void getTerrainContactPoints(Eigen::Matrix3Xd& points) const;
-
-  static Box* New(
-      drake::collision::CollisionWorld& world, const Eigen::Vector3d& size);
 
   /**
    * A toString method for this class.

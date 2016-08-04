@@ -34,11 +34,6 @@ class CollisionElement {
 
   ~CollisionElement();
 
-  static CollisionElement* New(
-      CollisionWorld& world,
-      DrakeShapes::Geometry &geometry,
-      const Eigen::Isometry3d &T_EG);
-
 #if 0
   void update_geometry_to_element_transform(const Eigen::Isometry3d &T) {
     pimpl_->update_geometry_to_element_transform(T);

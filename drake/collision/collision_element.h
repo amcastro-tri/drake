@@ -23,7 +23,7 @@ class CollisionWorld;
 
 //class DRAKECOLLISIONENGINE_EXPORT CollisionElement {
 // Handle class. Should this "handle" description be part of the doxygen doc?
-class CollisionElement: public CollisionElementInterface {
+class CollisionElement {
   // CollisionWorld has access to CollisionElement's internal implementation.
   // In particular, it has access to its pimpl_.
   friend class CollisionWorld;

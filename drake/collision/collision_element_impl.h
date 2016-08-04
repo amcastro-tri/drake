@@ -8,7 +8,6 @@
 
 // Drake headers.
 #include "drake/systems/plants/shapes/DrakeShapes.h"
-#include "drake/collision/collision_element_interface.h"
 
 namespace drake {
 namespace collision {
@@ -21,7 +20,7 @@ class BulletCollisionElement;
 class CollisionWorldImpl;
 
 // Base (abstract) class for implementations.
-class CollisionElementImpl: public CollisionElementInterface {
+class CollisionElementImpl {
   friend class CollisionWorldImpl;
  public:
   CollisionElementImpl(
@@ -29,7 +28,7 @@ class CollisionElementImpl: public CollisionElementInterface {
       const Eigen::Isometry3d &T_EG);
 
   void update_geometry_to_element_transform(
-      const Eigen::Isometry3d &T_EG) override;
+      const Eigen::Isometry3d &T_EG);
 
   virtual ~CollisionElementImpl() { }
 

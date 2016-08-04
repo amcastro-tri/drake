@@ -8,7 +8,6 @@
 
 // Drake headers.
 #include "drake/systems/plants/shapes/DrakeShapes.h"
-#include "drake/collision/collision_element_interface.h"
 
 #include <iostream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
@@ -18,7 +17,7 @@ namespace collision {
 
 // A particular implementation for Bullet collision elements
 // This will live in its own header + cc files with the appropriate Bullet includes.
-class BulletCollisionElement: public CollisionElementInterface {
+class BulletCollisionElement {
 public:
   /**
   @param geometry[in] The geometric model of the collision element.

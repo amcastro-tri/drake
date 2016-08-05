@@ -1,13 +1,8 @@
 #pragma once
 
-// System headers.
 #include <memory>
 #include <vector>
 
-// Third party headers.
-#include <Eigen/Dense>
-
-// Drake headers.
 #include "drake/drakeCollisionEngine_export.h"
 #include "drake/collision/collision_element.h"
 
@@ -17,19 +12,25 @@
 namespace drake {
 namespace collision {
 
+/** Class representing the world to which CollisionElement's belong.
+It provides the interface to perform a wide set of collision queries including
+naive O(n^2) all to all distance computations, narrow/broad phase collision
+queries and ray casting. */
 class DRAKECOLLISIONENGINE_EXPORT CollisionWorld {
  public:
   CollisionWorld();
   ~CollisionWorld();
 
-  /** Adds CollisionElement @e to this CollisionWorld.
+  /** Adds CollisionElement @p e to this CollisionWorld.
   @param[in] e the collision element to be added to this world.
-  @returns a non-owning pointer to the recently added collision element. */
+  @returns A non-owning pointer to the recently added collision element. */
   CollisionElement* add_collision_element(std::unique_ptr<CollisionElement> e);
 
-  /** Adds DrakeShape::Geometry @p g to be managed by this collision world.
+  /** Adds a DrakeShape::Geometry @p g to be managed by this collision world.
+  @tparam DerivedGeometry The particular type of geometry inheriting from a
+  DrakeShapes::Geometry.
   @param g the geometry to be managed by this world.
-  @returns a non-owning pointer to the recently added geometry. */
+  @returns A non-owning pointer to the recently added geometry. */
   template <class DerivedGeometry>
   DerivedGeometry* add_geometry(std::unique_ptr<DerivedGeometry> g) {
     PRINT_VAR(__PRETTY_FUNCTION__);
@@ -62,7 +63,9 @@ class DRAKECOLLISIONENGINE_EXPORT CollisionWorld {
 
  private:
 
-  void InitializeBulletCollisionElements();
+  // Instantiates the underlying Bullet implementation so that this collision
+  // world is ready to handle queries managed by Bullet.
+  void InstantiateBulletCollisionElements();
 
   // The underlying back end implementations to CollisionWorld.
   std::unique_ptr<class BulletCollisionWorld> bullet_pimpl_;

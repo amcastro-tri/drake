@@ -1,12 +1,7 @@
 #include "drake/collision/collision_world.h"
 
-// System headers.
 #include <memory>
 
-// Third party headers.
-#include <Eigen/Dense>
-
-// Drake headers.
 #include "drake/collision/bullet_collision_world.h"
 
 using std::make_unique;
@@ -35,7 +30,7 @@ CollisionElement* CollisionWorld::add_collision_element(
   return eptr;
 }
 
-void CollisionWorld::InitializeBulletCollisionElements() {
+void CollisionWorld::InstantiateBulletCollisionElements() {
   PRINT_VAR(__PRETTY_FUNCTION__);
   for(auto& element: collision_elements_) {
     element->bullet_pimpl_ =
@@ -55,7 +50,7 @@ int CollisionWorld::get_num_geometries() const {
 
 void CollisionWorld::Initialize() {
   PRINT_VAR(__PRETTY_FUNCTION__);
-  InitializeBulletCollisionElements();
+  InstantiateBulletCollisionElements();
 }
 
 void CollisionWorld::ClosestPointsAllToAll() {

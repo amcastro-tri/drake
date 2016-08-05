@@ -1,5 +1,9 @@
 #include "drake/collision/bullet_collision_element.h"
 
+#include <memory>
+
+using std::make_unique;
+
 #include <iostream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
 
@@ -10,6 +14,7 @@ BulletCollisionElement::BulletCollisionElement(
     const DrakeShapes::Geometry* geometry,
     const Eigen::Isometry3d& T_geo_to_element) {
   PRINT_VAR(__PRETTY_FUNCTION__);
+  bt_collision_object_ = make_unique<btCollisionObject>();
   // ... Here either use something similar to what happens right now in BulletModel::addElement (nasty) ...
   // ... or use double dispatch to get the right derived Bullet object created ..
   //bt_obj_ = /*...*/

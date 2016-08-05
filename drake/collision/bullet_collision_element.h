@@ -4,6 +4,8 @@
 
 #include <Eigen/Dense>
 
+#include "btBulletCollisionCommon.h"
+
 #include "drake/drakeCollisionEngine_export.h"
 #include "drake/systems/plants/shapes/DrakeShapes.h"
 
@@ -37,7 +39,7 @@ public:
       const Eigen::Isometry3d &T_EG);
 
 private:
-  //std::unique_ptr<btCollisionObject> bt_obj_;
+  std::unique_ptr<btCollisionObject> bt_collision_object_;
 };
 
 }  // end namespace collision

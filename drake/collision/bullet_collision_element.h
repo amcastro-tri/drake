@@ -7,6 +7,7 @@
 #include <Eigen/Dense>
 
 // Drake headers.
+#include "drake/drakeCollisionEngine_export.h"
 #include "drake/systems/plants/shapes/DrakeShapes.h"
 
 #include <iostream>
@@ -17,7 +18,7 @@ namespace collision {
 
 // A particular implementation for Bullet collision elements
 // This will live in its own header + cc files with the appropriate Bullet includes.
-class BulletCollisionElement {
+class DRAKECOLLISIONENGINE_EXPORT BulletCollisionElement {
 public:
   /**
   @param geometry[in] The geometric model of the collision element.

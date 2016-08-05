@@ -7,6 +7,7 @@
 #include <Eigen/Dense>
 
 // Drake headers.
+#include "drake/drakeCollisionEngine_export.h"
 #include "drake/systems/plants/shapes/DrakeShapes.h"
 
 namespace drake {
@@ -16,9 +17,8 @@ namespace collision {
 // The actual implementation (Bullet, FCL, others) is completely hidden.
 // There are no Bullet or FCL includes here.
 
-//class DRAKECOLLISIONENGINE_EXPORT CollisionElement {
 // Handle class. Should this "handle" description be part of the doxygen doc?
-class CollisionElement {
+class DRAKECOLLISIONENGINE_EXPORT CollisionElement {
   // CollisionWorld has access to CollisionElement's internal implementation.
   // In particular, it has access to its pimpl's.
   friend class CollisionWorld;

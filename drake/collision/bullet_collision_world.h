@@ -7,12 +7,13 @@
 #include <Eigen/Dense>
 
 // Drake headers.
+#include "drake/drakeCollisionEngine_export.h"
 #include "drake/collision/bullet_collision_element.h"
 
 namespace drake {
 namespace collision {
 
-class BulletCollisionWorld {
+class DRAKECOLLISIONENGINE_EXPORT BulletCollisionWorld {
  public:
   BulletCollisionWorld();
   ~BulletCollisionWorld();

@@ -7,7 +7,7 @@ namespace drake {
 namespace collision {
 
 BulletCollisionElement::BulletCollisionElement(
-    DrakeShapes::Geometry* geometry,
+    const DrakeShapes::Geometry* geometry,
     const Eigen::Isometry3d& T_geo_to_element) {
   PRINT_VAR(__PRETTY_FUNCTION__);
   // ... Here either use something similar to what happens right now in BulletModel::addElement (nasty) ...

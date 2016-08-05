@@ -13,7 +13,7 @@ namespace drake {
 namespace collision {
 
 CollisionElement::CollisionElement(
-    DrakeShapes::Geometry* geometry,
+    const DrakeShapes::Geometry* geometry,
     const Eigen::Isometry3d& T_EG): geometry_(geometry), T_EG_(T_EG) {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
@@ -28,7 +28,8 @@ void CollisionElement::set_geometry_to_element_transform(
     bullet_pimpl_->set_geometry_to_element_transform(T_EG);
     return;
   }
-  // It only sets T_EG_ if no implementation was instantiated.
+  // It only sets T_EG_ if no implementation was instantiated and uses its value
+  // when instantiating the implementation.
   T_EG_ = T_EG;
 }
 

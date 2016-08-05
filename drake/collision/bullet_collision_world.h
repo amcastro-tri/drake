@@ -1,33 +1,32 @@
 #pragma once
 
-// System headers.
 #include <memory>
 
-// Third party headers.
 #include <Eigen/Dense>
 
-// Drake headers.
 #include "drake/drakeCollisionEngine_export.h"
 #include "drake/collision/bullet_collision_element.h"
 
 namespace drake {
 namespace collision {
 
+/** Class representing a world of BulletCollisionElement's.
+This class provides a Bullet implementation of a collision world to be used as
+a back end for the handle class CollisionWorld.
+Collision queries are handled by an internal Bullet implementation. */
 class DRAKECOLLISIONENGINE_EXPORT BulletCollisionWorld {
  public:
   BulletCollisionWorld();
   ~BulletCollisionWorld();
 
-  /** Adds BulletCollisionElement @e to this BulletCollisionWorld.
-  @returns a non-owning pointer to the collision element just added. */
+  /** Adds CollisionElement @p e to this BulletCollisionWorld.
+  @param[in] e the collision element to be added to this world.
+  @returns A non-owning pointer to the recently added collision element. */
   BulletCollisionElement* add_collision_element(
       std::unique_ptr<BulletCollisionElement> e);
 
+  /** Returns the number of collision elements in this collision world. */
   int get_num_elements() const;
-
-  int get_num_geometries() const;
-
-  void Initialize() ;
 
   // This should take something like a ClosestPointsResult for output.
   void ClosestPointsAllToAll();

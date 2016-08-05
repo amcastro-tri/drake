@@ -1,12 +1,9 @@
 #pragma once
 
-// System headers.
 #include <memory>
 
-// Third party headers.
 #include <Eigen/Dense>
 
-// Drake headers.
 #include "drake/drakeCollisionEngine_export.h"
 #include "drake/systems/plants/shapes/DrakeShapes.h"
 
@@ -16,23 +13,26 @@
 namespace drake {
 namespace collision {
 
-// A particular implementation for Bullet collision elements
-// This will live in its own header + cc files with the appropriate Bullet includes.
+/** An element of a BulletCollisionWorld representing a geometry with a given
+pose the world. The internal implementation uses Bullet as a back end. */
+// It is a possible implementation for the handle class CollisionElement.
 class DRAKECOLLISIONENGINE_EXPORT BulletCollisionElement {
 public:
   /**
-  @param geometry[in] The geometric model of the collision element.
-  @param T_EG[in] pose of the element's geometry in the frame of
+  @param geometry[in] A non-owning reference to the geometric representation of
+  this collision element. One geometry can be shared among several collision
+  elements.
+  @param T_EG[in] Pose of the element's geometry in the frame of
   the element. In other words, a transformation from the geometry's frame into the
-  collision element's frame.**/
+  collision element's frame. */
   BulletCollisionElement(
       const DrakeShapes::Geometry* geometry,
       const Eigen::Isometry3d& T_EG);
 
   ~BulletCollisionElement();
 
-  void join_clique(int clique);
-
+  /** Sets the transformation from the underlying geomety's frame to this
+  collision element's frame. */
   void set_geometry_to_element_transform(
       const Eigen::Isometry3d &T_EG);
 

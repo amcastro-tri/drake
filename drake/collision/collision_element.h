@@ -32,6 +32,8 @@ class DRAKECOLLISIONENGINE_EXPORT CollisionElement {
 
   ~CollisionElement();
 
+  /** Sets the transformation from the underlying geomety's frame to this
+  collision element's frame. */
   void set_geometry_to_element_transform(
       const Eigen::Isometry3d &T_EG);
 

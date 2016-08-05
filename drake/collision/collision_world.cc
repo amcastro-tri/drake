@@ -20,12 +20,11 @@ namespace collision {
 
 CollisionWorld::CollisionWorld() {
   PRINT_VAR(__PRETTY_FUNCTION__);
-  bullet_pimpl_ = new BulletCollisionWorld();
+  bullet_pimpl_.reset(new BulletCollisionWorld());
 }
 
 CollisionWorld::~CollisionWorld() {
   PRINT_VAR(__PRETTY_FUNCTION__);
-  if(bullet_pimpl_) delete bullet_pimpl_;
 }
 
 CollisionElement* CollisionWorld::add_collision_element(

@@ -65,9 +65,7 @@ class DRAKECOLLISIONENGINE_EXPORT CollisionWorld {
   void InitializeBulletCollisionElements();
 
   // The underlying back end implementations to CollisionWorld.
-  // These pointers are managed by CollisionWorld, the handle, and therefore
-  // properly deleted in its destructor.
-  class BulletCollisionWorld* bullet_pimpl_{nullptr};
+  std::unique_ptr<class BulletCollisionWorld> bullet_pimpl_;
 
   // CollisionWorld owns the collision elements' handles.
   std::vector<std::unique_ptr<CollisionElement>> collision_elements_;

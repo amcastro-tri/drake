@@ -14,6 +14,10 @@ BulletCollisionShape::~BulletCollisionShape() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
+btCollisionShape* BulletCollisionShape::get_mutable_bullet_shape() {
+  return bt_shape_.get();
+}
+
 BulletSphereShape::BulletSphereShape(double radius) {
   PRINT_VAR(__PRETTY_FUNCTION__);
   bt_shape_.reset(new btSphereShape(radius));

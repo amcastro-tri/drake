@@ -28,7 +28,7 @@ public:
   the element. In other words, a transformation from the geometry's frame into the
   collision element's frame. */
   BulletCollisionElement(
-      const BulletCollisionShape* geometry,
+      BulletCollisionShape* geometry,
       const Eigen::Isometry3d& T_EG);
 
   ~BulletCollisionElement();

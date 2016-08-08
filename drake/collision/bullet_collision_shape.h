@@ -16,6 +16,8 @@ class DRAKECOLLISIONENGINE_EXPORT BulletCollisionShape {
  public:
   virtual ~BulletCollisionShape();
 
+  btCollisionShape* get_mutable_bullet_shape();
+
  protected:
   // The underlying Bullet implementation.
   std::unique_ptr<btCollisionShape> bt_shape_;

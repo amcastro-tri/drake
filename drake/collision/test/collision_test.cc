@@ -8,8 +8,8 @@ using Eigen::Vector3d;
 using Eigen::Isometry3d;
 using drake::collision::CollisionElement;
 using drake::collision::CollisionWorld;
-using drake::collision::CollisionBox;
-using drake::collision::CollisionSphere;
+using drake::collision::BoxShape;
+using drake::collision::SphereShape;
 
 #include <iostream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
@@ -19,13 +19,13 @@ int main() {
 
   CollisionWorld world;
 
-  CollisionBox* box_shape =
+  BoxShape* box_shape =
       world.add_shape(
-          make_unique<CollisionBox>(DrakeShapes::Box(Vector3d(1.0, 1.0, 1.0))));
+          make_unique<BoxShape>(DrakeShapes::Box(Vector3d(1.0, 1.0, 1.0))));
 
-  CollisionSphere* sphere_shape =
+  SphereShape* sphere_shape =
       world.add_shape(
-          make_unique<CollisionSphere>(DrakeShapes::Sphere(1.0)));
+          make_unique<SphereShape>(DrakeShapes::Sphere(1.0)));
 
   // Adds a collision elements using the previously defined shapes.
   CollisionElement* sphere =

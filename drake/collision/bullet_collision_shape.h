@@ -22,23 +22,23 @@ class DRAKECOLLISIONENGINE_EXPORT BulletCollisionShape {
 };
 
 /** A sphere collision shape. */
-class DRAKECOLLISIONENGINE_EXPORT BulletCollisionSphere:
+class DRAKECOLLISIONENGINE_EXPORT BulletSphereShape:
     public BulletCollisionShape {
  public:
   /** Constructs a BulletCollisionSphere of a given radius. */
-  BulletCollisionSphere(double radius);
+  BulletSphereShape(double radius);
 
-  ~BulletCollisionSphere();
+  ~BulletSphereShape();
 };
 
 /** A box collision shape. */
-class DRAKECOLLISIONENGINE_EXPORT BulletCollisionBox:
+class DRAKECOLLISIONENGINE_EXPORT BulletBoxShape:
     public BulletCollisionShape {
  public:
   /** Constructs a BulletCollisionBox of a given size. */
-  BulletCollisionBox(Eigen::Vector3d size);
+  BulletBoxShape(Eigen::Vector3d size);
 
-  ~BulletCollisionBox();
+  ~BulletBoxShape();
 };
 
 }  // end namespace collision

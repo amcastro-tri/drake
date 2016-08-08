@@ -14,16 +14,16 @@ BulletCollisionShape::~BulletCollisionShape() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
-BulletCollisionSphere::BulletCollisionSphere(double radius) {
+BulletSphereShape::BulletSphereShape(double radius) {
   PRINT_VAR(__PRETTY_FUNCTION__);
   bt_shape_.reset(new btSphereShape(radius));
 }
 
-BulletCollisionSphere::~BulletCollisionSphere() {
+BulletSphereShape::~BulletSphereShape() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
-BulletCollisionBox::BulletCollisionBox(Vector3d size) {
+BulletBoxShape::BulletBoxShape(Vector3d size) {
   PRINT_VAR(__PRETTY_FUNCTION__);
   // TODO(amcastro-tri): construct a convex hull instead as in
   // BulletModel::newBulletBoxShape.
@@ -31,7 +31,7 @@ BulletCollisionBox::BulletCollisionBox(Vector3d size) {
       new btBoxShape(btVector3(size(0) / 2, size(1) / 2, size(2) / 2)));
 }
 
-BulletCollisionBox::~BulletCollisionBox() {
+BulletBoxShape::~BulletBoxShape() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 

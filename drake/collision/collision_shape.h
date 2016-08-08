@@ -31,12 +31,12 @@ class DRAKECOLLISIONENGINE_EXPORT CollisionShape {
 };
 
 /** A sphere collision shape. */
-class DRAKECOLLISIONENGINE_EXPORT SphereShape: public CollisionShape {
+class DRAKECOLLISIONENGINE_EXPORT SphereCollisionShape: public CollisionShape {
  public:
   /** Constructs a CollisionSphere implementation for a sphere geometry. */
-  SphereShape(const DrakeShapes::Sphere& sphere);
+  SphereCollisionShape(const DrakeShapes::Sphere& sphere);
 
-  ~SphereShape();
+  ~SphereCollisionShape();
 
  private:
   double radius_;
@@ -45,12 +45,12 @@ class DRAKECOLLISIONENGINE_EXPORT SphereShape: public CollisionShape {
 };
 
 /** A box collision shape. */
-class DRAKECOLLISIONENGINE_EXPORT BoxShape: public CollisionShape {
+class DRAKECOLLISIONENGINE_EXPORT BoxCollisionShape: public CollisionShape {
  public:
   /** Constructs a BulletCollisionBox of a given size. */
-  BoxShape(const DrakeShapes::Box& box);
+  BoxCollisionShape(const DrakeShapes::Box& box);
 
-  ~BoxShape();
+  ~BoxCollisionShape();
 
  private:
   Eigen::Vector3d size_;

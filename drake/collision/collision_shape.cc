@@ -16,33 +16,33 @@ CollisionShape::~CollisionShape() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
-SphereShape::SphereShape(const DrakeShapes::Sphere& s) {
+SphereCollisionShape::SphereCollisionShape(const DrakeShapes::Sphere& s) {
   PRINT_VAR(__PRETTY_FUNCTION__);
   radius_ = s.radius;
 }
 
-SphereShape::~SphereShape() {
+SphereCollisionShape::~SphereCollisionShape() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
 std::unique_ptr<class BulletCollisionShape>
-SphereShape::InstantiateBulletImplementation() {
+SphereCollisionShape::InstantiateBulletImplementation() {
   PRINT_VAR(__PRETTY_FUNCTION__);
   auto owned_pimpl = make_unique<BulletSphereShape>(radius_);
   bullet_pimpl_ = owned_pimpl.get();
   return move(owned_pimpl);
 }
 
-BoxShape::BoxShape(const DrakeShapes::Box& box): size_(box.size) {
+BoxCollisionShape::BoxCollisionShape(const DrakeShapes::Box& box): size_(box.size) {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
-BoxShape::~BoxShape() {
+BoxCollisionShape::~BoxCollisionShape() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
 std::unique_ptr<class BulletCollisionShape>
-BoxShape::InstantiateBulletImplementation() {
+BoxCollisionShape::InstantiateBulletImplementation() {
   PRINT_VAR(__PRETTY_FUNCTION__);
   auto owned_pimpl = make_unique<BulletBoxShape>(size_);
   bullet_pimpl_ = owned_pimpl.get();

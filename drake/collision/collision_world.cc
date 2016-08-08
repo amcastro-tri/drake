@@ -30,13 +30,20 @@ CollisionElement* CollisionWorld::add_collision_element(
   return eptr;
 }
 
-void CollisionWorld::InstantiateBulletCollisionElements() {
+void CollisionWorld::InstantiateBulletImplementation() {
   PRINT_VAR(__PRETTY_FUNCTION__);
-  for(auto& element: collision_elements_) {
+
+  for (auto& shape: collision_shapes_) {
+    shape->bullet_pimpl_ =
+        bullet_pimpl_->add_collision_shape(
+            shape->InstantiateBulletImplementation());
+  }
+
+  for (auto& element: collision_elements_) {
     element->bullet_pimpl_ =
         bullet_pimpl_->add_collision_element(
             make_unique<BulletCollisionElement>(
-            element->geometry_, element->T_EG_));
+            element->shape_->bullet_pimpl_, element->T_EG_));
   }
 }
 
@@ -50,7 +57,7 @@ int CollisionWorld::get_num_geometries() const {
 
 void CollisionWorld::Initialize() {
   PRINT_VAR(__PRETTY_FUNCTION__);
-  InstantiateBulletCollisionElements();
+  InstantiateBulletImplementation();
 }
 
 void CollisionWorld::ClosestPointsAllToAll() {

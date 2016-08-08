@@ -6,6 +6,7 @@
 
 #include "drake/drakeCollisionEngine_export.h"
 #include "drake/collision/bullet_collision_element.h"
+#include "drake/collision/bullet_collision_shape.h"
 
 namespace drake {
 namespace collision {
@@ -19,11 +20,17 @@ class DRAKECOLLISIONENGINE_EXPORT BulletCollisionWorld {
   BulletCollisionWorld();
   ~BulletCollisionWorld();
 
-  /** Adds CollisionElement @p e to this BulletCollisionWorld.
-  @param[in] e the collision element to be added to this world.
+  /** Adds BulletCollisionShape @p shape to this BulletCollisionWorld.
+  @param[in] shape the collision shape to be added to this world.
+  @returns A non-owning pointer to the recently added collision shape. */
+  BulletCollisionShape* add_collision_shape(
+      std::unique_ptr<BulletCollisionShape> shape);
+
+  /** Adds BulletCollisionElement @p e to this BulletCollisionWorld.
+  @param[in] element the collision element to be added to this world.
   @returns A non-owning pointer to the recently added collision element. */
   BulletCollisionElement* add_collision_element(
-      std::unique_ptr<BulletCollisionElement> e);
+      std::unique_ptr<BulletCollisionElement> element);
 
   /** Returns the number of collision elements in this collision world. */
   int get_num_elements() const;
@@ -36,6 +43,9 @@ class DRAKECOLLISIONENGINE_EXPORT BulletCollisionWorld {
  private:
   // BulletCollisionWorld owns the Bullet collision elements.
   std::vector<std::unique_ptr<BulletCollisionElement>> collision_elements_;
+
+  // BulletCollisionWorld owns the Bullet collision shapes.
+  std::vector<std::unique_ptr<BulletCollisionShape>> collision_shapes_;
 };
 
 }  // end namespace collision

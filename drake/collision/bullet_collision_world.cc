@@ -26,12 +26,20 @@ int BulletCollisionWorld::get_num_elements() const {
   return collision_elements_.size();
 }
 
-BulletCollisionElement* BulletCollisionWorld::add_collision_element(
-    std::unique_ptr<BulletCollisionElement> e) {
+BulletCollisionShape* BulletCollisionWorld::add_collision_shape(
+    std::unique_ptr<BulletCollisionShape> shape) {
   PRINT_VAR(__PRETTY_FUNCTION__);
-  BulletCollisionElement* eptr = e.get();
-  collision_elements_.push_back(move(e));
-  return eptr;
+  BulletCollisionShape* shape_ptr = shape.get();
+  collision_shapes_.push_back(move(shape));
+  return shape_ptr;
+}
+
+BulletCollisionElement* BulletCollisionWorld::add_collision_element(
+    std::unique_ptr<BulletCollisionElement> element) {
+  PRINT_VAR(__PRETTY_FUNCTION__);
+  BulletCollisionElement* element_ptr = element.get();
+  collision_elements_.push_back(move(element));
+  return element_ptr;
 }
 
 void BulletCollisionWorld::ClosestPointsAllToAll() {

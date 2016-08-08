@@ -6,6 +6,7 @@
 
 #include "drake/drakeCollisionEngine_export.h"
 #include "drake/systems/plants/shapes/DrakeShapes.h"
+#include "collision_shape.h"
 
 namespace drake {
 namespace collision {
@@ -27,7 +28,7 @@ class DRAKECOLLISIONENGINE_EXPORT CollisionElement {
   the element. In other words, a transformation from the geometry's frame into the
   collision element's frame. */
   CollisionElement(
-      const DrakeShapes::Geometry* geometry,
+      const CollisionShape* geometry,
       const Eigen::Isometry3d &T_EG);
 
   ~CollisionElement();
@@ -44,11 +45,11 @@ class DRAKECOLLISIONENGINE_EXPORT CollisionElement {
   // For instance, BulletCollisionWorld owns its BulletCollisionElement's.
   class BulletCollisionElement* bullet_pimpl_{nullptr};
 
-  // The geometry of this collision element. It is referenced by a non-owning
-  // raw pointer. The list of geometries is managed by the CollisionWorld.
-  // This allows for a single geometry resource to be shared among several
-  // collision elements effectively reducing its footprint.
-  const DrakeShapes::Geometry* geometry_{nullptr};
+  // The geometrical shape of this collision element. It is referenced by a
+  // non-owning raw pointer. The list of shapes is managed by the
+  // CollisionWorld. This allows for a single shape resource to be shared among
+  // several collision elements effectively reducing its footprint.
+  const CollisionShape* shape_{nullptr};
 
   // Geometry's frame to element's frame transformation. This is only used
   // before implementations are initialized as a temporary copy for when

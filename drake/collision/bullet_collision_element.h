@@ -7,7 +7,7 @@
 #include "btBulletCollisionCommon.h"
 
 #include "drake/drakeCollisionEngine_export.h"
-#include "drake/systems/plants/shapes/DrakeShapes.h"
+#include "drake/collision/bullet_collision_shape.h"
 
 #include <iostream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
@@ -28,7 +28,7 @@ public:
   the element. In other words, a transformation from the geometry's frame into the
   collision element's frame. */
   BulletCollisionElement(
-      const DrakeShapes::Geometry* geometry,
+      const BulletCollisionShape* geometry,
       const Eigen::Isometry3d& T_EG);
 
   ~BulletCollisionElement();

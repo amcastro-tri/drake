@@ -13,8 +13,8 @@ namespace drake {
 namespace collision {
 
 CollisionElement::CollisionElement(
-    const DrakeShapes::Geometry* geometry,
-    const Eigen::Isometry3d& T_EG): geometry_(geometry), T_EG_(T_EG) {
+    const CollisionShape* shape,
+    const Eigen::Isometry3d& T_EG): shape_(shape), T_EG_(T_EG) {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
@@ -32,15 +32,6 @@ void CollisionElement::set_geometry_to_element_transform(
   // when instantiating the implementation.
   T_EG_ = T_EG;
 }
-
-#if 0
-CollisionElement* CollisionElement::CreatedAndAddToCollisionWorld(const CollisionWorld& world, const DrakeShapes::Geometry& geometry, const Eigen::Isometry3d& T_geo_to_element) {
-  CollisionElement* element{nullptr};
-  std::unique_ptr<CollisionElement> owned_element(element = new CollisionElement(geometry, T_geo_to_element));
-  world.add_collision_element(owned_element);
-  return element; // Returns a pointer in case the user wants to do something like element->update_transform(T) or element->set_static(), no id's!!
-}
-#endif
 
 }  // end namespace collision
 }  // end namespace drake

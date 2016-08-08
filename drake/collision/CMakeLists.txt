@@ -1,10 +1,10 @@
-set(collision_files collision_element.cc collision_world.cc)
+set(collision_files collision_world.cc collision_element.cc collision_shape.cc)
 
 pods_find_pkg_config(bullet)
 if(bullet_FOUND)
   add_definitions(-DBULLET_COLLISION -DBT_USE_DOUBLE_PRECISION)
-  list(APPEND collision_files bullet_collision_element.cc
-          bullet_collision_world.cc)
+  list(APPEND collision_files bullet_collision_world.cc
+          bullet_collision_element.cc bullet_collision_shape.cc)
   set(bullet "yes" CACHE STRING "yes")
 endif()
 
@@ -20,9 +20,10 @@ enable_testing()
 add_subdirectory(test)
 
 pods_install_libraries(drakeCollisionEngine)
-drake_install_headers(collision_element.h collision_world.h)
+drake_install_headers(collision_world.h collision_element.h collision_shape.h)
 if(bullet_FOUND)
-  drake_install_headers(bullet_collision_element.h bullet_collision_world.h)
+  drake_install_headers(bullet_collision_world.h bullet_collision_element.h
+          bullet_collision_shape.h)
 endif()
 pods_install_pkg_config_file(drake-collision-engine
   LIBS -ldrakeCollisionEngine

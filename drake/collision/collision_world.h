@@ -27,6 +27,9 @@ class DRAKECOLLISIONENGINE_EXPORT CollisionWorld {
   @returns A non-owning pointer to the recently added collision element. */
   CollisionElement* add_collision_element(std::unique_ptr<CollisionElement> e);
 
+  /** Adds a sphere collision element. */
+  CollisionElement* add_collision_element(const DrakeShapes::Sphere& sphere);
+
   /** Adds a CollisionShape @p shape to be managed by this collision world.
   @tparam DerivedShape The particular type of shape inheriting from a
   CollisionShape.

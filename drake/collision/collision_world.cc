@@ -4,6 +4,7 @@
 
 #include "drake/collision/bullet_collision_world.h"
 
+using Eigen::Isometry3d;
 using std::make_unique;
 using std::move;
 
@@ -28,6 +29,14 @@ CollisionElement* CollisionWorld::add_collision_element(
   CollisionElement* eptr = e.get();
   collision_elements_.push_back(move(e));
   return eptr;
+}
+
+CollisionElement* CollisionWorld::add_collision_element(
+    const DrakeShapes::Sphere& sphere) {
+  SphereCollisionShape* shape = add_collision_shape(
+      make_unique<SphereCollisionShape>(sphere));
+  return add_collision_element(
+      make_unique<CollisionElement>(shape, Isometry3d::Identity()));
 }
 
 void CollisionWorld::InstantiateBulletImplementation() {

@@ -21,14 +21,14 @@ class DRAKECOLLISIONENGINE_EXPORT CollisionElement {
   friend class CollisionWorld;
  public:
   /**
-  @param geometry[in] A non-owning reference to the geometric representation of
+  @param shape[in] A non-owning reference to the geometric representation of
   this collision element. One geometry can be shared among several collision
   elements.
   @param T_EG[in] Pose of the element's geometry in the frame of
   the element. In other words, a transformation from the geometry's frame into the
   collision element's frame. */
   CollisionElement(
-      const CollisionShape* geometry,
+      const CollisionShape* shape,
       const Eigen::Isometry3d &T_EG);
 
   ~CollisionElement();

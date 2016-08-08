@@ -19,18 +19,15 @@ int main() {
 
   CollisionWorld world;
 
+  // Creates a sphere collision element.
+  CollisionElement* sphere =
+      world.add_collision_element(DrakeShapes::Sphere(1.0));
+  sphere->set_geometry_to_element_transform(Isometry3d::Identity());
+
+  // Create a sphere shape and share it across multiple collision elements.
   BoxCollisionShape* box_shape =
       world.add_collision_shape(
           make_unique<BoxCollisionShape>(DrakeShapes::Box(Vector3d(1.0, 1.0, 1.0))));
-
-  SphereCollisionShape* sphere_shape =
-      world.add_collision_shape(
-          make_unique<SphereCollisionShape>(DrakeShapes::Sphere(1.0)));
-
-  // Adds a collision elements using the previously defined shapes.
-  CollisionElement* sphere =
-      world.add_collision_element(
-          make_unique<CollisionElement>(sphere_shape, Isometry3d::Identity()));
 
   // Adds two collision elements sharing the same box shape.
   CollisionElement* box1 =

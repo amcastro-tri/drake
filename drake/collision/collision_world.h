@@ -33,7 +33,7 @@ class DRAKECOLLISIONENGINE_EXPORT CollisionWorld {
   @param shape the collision shape to be managed by this world.
   @returns A non-owning pointer to the recently added shape. */
   template <class DerivedShape>
-  DerivedShape* add_shape(std::unique_ptr<DerivedShape> shape) {
+  DerivedShape* add_collision_shape(std::unique_ptr<DerivedShape> shape) {
     PRINT_VAR(__PRETTY_FUNCTION__);
     DerivedShape* gptr = shape.get();
     collision_shapes_.push_back(move(shape));

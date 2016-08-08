@@ -20,11 +20,11 @@ int main() {
   CollisionWorld world;
 
   BoxShape* box_shape =
-      world.add_shape(
+      world.add_collision_shape(
           make_unique<BoxShape>(DrakeShapes::Box(Vector3d(1.0, 1.0, 1.0))));
 
   SphereShape* sphere_shape =
-      world.add_shape(
+      world.add_collision_shape(
           make_unique<SphereShape>(DrakeShapes::Sphere(1.0)));
 
   // Adds a collision elements using the previously defined shapes.

@@ -1,6 +1,5 @@
 #include "drake/collision/collision_shape.h"
 
-#include "drake/collision/collision_shape.h"
 #include "drake/collision/bullet_collision_shape.h"
 
 using std::make_unique;

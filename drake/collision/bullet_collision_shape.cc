@@ -27,12 +27,16 @@ BulletSphereShape::~BulletSphereShape() {
   PRINT_VAR(__PRETTY_FUNCTION__);
 }
 
-BulletBoxShape::BulletBoxShape(Vector3d size) {
+BulletBoxShape::BulletBoxShape(Vector3d sides_lengths) {
   PRINT_VAR(__PRETTY_FUNCTION__);
   // TODO(amcastro-tri): construct a convex hull instead as in
   // BulletModel::newBulletBoxShape.
   bt_shape_.reset(
-      new btBoxShape(btVector3(size(0) / 2, size(1) / 2, size(2) / 2)));
+      new btBoxShape(
+          btVector3(
+              sides_lengths(0) / 2,
+              sides_lengths(1) / 2,
+              sides_lengths(2) / 2)));
 }
 
 BulletBoxShape::~BulletBoxShape() {

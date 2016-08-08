@@ -10,11 +10,14 @@
 namespace drake {
 namespace collision {
 
-/** The geometric implementation for a collision element. */
+/** A representation of the geometric shape of a collision element.
+A collision shape can be shared between multiple collision elements. */
 // This is a handle class to its internal implementations (PIMPL's).
-// Currently available implementations include: Bullet.
+// Currently available implementations include: BulletCollisionShape.
 class DRAKECOLLISIONENGINE_EXPORT CollisionShape {
-  // Grant the CollisionWorld access to this class' implementation.
+  // Collision shapes are manged by a CollisionWorld.
+  // Here access to the implementation internals is granted to the
+  // CollisionWorld.
   friend class CollisionWorld;
 
  public:
@@ -33,7 +36,7 @@ class DRAKECOLLISIONENGINE_EXPORT CollisionShape {
 /** A sphere collision shape. */
 class DRAKECOLLISIONENGINE_EXPORT SphereCollisionShape: public CollisionShape {
  public:
-  /** Constructs a CollisionSphere implementation for a sphere geometry. */
+  /** Constructs a sphere from a DrakeShapes::Sphere. */
   SphereCollisionShape(const DrakeShapes::Sphere& sphere);
 
   ~SphereCollisionShape();
@@ -47,7 +50,7 @@ class DRAKECOLLISIONENGINE_EXPORT SphereCollisionShape: public CollisionShape {
 /** A box collision shape. */
 class DRAKECOLLISIONENGINE_EXPORT BoxCollisionShape: public CollisionShape {
  public:
-  /** Constructs a BulletCollisionBox of a given size. */
+  /** Constructs a box from a DrakeShapes::Box. */
   BoxCollisionShape(const DrakeShapes::Box& box);
 
   ~BoxCollisionShape();

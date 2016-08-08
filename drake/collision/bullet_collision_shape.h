@@ -11,7 +11,8 @@
 namespace drake {
 namespace collision {
 
-/** The geometric implementation for a collision element. */
+/** A representation of the geometric shape of a collision element with
+Bullet back end. */
 class DRAKECOLLISIONENGINE_EXPORT BulletCollisionShape {
  public:
   virtual ~BulletCollisionShape();
@@ -27,7 +28,7 @@ class DRAKECOLLISIONENGINE_EXPORT BulletCollisionShape {
 class DRAKECOLLISIONENGINE_EXPORT BulletSphereShape:
     public BulletCollisionShape {
  public:
-  /** Constructs a BulletCollisionSphere of a given radius. */
+  /** Constructs a sphere centered at the origin with a given @p radius. */
   BulletSphereShape(double radius);
 
   ~BulletSphereShape();
@@ -37,8 +38,9 @@ class DRAKECOLLISIONENGINE_EXPORT BulletSphereShape:
 class DRAKECOLLISIONENGINE_EXPORT BulletBoxShape:
     public BulletCollisionShape {
  public:
-  /** Constructs a BulletCollisionBox of a given size. */
-  BulletBoxShape(Eigen::Vector3d size);
+  /** Constructs a box centered at the origin with sides of specified
+  lengths in @p side_lengths. */
+  BulletBoxShape(Eigen::Vector3d side_lengths);
 
   ~BulletBoxShape();
 };

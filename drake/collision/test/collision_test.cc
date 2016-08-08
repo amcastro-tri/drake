@@ -8,6 +8,7 @@ using Eigen::Vector3d;
 using Eigen::Isometry3d;
 using drake::collision::CollisionElement;
 using drake::collision::CollisionWorld;
+using drake::collision::CollisionShape;
 using drake::collision::BoxCollisionShape;
 using drake::collision::SphereCollisionShape;
 
@@ -25,7 +26,7 @@ int main() {
   sphere->set_geometry_to_element_transform(Isometry3d::Identity());
 
   // Create a sphere shape and share it across multiple collision elements.
-  BoxCollisionShape* box_shape =
+  CollisionShape* box_shape =
       world.add_collision_shape(
           make_unique<BoxCollisionShape>(DrakeShapes::Box(Vector3d(1.0, 1.0, 1.0))));
 

@@ -33,10 +33,18 @@ CollisionElement* CollisionWorld::add_collision_element(
 
 CollisionElement* CollisionWorld::add_collision_element(
     const DrakeShapes::Sphere& sphere) {
-  SphereCollisionShape* shape = add_collision_shape(
+  CollisionShape* shape = add_collision_shape(
       make_unique<SphereCollisionShape>(sphere));
   return add_collision_element(
       make_unique<CollisionElement>(shape, Isometry3d::Identity()));
+}
+
+CollisionShape* CollisionWorld::add_collision_shape(
+    std::unique_ptr<CollisionShape> shape) {
+  PRINT_VAR(__PRETTY_FUNCTION__);
+  CollisionShape* gptr = shape.get();
+  collision_shapes_.push_back(move(shape));
+  return gptr;
 }
 
 void CollisionWorld::InstantiateBulletImplementation() {

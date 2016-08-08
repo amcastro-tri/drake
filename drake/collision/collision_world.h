@@ -31,17 +31,9 @@ class DRAKECOLLISIONENGINE_EXPORT CollisionWorld {
   CollisionElement* add_collision_element(const DrakeShapes::Sphere& sphere);
 
   /** Adds a CollisionShape @p shape to be managed by this collision world.
-  @tparam DerivedShape The particular type of shape inheriting from a
-  CollisionShape.
   @param shape the collision shape to be managed by this world.
   @returns A non-owning pointer to the recently added shape. */
-  template <class DerivedShape>
-  DerivedShape* add_collision_shape(std::unique_ptr<DerivedShape> shape) {
-    PRINT_VAR(__PRETTY_FUNCTION__);
-    DerivedShape* gptr = shape.get();
-    collision_shapes_.push_back(move(shape));
-    return gptr;
-  }
+  CollisionShape* add_collision_shape(std::unique_ptr<CollisionShape> shape);
 
   /** Returns the number of collision elements in this collision world. */
   int get_num_elements() const;

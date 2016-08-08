@@ -51,7 +51,7 @@ int CollisionWorld::get_num_elements() const {
   return collision_elements_.size();
 }
 
-int CollisionWorld::get_num_geometries() const {
+int CollisionWorld::get_num_shapes() const {
   return collision_shapes_.size();
 }
 

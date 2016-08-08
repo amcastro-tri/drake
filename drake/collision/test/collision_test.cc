@@ -49,7 +49,7 @@ int main() {
   world.Initialize();
 
   PRINT_VAR(world.get_num_elements());
-  PRINT_VAR(world.get_num_geometries());
+  PRINT_VAR(world.get_num_shapes());
 
   return 0;
 }

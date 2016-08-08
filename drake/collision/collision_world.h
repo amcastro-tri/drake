@@ -43,11 +43,11 @@ class DRAKECOLLISIONENGINE_EXPORT CollisionWorld {
   /** Returns the number of collision elements in this collision world. */
   int get_num_elements() const;
 
-  /** Returns the number of geometries managed by this collision world.
-  The number of geometries does not neccessarily need to match the number of
+  /** Returns the number of shapes managed by this collision world.
+  The number of shapes does not neccessarily need to match the number of
   collision elements as reported by get_num_elements() since a single shape
   can be shared by several collision elements. */
-  int get_num_geometries() const;
+  int get_num_shapes() const;
 
   /** Initializes the collision world to be ready for collision queries. After
   this call the user cannot add any more collision elements. */

@@ -31,6 +31,7 @@ int do_main(int argc, char* argv[]) {
   auto diagram = builder.Build();
 
   systems::Simulator<double> simulator(*diagram);
+  simulator.set_target_realtime_rate(1.);  // No faster than 1X real time.
   systems::Context<double>* pendulum_context =
       diagram->GetMutableSubsystemContext(
           simulator.get_mutable_context(), pendulum);

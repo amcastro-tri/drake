@@ -12,6 +12,9 @@
   <material name="blue">
     <color rgba="0 0 1 1" />
   </material>
+  <material name="grey">
+ 	  <color rgba=".5 .5 .5 1" />
+  </material>
 
 
   <link name="world" drake_ignore="true">
@@ -30,9 +33,9 @@
     <visual>
       <origin xyz="0 0 0" rpy="1.5708 0 0" />
       <geometry>
-         <cylinder length=".5" radius=".01" />
+         <cylinder length=".15" radius=".03" />
       </geometry>
-      <material name="red" />
+      <material name="grey" />
     </visual> >
   </link>
   <joint name="shaft_weld" type="fixed" drake_ignore="true">
@@ -49,7 +52,6 @@
     <visual>
       <origin xyz="0.35 0 0.0" rpy="0 0 0" />
       <geometry>
-         <cylinder length=".75" radius=".01" />
          <box size="0.7 0.1 0.03"/>
       </geometry>
       <material name="red" />
@@ -61,4 +63,19 @@
     <axis xyz="0 -1 0" />
     <dynamics damping="0.1" />
   </joint>
+
+  <link name="disk">
+    <inertial> 
+      <origin xyz="0.35 0 0.4" rpy="0 0 0" />
+      <mass value="0.1" />
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/> 
+    </inertial>
+    <visual>
+      <origin xyz="0.35 0 0.4" rpy="1.5708 0 0" />
+      <geometry>
+         <cylinder length=".025" radius=".04" />
+      </geometry>
+      <material name="green" />
+    </visual> 
+  </link>
 </robot>

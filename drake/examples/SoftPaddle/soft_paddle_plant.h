@@ -5,6 +5,7 @@
 #include "drake/examples/SoftPaddle/soft_paddle_state_vector.h"
 #include "drake/systems/framework/basic_vector.h"
 #include "drake/systems/framework/leaf_system.h"
+#include "drake/multibody/rigid_body_tree.h"
 
 namespace drake {
 namespace examples {
@@ -56,11 +57,19 @@ class SoftPaddlePlant : public systems::LeafSystem<T> {
                            MyContinuousState* derivatives) const override;
 
   /// Paddle mass in Kg.
-  const T& mp() const { return mp_; }
+  double get_default_paddle_mass() const { return mp_; }
   /// Paddle length in meters.
-  const T& ell() const { return ell_; }
+  double get_default_paddle_length() const { return ell_; }
   /// Gravity in m/s^2.
-  const T& g() const { return g_; }
+  double get_default_gravity() const { return g_; }
+
+  /// Returns a reference to a RigidBodyTree model that can be used for
+  /// visualization of the paddle system with a BotVisualizer.
+  const RigidBodyTree<double>& get_rigid_body_tree_model() const {
+    return *rbt_model_.get();
+  }
+
+  void set_initial_conditions(MyContext* context) const;
 
   explicit SoftPaddlePlant(const SoftPaddlePlant& other) = delete;
   SoftPaddlePlant& operator=(const SoftPaddlePlant& other) = delete;
@@ -106,18 +115,30 @@ class SoftPaddlePlant : public systems::LeafSystem<T> {
     return get_mutable_state(context->get_mutable_continuous_state());
   }
 
-  T g_{9.81};  // Acceleration of gravity.
+  // Creates a RigidBodyTree model of the paddle. This RigidBodyTree is used
+  // with a BotVisualizer system to visualize the paddle system.
+  void CreateRBTModel();
+
+  double g_{9.81};  // Acceleration of gravity.
 
   // Paddle parameters.
-  T Ip_{0.0};  // Paddle moment of inertia. [kg * m^2]
-  T ell_{0.7}; // Paddle/rubber band length. [m]
-  T mp_{0.0};  // Paddle mass. [Kg]
-  T T0_{10.0};  // Rubber band tension. [N]
+  double Ip_{0.0};  // Paddle moment of inertia. [kg * m^2]
+  double ell_{0.7}; // Paddle/rubber band length. [m]
+  double mp_{0.0};  // Paddle mass. [Kg]
+  double T0_{10.0};  // Rubber band tension. [N]
 
   // Disk parameters.
-  T Rd_{0.08};  // Disk's radius. [m]
-  T md_{0.1};  // Disk's mass. [Kg]
-  T Id_{0.5 * md_ * Rd_ * Rd_};  // Disk's moment of inertia. [Kg * m^2]
+  double Rd_{0.04};  // Disk's radius. [m]
+  double md_{0.1};  // Disk's mass. [Kg]
+  double Id_{0.5 * md_ * Rd_ * Rd_};  // Disk's moment of inertia. [Kg * m^2]
+
+  // Initial conditions.
+  double x0{0.25}, z0{0.4};
+
+  double damping_coefficient_{1.5};  // Rubber band damping.
+
+  // A RigidBodyTree model of the plant for visualization.
+  std::unique_ptr<RigidBodyTree<double>> rbt_model_;
 };
 
 }  // namespace soft_paddle

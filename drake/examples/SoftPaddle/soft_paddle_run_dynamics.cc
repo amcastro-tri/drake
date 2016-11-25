@@ -10,6 +10,7 @@
 #include "drake/multibody/rigid_body_tree.h"
 
 #include <iostream>
+#include <drake/multibody/joints/drake_joints.h>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
 
 namespace drake {
@@ -17,16 +18,18 @@ namespace examples {
 namespace soft_paddle {
 namespace {
 
+using std::make_unique;
+using Eigen::Isometry3d;
+
 int do_main(int argc, char* argv[]) {
   lcm::DrakeLcm lcm;
-  RigidBodyTree<double> tree(
-      GetDrakePath() + "/examples/SoftPaddle/soft_paddle.urdf",
-      multibody::joints::kFixed);
-  Eigen::VectorXd tau = Eigen::VectorXd::Zero(1);
 
   systems::DiagramBuilder<double> builder;
+  Eigen::VectorXd tau = Eigen::VectorXd::Zero(1);
   auto source = builder.AddSystem<systems::ConstantVectorSource>(tau);
   auto paddle = builder.AddSystem<SoftPaddlePlant>();
+  const RigidBodyTree<double>& tree = paddle->get_rigid_body_tree_model();
+
   auto visualizer =
       builder.AddSystem<systems::DrakeVisualizer>(tree, &lcm);
 
@@ -36,19 +39,22 @@ int do_main(int argc, char* argv[]) {
   builder.Connect(source->get_output_port(), paddle->get_tau_port());
   builder.Connect(paddle->get_visualizer_output_port(), visualizer->get_input_port(0));
 
-
   auto diagram = builder.Build();
 
   systems::Simulator<double> simulator(*diagram);
-  simulator.set_target_realtime_rate(1.);  // No faster than 1X real time.
-  //systems::Context<double>* pendulum_context =
-  //    diagram->GetMutableSubsystemContext(
-  //        simulator.get_mutable_context(), pendulum);
- // pendulum->set_theta(pendulum_context, 1.);
-  //pendulum->set_thetadot(pendulum_context, 0.);
+  simulator.set_target_realtime_rate(0.5);  // No faster than 1X real time.
+
+  // Sets initial conditions.
+  systems::Context<double>* paddle_context =
+      diagram->GetMutableSubsystemContext(
+          simulator.get_mutable_context(), paddle);
+  paddle->set_initial_conditions(paddle_context);
 
   simulator.Initialize();
-  simulator.StepTo(10);
+  simulator.StepTo(10.0);
+
+  PRINT_VAR(simulator.get_num_steps_taken());
+
   return 0;
 }
 

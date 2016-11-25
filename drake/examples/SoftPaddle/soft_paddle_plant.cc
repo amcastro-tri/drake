@@ -19,6 +19,7 @@ using DrakeShapes::Cylinder;
 using DrakeShapes::VisualElement;
 
 using Eigen::Isometry3d;
+using Eigen::Rotation2D;
 using Eigen::Vector3d;
 
 #include <iostream>
@@ -101,9 +102,9 @@ void SoftPaddlePlant<T>::EvalOutput(const systems::Context<T>& context,
   // Revolute joint.
   output->GetMutableVectorData(1)->SetAtIndex(0, state.phi());
   // Quaternion for the disk.
-  output->GetMutableVectorData(1)->SetAtIndex(1, state.x()-x0);
+  output->GetMutableVectorData(1)->SetAtIndex(1, state.x() - x0_);
   output->GetMutableVectorData(1)->SetAtIndex(2, 0.0);
-  output->GetMutableVectorData(1)->SetAtIndex(3, state.z()-z0);
+  output->GetMutableVectorData(1)->SetAtIndex(3, state.z() - z0_);
   output->GetMutableVectorData(1)->SetAtIndex(4, 1.0);
   output->GetMutableVectorData(1)->SetAtIndex(5, 0.0);
   output->GetMutableVectorData(1)->SetAtIndex(6, 0.0);
@@ -131,16 +132,19 @@ void SoftPaddlePlant<T>::EvalTimeDerivatives(
   // Disk coordinates in world's frame.
   const T x = state.x();
   const T z = state.z();
-
+  const T phi = state.phi();
   const T xdot = state.xdot();
   const T zdot = state.zdot();
 
-  // Disk coordinates in paddle's frame (assuming now phi = 0)
-  T x_p = x;
-  T z_p = z;
+  // Transform into paddle's frame (assuming now phi = 0)
+  Matrix2<T> R_wp = Rotation2D<T>(-phi).matrix();
+  Vector2<T> xvec_p = R_wp * Vector2<T>(x, z);
+  T x_p = xvec_p.x();
+  T z_p = xvec_p.y();
 
-  T xdot_p = xdot; (void) xdot_p;
-  T zdot_p = zdot;
+  Vector2<T> xdotvec_p = R_wp * Vector2<T>(xdot, zdot);
+  // T xdot_p = xdotvec_p.x();
+  T zdot_p = xdotvec_p.y();
 
   T delta = z_p - Rd_;  // Penetration distance into undeformed paddle.
   // Compute elastic interaction force.
@@ -151,7 +155,7 @@ void SoftPaddlePlant<T>::EvalTimeDerivatives(
   //PRINT_VAR(z);
   //PRINT_VAR(delta);
 
-  if(delta < 0) {
+  if(delta < 0 && 0.001 < x_p && x_p < ell_ - 0.001) {
 
     // Angle between the rubber band and the horizontal on the left side.
     T theta1 = - delta / x_p;  // Always positive.
@@ -176,8 +180,9 @@ void SoftPaddlePlant<T>::EvalTimeDerivatives(
     Fz_p += -damping_coefficient_ * zdot_p;
 
     // Force in worlds's frame (assuming now phi = 0)
-    Fx = Fx_p;
-    Fz = Fz_p;
+    Vector2<T> Fvec_w = R_wp.transpose() * Vector2<T>(Fx_p, Fz_p);
+    Fx = Fvec_w.x();
+    Fz = Fvec_w.y();
   }
 
   //PRINT_VAR(Fx);
@@ -251,7 +256,7 @@ void SoftPaddlePlant<T>::CreateRBTModel() {
     body->set_spatial_inertia(Matrix6<double>::Identity());
 
     Isometry3d pose = Isometry3d::Identity();
-    pose.translation() = Vector3d(x0, 0.0, z0);
+    pose.translation() = Vector3d(x0_, 0.0, z0_);
     pose.linear() =
         Eigen::AngleAxisd(M_PI_2, Vector3d::UnitX()).toRotationMatrix();
     DrakeShapes::VisualElement visual_element(
@@ -272,8 +277,9 @@ void SoftPaddlePlant<T>::set_initial_conditions(MyContext* context) const {
       dynamic_cast<SoftPaddleStateVector<T>*>(
           context->get_mutable_continuous_state_vector());
   state->SetFromVector(VectorX<T>::Zero(kStateSize));
-  state->set_x(x0);
-  state->set_z(z0);
+  state->set_x(x0_);
+  state->set_z(z0_);
+  state->set_phi(phi0_);
 }
 
 template class SoftPaddlePlant<double>;

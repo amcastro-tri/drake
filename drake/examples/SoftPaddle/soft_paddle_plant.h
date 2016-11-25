@@ -133,7 +133,7 @@ class SoftPaddlePlant : public systems::LeafSystem<T> {
   double Id_{0.5 * md_ * Rd_ * Rd_};  // Disk's moment of inertia. [Kg * m^2]
 
   // Initial conditions.
-  double x0{0.25}, z0{0.4};
+  double x0_{0.15}, z0_{0.4}, phi0_{5.0*M_PI/180.0};
 
   double damping_coefficient_{1.5};  // Rubber band damping.
 

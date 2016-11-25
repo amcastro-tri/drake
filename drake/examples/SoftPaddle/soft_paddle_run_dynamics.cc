@@ -42,7 +42,7 @@ int do_main(int argc, char* argv[]) {
   auto diagram = builder.Build();
 
   systems::Simulator<double> simulator(*diagram);
-  simulator.set_target_realtime_rate(0.5);  // No faster than 1X real time.
+  simulator.set_target_realtime_rate(0.75);  // No faster than 1X real time.
 
   // Sets initial conditions.
   systems::Context<double>* paddle_context =
@@ -51,7 +51,7 @@ int do_main(int argc, char* argv[]) {
   paddle->set_initial_conditions(paddle_context);
 
   simulator.Initialize();
-  simulator.StepTo(10.0);
+  simulator.StepTo(15);
 
   PRINT_VAR(simulator.get_num_steps_taken());
 

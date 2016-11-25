@@ -63,6 +63,11 @@ class SoftPaddlePlant : public systems::LeafSystem<T> {
   /// Gravity in m/s^2.
   double get_default_gravity() const { return g_; }
 
+  double get_default_x0() const { return x0_; }
+
+  double get_default_z0() const { return z0_; }
+
+
   /// Returns a reference to a RigidBodyTree model that can be used for
   /// visualization of the paddle system with a BotVisualizer.
   const RigidBodyTree<double>& get_rigid_body_tree_model() const {

@@ -1,5 +1,6 @@
 #include "drake/common/drake_path.h"
 #include "drake/examples/SoftPaddle/soft_paddle_plant.h"
+#include "drake/examples/SoftPaddle/soft_paddle_state_to_bot_visualizer.h"
 #include "drake/lcm/drake_lcm.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram.h"
@@ -8,6 +9,7 @@
 #include "drake/multibody/joints/floating_base_types.h"
 #include "drake/multibody/rigid_body_plant/drake_visualizer.h"
 #include "drake/multibody/rigid_body_tree.h"
+#include "mirror_law_system.h"
 
 #include <iostream>
 #include <drake/multibody/joints/drake_joints.h>
@@ -28,16 +30,21 @@ int do_main(int argc, char* argv[]) {
   double phi = 5.0 * M_PI / 180.0;
   auto source = builder.AddSystem<systems::ConstantVectorSource>(phi);
   auto paddle = builder.AddSystem<SoftPaddlePlant>();
+  auto paddle_to_viz =
+      builder.AddSystem<SoftPaddleStateToBotVisualizer>(*paddle);
   const RigidBodyTree<double>& tree = paddle->get_rigid_body_tree_model();
 
   auto visualizer =
       builder.AddSystem<systems::DrakeVisualizer>(tree, &lcm);
 
-  PRINT_VAR(paddle->get_visualizer_output_port().get_size());
-  PRINT_VAR(visualizer->get_input_port(0).get_size());
-
   builder.Connect(source->get_output_port(), paddle->get_tau_port());
-  builder.Connect(paddle->get_visualizer_output_port(), visualizer->get_input_port(0));
+
+  builder.Connect(paddle->get_output_port(),
+                  paddle_to_viz->get_paddle_state_port());
+  builder.Connect(source->get_output_port(),
+                  paddle_to_viz->get_paddle_angle_port());
+  builder.Connect(paddle_to_viz->get_bot_visualizer_port(),
+                  visualizer->get_input_port(0));
 
   auto diagram = builder.Build();
 

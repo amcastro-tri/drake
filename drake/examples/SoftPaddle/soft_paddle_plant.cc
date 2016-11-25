@@ -44,10 +44,6 @@ SoftPaddlePlant<T>::SoftPaddlePlant() {
   this->DeclareOutputPort(
       systems::kVectorValued, kStateSize, systems::kContinuousSampling);
 
-  // Output for BotVisualizer. (output includes generalized velocities)
-  this->DeclareOutputPort(
-      systems::kVectorValued, kVisualizerStateSize, systems::kContinuousSampling);
-
   CreateRBTModel();
 }
 
@@ -97,18 +93,6 @@ void SoftPaddlePlant<T>::EvalOutput(const systems::Context<T>& context,
                                    systems::SystemOutput<T>* output) const {
   // Set output 0: state.
   get_mutable_output(output)->set_value(get_state(context).get_value());
-  // Set output 1: BotVisualizer
-  const SoftPaddleStateVector<T>& state = get_state(context);
-  // Revolute joint.
-  output->GetMutableVectorData(1)->SetAtIndex(0, get_paddle_angle(context));
-  // Quaternion for the disk.
-  output->GetMutableVectorData(1)->SetAtIndex(1, state.x() - x0_);
-  output->GetMutableVectorData(1)->SetAtIndex(2, 0.0);
-  output->GetMutableVectorData(1)->SetAtIndex(3, state.z() - z0_);
-  output->GetMutableVectorData(1)->SetAtIndex(4, 1.0);
-  output->GetMutableVectorData(1)->SetAtIndex(5, 0.0);
-  output->GetMutableVectorData(1)->SetAtIndex(6, 0.0);
-  output->GetMutableVectorData(1)->SetAtIndex(7, 0.0);
 }
 
 // Compute the actual physics.

@@ -214,10 +214,31 @@ void SoftPaddlePlant<T>::CreateRBTModel() {
   Eigen::Vector4d red(0.9, 0.1, 0.0, 1.0);
   Eigen::Vector4d green(0.3, 0.6, 0.4, 1.0);
   Eigen::Vector4d grey(0.5, 0.5, 0.5, 1.0);
+  Eigen::Vector4d white(1.0, 1.0, 1.0, 1.0);
+  Eigen::Vector4d black(0.0, 0.0, 0.0, 1.0);
+
+  // Adds world's visuals.
+  {
+    RigidBody<double>& body = rbt_model_->world();
+
+    // Table.
+    Isometry3d pose = Isometry3d::Identity();
+    pose.translation() = Vector3d(0.5 * ell_, 0.0625, 0.25 * ell_);
+    DrakeShapes::VisualElement table_visual(
+        Box(Vector3d(1.4 * ell_, 0.025, 1.4 * ell_)), pose, white);
+    body.AddVisualElement(table_visual);
+
+    // Reference horizontal line.
+    pose = Isometry3d::Identity();
+    pose.translation() = Vector3d(0.5 * ell_, 0.0625, 0.0);
+    DrakeShapes::VisualElement horizontal_visual(
+        Box(Vector3d(1.4 * ell_ + 0.002, 0.025 + 0.002, 0.005)), pose, black);
+    body.AddVisualElement(horizontal_visual);
+  }
 
   // Adds a RigidBody to model the paddle (only the rigid part).
   {
-    RigidBody<double> *body =
+    RigidBody<double>* body =
         rbt_model_->add_rigid_body(make_unique<RigidBody<double>>());
     body->set_name("body");
     // Sets body to have a non-zero spatial inertia. Otherwise the body gets
@@ -225,6 +246,7 @@ void SoftPaddlePlant<T>::CreateRBTModel() {
     body->set_mass(1.0);
     body->set_spatial_inertia(Matrix6<double>::Identity());
 
+    // Paddle visual.
     Isometry3d pose = Isometry3d::Identity();
     pose.translation() = Vector3d(0.35, 0.0, 0.0);
     DrakeShapes::VisualElement visual_element(
@@ -247,7 +269,7 @@ void SoftPaddlePlant<T>::CreateRBTModel() {
 
   // Adds a RigidBody to model the disk.
   {
-    RigidBody<double> *body =
+    RigidBody<double>* body =
         rbt_model_->add_rigid_body(make_unique<RigidBody<double>>());
     body->set_name("disk");
     // Sets body to have a non-zero spatial inertia. Otherwise the body gets

@@ -25,8 +25,8 @@ int do_main(int argc, char* argv[]) {
   lcm::DrakeLcm lcm;
 
   systems::DiagramBuilder<double> builder;
-  Eigen::VectorXd tau = Eigen::VectorXd::Zero(1);
-  auto source = builder.AddSystem<systems::ConstantVectorSource>(tau);
+  double phi = 5.0 * M_PI / 180.0;
+  auto source = builder.AddSystem<systems::ConstantVectorSource>(phi);
   auto paddle = builder.AddSystem<SoftPaddlePlant>();
   const RigidBodyTree<double>& tree = paddle->get_rigid_body_tree_model();
 
@@ -42,7 +42,7 @@ int do_main(int argc, char* argv[]) {
   auto diagram = builder.Build();
 
   systems::Simulator<double> simulator(*diagram);
-  simulator.set_target_realtime_rate(0.75);  // No faster than 1X real time.
+  simulator.set_target_realtime_rate(0.75);
 
   // Sets initial conditions.
   systems::Context<double>* paddle_context =

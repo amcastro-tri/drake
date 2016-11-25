@@ -88,7 +88,7 @@ class SoftPaddlePlant : public systems::LeafSystem<T> {
   SoftPaddlePlant<AutoDiffXd>* DoToAutoDiffXd() const override;
 
  private:
-  T get_tau(const MyContext& context) const {
+  T get_paddle_angle(const MyContext &context) const {
     return this->EvalVectorInput(context, 0)->GetAtIndex(0);
   }
 

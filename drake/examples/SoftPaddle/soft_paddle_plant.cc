@@ -26,8 +26,8 @@ using Eigen::Vector3d;
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
 
 namespace {
-// q = [x, z, phi], xc = [q, qdot]
-constexpr int kStateSize = 6;
+// q = [x, z], xc = [q, qdot]
+constexpr int kStateSize = 4;
 
 // 1 revolute joint for the paddle = 2 states.
 // 1 quaternion joint for the disk = 13 (= 7 + 6) states.
@@ -36,7 +36,7 @@ constexpr int kVisualizerStateSize = 15;
 
 template <typename T>
 SoftPaddlePlant<T>::SoftPaddlePlant() {
-  // Input port for the actuating torque on the paddle.
+  // Input port for the paddle angle.
   this->DeclareInputPort(
       systems::kVectorValued, 1, systems::kContinuousSampling);
 
@@ -88,8 +88,8 @@ std::unique_ptr<systems::ContinuousState<T>>
 SoftPaddlePlant<T>::AllocateContinuousState() const {
   return std::make_unique<systems::ContinuousState<T>>(
       std::make_unique<SoftPaddleStateVector<T>>(),
-      3 /* num_q */, 3 /* num_v */, 0 /* num_z */);
-  static_assert(kStateSize == 3 + 3, "State size has changed");
+      2 /* num_q */, 2 /* num_v */, 0 /* num_z */);
+  static_assert(kStateSize == 2 + 2, "State size has changed");
 }
 
 template <typename T>
@@ -100,7 +100,7 @@ void SoftPaddlePlant<T>::EvalOutput(const systems::Context<T>& context,
   // Set output 1: BotVisualizer
   const SoftPaddleStateVector<T>& state = get_state(context);
   // Revolute joint.
-  output->GetMutableVectorData(1)->SetAtIndex(0, state.phi());
+  output->GetMutableVectorData(1)->SetAtIndex(0, get_paddle_angle(context));
   // Quaternion for the disk.
   output->GetMutableVectorData(1)->SetAtIndex(1, state.x() - x0_);
   output->GetMutableVectorData(1)->SetAtIndex(2, 0.0);
@@ -123,7 +123,6 @@ void SoftPaddlePlant<T>::EvalTimeDerivatives(
 
   derivative_vector->set_x(state.xdot());
   derivative_vector->set_z(state.zdot());
-  derivative_vector->set_phi(state.phidot());
 
   // =========================================================
   // Only consider disk's dynamics. And assume phi = 0.
@@ -132,9 +131,9 @@ void SoftPaddlePlant<T>::EvalTimeDerivatives(
   // Disk coordinates in world's frame.
   const T x = state.x();
   const T z = state.z();
-  const T phi = state.phi();
   const T xdot = state.xdot();
   const T zdot = state.zdot();
+  const T phi = get_paddle_angle(context);
 
   // Transform into paddle's frame (assuming now phi = 0)
   Matrix2<T> R_wp = Rotation2D<T>(-phi).matrix();
@@ -191,14 +190,6 @@ void SoftPaddlePlant<T>::EvalTimeDerivatives(
   // Disk's acceleration.
   derivative_vector->set_xdot(Fx);
   derivative_vector->set_zdot((Fz - md_ * g_));
-
-  // For now ignore paddle's dynamics.
-  T tau = get_tau(context);
-  (void) tau;
-  derivative_vector->set_phidot(0.0);
-
-  // REMOVE THIS!!!!
-  //derivative_vector->set_value(Vector6<T>::Constant(0.0));
 }
 
 // SoftPaddlePlant has no constructor arguments, so there's no work to do here.
@@ -301,7 +292,6 @@ void SoftPaddlePlant<T>::set_initial_conditions(MyContext* context) const {
   state->SetFromVector(VectorX<T>::Zero(kStateSize));
   state->set_x(x0_);
   state->set_z(z0_);
-  state->set_phi(phi0_);
 }
 
 template class SoftPaddlePlant<double>;

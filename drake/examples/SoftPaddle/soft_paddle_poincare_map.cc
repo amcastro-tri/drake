@@ -55,7 +55,7 @@ void SoftPaddlePoincareMap<T>::ComputeNextSate(
     const T& paddle_aim, const T& stroke_strength,
     const T& xn, const T& zn, T* xnext, T* znext) const {
 
-  T dt = 1.0e-3;
+  T dt = 1.0e-4;
 
   auto paddle_plant =
       std::make_unique<SoftPaddleWithMirrorControl<T>>(paddle_aim,
@@ -101,9 +101,9 @@ void SoftPaddlePoincareMap<T>::ComputeNextSate(
   // Computes time step that takes the solution to zdot = 0
   dt = t_zc - paddle_context->get_time();
 
-  PRINT_VAR(paddle_context->get_time());
-  PRINT_VAR(t_zc);
-  PRINT_VAR(dt);
+  //PRINT_VAR(paddle_context->get_time());
+  //PRINT_VAR(t_zc);
+  //PRINT_VAR(dt);
 
   DRAKE_ASSERT(dt > 0.0);
 

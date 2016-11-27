@@ -26,8 +26,27 @@ int do_main(int argc, char* argv[]) {
   lcm::DrakeLcm lcm;
 
   systems::DiagramBuilder<double> builder;
-  double paddle_aim = -3.0 * M_PI / 180.0;
-  double stroke_strength = 0.05;
+  //double x0 = 0.35;
+  //double z0 = 0.4;
+  //double paddle_aim = 0.00045739; //-3.0 * M_PI / 180.0;
+  //double stroke_strength = 0.0708753;//0.05;
+
+  double x0 = 0.25;
+  double z0 = 0.4;
+  double paddle_aim = 0.0933383;
+  double stroke_strength = 0.0892304;
+
+  //double x0 = 0.1;
+  //double z0 = 0.4;
+  //double paddle_aim = 0.283129;
+  //double stroke_strength = 0.100406;
+
+  // Very unstable
+  //double x0 = 0.525;
+  //double z0 = 0.4;
+  //double paddle_aim = -0.2518274153695856;
+  //double stroke_strength = 0.0283811081944429;
+
   auto paddle = builder.AddSystem<SoftPaddleWithMirrorControl>(paddle_aim,
                                                                stroke_strength);
   const RigidBodyTree<double>& tree = paddle->get_rigid_body_tree_model();
@@ -54,7 +73,7 @@ int do_main(int argc, char* argv[]) {
   systems::Context<double>* paddle_context =
       diagram->GetMutableSubsystemContext(
           simulator.get_mutable_context(), paddle);
-  paddle->set_initial_conditions(paddle_context, 0.35, 0.4);
+  paddle->set_initial_conditions(paddle_context, x0, z0);
 
   simulator.Initialize();
   simulator.StepTo(15);

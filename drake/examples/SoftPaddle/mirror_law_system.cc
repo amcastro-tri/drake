@@ -1,5 +1,7 @@
 #include "drake/examples/SoftPaddle/mirror_law_system.h"
 
+#include "drake/examples/SoftPaddle/soft_paddle_plant.h"
+#include "drake/examples/SoftPaddle/soft_paddle_state_to_bot_visualizer.h"
 #include "drake/examples/SoftPaddle/soft_paddle_state_vector.h"
 
 #include "drake/common/autodiff_overloads.h"
@@ -8,6 +10,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/common/symbolic_formula.h"
 #include "drake/systems/framework/basic_vector.h"
+#include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/framework/leaf_context.h"
 
 namespace drake {
@@ -57,9 +60,57 @@ void PaddleMirrorLawSystem<T>::EvalOutput(const Context<T>& context,
    //   k_.array() * input_vector.array();
 }
 
+template <typename T>
+SoftPaddleWithMirrorControl<T>::SoftPaddleWithMirrorControl(
+    const T& phi0, const T& amplitude) {
+  systems::DiagramBuilder<T> builder;
+
+  auto mirror_system =
+      builder.template AddSystem<PaddleMirrorLawSystem>(phi0, amplitude);
+  paddle_ = builder.template AddSystem<SoftPaddlePlant>();
+
+  // Feedback loop.
+  builder.Connect(paddle_->get_output_port(), mirror_system->get_input_port(0));
+  builder.Connect(
+      mirror_system->get_paddle_angle_port(), paddle_->get_tau_port());
+
+  builder.ExportOutput(paddle_->get_output_port());
+  builder.ExportOutput(mirror_system->get_paddle_angle_port());
+
+  builder.BuildInto(this);
+}
+
+template <typename T>
+const SystemPortDescriptor<T>&
+SoftPaddleWithMirrorControl<T>::get_paddle_state_port() const {
+  return System<T>::get_output_port(0);
+}
+
+template <typename T>
+const SystemPortDescriptor<T>&
+SoftPaddleWithMirrorControl<T>::get_paddle_angle_port() const {
+  return System<T>::get_output_port(1);
+}
+
+template <typename T>
+void SoftPaddleWithMirrorControl<T>::set_initial_conditions(
+    Context<T>* context, const T& x0, const T& z0) const {
+  Context<T>* paddle_context = this->GetMutableSubsystemContext(context,
+                                                               paddle_);
+  auto state =
+      dynamic_cast<SoftPaddleStateVector<T>*>(
+          paddle_context->get_mutable_continuous_state_vector());
+  state->SetFromVector(VectorX<T>::Zero(state->size()));
+  state->set_x(x0);
+  state->set_z(z0);
+}
+
 // Explicitly instantiates on the most common scalar types.
 template class PaddleMirrorLawSystem<double>;
 template class PaddleMirrorLawSystem<AutoDiffXd>;
+
+template class SoftPaddleWithMirrorControl<double>;
+template class SoftPaddleWithMirrorControl<AutoDiffXd>;
 
 }  // namespace soft_paddle
 }  // namespace examples

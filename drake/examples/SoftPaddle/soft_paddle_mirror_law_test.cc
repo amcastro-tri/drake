@@ -28,24 +28,19 @@ int do_main(int argc, char* argv[]) {
   systems::DiagramBuilder<double> builder;
   double paddle_aim = -3.0 * M_PI / 180.0;
   double stroke_strength = 0.05;
-  auto mirror_system =
-      builder.AddSystem<PaddleMirrorLawSystem>(paddle_aim, stroke_strength);
-  auto paddle = builder.AddSystem<SoftPaddlePlant>();
+  auto paddle = builder.AddSystem<SoftPaddleWithMirrorControl>(paddle_aim,
+                                                               stroke_strength);
   const RigidBodyTree<double>& tree = paddle->get_rigid_body_tree_model();
   auto paddle_to_viz =
-      builder.AddSystem<SoftPaddleStateToBotVisualizer>(*paddle);
+      builder.AddSystem<SoftPaddleStateToBotVisualizer>(
+          paddle->get_soft_paddle_plant());
   auto visualizer =
       builder.AddSystem<systems::DrakeVisualizer>(tree, &lcm);
 
-  // Feedback loop.
-  builder.Connect(paddle->get_output_port(), mirror_system->get_input_port(0));
-  builder.Connect(
-      mirror_system->get_paddle_angle_port(), paddle->get_tau_port());
-
   // Visualization.
-  builder.Connect(paddle->get_output_port(),
+  builder.Connect(paddle->get_paddle_state_port(),
                   paddle_to_viz->get_paddle_state_port());
-  builder.Connect(mirror_system->get_paddle_angle_port(),
+  builder.Connect(paddle->get_paddle_angle_port(),
                   paddle_to_viz->get_paddle_angle_port());
   builder.Connect(paddle_to_viz->get_bot_visualizer_port(),
                   visualizer->get_input_port(0));
@@ -59,7 +54,7 @@ int do_main(int argc, char* argv[]) {
   systems::Context<double>* paddle_context =
       diagram->GetMutableSubsystemContext(
           simulator.get_mutable_context(), paddle);
-  paddle->set_initial_conditions(paddle_context);
+  paddle->set_initial_conditions(paddle_context, 0.35, 0.4);
 
   simulator.Initialize();
   simulator.StepTo(15);

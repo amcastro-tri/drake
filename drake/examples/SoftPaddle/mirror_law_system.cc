@@ -105,6 +105,16 @@ void SoftPaddleWithMirrorControl<T>::set_initial_conditions(
   state->set_z(z0);
 }
 
+template <typename T>
+SoftPaddleStateVector<T>*
+    SoftPaddleWithMirrorControl<T>::GetMutablePlantStateVector(
+        Context<T>* context) const {
+  Context<T>* paddle_context = this->GetMutableSubsystemContext(context,
+                                                                paddle_);
+  return dynamic_cast<SoftPaddleStateVector<T>*>(
+      paddle_context->get_mutable_continuous_state_vector());
+}
+
 // Explicitly instantiates on the most common scalar types.
 template class PaddleMirrorLawSystem<double>;
 template class PaddleMirrorLawSystem<AutoDiffXd>;

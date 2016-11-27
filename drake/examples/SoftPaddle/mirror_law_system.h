@@ -58,6 +58,9 @@ class SoftPaddleWithMirrorControl : public systems::Diagram<T> {
   void set_initial_conditions(systems::Context<T>* context,
                               const T& x0, const T& z0) const;
 
+  SoftPaddleStateVector<T>* GetMutablePlantStateVector(
+      systems::Context<T>* context) const;
+
   const SoftPaddlePlant<T>& get_soft_paddle_plant() const { return *paddle_; }
 
  private:

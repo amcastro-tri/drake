@@ -16,7 +16,6 @@ class SoftPaddlePoincareMap : public drake::systems::LeafSystem<T> {
  public:
   SoftPaddlePoincareMap();
 
-  // x[n+1] = x[n]^3
   void DoEvalDifferenceUpdates(
       const drake::systems::Context<T>& context,
       drake::systems::DifferenceState<T>* updates) const override;
@@ -24,6 +23,10 @@ class SoftPaddlePoincareMap : public drake::systems::LeafSystem<T> {
   // y = x
   void EvalOutput(const drake::systems::Context<T>& context,
                   drake::systems::SystemOutput<T>* output) const override;
+
+  void ComputeNextSate(const T& paddle_aim, const T& stroke_strength,
+                       const T& x0, const T& z0, T* xnext, T* znext) const;
+
  private:
   //std::unique_ptr<SoftPaddleWithMirrorControl<T>> paddle_plant_;
 };

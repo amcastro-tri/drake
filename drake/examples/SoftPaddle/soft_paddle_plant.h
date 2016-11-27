@@ -140,7 +140,7 @@ class SoftPaddlePlant : public systems::LeafSystem<T> {
   // Initial conditions.
   double x0_{0.35}, z0_{0.4}, phi0_{5.0*M_PI/180.0};
 
-  double damping_coefficient_{1.5};  // Rubber band damping.
+  double damping_coefficient_{0.0};//{1.5};  // Rubber band damping.
 
   // A RigidBodyTree model of the plant for visualization.
   std::unique_ptr<RigidBodyTree<double>> rbt_model_;

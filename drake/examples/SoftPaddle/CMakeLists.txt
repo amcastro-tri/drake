@@ -29,6 +29,11 @@ if(lcm_FOUND)
     drakeSystemAnalysis)
   drake_add_test(NAME soft_paddle_mirror_law_test
     COMMAND soft_paddle_mirror_law_test)
+
+  add_executable(soft_paddle_poincare_map_test soft_paddle_poincare_map_test.cc)
+  target_link_libraries(soft_paddle_poincare_map_test drakeSoftPaddlePlant)
+  drake_add_test(NAME soft_paddle_poincare_map_test
+    COMMAND soft_paddle_poincare_map_test)
 endif()
 
 #if(BUILD_TESTING)

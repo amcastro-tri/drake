@@ -2,6 +2,9 @@
 
 #include "drake/common/autodiff_overloads.h"
 
+#include <iostream>
+#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
+
 namespace drake {
 namespace examples {
 namespace soft_paddle {
@@ -34,10 +37,25 @@ template <typename T>
 void SoftPaddlePoincareMap<T>::DoEvalDifferenceUpdates(
     const Context<T>& context,
     DifferenceState<T>* updates) const {
-  T dt = 1.0e-3;
-
   const T paddle_aim = this->EvalVectorInput(context, 0)->GetAtIndex(0);
   const T stroke_strength = this->EvalVectorInput(context, 0)->GetAtIndex(1);
+
+  T xn = context.get_difference_state(0)->GetAtIndex(0);
+  T zn = context.get_difference_state(0)->GetAtIndex(1);
+
+  T xnext, znext;
+  ComputeNextSate(paddle_aim, stroke_strength, xn, zn, &xnext, &znext);
+
+  updates->get_mutable_difference_state(0)->SetAtIndex(0, xnext);
+  updates->get_mutable_difference_state(0)->SetAtIndex(1, znext);
+}
+
+template <typename T>
+void SoftPaddlePoincareMap<T>::ComputeNextSate(
+    const T& paddle_aim, const T& stroke_strength,
+    const T& xn, const T& zn, T* xnext, T* znext) const {
+
+  T dt = 1.0e-3;
 
   auto paddle_plant =
       std::make_unique<SoftPaddleWithMirrorControl<T>>(paddle_aim,
@@ -49,13 +67,8 @@ void SoftPaddlePoincareMap<T>::DoEvalDifferenceUpdates(
       paddle_plant->AllocateTimeDerivatives();
 
   SoftPaddleStateVector<T>* xc =
-      dynamic_cast<SoftPaddleStateVector<T>*>(
-          paddle_context->get_mutable_continuous_state_vector());
-  const auto& xcdot =
-      dynamic_cast<const SoftPaddleStateVector<T>&>(derivs->get_vector());
-
-  T xn = context.get_difference_state(0)->GetAtIndex(0);
-  T zn = context.get_difference_state(0)->GetAtIndex(1);
+      paddle_plant->GetMutablePlantStateVector(paddle_context.get());
+  systems::VectorBase<T>* xcdot = derivs->get_mutable_vector();
 
   // Set initial conditions to be [xn, zn, 0.0, 0.0].
   paddle_context->set_time(0.0);
@@ -73,7 +86,7 @@ void SoftPaddlePoincareMap<T>::DoEvalDifferenceUpdates(
 
     // Compute derivative and update configuration and velocity.
     // xc(t+h) = xc(t) + dt * xcdot(t, xc(t), u(t))
-    xc->PlusEqScaled(dt, xcdot);  // xc += dt * xcdot
+    xc->PlusEqScaled(dt, *xcdot);  // xc += dt * xcdot
 
     // When going back up zdot crossed zero. Discard solution.
     if( xc0.zdot() > 0. && xc->zdot() < 0. ) break;
@@ -83,16 +96,23 @@ void SoftPaddlePoincareMap<T>::DoEvalDifferenceUpdates(
   }while(true);
 
   // Zero crossing time.
-  T t_zc = paddle_context->get_time() - xc0.zdot() / xcdot.zdot();
+  T t_zc = paddle_context->get_time() -
+      xc0.zdot() / xcdot->GetAtIndex(3); //xcdot->zdot();
   // Computes time step that takes the solution to zdot = 0
   dt = t_zc - paddle_context->get_time();
 
+  PRINT_VAR(paddle_context->get_time());
+  PRINT_VAR(t_zc);
+  PRINT_VAR(dt);
+
+  DRAKE_ASSERT(dt > 0.0);
+
   // Advances the solution to t_zc.
-  xc->PlusEqScaled(dt, xcdot);  // xc += dt * xcdot
+  xc->PlusEqScaled(dt, *xcdot);  // xc += dt * xcdot
   paddle_context->set_time(paddle_context->get_time() + dt);
 
-  updates->get_mutable_difference_state(0)->SetAtIndex(0, xc->x());
-  updates->get_mutable_difference_state(0)->SetAtIndex(1, xc->z());
+  *xnext = xc->x();
+  *znext = xc->z();
 }
 
 template <typename T>

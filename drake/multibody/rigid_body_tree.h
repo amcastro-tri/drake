@@ -297,9 +297,10 @@ class RigidBodyTree {
       const std::set<int>& model_instance_id_set =
       default_model_instance_id_set) const;
 
-#ifndef SWIG
-  DRAKE_DEPRECATED("Please use RigidBodyTree::CenterOfMass().")
-#endif
+
+  // TODO(amcastro-tri): Deprecate this method (to use CenterOfMass instead)
+  // once it is no longer a template given that it is not possible to
+  // deprecate template methods.
   template <typename Scalar>
   Eigen::Matrix<Scalar, drake::kSpaceDimension, 1> centerOfMass(
       // TODO(#2274) Fix NOLINTNEXTLINE(runtime/references).

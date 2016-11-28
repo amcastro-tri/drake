@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <stdexcept>
 #include <string>
@@ -16,7 +17,9 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/joints/drake_joint.h"
-#include "drake/multibody/rigid_body.h"
+
+// Forward declaration.
+template <typename T> class RigidBody;
 
 template <typename T>
 class KinematicsCacheElement {

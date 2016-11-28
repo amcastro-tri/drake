@@ -14,6 +14,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/collision/drake_collision.h"
 #include "drake/multibody/joints/drake_joint.h"
+#include "drake/multibody/kinematics_cache.h"
 
 template <typename T>
 class RigidBody {
@@ -327,6 +328,12 @@ class RigidBody {
    * in this body's frame.
    */
   const Eigen::Vector3d& get_center_of_mass() const;
+
+  /**
+   * Gets the center of mass of this rigid body in world's frame.
+   */
+  drake::Vector3<T> get_center_of_mass_world(
+      const KinematicsCache<T>& cache) const;
 
   /**
    * Sets the spatial inertia of this rigid body.

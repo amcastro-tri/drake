@@ -98,8 +98,18 @@ class KinematicsCache {
   explicit KinematicsCache(
       const std::vector<std::unique_ptr<RigidBody<double>> >& bodies_in);
 
+  /// Returns the KinematicsCacheElement corresponding to @p body.
+  // This query corresponds to a `std::unordered_map::at()` operation which
+  // has constant complexity on average and linear in container size in the
+  // worst case.
+  const KinematicsCacheElement<T>&
+  GetElement(const RigidBody<double>& body) const;
+
   KinematicsCacheElement<T>& getElement(const RigidBody<double>& body);
 
+#ifndef SWIG
+  DRAKE_DEPRECATED("Please use GetElement().")
+#endif
   const KinematicsCacheElement<T>& getElement(
       const RigidBody<double>& body) const;
 

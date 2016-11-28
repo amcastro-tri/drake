@@ -1154,6 +1154,29 @@ double RigidBodyTree<T>::getMass(
 }
 
 template <typename T>
+drake::Vector3<T> RigidBodyTree<T>::CenterOfMass(
+    const KinematicsCache<T>& cache,
+    const std::set<int>& model_instance_id_set =
+    default_model_instance_id_set) const {
+  cache.checkCachedKinematicsSettings(false, false, "CenterOfMass");
+
+  Vector3<T> com_w = Vector3<T>::Zero();
+  T model_mass{0.0};
+
+  for (auto& body: bodies) {
+    if (is_part_of_model_instances(*body, model_instance_id_set)) {
+      if (body->get_mass() > 0) {
+        com_w.noalias() +=
+            body->get_mass() * body->get_center_of_mass_world(cache);
+      }
+      model_mass += body->get_mass();
+    }
+  }
+  DRAKE_ASSERT(model_mass > 0 && "Model mass must be non-zero.");
+  return com_w / model_mass;
+}
+
+template <typename T>
 template <typename Scalar>
 Eigen::Matrix<Scalar, kSpaceDimension, 1> RigidBodyTree<T>::centerOfMass(
     // TODO(#2274) Fix NOLINTNEXTLINE(runtime/references).

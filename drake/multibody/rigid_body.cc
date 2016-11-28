@@ -5,6 +5,8 @@
 #include "drake/common/eigen_autodiff_types.h"
 #include "drake/util/drakeGeometryUtil.h"
 
+using drake::Vector3;
+
 using Eigen::Isometry3d;
 using Eigen::Matrix;
 using Eigen::Vector3d;
@@ -279,6 +281,12 @@ void RigidBody<T>::set_center_of_mass(const Eigen::Vector3d& center_of_mass) {
 template <typename T>
 const Eigen::Vector3d& RigidBody<T>::get_center_of_mass() const {
   return center_of_mass_;
+}
+
+template <typename T>
+Vector3<T> RigidBody<T>::get_center_of_mass_world(
+    const KinematicsCache<T>& cache) const {
+  return cache.GetElement(*this).transform_to_world * get_center_of_mass();
 }
 
 template <typename T>

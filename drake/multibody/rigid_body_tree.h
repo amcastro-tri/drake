@@ -11,6 +11,7 @@
 
 #include "drake/common/constants.h"
 #include "drake/common/drake_deprecated.h"
+#include "drake/common/eigen_types.h"
 #include "drake/common/eigen_stl_types.h"
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/force_torque_measurement.h"
@@ -280,6 +281,25 @@ class RigidBodyTree {
   double getMass(const std::set<int>& model_instance_id_set =
                      default_model_instance_id_set) const;
 
+
+  /**
+   * Computes the center of mass of a set of model instances in world's frame.
+   *
+   * @param[in] model_instance_id_set A set of model instance ID values
+   * corresponding to the model instances whose masses should be included in the
+   * returned value. By default model_instance_id_set = {0}.
+   *
+   * @returns The center of mass of the model instances in
+   * @p model_instance_id_set in world's frame.
+   */
+  drake::Vector3<T> CenterOfMass(
+      const KinematicsCache<T>& cache,
+      const std::set<int>& model_instance_id_set =
+      default_model_instance_id_set) const;
+
+#ifndef SWIG
+  DRAKE_DEPRECATED("Please use RigidBodyTree::CenterOfMass().")
+#endif
   template <typename Scalar>
   Eigen::Matrix<Scalar, drake::kSpaceDimension, 1> centerOfMass(
       // TODO(#2274) Fix NOLINTNEXTLINE(runtime/references).

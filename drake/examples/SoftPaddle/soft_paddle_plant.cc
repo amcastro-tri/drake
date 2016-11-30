@@ -4,6 +4,7 @@
 
 #include "drake/common/drake_throw.h"
 #include "drake/common/eigen_autodiff_types.h"
+#include "drake/multibody/joints/fixed_joint.h"
 #include "drake/multibody/joints/quaternion_floating_joint.h"
 #include "drake/multibody/joints/revolute_joint.h"
 
@@ -31,7 +32,7 @@ constexpr int kStateSize = 4;
 
 // 1 revolute joint for the paddle = 2 states.
 // 1 quaternion joint for the disk = 13 (= 7 + 6) states.
-constexpr int kVisualizerStateSize = 15;
+constexpr int kVisualizerStateSize = 15 + kNumPaddleElements * 3;
 }
 
 template <typename T>
@@ -43,6 +44,20 @@ SoftPaddlePlant<T>::SoftPaddlePlant() {
   // Outputs the state.
   this->DeclareOutputPort(
       systems::kVectorValued, kStateSize, systems::kContinuousSampling);
+
+  // Output for the paddle as a collection of small rigid elements.
+  // 3D position only.
+  this->DeclareOutputPort(
+      systems::kVectorValued, 3 * kNumPaddleElements,
+      systems::kContinuousSampling);
+
+  element_positions_ = VectorX<T>::Zero(3 * kNumPaddleElements);
+
+  for(int i = 0; i < kNumPaddleElements; ++i) {
+    // Positions in paddle frame.
+    T xe_p = i * ell_/kNumPaddleElements;
+    element_positions_.segment(3 * i, 3) = Vector3<T>(xe_p, 0.0, 0.0);
+  }
 
   CreateRBTModel();
 }
@@ -64,6 +79,12 @@ SoftPaddlePlant<T>::get_output_port() const {
 
 template <typename T>
 const systems::SystemPortDescriptor<T>&
+SoftPaddlePlant<T>::get_elements_port() const {
+  return systems::System<T>::get_output_port(1);
+}
+
+template <typename T>
+const systems::SystemPortDescriptor<T>&
 SoftPaddlePlant<T>::get_visualizer_output_port() const {
   return systems::System<T>::get_output_port(1);
 }
@@ -75,7 +96,7 @@ SoftPaddlePlant<T>::AllocateOutputVector(
   if(descriptor.get_index() == 0) {
     return std::make_unique<SoftPaddleStateVector<T>>();
   } else {
-    return std::make_unique<systems::BasicVector<T>>(kVisualizerStateSize);
+    return std::make_unique<systems::BasicVector<T>>(3 * kNumPaddleElements);
   }
 }
 
@@ -93,6 +114,9 @@ void SoftPaddlePlant<T>::EvalOutput(const systems::Context<T>& context,
                                    systems::SystemOutput<T>* output) const {
   // Set output 0: state.
   get_mutable_output(output)->set_value(get_state(context).get_value());
+
+  // Elements positions.
+  output->GetMutableVectorData(1)->SetFromVector(element_positions_);
 }
 
 // Compute the actual physics.
@@ -138,13 +162,16 @@ void SoftPaddlePlant<T>::EvalTimeDerivatives(
   //PRINT_VAR(z);
   //PRINT_VAR(delta);
 
+  T theta1 = 0.0;
+  T theta2 = 0.0;
+
   if(delta < 0 && 0.001 < x_p && x_p < ell_ - 0.001) {
 
     // Angle between the rubber band and the horizontal on the left side.
-    T theta1 = - delta / x_p;  // Always positive.
+    theta1 = - delta / x_p;  // Always positive.
 
     // Angle between the rubber band and the horizontal on the right side.
-    T theta2 = - delta / (ell_ - x_p);  // Always positive.
+    theta2 = - delta / (ell_ - x_p);  // Always positive.
 
     // Angle between the two straight sections of the rubber band at each side
     // of the disk.
@@ -168,6 +195,22 @@ void SoftPaddlePlant<T>::EvalTimeDerivatives(
     Fz = Fvec_w.y();
   }
 
+  for(int i = 0; i < kNumPaddleElements; ++i) {
+    // Positions in paddle frame.
+    T xe_p = i * (ell_/(kNumPaddleElements-1));
+    T ze_p = 0.0;
+    if(xe_p < x_p) {
+      ze_p =  - xe_p * tan(theta1);
+    } else {
+      ze_p =  - (ell_ - xe_p) * tan(theta2);
+    }
+    // Rotate to world's frame.
+    Vector2<T> xe_w = R_wp.transpose() * Vector2<T>(xe_p, ze_p);
+    element_positions_.segment(3 * i, 3) = Vector3<T>(xe_w[0], 0.0, xe_w[1]);
+
+    //PRINT_VAR(xe_w.transpose());
+  }
+
   //PRINT_VAR(Fx);
  // PRINT_VAR(Fz);
 
@@ -188,6 +231,7 @@ void SoftPaddlePlant<T>::CreateRBTModel() {
 
   Eigen::Vector4d red(0.9, 0.1, 0.0, 1.0);
   Eigen::Vector4d green(0.3, 0.6, 0.4, 1.0);
+  Eigen::Vector4d blue(0.0, 0.0, 1.0, 1.0);
   Eigen::Vector4d grey(0.5, 0.5, 0.5, 1.0);
   Eigen::Vector4d white(1.0, 1.0, 1.0, 1.0);
   Eigen::Vector4d black(0.0, 0.0, 0.0, 1.0);
@@ -223,9 +267,9 @@ void SoftPaddlePlant<T>::CreateRBTModel() {
 
     // Paddle visual.
     Isometry3d pose = Isometry3d::Identity();
-    pose.translation() = Vector3d(0.35, 0.0, 0.0);
+    pose.translation() = Vector3d(0.35, 0.1/2, 0.0);
     DrakeShapes::VisualElement visual_element(
-        Box(Vector3d(ell_, 0.1, 0.03)), pose, red);
+        Box(Vector3d(ell_, 0.015, 0.05)), pose, red);
     body->AddVisualElement(visual_element);
 
     // Shaft visual.
@@ -263,6 +307,40 @@ void SoftPaddlePlant<T>::CreateRBTModel() {
     body->add_joint(&rbt_model_->world(),
                     make_unique<QuaternionFloatingJoint>(
                         "phi", Isometry3d::Identity()));
+  }
+
+  // Adds a set of small boxes to model the deformable paddle (only the rigid
+  // part).
+  {
+    for(int i_element = 0; i_element < kNumPaddleElements; ++i_element) {
+      RigidBody<double>* body =
+          rbt_model_->add_rigid_body(make_unique<RigidBody<double>>());
+      std::string element_name = "paddle_element_"+std::to_string(i_element);
+      body->set_name(element_name);
+      double xe = i_element * (ell_ / (kNumPaddleElements - 1));
+      PRINT_VAR(xe);
+      //body->set_center_of_mass(Vector3d(xe, 0.0, 0.0));
+      // Sets body to have a non-zero spatial inertia. Otherwise the body gets
+      // welded by a fixed joint to the world by RigidBodyTree::compile().
+      body->set_mass(1.0);
+      body->set_spatial_inertia(Matrix6<double>::Identity());
+
+      Isometry3d pose = Isometry3d::Identity();
+      pose.translation() = Vector3d(xe, 0.0, 0.0); //body->get_center_of_mass();
+      pose.linear() =
+          Eigen::AngleAxisd(M_PI_2, Vector3d::UnitX()).toRotationMatrix();
+      DrakeShapes::VisualElement visual_element(
+          Cylinder(Rd_/5.0, 0.1), pose, blue);
+      body->AddVisualElement(visual_element);
+
+      body->add_joint(&rbt_model_->world(),
+                      make_unique<QuaternionFloatingJoint>(
+                          element_name, Isometry3d::Identity()));
+
+      //body->add_joint(&rbt_model_->world(),
+      //                make_unique<FixedJoint>(
+      //                    element_name, Isometry3d::Identity()));
+    }
   }
 
   rbt_model_->compile();

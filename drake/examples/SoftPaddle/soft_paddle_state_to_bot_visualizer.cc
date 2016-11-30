@@ -11,6 +11,9 @@
 #include "drake/systems/framework/basic_vector.h"
 #include "drake/systems/framework/leaf_context.h"
 
+#include <iostream>
+#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
+
 namespace drake {
 namespace examples {
 namespace soft_paddle {
@@ -28,7 +31,9 @@ constexpr int kStateSize = SoftPaddleStateVectorIndices::kNumCoordinates;
 
 // 1 revolute joint for the paddle = 2 states.
 // 1 quaternion joint for the disk = 13 (= 7 + 6) states.
-constexpr int kVisualizerStateSize = 15;
+//
+constexpr int kVisualizerStateSize =
+    15 + kNumPaddleElements * 13;
 }
 
 template <typename T>
@@ -45,6 +50,12 @@ SoftPaddleStateToBotVisualizer<T>::SoftPaddleStateToBotVisualizer(
   this->DeclareInputPort(kVectorValued,
                          1,
                          kContinuousSampling);
+  // Input for the paddle as a collection of small rigid elements.
+  // 3D position only.
+  this->DeclareInputPort(
+      systems::kVectorValued, 3 * kNumPaddleElements,
+      systems::kContinuousSampling);
+
   // Output for the BotVisualizer.
   this->DeclareOutputPort(kVectorValued, kVisualizerStateSize, kContinuousSampling);
 }
@@ -59,6 +70,12 @@ template <typename T>
 const SystemPortDescriptor<T>&
 SoftPaddleStateToBotVisualizer<T>::get_paddle_state_port() const {
   return System<T>::get_input_port(0);
+}
+
+template <typename T>
+const SystemPortDescriptor<T>&
+SoftPaddleStateToBotVisualizer<T>::get_elements_port() const {
+  return System<T>::get_input_port(2);
 }
 
 template <typename T>
@@ -81,6 +98,9 @@ void SoftPaddleStateToBotVisualizer<T>::EvalOutput(const Context<T>& context,
   // Input angle.
   T phi = this->EvalVectorInput(context, 1)->GetAtIndex(0);
 
+  output->GetMutableVectorData(0)->SetFromVector(
+      VectorX<T>::Zero(kVisualizerStateSize));
+
   // Revolute joint.
   output->GetMutableVectorData(0)->SetAtIndex(0, phi);
   // Quaternion for the disk.
@@ -91,6 +111,24 @@ void SoftPaddleStateToBotVisualizer<T>::EvalOutput(const Context<T>& context,
   output->GetMutableVectorData(0)->SetAtIndex(5, 0.0);
   output->GetMutableVectorData(0)->SetAtIndex(6, 0.0);
   output->GetMutableVectorData(0)->SetAtIndex(7, 0.0);
+
+  // Flexible elements.
+  // Input angle.
+  auto xe = this->EvalVectorInput(context, 2);
+  auto xv = output->GetMutableVectorData(0);
+  for (int i = 0; i < kNumPaddleElements; ++i) {
+    double xe0 = i * (0.7 / (kNumPaddleElements - 1));
+    //PRINT_VAR(xe->GetAtIndex(3 * i + 0));
+    //PRINT_VAR(xe->GetAtIndex(3 * i + 1));
+    //PRINT_VAR(xe->GetAtIndex(3 * i + 2));
+    xv->SetAtIndex(8 + 7 * i + 0, xe->GetAtIndex(3 * i + 0) - xe0);
+    xv->SetAtIndex(8 + 7 * i + 1, xe->GetAtIndex(3 * i + 1));
+    xv->SetAtIndex(8 + 7 * i + 2, xe->GetAtIndex(3 * i + 2));
+    xv->SetAtIndex(8 + 7 * i + 3, 1.0);
+    xv->SetAtIndex(8 + 7 * i + 4, 0.0);
+    xv->SetAtIndex(8 + 7 * i + 5, 0.0);
+    xv->SetAtIndex(8 + 7 * i + 6, 0.0);
+  }
 }
 
 // Explicitly instantiates on the most common scalar types.

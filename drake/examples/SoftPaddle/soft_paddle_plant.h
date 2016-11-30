@@ -11,6 +11,8 @@ namespace drake {
 namespace examples {
 namespace soft_paddle {
 
+const int kNumPaddleElements{50};
+
 /// A model of a simple pendulum
 /// @f[ ml^2 \ddot\theta + b\dot\theta + mgl\sin\theta = u @f]
 ///
@@ -37,6 +39,8 @@ class SoftPaddlePlant : public systems::LeafSystem<T> {
 
   /// Returns the port to output state.
   const systems::SystemPortDescriptor<T>& get_output_port() const;
+
+  const systems::SystemPortDescriptor<T>& get_elements_port() const;
 
   /// Returns the port to output state.
   const systems::SystemPortDescriptor<T>& get_visualizer_output_port() const;
@@ -144,6 +148,9 @@ class SoftPaddlePlant : public systems::LeafSystem<T> {
 
   // A RigidBodyTree model of the plant for visualization.
   std::unique_ptr<RigidBodyTree<double>> rbt_model_;
+
+  // Hacky. A vector to cache the output for the soft paddle.
+  mutable drake::VectorX<T> element_positions_;
 };
 
 }  // namespace soft_paddle

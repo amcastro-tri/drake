@@ -61,6 +61,9 @@ int do_main(int argc, char* argv[]) {
                   paddle_to_viz->get_paddle_state_port());
   builder.Connect(paddle->get_paddle_angle_port(),
                   paddle_to_viz->get_paddle_angle_port());
+  builder.Connect(paddle->get_elements_port(),
+                  paddle_to_viz->get_elements_port());
+
   builder.Connect(paddle_to_viz->get_bot_visualizer_port(),
                   visualizer->get_input_port(0));
 

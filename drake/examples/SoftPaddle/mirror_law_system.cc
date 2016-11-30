@@ -76,6 +76,7 @@ SoftPaddleWithMirrorControl<T>::SoftPaddleWithMirrorControl(
 
   builder.ExportOutput(paddle_->get_output_port());
   builder.ExportOutput(mirror_system->get_paddle_angle_port());
+  builder.ExportOutput(paddle_->get_elements_port());
 
   builder.BuildInto(this);
 }
@@ -90,6 +91,12 @@ template <typename T>
 const SystemPortDescriptor<T>&
 SoftPaddleWithMirrorControl<T>::get_paddle_angle_port() const {
   return System<T>::get_output_port(1);
+}
+
+template <typename T>
+const SystemPortDescriptor<T>&
+SoftPaddleWithMirrorControl<T>::get_elements_port() const {
+  return System<T>::get_output_port(2);
 }
 
 template <typename T>

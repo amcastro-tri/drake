@@ -49,6 +49,8 @@ class SoftPaddleWithMirrorControl : public systems::Diagram<T> {
 
   const systems::SystemPortDescriptor<T>& get_paddle_angle_port() const;
 
+  const systems::SystemPortDescriptor<T>& get_elements_port() const;
+
   /// Returns a reference to a RigidBodyTree model that can be used for
   /// visualization of the paddle system with a BotVisualizer.
   const RigidBodyTree<double>& get_rigid_body_tree_model() const {

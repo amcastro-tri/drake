@@ -42,6 +42,8 @@ class SoftPaddleStateToBotVisualizer : public systems::LeafSystem<T> {
 
   const systems::SystemPortDescriptor<T>& get_paddle_state_port() const;
 
+  const systems::SystemPortDescriptor<T>& get_elements_port() const;
+
   const systems::SystemPortDescriptor<T>& get_paddle_angle_port() const;
 
  private:

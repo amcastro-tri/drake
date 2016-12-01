@@ -217,6 +217,13 @@ void SoftPaddlePlant<T>::EvalTimeDerivatives(
     }*/
 
       // Large deformation
+      // See related geometry problem here:
+      // http://math.stackexchange.com/questions/1064410/what-is-the-radius-of-a-circle-tangent-to-two-lines-with-a-known-angle-between-t
+      // Esentially this is the same problem but rotated an angle beta below
+      // the horizontal, where beta = atan(zd_p, xd_p) with (zd_p, xd_p) the
+      // coordinates of the disk in the paddle frame.
+      // Once beta and alpha/2 are found in the paddle frame, the solution is
+      // rotated by the paddle angle phi to the world frame.
       Vector2<T> xe_w;
       T x1 = xe_p; // Coordiantes of contact
       T x2 = xe_p; // Coordiantes of contact

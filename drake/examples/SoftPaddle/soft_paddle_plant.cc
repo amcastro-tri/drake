@@ -206,19 +206,73 @@ void SoftPaddlePlant<T>::EvalTimeDerivatives(
     // Positions in paddle frame.
     T xe_p = i * (ell_/(kNumPaddleElements-1));
     T ze_p = 0.0;
+    // Linear
+    /*
     if(xe_p < x_p) {
       ze_p =  - xe_p * tan(theta1);
-      element_angles_[i] = -(phi - theta1); //-theta1 + phi;
+      element_angles_[i] = -(phi - theta1);
     } else {
       ze_p =  - (ell_ - xe_p) * tan(theta2);
-      element_angles_[i] = -(phi + theta2); //theta2 + phi;
-    }
-    // Rotate to world's frame.
-    Vector2<T> xe_w = R_wp.transpose() * Vector2<T>(xe_p, ze_p);
-    element_positions_.segment(3 * i, 3) = Vector3<T>(xe_w[0], 0.0, xe_w[1]);
+      element_angles_[i] = -(phi + theta2);
+    }*/
+
+      // Large deformation
+      Vector2<T> xe_w;
+      T x1 = xe_p; // Coordiantes of contact
+      T x2 = xe_p; // Coordiantes of contact
+      theta1 = 0.0;
+      theta2 = 0.0;
+      if( delta < 0 ) {
+          // Left
+          {
+              Vector2<T> x_center(x_p, z_p);
+              T d = x_center.norm();
+              T alpha_2 = asin(Rd_ / d); // alpha / 2
+              T beta = atan(-z_p /
+                            x_p);  // angle between x_center and the horizontal.
+              theta1 = alpha_2 +
+                       beta; // angle between tangent line and horizontal.
+              T xc_dist = sqrt(d * d - Rd_ * Rd_); // Distance to contact.
+              Vector2<T> xc = xc_dist * Vector2<T>(cos(theta1), -sin(theta1));
+              x1 = xc[0];
+          }
+          // Right
+          {
+              Vector2<T> x_center(-(ell_-x_p), z_p);
+              T d = x_center.norm();
+              T alpha_2 = asin(Rd_ / d); // alpha / 2
+              // angle between x_center and the horizontal.
+              T beta = atan(-z_p / (ell_-x_p));
+              theta2 = alpha_2 +
+                       beta; // angle between tangent line and horizontal.
+              T xc_dist = sqrt(d * d - Rd_ * Rd_); // Distance to contact.
+              Vector2<T> xc = xc_dist * Vector2<T>(-cos(theta2), -sin(theta2));
+              x2 = ell_ + xc[0];
+          }
+
+          if (xe_p < x1) { // Left
+              ze_p = -xe_p * tan(theta1);
+              element_angles_[i] = -(phi - theta1);
+          } else if (xe_p > x2) { // Right
+              ze_p = -(ell_ - xe_p) * tan(theta2);
+              element_angles_[i] = -(phi + theta2);
+          } else { // Center
+              ze_p = z_p - sqrt(Rd_*Rd_ - (xe_p-x_p)*(xe_p-x_p));
+              element_angles_[i] = atan((xe_p-x_p)/(ze_p-z_p))-phi;
+          }
+      } else {
+          element_angles_[i] = -phi;
+      }
+
+      // Rotate to world's frame.
+      xe_w = R_wp.transpose() * Vector2<T>(xe_p, ze_p);
+
+
+      element_positions_.segment(3 * i, 3) =
+              Vector3<T>(xe_w[0], 0.0, xe_w[1]);
 
     //PRINT_VAR(xe_w.transpose());
-  }
+  }  // loop on elements.
 
   //PRINT_VAR(Fx);
  // PRINT_VAR(Fz);
@@ -229,10 +283,10 @@ void SoftPaddlePlant<T>::EvalTimeDerivatives(
 }
 
 // SoftPaddlePlant has no constructor arguments, so there's no work to do here.
-template <typename T>
-SoftPaddlePlant<AutoDiffXd>* SoftPaddlePlant<T>::DoToAutoDiffXd() const {
-  return new SoftPaddlePlant<AutoDiffXd>();
-}
+//template <typename T>
+//SoftPaddlePlant<AutoDiffXd>* SoftPaddlePlant<T>::DoToAutoDiffXd() const {
+//  return new SoftPaddlePlant<AutoDiffXd>();
+//}
 
 template <typename T>
 void SoftPaddlePlant<T>::CreateRBTModel() {
@@ -370,7 +424,7 @@ void SoftPaddlePlant<T>::set_initial_conditions(MyContext* context) const {
 }
 
 template class SoftPaddlePlant<double>;
-template class SoftPaddlePlant<AutoDiffXd>;
+//template class SoftPaddlePlant<AutoDiffXd>;
 
 }  // namespace soft_paddle
 }  // namespace examples

@@ -1,8 +1,8 @@
 if(lcm_FOUND)
   add_library_with_exports(LIB_NAME drakeSoftPaddlePlant
     SOURCE_FILES soft_paddle_plant.cc soft_paddle_state_vector.cc
-    mirror_law_system.cc soft_paddle_state_to_bot_visualizer.cc
-    soft_paddle_poincare_map.cc)
+    mirror_law_system.cc soft_paddle_state_to_bot_visualizer.cc)
+    #soft_paddle_poincare_map.cc)
   target_link_libraries(drakeSoftPaddlePlant drakeSystemFramework drakeRBM)
   drake_install_libraries(drakeSoftPaddlePlant)
   drake_install_headers(soft_paddle_plant.h soft_paddle_state_vector.h

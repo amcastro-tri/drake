@@ -11,7 +11,7 @@ namespace drake {
 namespace examples {
 namespace soft_paddle {
 
-const int kNumPaddleElements{50};
+const int kNumPaddleElements{150};
 
 /// A model of a simple pendulum
 /// @f[ ml^2 \ddot\theta + b\dot\theta + mgl\sin\theta = u @f]
@@ -94,7 +94,7 @@ class SoftPaddlePlant : public systems::LeafSystem<T> {
       const systems::SystemPortDescriptor<T>& descriptor) const override;
 
   // System<T> override.
-  SoftPaddlePlant<AutoDiffXd>* DoToAutoDiffXd() const override;
+  //SoftPaddlePlant<AutoDiffXd>* DoToAutoDiffXd() const override;
 
  private:
   T get_paddle_angle(const MyContext &context) const {

@@ -124,10 +124,10 @@ SoftPaddleStateVector<T>*
 
 // Explicitly instantiates on the most common scalar types.
 template class PaddleMirrorLawSystem<double>;
-template class PaddleMirrorLawSystem<AutoDiffXd>;
+//template class PaddleMirrorLawSystem<AutoDiffXd>;
 
 template class SoftPaddleWithMirrorControl<double>;
-template class SoftPaddleWithMirrorControl<AutoDiffXd>;
+//template class SoftPaddleWithMirrorControl<AutoDiffXd>;
 
 }  // namespace soft_paddle
 }  // namespace examples

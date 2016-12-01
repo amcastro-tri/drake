@@ -151,6 +151,7 @@ class SoftPaddlePlant : public systems::LeafSystem<T> {
 
   // Hacky. A vector to cache the output for the soft paddle.
   mutable drake::VectorX<T> element_positions_;
+  mutable drake::VectorX<T> element_angles_;
 };
 
 }  // namespace soft_paddle

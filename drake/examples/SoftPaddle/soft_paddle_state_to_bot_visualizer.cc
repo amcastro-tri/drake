@@ -53,7 +53,7 @@ SoftPaddleStateToBotVisualizer<T>::SoftPaddleStateToBotVisualizer(
   // Input for the paddle as a collection of small rigid elements.
   // 3D position only.
   this->DeclareInputPort(
-      systems::kVectorValued, 3 * kNumPaddleElements,
+      systems::kVectorValued, 4 * kNumPaddleElements,
       systems::kContinuousSampling);
 
   // Output for the BotVisualizer.
@@ -121,13 +121,17 @@ void SoftPaddleStateToBotVisualizer<T>::EvalOutput(const Context<T>& context,
     //PRINT_VAR(xe->GetAtIndex(3 * i + 0));
     //PRINT_VAR(xe->GetAtIndex(3 * i + 1));
     //PRINT_VAR(xe->GetAtIndex(3 * i + 2));
-    xv->SetAtIndex(8 + 7 * i + 0, xe->GetAtIndex(3 * i + 0) - xe0);
-    xv->SetAtIndex(8 + 7 * i + 1, xe->GetAtIndex(3 * i + 1));
-    xv->SetAtIndex(8 + 7 * i + 2, xe->GetAtIndex(3 * i + 2));
-    xv->SetAtIndex(8 + 7 * i + 3, 1.0);
-    xv->SetAtIndex(8 + 7 * i + 4, 0.0);
-    xv->SetAtIndex(8 + 7 * i + 5, 0.0);
-    xv->SetAtIndex(8 + 7 * i + 6, 0.0);
+    xv->SetAtIndex(8 + 7 * i + 0, xe->GetAtIndex(4 * i + 0) - xe0);
+    xv->SetAtIndex(8 + 7 * i + 1, xe->GetAtIndex(4 * i + 1));
+    xv->SetAtIndex(8 + 7 * i + 2, xe->GetAtIndex(4 * i + 2));
+    Eigen::Quaterniond q =
+        Eigen::AngleAxisd(xe->GetAtIndex(4 * i + 3), Eigen::Vector3d::UnitY())
+        *Eigen::AngleAxisd::Identity();
+    //PRINT_VAR(xe->GetAtIndex(4 * i + 3));
+    xv->SetAtIndex(8 + 7 * i + 3, q.w());
+    xv->SetAtIndex(8 + 7 * i + 4, q.x());
+    xv->SetAtIndex(8 + 7 * i + 5, q.y());
+    xv->SetAtIndex(8 + 7 * i + 6, q.z());
   }
 }
 

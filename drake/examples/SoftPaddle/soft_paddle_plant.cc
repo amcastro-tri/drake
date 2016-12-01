@@ -48,10 +48,11 @@ SoftPaddlePlant<T>::SoftPaddlePlant() {
   // Output for the paddle as a collection of small rigid elements.
   // 3D position only.
   this->DeclareOutputPort(
-      systems::kVectorValued, 3 * kNumPaddleElements,
+      systems::kVectorValued, 4 * kNumPaddleElements,
       systems::kContinuousSampling);
 
   element_positions_ = VectorX<T>::Zero(3 * kNumPaddleElements);
+  element_angles_ = VectorX<T>::Zero(kNumPaddleElements);
 
   for(int i = 0; i < kNumPaddleElements; ++i) {
     // Positions in paddle frame.
@@ -96,7 +97,7 @@ SoftPaddlePlant<T>::AllocateOutputVector(
   if(descriptor.get_index() == 0) {
     return std::make_unique<SoftPaddleStateVector<T>>();
   } else {
-    return std::make_unique<systems::BasicVector<T>>(3 * kNumPaddleElements);
+    return std::make_unique<systems::BasicVector<T>>(4 * kNumPaddleElements);
   }
 }
 
@@ -116,7 +117,13 @@ void SoftPaddlePlant<T>::EvalOutput(const systems::Context<T>& context,
   get_mutable_output(output)->set_value(get_state(context).get_value());
 
   // Elements positions.
-  output->GetMutableVectorData(1)->SetFromVector(element_positions_);
+  VectorX<T> elements_state(4 * kNumPaddleElements);
+  //elements_state << element_positions_, element_angles_;
+  for (int i = 0;i < kNumPaddleElements; ++i) {
+    elements_state.segment(4 * i, 3) = element_positions_.segment(3 * i, 3);
+    elements_state[4 * i + 3] = element_angles_[i];
+  }
+  output->GetMutableVectorData(1)->SetFromVector(elements_state);
 }
 
 // Compute the actual physics.
@@ -201,8 +208,10 @@ void SoftPaddlePlant<T>::EvalTimeDerivatives(
     T ze_p = 0.0;
     if(xe_p < x_p) {
       ze_p =  - xe_p * tan(theta1);
+      element_angles_[i] = -(phi - theta1); //-theta1 + phi;
     } else {
       ze_p =  - (ell_ - xe_p) * tan(theta2);
+      element_angles_[i] = -(phi + theta2); //theta2 + phi;
     }
     // Rotate to world's frame.
     Vector2<T> xe_w = R_wp.transpose() * Vector2<T>(xe_p, ze_p);
@@ -317,7 +326,8 @@ void SoftPaddlePlant<T>::CreateRBTModel() {
           rbt_model_->add_rigid_body(make_unique<RigidBody<double>>());
       std::string element_name = "paddle_element_"+std::to_string(i_element);
       body->set_name(element_name);
-      double xe = i_element * (ell_ / (kNumPaddleElements - 1));
+      double dell = ell_ / (kNumPaddleElements - 1);
+      double xe = i_element * dell;
       PRINT_VAR(xe);
       //body->set_center_of_mass(Vector3d(xe, 0.0, 0.0));
       // Sets body to have a non-zero spatial inertia. Otherwise the body gets
@@ -326,16 +336,19 @@ void SoftPaddlePlant<T>::CreateRBTModel() {
       body->set_spatial_inertia(Matrix6<double>::Identity());
 
       Isometry3d pose = Isometry3d::Identity();
-      pose.translation() = Vector3d(xe, 0.0, 0.0); //body->get_center_of_mass();
-      pose.linear() =
-          Eigen::AngleAxisd(M_PI_2, Vector3d::UnitX()).toRotationMatrix();
+      //pose.translation() = Vector3d(xe, 0.0, 0.0);
+      //body->get_center_of_mass();
+      //pose.linear() =
+      //    Eigen::AngleAxisd(M_PI_2, Vector3d::UnitX()).toRotationMatrix();
       DrakeShapes::VisualElement visual_element(
-          Cylinder(Rd_/5.0, 0.1), pose, blue);
+          Box(Vector3d(dell*1.2, 0.1, 0.005)), pose, blue);
+          //Cylinder(Rd_/5.0, 0.1), pose, blue);
       body->AddVisualElement(visual_element);
 
+      pose.translation() = Vector3d(xe, 0.0, 0.0);
       body->add_joint(&rbt_model_->world(),
                       make_unique<QuaternionFloatingJoint>(
-                          element_name, Isometry3d::Identity()));
+                          element_name, pose));
 
       //body->add_joint(&rbt_model_->world(),
       //                make_unique<FixedJoint>(

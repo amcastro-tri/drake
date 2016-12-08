@@ -90,7 +90,6 @@ add_subdirectory(constraint)
 add_subdirectory(joints)
 add_subdirectory(rigid_body_plant)
 add_subdirectory(rigid_body_system1)
-add_subdirectory(rbt_with_alternates)
 add_subdirectory(shapes)
 
 if(BUILD_TESTING)

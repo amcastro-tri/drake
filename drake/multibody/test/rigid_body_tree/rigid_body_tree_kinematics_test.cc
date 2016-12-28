@@ -2,11 +2,103 @@
 
 #include "drake/common/drake_path.h"
 #include "drake/common/eigen_matrix_compare.h"
+#include "drake/multibody/benchmarks/acrobot/acrobot.h"
 #include "drake/multibody/parsers/urdf_parser.h"
 #include "drake/multibody/rigid_body_tree.h"
 
+using Eigen::Vector3d;
+
+#include <iostream>
+#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
+
 namespace drake {
 namespace multibody {
+
+class AcrobotTests : public ::testing::Test {
+ protected:
+  void SetUp() {
+    std::string file_name =
+        GetDrakePath() + "/multibody/test/rigid_body_tree/double_pendulum.urdf";
+    robot_ = std::make_unique<RigidBodyTree<double>>();
+    parsers::urdf::AddModelInstanceFromUrdfFileToWorld(
+        file_name, multibody::joints::kFixed, robot_.get());
+    cache_ = std::make_unique<KinematicsCache<double>>(
+        robot_->CreateKinematicsCache());
+
+    link1_ = robot_->FindBody("link1");
+    link2_ = robot_->FindBody("link2");
+    frame1_ = robot_->findFrame("frame_on_link1").get();
+    link1_com_ = robot_->findFrame("link1_com").get();
+    link2_com_ = robot_->findFrame("link2_com").get();
+    X_L1F1_ = frame1_->get_transform_to_body();
+
+    world_id_ = robot_->FindBody("world")->get_body_index();
+    base_id_ = robot_->FindBody("base")->get_body_index();
+    link1_id_ = link1_->get_body_index();
+    link2_id_ = link2_->get_body_index();
+
+    axis1_index_ =
+        link1_->get_position_start_index();
+    axis2_index_ =
+        link2_->get_position_start_index();
+
+    q_.resize(robot_->get_num_positions());
+    v_.resize(robot_->get_num_velocities());
+  }
+
+  void SetState(double theta1_rad, double theta2_rad) {
+    q_(axis1_index_) = theta1_rad;
+    q_(axis2_index_) = theta2_rad;
+    cache_->initialize(q_);
+    robot_->doKinematics(*cache_);
+  }
+
+  // Tests CalcPoseInWorld(body, offset) == CalcPoseInWorld(frame),
+  // assuming the underlying function relativeTransform is correct.
+  void RunPoseTest(double theta1_deg, double theta2_deg) {
+    const double deg_to_rad = M_PI / 180.0;
+    const double theta1_rad = theta1_deg * deg_to_rad;
+    const double theta2_rad = theta2_deg * deg_to_rad;
+    SetState(theta1_rad, theta2_rad);
+
+    Isometry3<double> X_WL1cm =
+        robot_->CalcPoseInWorld(*cache_, *link1_com_);
+    Isometry3<double> X_WL1cm_exact =
+        acrobot_benchmark_.CalcLink1PoseInWorldFrame(theta1_rad, theta2_rad);
+    EXPECT_TRUE(X_WL1cm.isApprox(X_WL1cm_exact,
+                                 Eigen::NumTraits<double>::epsilon()));
+    Isometry3<double> X_WL2cm =
+        robot_->CalcPoseInWorld(*cache_, *link2_com_);
+    Isometry3<double> X_WL2cm_exact =
+        acrobot_benchmark_.CalcLink2PoseInWorldFrame(theta1_rad, theta2_rad);
+    EXPECT_TRUE(X_WL2cm.isApprox(X_WL2cm_exact,
+                                 Eigen::NumTraits<double>::epsilon()));
+  }
+
+  std::unique_ptr<RigidBodyTree<double>> robot_;
+  std::unique_ptr<KinematicsCache<double>> cache_;
+  const RigidBody<double> *link1_, *link2_;
+  const RigidBodyFrame<double> *frame1_, *link1_com_, *link2_com_;
+  int world_id_, base_id_, link1_id_, link2_id_;
+  int axis1_index_, axis2_index_;
+  int frame_id_;
+  VectorX<double> q_;
+  VectorX<double> v_;
+  Isometry3<double> X_L1F1_;  // Transform from frame F1 to body frame of link1.
+  benchmarks::Acrobot<double> acrobot_benchmark_{Vector3d::UnitZ(),
+                                                 Vector3d::UnitY()};
+};
+
+TEST_F(AcrobotTests, PoseTests) {
+  const double theta_max = 45.0;
+  const int ntheta = 3;
+  const double dtheta = 2 * theta_max / ntheta;
+  for (double theta1 = -theta_max; theta1 <= theta_max; theta1 += dtheta) {
+    for (double theta2 = -theta_max; theta2 <= theta_max; theta2 += dtheta) {
+      RunPoseTest(theta1, theta2);
+    }
+  }
+}
 
 // Test the following utility functions assuming their underlying functions
 // are correct:

@@ -49,15 +49,18 @@ class Acrobot {
   Isometry3<T> CalcLink1PoseInWorldFrame(
       const T& theta1, const T& theta2) const;
 
+  Isometry3<T> CalcLink2PoseInWorldFrame(
+      const T& theta1, const T& theta2) const;
+
  private:
   const T
       m1{1.0},  // Mass of link 1 (kg).
       m2{1.0},  // Mass of link 2 (kg).
       l1{1.0},  // Length of link 1 (m).
-      l2{2.0},  // Length of link 2 (m).
+      l2{1.0},  // Length of link 2 (m).
       lc1{0.5}, // Vertical distance from shoulder joint to center of mass of
                 // link 1 (m).
-      lc2{1.0}, // Vertical distance from elbox joint to center of mass of link
+      lc2{0.5}, // Vertical distance from elbox joint to center of mass of link
                 // 2 (m).
       Ic1{.083},// Inertia of link 1 about the center of mass of link 1
                 // (kg*m^2).

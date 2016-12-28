@@ -4,12 +4,12 @@
 #include "drake/common/eigen_autodiff_types.h"
 #include "drake/common/extract_double.h"
 
+#include <iostream>
+#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
+
 namespace drake {
 namespace multibody {
 namespace benchmarks {
-
-#include <iostream>
-#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
 
 template <typename T>
 Acrobot<T>::Acrobot(const Vector3<T>& normal, const Vector3<T>& up) {
@@ -30,11 +30,6 @@ Acrobot<T>::Acrobot(const Vector3<T>& normal, const Vector3<T>& up) {
   R_WD.col(1) = y_W;
   R_WD.col(2) = z_W;
   X_WD_.linear() = R_WD;
-
-  PRINT_VAR(x_W.transpose());
-  PRINT_VAR(y_W.transpose());
-  PRINT_VAR(z_W.transpose());
-  PRINT_VAR(X_WD_);
 }
 
 template <typename T>
@@ -68,8 +63,6 @@ Isometry3<T> Acrobot<T>::CalcLink1PoseInWorldFrame(
   using std::sin;
   using std::cos;
 
-  // Perform computation in model frame D.
-
   // Center of mass position of link 1 in the model frame D.
   Vector3<T> xcm1_D = lc1 * Vector3<T>(sin(theta1), -cos(theta1), 0.0);
 
@@ -80,6 +73,27 @@ Isometry3<T> Acrobot<T>::CalcLink1PoseInWorldFrame(
 
   // Transformation to world frame W.
   return X_WD_ * X_DL1;
+}
+
+template <typename T>
+Isometry3<T> Acrobot<T>::CalcLink2PoseInWorldFrame(
+    const T& theta1, const T& theta2) const {
+  using std::sin;
+  using std::cos;
+
+  // Center of mass position of link 2 in the model frame D.
+  Vector3<T> xcm2_D =
+      lc2 * Vector3<T>(sin(theta1 + theta2), -cos(theta1 + theta2), 0.0) +
+          l1 * Vector3<T>(sin(theta1), -cos(theta1), 0.0);
+
+  // Pose of link 2 frame measured and expressed in D.
+  Isometry3<T> X_DL2;
+  X_DL2.linear() =
+      Matrix3<T>(AngleAxis<T>(theta1 + theta2, Vector3<T>::UnitZ()));
+  X_DL2.translation() = xcm2_D;
+
+  // Transformation to world frame W.
+  return X_WD_ * X_DL2;
 }
 
 template class Acrobot<double>;

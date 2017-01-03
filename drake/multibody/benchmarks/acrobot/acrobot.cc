@@ -4,12 +4,11 @@
 #include "drake/common/eigen_autodiff_types.h"
 #include "drake/common/extract_double.h"
 
-#include <iostream>
-#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
-
 namespace drake {
 namespace multibody {
 namespace benchmarks {
+
+using Eigen::AutoDiffScalar;
 
 template <typename T>
 Acrobot<T>::Acrobot(const Vector3<T>& normal, const Vector3<T>& up) {
@@ -49,14 +48,6 @@ const {
   return H;
 }
 
-#if 0
-template <typename T>
-Isometry3<T> Acrobot<T>::CalcLinkPoseInWorldFrame(
-    const T& theta1, const T& theta2, int link_id) const {
-
-}
-#endif
-
 template <typename T>
 Isometry3<T> Acrobot<T>::CalcLink1PoseInWorldFrame(
     const T& theta1, const T& theta2) const {
@@ -94,6 +85,56 @@ Isometry3<T> Acrobot<T>::CalcLink2PoseInWorldFrame(
 
   // Transformation to world frame W.
   return X_WD_ * X_DL2;
+}
+
+template <typename T>
+Vector6<T> Acrobot<T>::CalcLink1SpatialVelocityInWorldFrame(
+    const T& theta1, const T& theta2,
+    const T& theta1dot, const T& theta2dot) const {
+  using std::sin;
+  using std::cos;
+
+  // Linear velocity of link1's center of mass expressed in model frame D.
+  Vector3<T> vcm1_D =
+      lc1 * Vector3<T>(cos(theta1), sin(theta1), 0.0) * theta1dot;
+
+  // Angular velocity of link1 expressed in model frame D.
+  Vector3<T> wcm1_D = Vector3<T>::UnitZ() * theta1dot;
+
+  // Spatial velocity expressed in the world frame.
+  Vector6<T> V_WL1;
+  V_WL1.template topRows<3>() = X_WD_.linear() * wcm1_D;
+  V_WL1.template bottomRows<3>() = X_WD_.linear() * vcm1_D;
+
+  return V_WL1;
+}
+
+template <typename T>
+Vector6<T> Acrobot<T>::CalcLink2SpatialVelocityInWorldFrame(
+    const T& theta1, const T& theta2,
+    const T& theta1dot, const T& theta2dot) const {
+  using std::sin;
+  using std::cos;
+
+  // Linear velocity of link2's center of mass expressed in model frame D.
+  Vector3<T> vcm2_D =
+      // dx/dtheta1 * theta1dot.
+      lc2 * Vector3<T>(
+          cos(theta1 + theta2), sin(theta1 + theta2), 0.0) * theta1dot +
+      l1 * Vector3<T>(cos(theta1), sin(theta1), 0.0) * theta1dot +
+      // dx/dtheta2 * theta2dot.
+      lc2 * Vector3<T>(
+          cos(theta1 + theta2), sin(theta1 + theta2), 0.0) * theta2dot;
+
+  // Angular velocity of link2 expressed in model frame D.
+  Vector3<T> wcm2_D = Vector3<T>::UnitZ() * (theta1dot + theta2dot);
+
+  // Spatial velocity expressed in the world frame.
+  Vector6<T> V_WL2;
+  V_WL2.template topRows<3>() = X_WD_.linear() * wcm2_D;
+  V_WL2.template bottomRows<3>() = X_WD_.linear() * vcm2_D;
+
+  return V_WL2;
 }
 
 template class Acrobot<double>;

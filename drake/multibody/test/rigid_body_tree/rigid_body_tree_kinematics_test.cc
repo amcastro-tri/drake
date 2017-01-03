@@ -8,9 +8,6 @@
 
 using Eigen::Vector3d;
 
-#include <iostream>
-#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
-
 namespace drake {
 namespace multibody {
 
@@ -46,6 +43,8 @@ class AcrobotTests : public ::testing::Test {
     v_.resize(robot_->get_num_velocities());
   }
 
+  // Sets the state of the acrobot given by its joint angles measured in
+  // degrees.
   void SetState(double theta1_rad, double theta2_rad) {
     q_(axis1_index_) = theta1_rad;
     q_(axis2_index_) = theta2_rad;
@@ -53,8 +52,20 @@ class AcrobotTests : public ::testing::Test {
     robot_->doKinematics(*cache_);
   }
 
-  // Tests CalcPoseInWorld(body, offset) == CalcPoseInWorld(frame),
-  // assuming the underlying function relativeTransform is correct.
+  // Sets the state of the acrobot given by its joint angles measured in
+  // degrees and its joint angular velocities measured in radians per second.
+  void SetState(double theta1_rad, double theta2_rad,
+                double theta1dot, double theta2dot) {
+    q_(axis1_index_) = theta1_rad;
+    q_(axis2_index_) = theta2_rad;
+    v_(axis1_index_) = theta1dot;
+    v_(axis2_index_) = theta2dot;
+    cache_->initialize(q_, v_);
+    robot_->doKinematics(*cache_);
+  }
+
+  // Given a set of joint angles, this test computes the pose of each link in
+  // the model and verifies it against an analytical benchmark.
   void RunPoseTest(double theta1_deg, double theta2_deg) {
     const double deg_to_rad = M_PI / 180.0;
     const double theta1_rad = theta1_deg * deg_to_rad;
@@ -62,17 +73,41 @@ class AcrobotTests : public ::testing::Test {
     SetState(theta1_rad, theta2_rad);
 
     Isometry3<double> X_WL1cm =
-        robot_->CalcPoseInWorld(*cache_, *link1_com_);
+        robot_->CalcFramePoseInWorldFrame(*cache_, *link1_com_);
     Isometry3<double> X_WL1cm_exact =
         acrobot_benchmark_.CalcLink1PoseInWorldFrame(theta1_rad, theta2_rad);
     EXPECT_TRUE(X_WL1cm.isApprox(X_WL1cm_exact,
                                  Eigen::NumTraits<double>::epsilon()));
     Isometry3<double> X_WL2cm =
-        robot_->CalcPoseInWorld(*cache_, *link2_com_);
+        robot_->CalcFramePoseInWorldFrame(*cache_, *link2_com_);
     Isometry3<double> X_WL2cm_exact =
         acrobot_benchmark_.CalcLink2PoseInWorldFrame(theta1_rad, theta2_rad);
     EXPECT_TRUE(X_WL2cm.isApprox(X_WL2cm_exact,
                                  Eigen::NumTraits<double>::epsilon()));
+  }
+
+  void RunSpatialVelocityTest(double theta1_deg, double theta2_deg,
+                              double theta1dot, double theta2dot) {
+    const double deg_to_rad = M_PI / 180.0;
+    const double theta1_rad = theta1_deg * deg_to_rad;
+    const double theta2_rad = theta2_deg * deg_to_rad;
+    SetState(theta1_rad, theta2_rad, theta1dot, theta2dot);
+
+    Vector6<double> V_WL1cm =
+        robot_->CalcFrameSpatialVelocityInWorldFrame(*cache_, *link1_com_);
+    Vector6 <double> V_WL1cm_exact =
+        acrobot_benchmark_.CalcLink1SpatialVelocityInWorldFrame(
+            theta1_rad, theta2_rad, theta1dot, theta2dot);
+    EXPECT_TRUE(V_WL1cm.isApprox(V_WL1cm_exact,
+                                Eigen::NumTraits<double>::epsilon()));
+
+    Vector6<double> V_WL2cm =
+        robot_->CalcFrameSpatialVelocityInWorldFrame(*cache_, *link2_com_);
+    Vector6 <double> V_WL2cm_exact =
+        acrobot_benchmark_.CalcLink2SpatialVelocityInWorldFrame(
+            theta1_rad, theta2_rad, theta1dot, theta2dot);
+    EXPECT_TRUE(V_WL2cm.isApprox(V_WL2cm_exact,
+                                 2 * Eigen::NumTraits<double>::epsilon()));
   }
 
   std::unique_ptr<RigidBodyTree<double>> robot_;
@@ -89,13 +124,32 @@ class AcrobotTests : public ::testing::Test {
                                                  Vector3d::UnitY()};
 };
 
+// Tests RigidBodyTree::CalcFrameSpatialVelocityInWorldFrame() by comparing
+// against an analytical solution.
 TEST_F(AcrobotTests, PoseTests) {
   const double theta_max = 45.0;
-  const int ntheta = 3;
+  const int ntheta = 5;
   const double dtheta = 2 * theta_max / ntheta;
   for (double theta1 = -theta_max; theta1 <= theta_max; theta1 += dtheta) {
     for (double theta2 = -theta_max; theta2 <= theta_max; theta2 += dtheta) {
       RunPoseTest(theta1, theta2);
+    }
+  }
+}
+
+// Tests RigidBodyTree::CalcFrameSpatialVelocityInWorldFrame() by comparing
+// against an analytical solution.
+TEST_F(AcrobotTests, SpatialVelocityTests) {
+  const double theta_max = 45.0;
+  const int ntheta = 5;
+  const double dtheta = 2 * theta_max / ntheta;
+  for (double theta1 = -theta_max; theta1 <= theta_max; theta1 += dtheta) {
+    for (double theta2 = -theta_max; theta2 <= theta_max; theta2 += dtheta) {
+      RunSpatialVelocityTest(theta1, theta2, 0.2, 0.0);
+      RunSpatialVelocityTest(theta1, theta2, 0.0, 0.2);
+      RunSpatialVelocityTest(theta1, theta2, 0.3, -0.1);
+      RunSpatialVelocityTest(theta1, theta2, -0.1, 0.3);
+      RunSpatialVelocityTest(theta1, theta2, 0.2, -0.2);
     }
   }
 }

@@ -2,6 +2,8 @@
 
 #include "drake/common/eigen_types.h"
 
+#include <memory>
+
 namespace drake {
 namespace multibody {
 namespace benchmarks {
@@ -37,20 +39,47 @@ class Acrobot {
 
   Matrix2<T> CalcMassMatrix(const T& theta1, const T& theta2) const;
 
-  /// Computes the pose of the link @p link_id for the set of angles @p
-  /// theta1 and @p theta2.
-  /// @param link_id The id of the link which pose is being requested.
-  /// Link1: link_id = 1, Link2: link_id = 2.
-  /// @returns The pose of link @p link_id measured and expressed in the
-  /// world frame.
-  //Isometry3<T> CalcLinkPoseInWorldFrame(const T& theta1, const T& theta2,
-  //                                      int link_id) const;
-
+  /// Computes the pose of the center of mass of link 1 measured and expressed
+  /// in the world frame.
+  /// @param theta1 The shoulder angle in radians.
+  /// @param theta2 The elbow angle in radians.
+  /// @returns X_WL1 the pose of link 1 measured and expressed in the world
+  /// frame.
   Isometry3<T> CalcLink1PoseInWorldFrame(
       const T& theta1, const T& theta2) const;
 
+  /// Computes the pose of the center of mass of link 2 measured and expressed
+  /// in the world frame.
+  /// @param theta1 The shoulder angle in radians.
+  /// @param theta2 The elbow angle in radians.
+  /// @returns X_WL2 the pose of link 2 measured and expressed in the world
+  /// frame.
   Isometry3<T> CalcLink2PoseInWorldFrame(
       const T& theta1, const T& theta2) const;
+
+  /// Computes the spatial velocity of the center of mass of link 1 expressed
+  /// in the world frame.
+  /// @param theta1 The shoulder angle in radians.
+  /// @param theta2 The elbow angle in radians.
+  /// @param theta1dot The shoulder angular velocity in radians per second.
+  /// @param theta2dot The elbow angular velocity in radians per second.
+  /// @returns V_WL1_W the spatial velocity of the center of mass of link 1 with
+  /// respect to the world and expressed in the world frame.
+  Vector6<T> CalcLink1SpatialVelocityInWorldFrame(
+      const T& theta1, const T& theta2,
+      const T& theta1dot, const T& theta2dot) const;
+
+  /// Computes the spatial velocity of the center of mass of link 2 expressed
+  /// in the world frame.
+  /// @param theta1 The shoulder angle in radians.
+  /// @param theta2 The elbow angle in radians.
+  /// @param theta1dot The shoulder angular velocity in radians per second.
+  /// @param theta2dot The elbow angular velocity in radians per second.
+  /// @returns V_WL2_W the spatial velocity of the center of mass of link 2 with
+  /// respect to the world and expressed in the world frame.
+  Vector6<T> CalcLink2SpatialVelocityInWorldFrame(
+      const T& theta1, const T& theta2,
+      const T& theta1dot, const T& theta2dot) const;
 
  private:
   const T

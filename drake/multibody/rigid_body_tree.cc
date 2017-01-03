@@ -47,6 +47,7 @@ using drake::MatrixX;
 using drake::TwistMatrix;
 using drake::TwistVector;
 using drake::Vector3;
+using drake::Vector6;
 using drake::VectorX;
 using drake::WrenchVector;
 using drake::kQuaternionSize;
@@ -2718,6 +2719,94 @@ int RigidBodyTree<T>::get_num_model_instances() const {
 template <typename T>
 int RigidBodyTree<T>::get_number_of_model_instances() const {
   return get_num_model_instances();
+}
+
+template <typename T>
+Isometry3<T> RigidBodyTree<T>::CalcBodyPoseInWorldFrame(
+    const KinematicsCache<T>& cache, const RigidBody<T>& B) const {
+  cache.checkCachedKinematicsSettings(
+      false, false, "CalcBodyPoseInWorldFrame");
+
+  const auto& body_element =
+      cache.get_element(B.get_body_index());
+
+  return body_element.transform_to_world;
+}
+
+template <typename T>
+Isometry3<T> RigidBodyTree<T>::CalcFramePoseInWorldFrame(
+    const KinematicsCache<T>& cache, const RigidBodyFrame<T>& F) const {
+  cache.checkCachedKinematicsSettings(
+      false, false, "CalcFramePoseInWorldFrame");
+
+  const Isometry3<T>& X_BF = F.get_transform_to_body().template cast<T>();
+  const Isometry3<T> X_WB =
+      CalcBodyPoseInWorldFrame(cache, F.get_rigid_body());
+  return X_WB * X_BF;
+}
+
+template <typename T>
+Vector6<T> RigidBodyTree<T>::CalcBodyFrameSpatialVelocityInWorldFrame(
+    const KinematicsCache<T>& cache, const RigidBody<T>& B) const
+{
+  cache.checkCachedKinematicsSettings(
+      true, false, "CalcBodyFrameSpatialVelocityInWorldFrame");
+
+  const auto& body_element = cache.get_element(B.get_body_index());
+
+  // Plucker velocity vector of body B with respect to the world W, expressed in
+  // the world frame W.
+  const Vector6<T>& plucker_velocity_WB_W = body_element.twist_in_world;
+
+  // Position of the origin Bo of the body frame B, expressed in world frame.
+  const Vector3<T> p_Bo_W = body_element.transform_to_world.translation();
+
+  Vector6<T> spatial_velocity_WB_W = plucker_velocity_WB_W;
+
+  // Compute body linear velocity from the instantaneous velocity of a point
+  // located at the world's origin rigidly attached to B.
+  spatial_velocity_WB_W.template bottomRows<3>() =
+      plucker_velocity_WB_W.template bottomRows<3>() -
+          p_Bo_W.cross(plucker_velocity_WB_W.template topRows<3>());
+
+  return spatial_velocity_WB_W;
+}
+
+template <typename T>
+Vector6<T> RigidBodyTree<T>::CalcFrameSpatialVelocityInWorldFrame(
+    const KinematicsCache<T>& cache, const RigidBodyFrame<T>& F) const
+{
+  // Spatial velocity of body B with respect to the world W, expressed in
+  // the world frame W.
+  Vector6<T> V_WB_W =
+      CalcBodyFrameSpatialVelocityInWorldFrame(cache, F.get_rigid_body());
+
+  // Angular velocity of frame B with respect to W, expressed in W.
+  const auto& w_WB_W = V_WB_W.template topRows<3>();
+  // Linear velocity of frame B with respect to W, expressed in W.
+  const auto& v_WB_W = V_WB_W.template bottomRows<3>();
+
+  // Body pose measured and expressed in the world frame.
+  Isometry3<T> X_WB = CalcBodyPoseInWorldFrame(cache, F.get_rigid_body());
+  // Frame pose measured and expressedin the body frame B.
+  Isometry3<T> X_BF = F.get_transform_to_body().template cast<T>();
+  // Vector from Bo to Fo expressed in B.
+  Vector3<T> p_BF_B = X_BF.template cast<T>().translation();
+  // Vector from Bo to Fo expressed in W.
+  Vector3<T> p_BF_W = X_WB.linear() * p_BF_B;
+
+  // Spatial velocity of frame F with respect to the world frame W, expressed in
+  // the world frame.
+  Vector6<T> V_WF_W;
+  // Aliases to angular and linear components in the spatial velocity vector.
+  auto w_WF_W = V_WF_W.template topRows<3>();
+  auto v_WF_W = V_WF_W.template bottomRows<3>();
+
+  // Compute the spatial velocity of frame F.
+  w_WF_W = w_WB_W;
+  v_WF_W = v_WB_W + w_WB_W.cross(p_BF_W);
+
+  return V_WF_W;
 }
 
 template <typename T>

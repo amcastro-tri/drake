@@ -285,6 +285,44 @@ class RigidBodyTree {
       const std::set<int>& model_instance_id_set =
           default_model_instance_id_set) const;
 
+  /// Computes the pose of body `B` measured and expressed in the world frame
+  /// `W`.
+  /// @returns `X_WB` the pose of body `B` measured and expressed in the world
+  /// frame `W`.
+  drake::Isometry3<T> CalcBodyPoseInWorldFrame(
+      const KinematicsCache<T>& cache, const RigidBody<T>& B) const;
+
+  /// Computes the pose of the rigid body frame `F` measured and expressed in
+  /// the world frame `W`.
+  ///
+  /// Frame @p F does not necessarily need to be owned by this RigidBodyTree.
+  /// However, it is a prerequisit that the rigid body to which frame @p `F`
+  /// attaches to is owned by this RigidBodyTree.
+  ///
+  /// @returns `X_WF` the pose of frame F measured and expressed in the world
+  /// frame `W`.
+  drake::Isometry3<T> CalcFramePoseInWorldFrame(
+      const KinematicsCache<T>& cache, const RigidBodyFrame<T>& F) const;
+
+  /// Computes the spatial velocity `V_WB` of the body frame `B` with respect
+  /// to the world frame `W` and expresses it in the world frame.
+  /// @returns `V_WB_W` The spatial velocity of the body frame `B` with respect
+  /// to the world frame `W`, expressed in the world frame.
+  drake::Vector6<T> CalcBodyFrameSpatialVelocityInWorldFrame(
+      const KinematicsCache<T>& cache, const RigidBody<T>& B) const;
+
+  /// Computes the spatial velocity `V_WF` of the rigid body frame `F` with
+  /// respect to the world frame `W` and expresses it in the world frame.
+  ///
+  /// Frame @p F does not necessarily need to be owned by this RigidBodyTree.
+  /// However, it is a prerequisit that the rigid body to which frame @p `F`
+  /// attaches to is owned by this RigidBodyTree.
+  ///
+  /// @returns `V_WF_W` The spatial velocity of the rigid body frame `F` with
+  /// respect to the world frame `W`, expressed in the world frame.
+  drake::Vector6<T> CalcFrameSpatialVelocityInWorldFrame(
+      const KinematicsCache<T>& cache, const RigidBodyFrame<T>& F) const;
+
   /// Returns the pose of frame A in the world frame, where A is a frame
   /// rigidly attached to `body` with `local_offset`.
   template <typename Scalar>

@@ -30,14 +30,16 @@ public:                                     \
     NAME next() const {DRAKE_ASSERT(isValid()); return NAME(ix+1);}                             \
     NAME prev() const {DRAKE_ASSERT(isValid()); return NAME(ix-1);} /*might return -1*/         \
     \
-    NAME& operator+=(int i)  {DRAKE_ASSERT(isValid() ix+=i; return *this;}     \
-    NAME& operator-=(int i)  {DRAKE_ASSERT(isValid() ix-=i; return *this;}     \
+    NAME& operator+=(int i)  {DRAKE_ASSERT(isValid()) ix+=i; return *this;}     \
+    NAME& operator-=(int i)  {DRAKE_ASSERT(isValid()) ix-=i; return *this;}     \
     \
     static const NAME& Invalid() {static const NAME invalid; return invalid;}       \
     static bool isValid(int  i) {return i>=0;}                                      \
 };
 
-
+namespace drake {
 namespace multibody {
 DrakeMultibody_DEFINE_INDEX_TYPE(BodyIndex);
-};
+DrakeMultibody_DEFINE_INDEX_TYPE(JointIndex);
+}  // namespace multibody
+}  // namespace drake

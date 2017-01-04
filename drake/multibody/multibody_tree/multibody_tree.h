@@ -1,84 +1,21 @@
 #pragma once
 
-class RigidBodyNode {
- public:
- private:
+#include <memory>
+#include <vector>
 
-};
+#include "drake/common/drake_assert.h"
+#include "drake/common/eigen_types.h"
+#include "drake/multibody/multibody_tree/body.h"
+#include "drake/multibody/multibody_tree/multibody_tree_topology.h"
 
-class MultibodyTreeTopology {
- public:
+namespace drake {
+namespace multibody {
 
- private:
-
-};
-
-template <typename T>
-class RotationalInertia {
- public:
-  /// Create a principal axes rotational inertia matrix for wich off-diagonal
-  /// elements are zero.
-  RotationalInertia(const T& Ixx, const T& Iyy, const T& Izz);
-
-  /// Creates a general rotational inertia matrix with non-zero off-diagonal
-  /// elements.
-  RotationalInertia(const T& Ixx, const T& Iyy, const T& Izz,
-                    const T& Ixy, const T& Ixz, const T& Iyz);
-
- private:
-  // Inertia matrix about frame F's origin Fo expressed in frame F.
-  // Frame F is implicit here, RotationalInertia only keeps track of the inertia
-  // measures in this frame F. Users are responsible for keeping track of the
-  // frame in which a particular inertia is expressed in.
-  Matrix3<T> I_Fo_F_;
-};
-
-/// This class represents the mass properties of a body measured and expressed
-/// in the body's frame B. The center of mass is a vector from the orgin of the
-/// body's frame Bo. The rotational intertia is computed about Bo and expressed
-/// in B. This class only stores the mass property measures in the body frame B,
-/// the body frame B itself is implicit.
-template <typename T>
-class MassProperties {
- public:
-  /// Constructor from mass, center of mass and rotational inertia.
-  /// @param mass The mass of the bodyy.
-  /// @param com_B Body center of mass measured and expressed in B.
-  /// @param I_Bo_B Rotational inertia about B's origin Bo expressed in B.
-  MassProperties(const T& mass, const Vector3<T>& com_B,
-                 const RotationalInertia<T>& I_Bo_B);
- private:
-
-};
-
-// Forward declaration.
-template<typename T> MultibodyTree<T>;
-
-template <typename T>
-class Body {
-  /// Creates a new body with the provided mass properties and adds it to the
-  /// @p parent_tree.
-  static Body<T>* CreateBody(MultibodyTree<T>* parent_tree,
-                             const MassProperties<double>& mass_properties) {
-    DRAKE_ASSERT(parent_tree != nullptr);
-    auto body = std::make_unique<Body<T>>(mass_properties);
-    // Notice that here we could've passed more like a "topological" body only
-    // to set connectivities. Maybe a BodyNode?
-    return parent_tree_->AddBody(body);
-  }
-
- private:
-  // Constructs a body with default mass properties @p mass_properties.
-  Body(const MassProperties<double>& mass_properties) :
-      default_mass_properties_(mass_properties) {}
-
-  MultibodyTree<T>* parent_tree_{nullptr};
-  MassProperties<double> default_mass_properties_;
-};
+#if 0
 
 template <typename T>
 class Joint {
-
+ public:
   Joint(parent_tree, const Isometry3d& X_PF, const Isometry3d& X_BM) :
       parent_tree_(parent_tree), X_PF_(X_PF), X_BM_(X_BM) { }
 
@@ -168,30 +105,50 @@ class RevoluteJoint : public JointWithOptions<T, 1> {
   // Default joint axis expressed in the inboard frame F.
   Vector3<double> axis_F;
 };
+#endif
 
 template <typename T>
 class MultibodyTree {
  public:
   int get_num_bodies() const { return static_cast<int>(bodies_.size()); }
 
-  // How to hide this method from users?
-  Body<T>* AddBody(std::unique_ptr<Body<T>> body) {
-    body->set_id(get_num_bodies());
-    Body<T>* body_ptr = body.get();
-    bodies_.push_back(body);
-    return body_ptr;
-  }
+  /// Takes ownership of @p body and assigns a unique id to it.
+  /// @note
+  /// This method is called from within CreateBody(). It is not meant to be
+  /// called by end users.
+  Body<T>* AddBody(std::unique_ptr<Body<T>> body);
 
-  // How to hide this method from users?
+#if 0
+  /// Takes ownership of @p joint and assigns a unique id to it.
+  /// @note
+  /// This method is called from within CreateBody(). It is not meant to be
+  /// called by end users.
   template <typename JointType>
   JointType* AddJoint(std::unique_ptr<JointType> joint) {
+    DRAKE_DEMAND(body != nullptr);
+    InvalidateTopology();
     joint->set_id(get_num_joints());
     JointType* joint_ptr = joint.get();
     joints_.push_back(std::move(joint));
     return joint_ptr;
   }
+#endif
 
  private:
-  std::vector<std::unique_ptr<Body>> bodies_;
-  std::vector<std::unique_ptr<Joint>> joints_;
+  // Invalidates tree topology when it changes.
+  // See methods AddBody() and AddJoint().
+  void InvalidateTopology() {
+    //topology_.invalidate();
+  }
+
+  std::vector<std::unique_ptr<Body<T>>> bodies_;
+  //std::vector<std::unique_ptr<Joint>> joints_;
+  // Notice this member is not templated on <T>.
+  // It'd be nice to be able to simple copy topology_ on CloneTo<ScalarTo>()
+  // calls. That could be accomplished if topology_ is desribed in terms of
+  // indexes only.
+  //MultibodyTreeTopology topology_;
 };
+
+}  // namespace multibody
+}  // namespace drake

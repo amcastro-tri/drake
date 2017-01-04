@@ -1,0 +1,6 @@
+add_executable(multibody_tree_topology_test multibody_tree_topology_test.cc)
+#target_link_libraries(simple_continuous_time_system
+#  drakeSystemAnalysis)
+
+add_executable(double_pendulum double_pendulum.cc)
+target_link_libraries(double_pendulum drakeMultibodyTree)

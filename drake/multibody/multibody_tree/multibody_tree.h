@@ -1,0 +1,197 @@
+#pragma once
+
+class RigidBodyNode {
+ public:
+ private:
+
+};
+
+class MultibodyTreeTopology {
+ public:
+
+ private:
+
+};
+
+template <typename T>
+class RotationalInertia {
+ public:
+  /// Create a principal axes rotational inertia matrix for wich off-diagonal
+  /// elements are zero.
+  RotationalInertia(const T& Ixx, const T& Iyy, const T& Izz);
+
+  /// Creates a general rotational inertia matrix with non-zero off-diagonal
+  /// elements.
+  RotationalInertia(const T& Ixx, const T& Iyy, const T& Izz,
+                    const T& Ixy, const T& Ixz, const T& Iyz);
+
+ private:
+  // Inertia matrix about frame F's origin Fo expressed in frame F.
+  // Frame F is implicit here, RotationalInertia only keeps track of the inertia
+  // measures in this frame F. Users are responsible for keeping track of the
+  // frame in which a particular inertia is expressed in.
+  Matrix3<T> I_Fo_F_;
+};
+
+/// This class represents the mass properties of a body measured and expressed
+/// in the body's frame B. The center of mass is a vector from the orgin of the
+/// body's frame Bo. The rotational intertia is computed about Bo and expressed
+/// in B. This class only stores the mass property measures in the body frame B,
+/// the body frame B itself is implicit.
+template <typename T>
+class MassProperties {
+ public:
+  /// Constructor from mass, center of mass and rotational inertia.
+  /// @param mass The mass of the bodyy.
+  /// @param com_B Body center of mass measured and expressed in B.
+  /// @param I_Bo_B Rotational inertia about B's origin Bo expressed in B.
+  MassProperties(const T& mass, const Vector3<T>& com_B,
+                 const RotationalInertia<T>& I_Bo_B);
+ private:
+
+};
+
+// Forward declaration.
+template<typename T> MultibodyTree<T>;
+
+template <typename T>
+class Body {
+  /// Creates a new body with the provided mass properties and adds it to the
+  /// @p parent_tree.
+  static Body<T>* CreateBody(MultibodyTree<T>* parent_tree,
+                             const MassProperties<double>& mass_properties) {
+    DRAKE_ASSERT(parent_tree != nullptr);
+    auto body = std::make_unique<Body<T>>(mass_properties);
+    // Notice that here we could've passed more like a "topological" body only
+    // to set connectivities. Maybe a BodyNode?
+    return parent_tree_->AddBody(body);
+  }
+
+ private:
+  // Constructs a body with default mass properties @p mass_properties.
+  Body(const MassProperties<double>& mass_properties) :
+      default_mass_properties_(mass_properties) {}
+
+  MultibodyTree<T>* parent_tree_{nullptr};
+  MassProperties<double> default_mass_properties_;
+};
+
+template <typename T>
+class Joint {
+
+  Joint(parent_tree, const Isometry3d& X_PF, const Isometry3d& X_BM) :
+      parent_tree_(parent_tree), X_PF_(X_PF), X_BM_(X_BM) { }
+
+  virtual int get_num_dofs() const = 0;
+
+  const Body<T>& get_inboard_body() const {
+    DRAKE_ASSERT(parent_tree_ != nullptr &&
+        "Joint was not added to a MultibodyTree.");
+    return parent_tree_->get_joint_inboard_body(*this);
+  }
+
+  const Isometry3<T>& get_pose_in_parent() const { return X_PF; }
+  const Isometry3<T>& get_pose_in_child() const { return X_BM; }
+
+  /// Computes `qdot = N(q) * u` with `N(q)` the the kinematic coupling matrix.
+  /// `N(q)` can be cached in the @p context.
+  virtual void CalcQDot(
+      const Context<T>& context,
+      Eigen::Ref<const MatrixX<T>> u, Eigen::Ref<MatrixX<T>> qdot) const = 0;
+
+  /// Returns the transform `X_FM` from the outboard frame `M` to the inboard
+  /// frame `F`.
+  /// This method is an NVI to DoCalcOutboardFameToInboardFrameTranform() so
+  /// that valid cached entries do not need to be recomputed.
+  Isometry3<T>& CalcOutboardFameToInboardFrameTranform(
+      const Context<T>& context) {
+    /*
+    Cache<T>* cache = context.get_mutable_cache();
+    if (!cache->is_valid(my_ticket)) {
+      cache->get_mutable_entry(my_ticket).set_value(
+          DoCalcOutboardFametoInboardFrameTranform(context));
+    }
+    return cache->get_entry(my_ticket).value<Isometry3<T>>();
+    */
+    return DoCalcOutboardFameToInboardFrameTranform(context);
+  }
+
+  Isometry3<T>& DoCalcOutboardFameToInboardFrameTranform(
+      const Context<T>& context) = 0;
+
+ private:
+  MultibodyTree<T>* parent_tree_;
+  Isometry3<T> X_PF_;
+  Isometry3<T> X_BM_;
+};
+
+// Should we template on number of dof's to allow compiler optimizations?
+// See Simbody's RigidBodyNodeSpec.h
+template <typename T, int dofs>
+class JointWithOptions : public Joint<T> {
+ public:
+    int get_num_dofs() const { return dofs; }
+
+    /// Computes `qdot = N(q) * v, where `N(q)` is the kinematic coupling
+    /// matrix.
+    void CalcQDot(const Context<T>&,
+                  Eigen::Ref<const MatrixX<T>> u,
+                  Eigen::Ref<MatrixX<T>> qdot) const override {
+      qdot.segment<ndofs>() = u.segment<ndofs>(); // default says qdot=u
+    }
+};
+
+template <typename T>
+class RevoluteJoint : public JointWithOptions<T, 1> {
+ public:
+  static RevoluteJoint<T>* CreateJoint(
+      MultibodyTree<T>* parent_tree,
+      const Body<T>& parent_body, const Isometry3d& X_PF,
+      const Body<T>& child_body, const Isometry3d& X_BM,
+      const Vector3<double>& axis_F) : JointWithOptions<T, 1>(parent_tree, X_PF, X_BM) {
+    DRAKE_ASSERT(parent_tree != nullptr);
+    // QUESTION: what is the simplest shape you can give to this method so that
+    // you can simplify the job to users writing their own joints?
+    // Idea 1: rework parent joint constructor in initializer list.
+    // Idea 2: rework MBT::AddJoint method below.
+
+    auto joint = std::make_unique<RevoluteJoint<T>>(axis_F);
+    // Notice that here we could probably pass more like a "topological" joint
+    // just to set connectivities. Good idea? Maybe a JointNode?
+    return parent_tree_->AddJoint(joint, parent_body, child_body);
+  }
+
+ private:
+  // Creates a revolute joint with axis_F expressed in the inboard frame F.
+  RevoluteJoint(const Vector3<double> axis_F) { }
+
+  // Default joint axis expressed in the inboard frame F.
+  Vector3<double> axis_F;
+};
+
+template <typename T>
+class MultibodyTree {
+ public:
+  int get_num_bodies() const { return static_cast<int>(bodies_.size()); }
+
+  // How to hide this method from users?
+  Body<T>* AddBody(std::unique_ptr<Body<T>> body) {
+    body->set_id(get_num_bodies());
+    Body<T>* body_ptr = body.get();
+    bodies_.push_back(body);
+    return body_ptr;
+  }
+
+  // How to hide this method from users?
+  template <typename JointType>
+  JointType* AddJoint(std::unique_ptr<JointType> joint) {
+    joint->set_id(get_num_joints());
+    JointType* joint_ptr = joint.get();
+    joints_.push_back(std::move(joint));
+    return joint_ptr;
+  }
+
+ private:
+  std::vector<std::unique_ptr<Body>> bodies_;
+  std::vector<std::unique_ptr<Joint>> joints_;
+};

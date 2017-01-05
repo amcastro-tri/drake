@@ -21,6 +21,7 @@ Body<T>* MultibodyTree<T>::AddBody(std::unique_ptr<Body<T>> body) {
   InvalidateTopology();
   //body->set_id(get_num_bodies());
   Body<T>* body_ptr = body.get();
+  body_ptr->set_parent_tree(this);
   bodies_.push_back(std::move(body));
   return body_ptr;
 }

@@ -6,6 +6,7 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/body.h"
+#include "drake/multibody/multibody_tree/multibody_tree.h"
 
 namespace drake {
 namespace multibody {
@@ -13,20 +14,25 @@ namespace multibody {
 template <typename T>
 class Joint {
  public:
-  Joint(parent_tree, const Isometry3d& X_PF, const Isometry3d& X_BM) :
+  Joint(MultibodyTree<T>* parent_tree,
+        const Body<T>& parent_body, const Body<T>& child_body,
+        const Eigen::Isometry3d& X_PF, const Eigen::Isometry3d& X_BM) :
       parent_tree_(parent_tree), X_PF_(X_PF), X_BM_(X_BM) { }
 
   virtual int get_num_dofs() const = 0;
 
+#if 0
   const Body<T>& get_inboard_body() const {
     DRAKE_ASSERT(parent_tree_ != nullptr &&
         "Joint was not added to a MultibodyTree.");
     return parent_tree_->get_joint_inboard_body(*this);
   }
+#endif
 
-  const Isometry3<T>& get_pose_in_parent() const { return X_PF; }
-  const Isometry3<T>& get_pose_in_child() const { return X_BM; }
+  const Isometry3<T>& get_pose_in_parent() const { return X_PF_; }
+  const Isometry3<T>& get_pose_in_child() const { return X_BM_; }
 
+#if 0
   /// Computes `qdot = N(q) * u` with `N(q)` the the kinematic coupling matrix.
   /// `N(q)` can be cached in the @p context.
   virtual void CalcQDot(
@@ -52,8 +58,9 @@ class Joint {
 
   Isometry3<T>& DoCalcOutboardFameToInboardFrameTranform(
       const Context<T>& context) = 0;
+#endif
 
- private:
+ protected:
   MultibodyTree<T>* parent_tree_;
   Isometry3<T> X_PF_;
   Isometry3<T> X_BM_;
@@ -75,35 +82,47 @@ class JointWithOptions : public Joint<T> {
       qdot.segment<ndofs>() = u.segment<ndofs>(); // default says qdot=u
     }
 };
+#endif
 
 template <typename T>
-class RevoluteJoint : public JointWithOptions<T, 1> {
+class RevoluteJoint : public Joint<T> {
+  using Joint<T>::parent_tree_;
  public:
   static RevoluteJoint<T>* CreateJoint(
       MultibodyTree<T>* parent_tree,
-      const Body<T>& parent_body, const Isometry3d& X_PF,
-      const Body<T>& child_body, const Isometry3d& X_BM,
-      const Vector3<double>& axis_F) : JointWithOptions<T, 1>(parent_tree, X_PF, X_BM) {
+      const Body<T>& parent_body, const Body<T>& child_body,
+      const Eigen::Isometry3d& X_PF, const Eigen::Isometry3d& X_BM,
+      const Vector3<double>& axis_F) {
     DRAKE_ASSERT(parent_tree != nullptr);
     // QUESTION: what is the simplest shape you can give to this method so that
     // you can simplify the job to users writing their own joints?
     // Idea 1: rework parent joint constructor in initializer list.
     // Idea 2: rework MBT::AddJoint method below.
 
-    auto joint = std::make_unique<RevoluteJoint<T>>(axis_F);
+
     // Notice that here we could probably pass more like a "topological" joint
     // just to set connectivities. Good idea? Maybe a JointNode?
-    return parent_tree_->AddJoint(joint, parent_body, child_body);
+    // We cannot use make_unique here since the joint constructor is private.
+    return parent_tree->AddJoint(
+        std::unique_ptr<RevoluteJoint<T>>(
+            new RevoluteJoint(parent_tree, parent_body, child_body,
+                              X_PF, X_BM, axis_F)));
   }
+
+  int get_num_dofs() const final { return 1; }
 
  private:
   // Creates a revolute joint with axis_F expressed in the inboard frame F.
-  RevoluteJoint(const Vector3<double> axis_F) { }
+  RevoluteJoint(MultibodyTree<T>* parent_tree,
+                const Body<T>& parent_body, const Body<T>& child_body,
+                const Eigen::Isometry3d& X_PF, const Eigen::Isometry3d& X_BM,
+                const Vector3<double> axis_F) :
+      Joint<T>(parent_tree, parent_body, child_body, X_PF, X_BM),
+      axis_F_(axis_F) { }
 
   // Default joint axis expressed in the inboard frame F.
-  Vector3<double> axis_F;
+  Vector3<double> axis_F_;
 };
-#endif
 
 }  // namespace multibody
 }  // namespace drake

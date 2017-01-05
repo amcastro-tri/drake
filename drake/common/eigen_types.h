@@ -13,6 +13,8 @@
 
 #include "drake/common/constants.h"
 
+#include <iostream>
+
 namespace drake {
 
 /// A column vector of size 1 (that is, a scalar), templated on scalar type.

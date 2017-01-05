@@ -10,11 +10,20 @@
 namespace drake {
 namespace multibody {
 
+using Eigen::Isometry3d;
 using Eigen::Vector3d;
 
 using std::cout;
 using std::endl;
 using std::make_unique;
+
+template <typename T>
+std::ostream& operator<<(
+    std::ostream& o, const Isometry3<T>& X) {
+  return o
+      << " Translation = " << X.translation().transpose() << std::endl
+      << " Rotation = \n" << X.linear() << std::endl;
+}
 
 int DoMain() {
   const double Ix = 1.0;
@@ -50,29 +59,23 @@ int DoMain() {
   //    Can I make Body::CreateBody() a friend of MultibodyTree? should I?
   Body<double>* link2 = Body<double>::CreateBody(&model, mass_properties);
 
-  // Question, how to add visuals? collision geometries?
-  // Maybe:
-  // link1->add_visual(X_BG, Sphere(some_radius), drake::visuals::Red);
-  // link1->add_collision_(X_BC, Sphere(some_radius), drake::materials::Steel);
-  // However: Probably even better leave MBT not related at all with visuals,
-  // collisions. Place these in MultibodyWorldSystem instead? and figure out
-  // connections with GeometrySystem?
-  // Then MBT is purely math for dynamics.
-  //
-  // Where should contact forces computation go then? and contact Jacobians?
-
-  // Connect bodies with joints.
-  //RevoluteJoint<double> pin1 =
-   //   RevoluteJoint<double>::CreateJoint(&model, )
-
-  PRINT_VAR(model.get_num_bodies());
-
   PRINT_VAR(link1->get_default_mass_properties());
   PRINT_VAR(link2->get_default_mass_properties());
   PRINT_VAR(world_body.get_default_mass_properties());
-  
 
-  (void) link2;
+  // Connect bodies with joints.
+  Isometry3d X_PF = Isometry3d::Identity();
+  Isometry3d X_BM = Isometry3d::Identity();
+  Vector3d axis_F = Vector3d::UnitZ();
+  PRINT_VAR(X_PF);
+  RevoluteJoint<double>* pin1 =
+      RevoluteJoint<double>::CreateJoint(
+          &model, world_body, *link1, X_PF, X_BM, axis_F);
+
+  PRINT_VAR(model.get_num_bodies());
+  PRINT_VAR(model.get_num_joints());
+
+  (void) pin1;
 
 #if 0
   MultibodyTree<double> tree;

@@ -8,6 +8,7 @@ target_link_libraries(drakeMultibodyTree
 drake_install_libraries(drakeMultibodyTree)
 drake_install_headers(
   body.h
+  joint.h
   mass_properties.h
   multibody_indexes.h
   multibody_tree.h

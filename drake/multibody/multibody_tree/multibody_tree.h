@@ -110,13 +110,24 @@ class RevoluteJoint : public JointWithOptions<T, 1> {
 template <typename T>
 class MultibodyTree {
  public:
-  int get_num_bodies() const { return static_cast<int>(bodies_.size()); }
+
+  /// Creates a MultibodyTree containing only a *world* body (with unique BodyId
+  /// equal to 0).
+  MultibodyTree();
 
   /// Takes ownership of @p body and assigns a unique id to it.
   /// @note
   /// This method is called from within CreateBody(). It is not meant to be
   /// called by end users.
   Body<T>* AddBody(std::unique_ptr<Body<T>> body);
+
+  /// Returns the number of bodies in the MultibodyTree including including the
+  /// *world* body. Therefore the minimum number of bodies in a MultibodyTree to
+  /// which no other bodies have been added, is one.
+  int get_num_bodies() const { return static_cast<int>(bodies_.size()); }
+
+  /// Returns a constant reference to the *world* body.
+  const Body<T>& get_world_body() const { return *bodies_[0]; }
 
 #if 0
   /// Takes ownership of @p joint and assigns a unique id to it.

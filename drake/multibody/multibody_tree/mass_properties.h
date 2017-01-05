@@ -12,6 +12,16 @@ namespace multibody {
 template <typename T>
 class RotationalInertia {
  public:
+  /// Creates a principal rotational inertia with identical diagonal elements
+  /// equal to @p I and zero products of inertia.
+  /// As examples, consider the moments of inertia taken about their geometric
+  /// center for a sphere or a cube.
+  /// @see RotationalInertia::SolidSphere() and RotationalInertia::cube().
+  RotationalInertia(const T& I) {
+    I_Fo_F_ = Matrix3<T>::Zero();
+    I_Fo_F_.diagonal().setConstant(I);
+  }
+
   /// Create a principal axes rotational inertia matrix for wich off-diagonal
   /// elements are zero.
   RotationalInertia(const T& Ixx, const T& Iyy, const T& Izz) {
@@ -28,6 +38,42 @@ class RotationalInertia {
   Vector3<T> get_products() const {
     return Vector3<T>(
         I_Fo_F_(0,1), I_Fo_F_(0,2), I_Fo_F_(1,2));
+  }
+
+  /// Computes the rotational inertia for a unit-mass solid sphere of radius
+  /// @p r taken about its center.
+  static RotationalInertia SolidSphere(const T& r) {
+    return RotationalInertia(T(0.4) * r * r);
+  }
+
+  /// Computes the rotational inertia for a unit-mass hollow sphere consisting
+  /// of an infinitesimally thin shell of radius @p r. The rotational inertia is
+  /// taken about the center of the sphere.
+  static RotationalInertia HollowSphere(const T& r) {
+    return RotationalInertia(T(2)/T(3) * r * r);
+  }
+
+  /// Computes the rotational inertia for a unit-mass solid box taken about its
+  /// geometric center. If one length is zero the inertia corresponds to that of
+  /// a thin rectangular sheet. If two lengths are zero the inertia corresponds
+  /// to that of a thin rod in the remaining direction.
+  /// @param[in] Lx The length of the box edge in the principal x-axis.
+  /// @param[in] Ly The length of the box edge in the principal y-axis.
+  /// @param[in] Lz The length of the box edge in the principal z-axis.
+  static RotationalInertia SolidBox(const T& Lx, const T& Ly, const T& Lz) {
+    const T one_twelfth = T(1) / T(12);
+    const T Lx2 = Lx * Lx, Ly2 = Ly * Ly, Lz2 = Lz * Lz;
+    return RotationalInertia(
+        one_twelfth * (Ly2 + Lz2),
+        one_twelfth * (Lx2 + Lz2),
+        one_twelfth * (Lx2 + Ly2));
+  }
+
+  /// Computes the rotational inertia for a unit-mass solid cube (a box with
+  /// equal sized sides) taken about its geometric center.
+  /// @param[in] L The length of each of the cube's sides.
+  static RotationalInertia SolidCube(const T& L) {
+    return SolidBox(L, L, L);
   }
 
  private:
@@ -57,6 +103,15 @@ class MassProperties {
   const T& get_mass() const { return mass_; }
   const Vector3<T>& get_com() const { return com_B_; }
   const RotationalInertia<T>& get_rotational_inertia() const { return I_Bo_B_; }
+
+  /// Returns the MassProperties object for a body of infinite mass.
+  /// Center of mass and rotational inertia are meaningless.
+  static MassProperties<double> InfiniteMass() {
+    return MassProperties<double>(
+        Eigen::NumTraits<double>::infinity(),
+        Eigen::Vector3d::Zero(), RotationalInertia<double>(0.0));
+  }
+
  private:
   T mass_;
   // center of mass measured and expressed in B.

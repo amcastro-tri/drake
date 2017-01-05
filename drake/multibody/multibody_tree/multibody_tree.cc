@@ -1,7 +1,17 @@
 #include "multibody_tree.h"
 
+#include "drake/common/eigen_types.h"
+
 namespace drake {
 namespace multibody {
+
+using Eigen::Vector3d;
+
+template <typename T>
+MultibodyTree<T>::MultibodyTree() {
+  // The "world" body has infinite mass.
+  Body<double>::CreateBody(this, MassProperties<double>::InfiniteMass());
+}
 
 template <typename T>
 Body<T>* MultibodyTree<T>::AddBody(std::unique_ptr<Body<T>> body) {

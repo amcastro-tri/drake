@@ -47,8 +47,14 @@ int DoMain() {
   //   model.AddBody(std::move(link1));
   //
   // So you are better off doing this:
-  Body<double>* link1 = model.AddBody(
-      make_unique<Body<double>>(mass_properties));
+  //Body<double>* link1 = model.AddBody(
+  //    make_unique<Body<double>>(mass_properties));
+
+  auto link1 = model.AddBody(make_unique<Body<double>>(mass_properties));
+
+  // Another option is to imitate what DiagramBuilder::AddSystem() does so that
+  // users do not have to type unique_ptr's, with the API:
+  // auto link1 = model.AddBody<Body<double>>(mass_properties);
 
   // Method 2 of creation.
   // Disadvantage:
@@ -57,7 +63,7 @@ int DoMain() {
   //    all Body constructors are private.
   // Solution:
   //    Can I make Body::CreateBody() a friend of MultibodyTree? should I?
-  Body<double>* link2 = Body<double>::CreateBody(&model, mass_properties);
+  auto link2 = model.AddBody(make_unique<Body<double>>(mass_properties));
 
   PRINT_VAR(link1->get_default_mass_properties());
   PRINT_VAR(link2->get_default_mass_properties());
@@ -68,9 +74,9 @@ int DoMain() {
   Isometry3d X_BM = Isometry3d::Identity();
   Vector3d axis_F = Vector3d::UnitZ();
   PRINT_VAR(X_PF);
-  RevoluteJoint<double>* pin1 =
-      RevoluteJoint<double>::CreateJoint(
-          &model, world_body, *link1, X_PF, X_BM, axis_F);
+  auto pin1 = model.AddJoint(
+      make_unique<RevoluteJoint<double>>(
+          world_body, *link1, X_PF, X_BM, axis_F));
 
   PRINT_VAR(model.get_num_bodies());
   PRINT_VAR(model.get_num_joints());

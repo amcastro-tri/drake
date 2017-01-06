@@ -38,7 +38,7 @@ class MultibodyTree {
     InvalidateTopology();
     //body->set_id(get_num_bodies());
     JointType* joint_ptr = joint.get();
-    //joint_ptr->set_parent_tree(this);
+    joint_ptr->set_parent_tree(this);
     joints_.push_back(std::move(joint));
     return joint_ptr;
   }

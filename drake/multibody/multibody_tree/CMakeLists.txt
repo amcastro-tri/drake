@@ -1,5 +1,6 @@
 add_library_with_exports(LIB_NAME drakeMultibodyTree SOURCE_FILES
   body.cc
+  joint.cc
   multibody_tree.cc)
 
 target_link_libraries(drakeMultibodyTree

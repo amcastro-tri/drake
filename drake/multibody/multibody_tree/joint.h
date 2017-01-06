@@ -6,20 +6,29 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/body.h"
-#include "drake/multibody/multibody_tree/multibody_tree.h"
 
 namespace drake {
 namespace multibody {
 
+// Forward declaration.
+template<typename T> class MultibodyTree;
+
 template <typename T>
 class Joint {
  public:
-  Joint(MultibodyTree<T>* parent_tree,
-        const Body<T>& parent_body, const Body<T>& child_body,
+  /// Joint constructor. This API forces users writing their own joints having
+  /// to provides at least this minimum information.
+  Joint(const Body<T>& parent_body, const Body<T>& child_body,
         const Eigen::Isometry3d& X_PF, const Eigen::Isometry3d& X_BM) :
-      parent_tree_(parent_tree), X_PF_(X_PF), X_BM_(X_BM) { }
+      X_PF_(X_PF), X_BM_(X_BM) {}
 
   virtual int get_num_dofs() const = 0;
+
+  /// Sets the parent tree of this body.
+  /// This methods needs to be public so that MultibodyTree::AddJoint() can
+  /// access it. However it is dangerous to expose it to users.
+  /// Users should never call this method.
+  void set_parent_tree(MultibodyTree<T>* parent);
 
 #if 0
   const Body<T>& get_inboard_body() const {
@@ -61,9 +70,9 @@ class Joint {
 #endif
 
  protected:
-  MultibodyTree<T>* parent_tree_;
-  Isometry3<T> X_PF_;
-  Isometry3<T> X_BM_;
+  MultibodyTree<T>* parent_tree_{nullptr};
+  Isometry3<T> X_PF_{Isometry3<T>::Identity()};
+  Isometry3<T> X_BM_{Isometry3<T>::Identity()};
 };
 
 #if 0
@@ -88,37 +97,15 @@ template <typename T>
 class RevoluteJoint : public Joint<T> {
   using Joint<T>::parent_tree_;
  public:
-  static RevoluteJoint<T>* CreateJoint(
-      MultibodyTree<T>* parent_tree,
-      const Body<T>& parent_body, const Body<T>& child_body,
-      const Eigen::Isometry3d& X_PF, const Eigen::Isometry3d& X_BM,
-      const Vector3<double>& axis_F) {
-    DRAKE_ASSERT(parent_tree != nullptr);
-    // QUESTION: what is the simplest shape you can give to this method so that
-    // you can simplify the job to users writing their own joints?
-    // Idea 1: rework parent joint constructor in initializer list.
-    // Idea 2: rework MBT::AddJoint method below.
-
-
-    // Notice that here we could probably pass more like a "topological" joint
-    // just to set connectivities. Good idea? Maybe a JointNode?
-    // We cannot use make_unique here since the joint constructor is private.
-    return parent_tree->AddJoint(
-        std::unique_ptr<RevoluteJoint<T>>(
-            new RevoluteJoint(parent_tree, parent_body, child_body,
-                              X_PF, X_BM, axis_F)));
-  }
+  /// Creates a revolute joint with axis_F expressed in the inboard frame F.
+  RevoluteJoint(const Body<T>& parent_body, const Body<T>& child_body,
+                const Eigen::Isometry3d& X_PF, const Eigen::Isometry3d& X_BM,
+                const Vector3<double> axis_F) :
+      Joint<T>(parent_body, child_body, X_PF, X_BM), axis_F_(axis_F) {}
 
   int get_num_dofs() const final { return 1; }
 
  private:
-  // Creates a revolute joint with axis_F expressed in the inboard frame F.
-  RevoluteJoint(MultibodyTree<T>* parent_tree,
-                const Body<T>& parent_body, const Body<T>& child_body,
-                const Eigen::Isometry3d& X_PF, const Eigen::Isometry3d& X_BM,
-                const Vector3<double> axis_F) :
-      Joint<T>(parent_tree, parent_body, child_body, X_PF, X_BM),
-      axis_F_(axis_F) { }
 
   // Default joint axis expressed in the inboard frame F.
   Vector3<double> axis_F_;

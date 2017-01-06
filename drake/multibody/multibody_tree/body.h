@@ -43,15 +43,6 @@ class Body {
   }
 
  private:
-  // Constructs a body with default mass properties @p mass_properties.
-  // Bodies can only be created through Body::CreateBody().
-  // This constructor must be private since users can could try to instantiate a
-  // body on the stack that could go out of scope without telling the "parent"
-  // MBT. That is why this it is only used withing CreateBody() which always
-  // ensures new bodies are on the heap and actually do get owned by the MBT.
-  Body(MultibodyTree<T>* parent_tree,
-       const MassProperties<double>& mass_properties);
-
   MultibodyTree<T>* parent_tree_{nullptr};
   MassProperties<double> default_mass_properties_;
 };

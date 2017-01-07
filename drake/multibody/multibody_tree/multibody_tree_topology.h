@@ -33,6 +33,7 @@ struct JointTopology {
 struct MultibodyTreeTopology {
   std::vector<BodyTopology> bodies_;
   std::vector<JointTopology> joints_;
+  int num_levels;
 };
 
 }  // namespace multibody

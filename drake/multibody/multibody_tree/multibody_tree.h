@@ -1,5 +1,10 @@
 #pragma once
 
+// TODO: consider creating pure virtual interfaces for Body, Joint and
+// MultibodyTree all living in a single file as per discussion with Rico.
+// That avoids cyclic inclusions and, in principle, offers users (and
+// developers) a clear mental picture of the whole thing.
+
 #include <memory>
 #include <vector>
 
@@ -128,7 +133,14 @@ class MultibodyTree {
   // for the level-th level in the tree, body_levels_[level] contains the idexes
   // of all bodies in that level. level = 0 refers to the world body.
   std::vector<std::vector<BodyIndex>> body_levels_;
+
+  // TODO: remove this since it is in topology_.
+  // Keep body_levels_ since it's useful for fast traversals.
   std::vector<BodyTopology> body_topologies_;
+
+  // This struct contains all the topology information for this MultibodyTree.
+  // When cloning/transmogrifying this struct can be copied right away.
+  MultibodyTreeTopology topology_;
 
 };
 

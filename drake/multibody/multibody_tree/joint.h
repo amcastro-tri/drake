@@ -25,6 +25,9 @@ class Joint {
     // Bodies must have already been added to a multibody tree.
     DRAKE_DEMAND(parent_body.get_id().is_valid());
     DRAKE_DEMAND(child_body.get_id().is_valid());
+    DRAKE_DEMAND(parent_body.get_id() != child_body.get_id());
+    topology_.inboard_body = parent_body.get_id();
+    topology_.outboard_body = child_body.get_id();
   }
 
   virtual int get_num_dofs() const = 0;
@@ -34,6 +37,8 @@ class Joint {
   /// access it. However it is dangerous to expose it to users.
   /// Users should never call this method.
   void set_parent_tree(MultibodyTree<T>* parent);
+
+  const JointTopology& get_topology() const { return topology_;}
 
 #if 0
   const Body<T>& get_inboard_body() const {
@@ -75,9 +80,12 @@ class Joint {
 #endif
 
  protected:
-  MultibodyTree<T>* parent_tree_{nullptr};
   Isometry3<T> X_PF_{Isometry3<T>::Identity()};
   Isometry3<T> X_BM_{Isometry3<T>::Identity()};
+
+  // Joint's topology.
+  MultibodyTree<T>* parent_tree_{nullptr};
+  JointTopology topology_;
 };
 
 #if 0

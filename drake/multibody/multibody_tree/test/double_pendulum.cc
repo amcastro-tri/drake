@@ -70,18 +70,35 @@ int DoMain() {
   PRINT_VAR(world_body.get_default_mass_properties());
 
   // Connect bodies with joints.
-  Isometry3d X_PF = Isometry3d::Identity();
-  Isometry3d X_BM = Isometry3d::Identity();
+  Isometry3d X_PF, X_BM;
   Vector3d axis_F = Vector3d::UnitZ();
   PRINT_VAR(X_PF);
+  X_PF = Isometry3d::Identity();
+  X_BM = Isometry3d::Identity();
+  X_BM.translation() = Vector3d(0.0, 0.5, 0.0);
   auto pin1 = model.AddJoint(
       make_unique<RevoluteJoint<double>>(
           world_body, *link1, X_PF, X_BM, axis_F));
 
+  X_PF = Isometry3d::Identity();
+  X_PF.translation() = Vector3d(0.0, -0.5, 0.0);
+  X_BM = Isometry3d::Identity();
+  X_BM.translation() = Vector3d(0.0, 0.5, 0.0);
+  auto pin2 = model.AddJoint(
+      make_unique<RevoluteJoint<double>>(
+          *link1, *link2, X_PF, X_BM, axis_F));
+
   PRINT_VAR(model.get_num_bodies());
   PRINT_VAR(model.get_num_joints());
 
+  model.Compile();
+  //unique_ptr<Context> context = CreateDefaultContext();
+  //pin1->set_angle(context, M_PI / 6.0);
+  //pin1->set_angular_velocity(context, M_PI / 6.0);
+  //model.PrintTopology(std::cout);
+
   (void) pin1;
+  (void) pin2;
 
 #if 0
   MultibodyTree<double> tree;

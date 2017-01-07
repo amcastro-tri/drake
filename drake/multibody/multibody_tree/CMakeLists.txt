@@ -13,6 +13,7 @@ drake_install_headers(
   mass_properties.h
   multibody_indexes.h
   multibody_tree.h
+  multibody_tree_cache.h
   multibody_tree_topology.h)
 
 drake_install_pkg_config_file(drake-multibodytree

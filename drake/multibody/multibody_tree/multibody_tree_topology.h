@@ -10,6 +10,7 @@ namespace multibody {
 struct MultibodyTreeTopology;
 
 struct BodyTopology {
+  BodyIndex id;
   int level_;
   BodyIndex parent_body_;
   std::vector<BodyIndex> child_bodies_;

@@ -55,6 +55,8 @@ class MultibodyTree {
 
   Body<T>& get_mutable_body(BodyIndex body_id) const;
 
+  const Joint<T>& get_joint(JointIndex joint_id) const;
+
   const Body<T>& get_body_inboard_body(BodyIndex body_id) const;
 
   /// This method must be called after all elements in the tree (joints, bodies,
@@ -64,6 +66,10 @@ class MultibodyTree {
   /// Sizes needed to allocate Context and Cache entries are determined with
   /// this call.
   void Compile();
+
+  /// Prints the topology of this multibody tree to standard output.
+  /// Useful for debugging.
+  void PrintTopology() const;
 
   /// Creates a default context allocated with AllocateContext() and initialized
   /// by SetDefaults().
@@ -115,10 +121,14 @@ class MultibodyTree {
   // Topology cache: This is all the information needed regarding the
   // connectivity of the system that allows to perform efficient traversals for
   // multibody algorithms.
+  // Maybe place these in a MultibodyTopology struct. In principle that struct
+  // is so simple (only composed by indexes) that we could just simply copy it
+  // when cloning or transmogrifying a MultibodyTree.
 
   // for the level-th level in the tree, body_levels_[level] contains the idexes
   // of all bodies in that level. level = 0 refers to the world body.
   std::vector<std::vector<BodyIndex>> body_levels_;
+  std::vector<BodyTopology> body_topologies_;
 
 };
 

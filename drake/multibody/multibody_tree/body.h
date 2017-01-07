@@ -21,6 +21,9 @@ class Body {
   // Attorney-Client Idiom to allow MultibodyTree<T> to modify private topology
   // information in Body<T>.
   // see: http://stackoverflow.com/questions/3217390/clean-c-granular-friend-equivalent-answer-attorney-client-idiom/
+  // This class needs to be public so that its friends methods can access it
+  // from within Body. However, even if public, its only useful to its friend
+  // methods and therefore it's safe to have it here.
   class TopologyAccess;
 
   // Option 1 for creation: create a unique_ptr to a body with a given
@@ -75,6 +78,9 @@ class Body<T>::TopologyAccess {
   inline static void set_id(Body<T>* b, BodyIndex id) { b->set_id(id); }
   inline static void set_parent_tree(Body<T>* b, MultibodyTree<T>* p) {
     b->set_parent_tree(p);
+  }
+  inline static void set_topology(Body<T>* b, const BodyTopology& t) {
+    b->set_topology(t);
   }
   //inline static void set_topology(Body<T>* b, const BodyTopology& t) {
   //   b->set_topology(t);

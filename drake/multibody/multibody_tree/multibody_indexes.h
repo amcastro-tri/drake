@@ -5,8 +5,8 @@
 #define DrakeMultibody_DEFINE_INDEX_TYPE(NAME)   \
 class NAME {                         \
     int ix;                                 \
-public:                                     \
     static const int InvalidIndex{-1111111111};  \
+public:                                     \
     NAME() : ix(InvalidIndex) { }       \
     explicit NAME(int i) : ix(i)      {DRAKE_ASSERT(i>=0 || i==InvalidIndex);} \
     operator int() const {return ix;}               \

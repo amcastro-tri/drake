@@ -92,6 +92,7 @@ int DoMain() {
   PRINT_VAR(model.get_num_joints());
 
   model.Compile();
+  model.PrintTopology();
   //unique_ptr<Context> context = CreateDefaultContext();
   //pin1->set_angle(context, M_PI / 6.0);
   //pin1->set_angular_velocity(context, M_PI / 6.0);

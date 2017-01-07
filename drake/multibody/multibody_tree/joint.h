@@ -6,6 +6,7 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/body.h"
+#include "drake/multibody/multibody_tree/multibody_indexes.h"
 
 namespace drake {
 namespace multibody {
@@ -20,7 +21,11 @@ class Joint {
   /// to provides at least this minimum information.
   Joint(const Body<T>& parent_body, const Body<T>& child_body,
         const Eigen::Isometry3d& X_PF, const Eigen::Isometry3d& X_BM) :
-      X_PF_(X_PF), X_BM_(X_BM) {}
+      X_PF_(X_PF), X_BM_(X_BM) {
+    // Bodies must have already been added to a multibody tree.
+    DRAKE_DEMAND(parent_body.get_id().is_valid());
+    DRAKE_DEMAND(child_body.get_id().is_valid());
+  }
 
   virtual int get_num_dofs() const = 0;
 

@@ -25,6 +25,18 @@ void Body<T>::set_parent_tree(MultibodyTree<T>* parent) {
   parent_tree_ = parent;
 }
 
+template <typename T>
+const Body<T>& Body<T>::get_inboard_body() const {
+  return parent_tree_->get_body_inboard_body(get_id());
+  // or ... ?
+  // return parent_tree_->get_body(topology_.parent_body_);
+}
+
+template <typename T>
+BodyIndex Body<T>::get_id() const {
+  return topology_.id;
+}
+
 // Explicitly instantiates on the most common scalar types.
 template class Body<double>;
 

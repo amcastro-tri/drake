@@ -34,6 +34,11 @@ struct MultibodyTreeTopology {
   std::vector<BodyTopology> bodies_;
   std::vector<JointTopology> joints_;
   int num_levels;
+  bool is_valid{false};
+  /// Topology is invalidated when bodies or joints are added to the tree.
+  /// It gets validated by MultibodyTree::Compile().
+  void invalidate() { is_valid = false; }
+  void validate() { is_valid = true; }
 };
 
 }  // namespace multibody

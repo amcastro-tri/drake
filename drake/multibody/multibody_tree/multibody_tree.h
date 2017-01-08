@@ -39,14 +39,15 @@ class MultibodyTree {
   template <class JointType>
   JointType* AddJoint(std::unique_ptr<JointType> joint) {
     DRAKE_DEMAND(joint != nullptr);
-    // Call similar to invalidateSubsystemTopologyCache() in Simbody.
-    // Notify that the topology of the MultibodyTree changed.
     InvalidateTopology();
-    //body->set_id(get_num_bodies());
-    JointType* joint_ptr = joint.get();
-    joint_ptr->set_parent_tree(this);
+    JointType* raw_joint_ptr = joint.get();
+    // Access private joint members through an attorney-client idiom.
+    // Joint<T>::TopologyAccess::set_parent_tree(raw_joint_ptr, this);
+    // Joint<T>::TopologyAccess::set_id(
+    //     raw_joint_ptr, JointIndex(get_num_joints()));
+    raw_joint_ptr->set_parent_tree(this);
     joints_.push_back(std::move(joint));
-    return joint_ptr;
+    return raw_joint_ptr;
   }
 
   /// Returns the number of bodies in the MultibodyTree including including the
@@ -89,39 +90,17 @@ class MultibodyTree {
   /// Returns a constant reference to the *world* body.
   const Body<T>& get_world_body() const { return *bodies_[0]; }
 
-#if 0
-  /// Takes ownership of @p joint and assigns a unique id to it.
-  /// @note
-  /// This method is called from within CreateBody(). It is not meant to be
-  /// called by end users.
-  template <typename JointType>
-  JointType* AddJoint(std::unique_ptr<JointType> joint) {
-    DRAKE_DEMAND(body != nullptr);
-    InvalidateTopology();
-    joint->set_id(get_num_joints());
-    JointType* joint_ptr = joint.get();
-    joints_.push_back(std::move(joint));
-    return joint_ptr;
-  }
-#endif
-
  private:
   // Invalidates tree topology when it changes.
   // See methods AddBody() and AddJoint().
   void InvalidateTopology() {
-    //topology_.invalidate();
+    topology_.invalidate();
   }
 
   void CompileTopology();
 
   std::vector<std::unique_ptr<Body<T>>> bodies_;
   std::vector<std::unique_ptr<Joint<T>>> joints_;
-  //std::vector<std::unique_ptr<Joint>> joints_;
-  // Notice this member is not templated on <T>.
-  // It'd be nice to be able to simple copy topology_ on CloneTo<ScalarTo>()
-  // calls. That could be accomplished if topology_ is desribed in terms of
-  // indexes only.
-  //MultibodyTreeTopology topology_;
 
   // Topology cache: This is all the information needed regarding the
   // connectivity of the system that allows to perform efficient traversals for
@@ -130,13 +109,9 @@ class MultibodyTree {
   // is so simple (only composed by indexes) that we could just simply copy it
   // when cloning or transmogrifying a MultibodyTree.
 
-  // for the level-th level in the tree, body_levels_[level] contains the idexes
-  // of all bodies in that level. level = 0 refers to the world body.
+  // for the level-th level in the tree, body_levels_[level] contains the
+  // indexes of all bodies in that level. level = 0 refers to the world body.
   std::vector<std::vector<BodyIndex>> body_levels_;
-
-  // TODO: remove this since it is in topology_.
-  // Keep body_levels_ since it's useful for fast traversals.
-  std::vector<BodyTopology> body_topologies_;
 
   // This struct contains all the topology information for this MultibodyTree.
   // When cloning/transmogrifying this struct can be copied right away.

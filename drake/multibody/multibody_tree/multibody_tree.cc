@@ -21,8 +21,6 @@ MultibodyTree<T>::MultibodyTree() {
 template <typename T>
 Body<T>* MultibodyTree<T>::AddBody(std::unique_ptr<Body<T>> body) {
   DRAKE_DEMAND(body != nullptr);
-  // Call similar to invalidateSubsystemTopologyCache() in Simbody.
-  // Notify that the topology of the MultibodyTree changed.
   InvalidateTopology();
   Body<T>* body_ptr = body.get();
   // Access private body members through an attorney-client idiom.
@@ -34,15 +32,17 @@ Body<T>* MultibodyTree<T>::AddBody(std::unique_ptr<Body<T>> body) {
 
 template <typename T>
 void MultibodyTree<T>::CompileTopology() {
-  //if (topology_.is_valid) {
-  //  throw std::runtime_error(
-  //      "Attempting to compile and already compiled topology");
-  //}
+  if (topology_.is_valid) {
+    throw std::runtime_error(
+        "Attempting to compile and already compiled topology");
+  }
+
+  auto& body_topologies = topology_.bodies_;
 
   // Resize body topologies, assign id.
-  body_topologies_.resize(get_num_bodies());
+  body_topologies.resize(get_num_bodies());
   for (BodyIndex ibody(0); ibody < get_num_bodies(); ++ibody) {
-    body_topologies_[ibody].id = ibody;
+    body_topologies[ibody].id = ibody;
   }
 
   // Create parent/child connections.
@@ -53,17 +53,17 @@ void MultibodyTree<T>::CompileTopology() {
     BodyIndex inbody = joint_topology.inboard_body;
     BodyIndex outbody = joint_topology.outboard_body;
 
-    if (body_topologies_[outbody].parent_body.is_valid()) {
+    if (body_topologies[outbody].parent_body.is_valid()) {
       // TODO: come up with a more verbose error message.
       throw std::runtime_error("Attempting to assign parent body twice");
     }
-    body_topologies_[outbody].parent_body = inbody;
+    body_topologies[outbody].parent_body = inbody;
 
-    if (body_topologies_[inbody].has_child(outbody)) {
+    if (body_topologies[inbody].has_child(outbody)) {
       // TODO: come up with a more verbose error message.
       throw std::runtime_error("Attempting to add outboard body twice");
     }
-    body_topologies_[inbody].child_bodies.push_back(outbody);
+    body_topologies[inbody].child_bodies.push_back(outbody);
   }
 
   // Compute body levels in the tree. Root is the zero level.
@@ -77,14 +77,14 @@ void MultibodyTree<T>::CompileTopology() {
     // Computes level.
     int level = 0;  // level = 0 for the world body.
     if (current != 0) {  // Not the world body.
-      BodyIndex parent = body_topologies_[current].parent_body;
-      level = body_topologies_[parent].level + 1;
+      BodyIndex parent = body_topologies[current].parent_body;
+      level = body_topologies[parent].level + 1;
     }
-    body_topologies_[current].level = level;
+    body_topologies[current].level = level;
     num_levels = std::max(num_levels, level + 1);
 
     // Pushes children to the back of the queue and pops current.
-    for (BodyIndex child: body_topologies_[current].child_bodies) {
+    for (BodyIndex child: body_topologies[current].child_bodies) {
       queue.push(child);  // Pushes at the back.
     }
     queue.pop();  // Pops front element.
@@ -92,7 +92,7 @@ void MultibodyTree<T>::CompileTopology() {
   topology_.num_levels = num_levels;
 
   // Mark this tree's topology as valid.
-  //topology_.is_valid = true;
+  topology_.validate();
 }
 
 template <typename T>
@@ -103,31 +103,35 @@ void MultibodyTree<T>::Compile() {
   // Compute MultibodyTree<T>::topology_
   CompileTopology();
 
+  auto& body_topologies = topology_.bodies_;
+
   // Updates each body local copy of the topology (only this method is granted
   // access to body's internals).
   for (BodyIndex ibody(0); ibody < get_num_bodies(); ++ibody) {
     // Access private body members through an attorney-client idiom.
     Body<T>::TopologyAccess::set_topology(
-        bodies_[ibody].get(), body_topologies_[ibody]);
+        bodies_[ibody].get(), body_topologies[ibody]);
   }
 
   // Now that levels are computed by CompileTopology(), create a list of bodies
   // ordered by level for fast traversals.
   body_levels_.resize(topology_.num_levels);
   for (BodyIndex ibody(0); ibody < get_num_bodies(); ++ibody) {
-    const int level = body_topologies_[ibody].level;
+    const int level = body_topologies[ibody].level;
     body_levels_[level].push_back(ibody);
   }
 }
 
 template <typename T>
 void MultibodyTree<T>::PrintTopology() const {
+  auto& body_topologies = topology_.bodies_;
+
   for (BodyIndex ibody(0); ibody < get_num_bodies(); ++ibody) {
     PRINT_VAR(ibody);
-    PRINT_VAR(body_topologies_[ibody].level);
-    PRINT_VAR(body_topologies_[ibody].parent_body);
-    for (BodyIndex child: body_topologies_[ibody].child_bodies) {
-      PRINT_VAR(body_topologies_[child].id);
+    PRINT_VAR(body_topologies[ibody].level);
+    PRINT_VAR(body_topologies[ibody].parent_body);
+    for (BodyIndex child: body_topologies[ibody].child_bodies) {
+      PRINT_VAR(body_topologies[child].id);
     }
   }
 

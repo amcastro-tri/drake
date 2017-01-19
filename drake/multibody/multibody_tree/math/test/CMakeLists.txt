@@ -1,0 +1,2 @@
+drake_add_cc_test(small_vectors_test)
+target_link_libraries(small_vectors_test Eigen3::Eigen drakeCommon)

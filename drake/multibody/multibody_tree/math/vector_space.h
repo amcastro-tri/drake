@@ -25,6 +25,7 @@ struct VectorSpace<Vector3<T>> {
   typedef T ScalarType;
   typedef Vector3<T> Spin;  // Type of the angular quantities.
   typedef Vector3<T> Vec;  // Type of linear quantities.
+  typedef SpatialVector<Vec> SpatialVec;
 };
 
 // Specialization to Vector2
@@ -53,6 +54,7 @@ struct VectorSpace<Eigen::Matrix<T, 2, 1, Options>> {
   typedef T ScalarType;
   typedef Eigen::Matrix<T, 1, 1, Options> Spin;
   typedef Eigen::Matrix<T, 2, 1, Options> Vec;
+  typedef SpatialVector<Vec> SpatialVec;
 };
 
 template <typename T> using Spin3 = typename VectorSpace<Vector3<T>>::Spin;

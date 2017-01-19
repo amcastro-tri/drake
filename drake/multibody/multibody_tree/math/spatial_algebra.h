@@ -78,25 +78,20 @@ struct traits<SpatialVector<V>> {
 };
 }
 
-// Base generic SpatialVector with common functionality to both 2D and 3D.
-template <class SpatialVector>
-class SpatialVectorBase {
+
+template <typename T>
+class SpatialVector {
  public:
-  typedef typename internal::traits<SpatialVector>::Vec V;
   enum {
-    kNumDimensions = VectorSpace<V>::kNumDimensions,
-    kSpatialVectorSize = VectorSpace<V>::kSpatialVectorSize,
-    kSpatialVectorAngularSize = VectorSpace<V>::kSpatialVectorAngularSize,
-    kSpatialVectorLinearSize = VectorSpace<V>::kSpatialVectorLinearSize
+    kSpatialVectorSize = 6,
+    kSpatialVectorAngularSize = 3,
+    kSpatialVectorLinearSize = 3
   };
-  typedef typename VectorSpace<V>::ScalarType T;
-  typedef typename VectorSpace<V>::Spin Spin;  // Type of the angular component.
-  typedef typename VectorSpace<V>::Vec Vec;  // Type of the linear component.
   typedef Eigen::Matrix<T, kSpatialVectorSize, 1> CoeffsEigenType;
 
-  SpatialVectorBase() {}
+  SpatialVector() {}
 
-  SpatialVectorBase(const Spin& w, const Vec& v) {
+  SpatialVector(const Vector3<T>& w, const Vector3<T>& v) {
     V_ << w, v;
   }
 
@@ -109,93 +104,37 @@ class SpatialVectorBase {
   T& operator[](int i) { return V_[i];}
   const T& operator[](int i) const { return V_[i];}
 
-  const Spin& angular() const {
-    return *reinterpret_cast<const Spin*>(V_.data());
+  const Vector3<T>& angular() const {
+    return *reinterpret_cast<const Vector3<T>*>(V_.data());
   }
 
-  Spin& angular() {
-    return *reinterpret_cast<Spin*>(V_.data());
+  Vector3<T>& angular() {
+    return *reinterpret_cast<Vector3<T>*>(V_.data());
   }
 
-  const Vec& linear() const {
-    return *reinterpret_cast<const Vec*>(V_.data() + kSpatialVectorAngularSize);
-    //return *reinterpret_cast<const Vec*>(&V_[kSpatialVectorAngularSize]);
-    //return *(new (V_.data()+kSpatialVectorAngularSize) Vec());
+  const Vector3<T>& linear() const {
+    return *reinterpret_cast<const Vector3<T>*>(
+        V_.data() + kSpatialVectorAngularSize);
   }
 
-  Vec& linear() {
-    return *reinterpret_cast<Vec*>(V_.data() + kSpatialVectorAngularSize);
-    //return *reinterpret_cast<Vec*>(&V_[kSpatialVectorAngularSize]);
-    //return *(new (V_.data()+kSpatialVectorAngularSize) Vec());
+  Vector3<T>& linear() {
+    return *reinterpret_cast<Vector3<T>*>(
+        V_.data() + kSpatialVectorAngularSize);
   }
 
- protected:
+ private:
   CoeffsEigenType V_;
 };
 
-template <class Vec> inline
-std::ostream& operator<<(std::ostream& o, const SpatialVector<Vec>& V) {
+template <typename T> inline
+std::ostream& operator<<(std::ostream& o, const SpatialVector<T>& V) {
   o << "[" << V[0];
   for(int i = 1; i < V.size(); ++i) o << ", " << V[i];
   o << "]^T";  // The "transpose" symbol.
   return o;
 }
 
-// General implementation.
-template <class V>
-class SpatialVector :
-    public SpatialVectorBase<SpatialVector<V>> {
- public:
-  typedef SpatialVectorBase<SpatialVector<V>> Base;
-  typedef typename VectorSpace<V>::ScalarType T;
-  typedef typename VectorSpace<V>::Spin Spin;  // Type of the angular component.
-  typedef typename VectorSpace<V>::Vec Vec;  // Type of the linear component.
-
-  SpatialVector() : Base() {}
-
-  SpatialVector(const Spin& w, const Vec& v) : Base(w, v) {}
-};
-
-// Specialization for 2D.
-template <typename T>
-class SpatialVector<Vector2<T>> :
-    public SpatialVectorBase<SpatialVector<Vector2<T>>> {
- public:
-  typedef Vector2<T> V;
-  enum {
-    kNumDimensions = VectorSpace<V>::kNumDimensions,
-    kSpatialVectorSize = VectorSpace<V>::kSpatialVectorSize,
-    kSpatialVectorAngularSize = VectorSpace<V>::kSpatialVectorAngularSize,
-    kSpatialVectorLinearSize = VectorSpace<V>::kSpatialVectorLinearSize
-  };
-  typedef SpatialVectorBase<SpatialVector<Vector2<T>>> Base;
-  typedef typename VectorSpace<V>::Spin Spin;
-  typedef typename VectorSpace<V>::Vec Vec;
-  typedef Eigen::Matrix<T, 2, 1, Eigen::DontAlign> NonAlignedVec;
-
-  SpatialVector() : Base() {}
-
-  SpatialVector(const Spin& w, const Vec& v) : Base(w, v) {}
-
-  // These accessors overwrite the default implementation in SpatialVectorBase.
-  // They are made to return non-aligned 2D vectors since it was found that
-  // when doing:
-  //   std::cout << V_XY.linear().transpose();
-  // a segfault occurred.
-  const NonAlignedVec& linear() const {
-    return *reinterpret_cast<const NonAlignedVec*>(
-        V_.data() + kSpatialVectorAngularSize);
-  }
-
-  NonAlignedVec& linear() {
-    return *reinterpret_cast<NonAlignedVec*>(
-        V_.data() + kSpatialVectorAngularSize);
-  }
-
- private:
-  using Base::V_;
-};
-
+#if 0
 // Forward declaration of the ShiftOperator's transpose.
 template <class V> class ShiftOperatorTranspose;
 
@@ -296,6 +235,7 @@ inline SpatialVector<V> operator*(
   return ShiftOperatorTranspose<V>::ShiftSpatialVelocity(
       V_FX, phiT_XY_F.offset_XoYo_F());
 }
+#endif
 
 }  // math
 }  // namespace multibody

@@ -61,18 +61,6 @@ RowVector2<T> CrossProductMatrix(const Vector2<T>& v) {
   return RowVector2<T>(-v.y(), v.x());
 }
 
-// Spin's in 2D are simply a scalar quantity. This operator overload allows to
-// add them with scalars.
-template<typename T>
-Spin2<T> operator+(const Spin2<T>& spin, const T& scalar) {
-  return Spin2<T>(spin.x() + scalar);
-}
-
-template<typename T>
-Spin2<T> operator+(const T& scalar, const Spin2<T>& spin) {
-  return spin + scalar;
-}
-
 }  // namespace math
 }  // namespace multibody
 }  // namespace drake

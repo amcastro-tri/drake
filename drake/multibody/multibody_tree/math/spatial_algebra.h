@@ -134,21 +134,16 @@ std::ostream& operator<<(std::ostream& o, const SpatialVector<T>& V) {
   return o;
 }
 
-#if 0
 // Forward declaration of the ShiftOperator's transpose.
-template <class V> class ShiftOperatorTranspose;
+template <typename T> class ShiftOperatorTranspose;
 
 /// A class representing the Rigid Body Transformation Matrix as defined in
 /// Section 1.4 of A Jain's book.
 /// Given a pair of frames `x` and `y`
 ///
-/// @tparam V The vector type representing the vector space, which must be a
-/// valid Eigen vector of either 3 or 2 dimensions.
-template <class V>
+/// @tparam T
+template <typename T>
 class ShiftOperator {
-  typedef typename VectorSpace<V>::ScalarType T;
-  typedef typename VectorSpace<V>::Spin Spin;
-  typedef typename VectorSpace<V>::Vec Vec;
  public:
   /// Constructs a rigid body transformation operator between a pair of frames
   /// `X` and `Y` given a vector @p l from `Xo` to `Yo`. For a vector @p l_F
@@ -156,47 +151,28 @@ class ShiftOperator {
   /// vectors expressed in the same frame `F`.
   /// @param[in] l_F Vector from `Xo` to `Yo` expressed in an implicit
   /// frame `F`.
-  ShiftOperator(const Vec offset_XoYo_F) : offset_XoYo_F_(offset_XoYo_F) {}
+  ShiftOperator(const Vector3<T> offset_XoYo_F) :
+      offset_XoYo_F_(offset_XoYo_F) {}
 
   // Returns the vector from the origin of frame X to the origin of frame Y
   // expressed in the implicit frame F.
-  const Vec& offset_XoYo_F() const { return offset_XoYo_F_; }
+  const Vector3<T>& offset_XoYo_F() const { return offset_XoYo_F_; }
 
-  /// Given the spatial velocity `V_AB` of a frame `B` with respect to a frame `A`,
-  /// compute the spatial velocity of a frame `Q` rigidly moving with `B` but
-  /// offset by vector `r_BA`.
-  /// @param[in] V_AB Spatial velocity of frame `B` with respect to frame `A`,
-  /// expressed in frame `A`.
-  /// @param[in] r_BQ_A Shift vector from `Bo` to `Qo`, expressed in frame `A`.
-  /// @returns V_AQ_A The spatial velocity of frame `Q` with respect to `A` and
-  /// expressed in frame `A`.
-  static SpatialVector<V> ShiftSpatialVelocity(
-      const SpatialVector<V>& V_AB, const Vec& r_BQ_A) {
-    return SpatialVector<V>(
-        /* Same angular velocity. */
-        V_AB.angular(),
-        /* Linear velocity v_AQ = v_AB + w_AB.cross(r_BQ). */
-        V_AB.linear() + cross(V_AB.angular(), r_BQ_A));
-  }
-
-  ShiftOperatorTranspose<V> transpose() const;
+  ShiftOperatorTranspose<T> transpose() const;
 
  private:
-  Vec offset_XoYo_F_;
+  Vector3<T> offset_XoYo_F_;
 };
 
-template <class V>
+template <typename T>
 class ShiftOperatorTranspose {
-  typedef typename VectorSpace<V>::ScalarType T;
-  typedef typename VectorSpace<V>::Spin Spin;
-  typedef typename VectorSpace<V>::Vec Vec;
 public:
-  explicit ShiftOperatorTranspose(const ShiftOperator<V>& phi_XY_F) :
+  explicit ShiftOperatorTranspose(const ShiftOperator<T>& phi_XY_F) :
       phi_XY_F_(phi_XY_F) {}
 
   // Returns the vector from the origin of frame X to the origin of frame Y
   // expressed in the implicit frame F.
-  const Vec& offset_XoYo_F() const { return phi_XY_F_.offset_XoYo_F(); }
+  const Vector3<T>& offset_XoYo_F() const { return phi_XY_F_.offset_XoYo_F(); }
 
   /// Given the spatial velocity `V_AB` of a frame `B` with respect to a frame `A`,
   /// compute the spatial velocity of a frame `Q` rigidly moving with `B` but
@@ -206,36 +182,35 @@ public:
   /// @param[in] r_BQ_A Shift vector from `Bo` to `Qo`, expressed in frame `A`.
   /// @returns V_AQ_A The spatial velocity of frame `Q` with respect to `A` and
   /// expressed in frame `A`.
-  static SpatialVector<V> ShiftSpatialVelocity(
-      const SpatialVector<V>& V_AB, const Vec& r_BQ_A) {
-    return SpatialVector<V>(
+  static SpatialVector<T> ShiftSpatialVelocity(
+      const SpatialVector<T>& V_AB, const Vector3<T>& r_BQ_A) {
+    return SpatialVector<T>(
         /* Same angular velocity. */
         V_AB.angular(),
         /* Linear velocity v_AQ = v_AB + w_AB.cross(r_BQ). */
-        V_AB.linear() + cross(V_AB.angular(), r_BQ_A));
+        V_AB.linear() + V_AB.angular().cross(r_BQ_A));
   }
 
  private:
-  const ShiftOperator<V>& phi_XY_F_;
+  const ShiftOperator<T>& phi_XY_F_;
 };
 
-template <class V>
-inline ShiftOperatorTranspose<V> ShiftOperator<V>::transpose() const {
-  return ShiftOperatorTranspose<V>(*this);
+template <typename T>
+inline ShiftOperatorTranspose<T> ShiftOperator<T>::transpose() const {
+  return ShiftOperatorTranspose<T>(*this);
 }
 
 /// @param[in] phiT_XY_F Transpose of the shift operator from frame X to Y
 /// expressed in a frame F.
 /// @param[in] V_FX The spatial velocity of frame X measured and expressed in F.
 /// @returns V_FY The spatial velocity of frame Y measured and expressed in F.
-template <class V>
-inline SpatialVector<V> operator*(
-    const ShiftOperatorTranspose<V>& phiT_XY_F, const SpatialVector<V>& V_FX)
+template <typename T>
+inline SpatialVector<T> operator*(
+    const ShiftOperatorTranspose<T>& phiT_XY_F, const SpatialVector<T>& V_FX)
 {
-  return ShiftOperatorTranspose<V>::ShiftSpatialVelocity(
+  return ShiftOperatorTranspose<T>::ShiftSpatialVelocity(
       V_FX, phiT_XY_F.offset_XoYo_F());
 }
-#endif
 
 }  // math
 }  // namespace multibody

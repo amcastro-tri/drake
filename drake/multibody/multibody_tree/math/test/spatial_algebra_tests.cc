@@ -12,39 +12,31 @@
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
 
 namespace drake {
-
-typedef Vector2<double> Vec2d;
-typedef Vector3<double> Vec3d;
-
 namespace multibody {
 namespace math {
 namespace {
 
-GTEST_TEST(SpatialAlgebra, SpatialVelocityShift) {
-  typedef Vector3<double> Vec;
-  typedef VectorSpace<Vec>::Spin Spin;
+using Eigen::Vector3d;
 
+GTEST_TEST(SpatialAlgebra, SpatialVelocityShift) {
   // Linear velocity of frame B measured and expressed in frame A.
-  Vec v_AB(1, 2, 0);
+  Vector3d v_AB(1, 2, 0);
 
   // Angular velocity of frame B measured and expressed in frame A.
-  Spin w_AB(0, 0, 3);
+  Vector3d w_AB(0, 0, 3);
 
   // Spatial velocity of frame B with respect to A and expressed in A.
-  SpatialVector<Vec> V_AB(w_AB, v_AB);
+  SpatialVector<double> V_AB(w_AB, v_AB);
 
-  // A vector from Bo to Qo, expressed in A.
-  Vec r_BQ_A(2, -2, 0);
+  // A shift operator representing the rigid body transformation from frame B
+  // to frame Q, expressed in A.
+  ShiftOperator<double> phi_BQ_A({2, -2, 0});
 
-  SpatialVector<Vec> V_AQ =
-      ShiftOperator<Vec>::ShiftSpatialVelocity(V_AB, r_BQ_A);
+  SpatialVector<double> V_AQ = phi_BQ_A.transpose() * V_AB;
+  SpatialVector<double> expected_V_AB(w_AB, {7, 8, 0});
 
-  PRINT_VAR(V_AQ);
-
-  ShiftOperator<Vec> phi_XY(r_BQ_A);
-
-  PRINT_VAR(phi_XY.transpose() * V_AB);
-
+  EXPECT_TRUE(V_AQ.angular().isApprox(expected_V_AB.angular()));
+  EXPECT_TRUE(V_AQ.linear().isApprox(expected_V_AB.linear()));
 }
 
 }

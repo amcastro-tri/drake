@@ -10,6 +10,7 @@
 #include <iostream>
 #include <sstream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
+#define PRINT_VARn(x) std::cout <<  #x ":\n" << x << std::endl;
 
 namespace drake {
 namespace multibody {
@@ -33,10 +34,46 @@ GTEST_TEST(SpatialAlgebra, SpatialVelocityShift) {
   ShiftOperator<double> phi_BQ_A({2, -2, 0});
 
   SpatialVector<double> V_AQ = phi_BQ_A.transpose() * V_AB;
-  SpatialVector<double> expected_V_AB(w_AB, {7, 8, 0});
+  SpatialVector<double> expected_V_AQ(w_AB, {7, 8, 0});
 
-  EXPECT_TRUE(V_AQ.angular().isApprox(expected_V_AB.angular()));
-  EXPECT_TRUE(V_AQ.linear().isApprox(expected_V_AB.linear()));
+  EXPECT_TRUE(V_AQ.angular().isApprox(expected_V_AQ.angular()));
+  EXPECT_TRUE(V_AQ.linear().isApprox(expected_V_AQ.linear()));
+}
+
+GTEST_TEST(SpatialAlgebra, SpatialVelocityJacobianShift) {
+  // Linear velocity of frame B measured and expressed in frame A.
+  Vector3d v_AB(1, 2, 0);
+
+  // Angular velocity of frame B measured and expressed in frame A.
+  Vector3d w_AB(0, 0, 3);
+
+  // Spatial velocity of frame B with respect to A and expressed in A.
+  SpatialVector<double> V_AB(w_AB, v_AB);
+
+  const int ncols = 3;
+  SpatialVelocityJacobian<double, ncols> J_AB;
+
+  J_AB.col(0) =      V_AB;
+  J_AB.col(1) = 2. * V_AB;
+  J_AB.col(2) = 3. * V_AB;
+
+  // A shift operator representing the rigid body transformation from frame B
+  // to frame Q, expressed in A.
+  ShiftOperator<double> phi_BQ_A({2, -2, 0});
+
+  SpatialVelocityJacobian<double, ncols> J_AQ = phi_BQ_A.transpose() * J_AB;
+  SpatialVelocityJacobian<double, ncols> expected_J_AQ;
+  expected_J_AQ.col(0) =      SpatialVector<double>(w_AB, {7, 8, 0});
+  expected_J_AQ.col(1) = 2. * SpatialVector<double>(w_AB, {7, 8, 0});
+  expected_J_AQ.col(2) = 3. * SpatialVector<double>(w_AB, {7, 8, 0});
+
+  EXPECT_TRUE(J_AQ.col(0).angular().isApprox(expected_J_AQ.col(0).angular()));
+  EXPECT_TRUE(J_AQ.col(1).angular().isApprox(expected_J_AQ.col(1).angular()));
+  EXPECT_TRUE(J_AQ.col(2).angular().isApprox(expected_J_AQ.col(2).angular()));
+
+  EXPECT_TRUE(J_AQ.col(0).linear().isApprox(expected_J_AQ.col(0).linear()));
+  EXPECT_TRUE(J_AQ.col(1).linear().isApprox(expected_J_AQ.col(1).linear()));
+  EXPECT_TRUE(J_AQ.col(2).linear().isApprox(expected_J_AQ.col(2).linear()));
 }
 
 }

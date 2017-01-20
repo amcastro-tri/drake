@@ -1,10 +1,16 @@
 #pragma once
 
 #include <memory>
+#include <sstream>
 #include <vector>
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
+
+#include <iostream>
+#include <sstream>
+#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
+#define PRINT_VARn(x) std::cout <<  #x ":\n" << x << std::endl;
 
 namespace drake {
 namespace multibody {
@@ -12,32 +18,90 @@ namespace multibody {
 template <typename T>
 class RotationalInertia {
  public:
+  enum {
+    // By default RotationalInertia only works on the upper part of the
+    // underlying Eigen matrix.
+    TriangularViewInUse = Eigen::Upper,
+    // The strictly lower part is set to NaN to quickly detect when used by
+    // error.
+    TriangularViewNotInUse = Eigen::StrictlyLower
+  };
+
   /// Creates a principal rotational inertia with identical diagonal elements
   /// equal to @p I and zero products of inertia.
   /// As examples, consider the moments of inertia taken about their geometric
   /// center for a sphere or a cube.
   /// @see RotationalInertia::SolidSphere() and RotationalInertia::cube().
   RotationalInertia(const T& I) {
-    I_Fo_F_ = Matrix3<T>::Zero();
-    I_Fo_F_.diagonal().setConstant(I);
+    SetZero();
+    I_Bo_F_.diagonal().setConstant(I);
   }
 
   /// Create a principal axes rotational inertia matrix for wich off-diagonal
   /// elements are zero.
   RotationalInertia(const T& Ixx, const T& Iyy, const T& Izz) {
-    I_Fo_F_ = Matrix3<T>::Zero();
-    I_Fo_F_.diagonal() = Vector3<T>(Ixx, Iyy, Izz);
+    SetZero();
+    I_Bo_F_.diagonal() = Vector3<T>(Ixx, Iyy, Izz);
   }
 
   /// Creates a general rotational inertia matrix with non-zero off-diagonal
   /// elements.
   RotationalInertia(const T& Ixx, const T& Iyy, const T& Izz,
-                    const T& Ixy, const T& Ixz, const T& Iyz);
+                    const T& Ixy, const T& Ixz, const T& Iyz) {
+    // The TriangularViewNotInUse is left initialized to NaN.
+    auto triangular = I_Bo_F_.template selfadjointView<TriangularViewInUse>();
+    triangular(0, 0) = Ixx; triangular(1, 1) = Iyy; triangular(2, 2) = Izz;
+    triangular(0, 1) = Ixy; triangular(0, 2) = Ixz; triangular(1, 2) = Iyz;
+  }
 
-  Vector3<T> get_moments() const { return I_Fo_F_.diagonal(); }
+  int rows() const { return 3;}
+
+  int cols() const { return 3;}
+
+  Vector3<T> get_moments() const { return I_Bo_F_.diagonal(); }
+
   Vector3<T> get_products() const {
     return Vector3<T>(
-        I_Fo_F_(0,1), I_Fo_F_(0,2), I_Fo_F_(1,2));
+        I_Bo_F_(0,1), I_Bo_F_(0,2), I_Bo_F_(1,2));
+  }
+
+  T& operator()(int i, int j) {
+    // Overwrites local copies of i and j.
+    check_and_swap(&i, &j);
+    return I_Bo_F_(i, j);
+  }
+
+  const T& operator()(int i, int j) const {
+    // Overwrites local copies of i and j.
+    check_and_swap(&i, &j);
+    return I_Bo_F_(i, j);
+  }
+
+  /// Returns a view to the symmetric part of the matrix in use by
+  /// RotationalInertia.
+  const Eigen::SelfAdjointView<Matrix3<T>, TriangularViewInUse>&
+  get_symmetric_matrix_view() const {
+    return I_Bo_F_.template selfadjointView<TriangularViewInUse>();
+  }
+
+  /// Returns a constant reference to the underlying Eigen matrix. Notice that
+  /// since RotationalInertia only uses the upper triangular portion of this
+  /// matrix, the strictly lower part will be set to have NaN entries.
+  /// For a fully intialized
+  const Matrix3<T>& get_matrix() const { return I_Bo_F_; }
+
+  void SetToNaN() {
+    I_Bo_F_.setConstant(std::numeric_limits<
+        typename Eigen::NumTraits<T>::Literal>::quiet_NaN());
+  }
+
+  void SetZero() {
+    //I_Bo_F_.setConstant(std::numeric_limits<
+    //    typename Eigen::NumTraits<T>::Literal>::quiet_NaN());
+    // RotationalInertia only works with the upper-triangular portion of the
+    // underlying Eigen matrix. The lower part is set to NaN to quickly detect
+    // when the lower part is mistakenly used.
+    I_Bo_F_.template triangularView<TriangularViewInUse>() = Matrix3<T>::Zero();
   }
 
   /// Computes the rotational inertia for a unit-mass solid sphere of radius
@@ -77,12 +141,66 @@ class RotationalInertia {
   }
 
  private:
-  // Inertia matrix about frame F's origin Fo expressed in frame F.
-  // Frame F is implicit here, RotationalInertia only keeps track of the inertia
-  // measures in this frame F. Users are responsible for keeping track of the
-  // frame in which a particular inertia is expressed in.
-  Matrix3<T> I_Fo_F_;
+  static void check_and_swap(int* i, int* j) {
+    const bool swap =
+        (int(TriangularViewInUse) == int(Eigen::Upper) && *i > *j) ||
+        (int(TriangularViewInUse) == int(Eigen::Lower) && *i < *j);
+    if (swap) std::swap(*i , *j);
+  }
+  // Inertia matrix about frame B's origin Bo expressed in frame F.
+  // Frame F and origin Bo are implicit here, RotationalInertia only keeps track
+  // of the inertia measures in this frame F. Users are responsible for keeping 
+  // track of the frame in which a particular inertia is expressed in.
+  // Initially set to NaN to aid finding when by mistake we use the strictly
+  // lower part of the matrix. Only the upper part should be used.
+  Matrix3<T> I_Bo_F_{Matrix3<T>::Constant(std::numeric_limits<
+      typename Eigen::NumTraits<T>::Literal>::quiet_NaN())};
 };
+
+template <typename T> inline
+std::ostream& operator<<(std::ostream& o,
+                         const RotationalInertia<T>& I) {
+  // This allow us to set the number of decimal places to print.
+  // 0 uses default precision.
+  const std::streamsize precision = 0;
+
+  int width = 0;
+  std::streamsize old_precision = 0;
+  std::ios_base::fmtflags old_flags = o.flags();
+  if(precision) {
+    old_precision = o.precision(precision);
+    o << std::fixed;
+  }
+
+  // Computes largest width so that we can align columns for a prettier format.
+  // Idea taken from: Eigen::internal::print_matrix() in Eigen/src/Core/IO.h
+  for(int j = 0; j < I.cols(); ++j) {
+    for (int i = 0; i < I.rows(); ++i) {
+      std::stringstream sstr;
+      sstr.copyfmt(o);
+      sstr << I(i, j);
+      width = std::max<int>(width, int(sstr.str().length()));
+    }
+  }
+
+  // Outputs to stream.
+  for(int i = 0; i < I.rows(); ++i) {
+    o << "[";
+    if (width) o.width(width);
+    o << I(i, 0);
+    for (int j = 1; j < I.cols(); ++j) {
+      o << ", ";
+      if (width) o.width(width);
+      o << I(i, j);
+    }
+    o << "]" << std::endl;
+  }
+  if(precision) {
+    o.precision(old_precision);
+    o.flags(old_flags);
+  }
+  return o;
+}
 
 /// This class represents the mass properties of a body measured and expressed
 /// in the body's frame B. The center of mass is a vector from the orgin of the

@@ -189,28 +189,27 @@ class ShiftOperator {
   /// vectors expressed in the same frame `F`.
   /// @param[in] l_F Vector from `Xo` to `Yo` expressed in an implicit
   /// frame `F`.
-  ShiftOperator(const Vector3<T> offset_XoYo_F) :
-      offset_XoYo_F_(offset_XoYo_F) {}
+  ShiftOperator(const Vector3<T> offset_XoYo_F) : offset_(offset_XoYo_F) {}
 
   // Returns the vector from the origin of frame X to the origin of frame Y
   // expressed in the implicit frame F.
-  const Vector3<T>& offset() const { return offset_XoYo_F_; }
+  const Vector3<T>& offset() const { return offset_; }
 
   ShiftOperatorTranspose<T> transpose() const;
 
  private:
-  Vector3<T> offset_XoYo_F_;
+  Vector3<T> offset_;
 };
 
 template <typename T>
 class ShiftOperatorTranspose {
 public:
   explicit ShiftOperatorTranspose(const ShiftOperator<T>& phi_XY_F) :
-      phi_XY_F_(phi_XY_F) {}
+      phi_(phi_XY_F) {}
 
   // Returns the vector from the origin of frame X to the origin of frame Y
   // expressed in the implicit frame F.
-  const Vector3<T>& offset() const { return phi_XY_F_.offset(); }
+  const Vector3<T>& offset() const { return phi_.offset(); }
 
   /// Given the spatial velocity `V_AB` of a frame `B` with respect to a frame 
   /// `A`, compute the spatial velocity of a frame `Q` rigidly moving with `B` 
@@ -239,7 +238,7 @@ public:
   }
 
  private:
-  const ShiftOperator<T>& phi_XY_F_;
+  const ShiftOperator<T>& phi_;
 };
 
 template <typename T>

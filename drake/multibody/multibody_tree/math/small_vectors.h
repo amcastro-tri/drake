@@ -4,7 +4,6 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/multibody_tree/math/vector_space.h"
 
 namespace drake {
 namespace multibody {
@@ -55,10 +54,42 @@ Matrix3<T> CrossProductMatrix(const Vector3<T>& v) {
                      -v[1],  v[0],  T(0)).finished();
 }
 
+/// Given a vector `v` this method computes the square of the skew symmetric
+/// cross product matrix `S(v) = [v]^2 = [v] * [v]`.
+/// The cross product matrix `[v]` of a vector `v`, which can be computed with
+/// CrossProductMatrix(), is the skew-symmetric matrix such that
+/// `v.cross(a) = [v] * a`.
+/// The square of the cross product matrix is a symmetric matrix with
+/// non-negative diagonals and obeys the triangle inequality.
+/// Matrix `S(v)` can be used to compute the triple vector product
+/// `v x (v x a) = v.cross(v.cross(a)) = S(v) * a`.
+template<typename T>
+Matrix3<T> CrossProductMatrixSquared(const Vector3<T>& v) {
+  const Vector3<T> v2m = -v.cwiseAbs2();
+  const T v01 = v(0) * v(1);
+  const T v02 = v(0) * v(2);
+  const T v12 = v(1) * v(2);
+  return (Matrix3<T>() <<
+                       v2m[1] + v2m[2], v01,             v02,
+                       v01,             v2m[0] + v2m[2], v12,
+                       v02,             v12,             v2m[0] + v2m[1])
+      .finished();
+}
+
 // Cross product skew symmetric matrix in 2D.
 template<typename T>
 RowVector2<T> CrossProductMatrix(const Vector2<T>& v) {
   return RowVector2<T>(-v.y(), v.x());
+}
+
+/// Checks if a square 3x3 matrix is symmetric to the specified floating point
+/// @p precision.
+/// @param[in] precision The numerical accuracy of the check.
+/// @returns `true` if the matrix is symmetric to the specified tolerance.
+/// `false` otherwise.
+template<typename T>
+bool IsMatrix3Symmetric(const Matrix3<T>& m, double precision) {
+  return (m - m.transpose()).isZero(precision);
 }
 
 }  // namespace math

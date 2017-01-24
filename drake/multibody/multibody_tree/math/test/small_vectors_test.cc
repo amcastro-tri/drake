@@ -10,6 +10,7 @@
 #include <iostream>
 #include <sstream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
+#define PRINT_VARn(x) std::cout <<  #x ":\n" << x << std::endl;
 
 namespace drake {
 
@@ -29,10 +30,36 @@ GTEST_TEST(SmallVectors, CrossProductMatrix) {
 
   // Reference cross product.
   Vector3d uxv = u.cross(v);
-  Matrix3d cross_u = CrossProductMatrix(u);
+  Matrix3d Cu = CrossProductMatrix(u);
 
   // Verify that multiplying [u] * v gives the same result as u x v.
-  EXPECT_TRUE(uxv.isApprox(cross_u * v));
+  EXPECT_TRUE(uxv.isApprox(Cu * v));
+
+  // Checks is skew-symmetric.
+  bool is_skew_symmeric =
+      (Cu + Cu.transpose()).isZero(Eigen::NumTraits<double>::epsilon());
+  EXPECT_TRUE(is_skew_symmeric);
+}
+
+GTEST_TEST(SmallVectors, CrossProductMatrixSquared) {
+  Vector3d v(1, 2, 4.2);
+  Vector3d u(-1.5, 2.2, -2.0);
+
+  // Reference triple vector product.
+  Vector3d uxuxv = u.cross(u.cross(v));
+  Matrix3d Su = CrossProductMatrixSquared(u);
+
+  PRINT_VARn(Su);
+  PRINT_VARn(uxuxv.transpose());
+  PRINT_VARn((Su*v).transpose());
+
+  // Checks is symmetric.
+  bool is_symmetric =
+      IsMatrix3Symmetric(Su, Eigen::NumTraits<double>::epsilon());
+  EXPECT_TRUE(is_symmetric);
+
+  // Verify that u x (u x v) = S(u) * v.
+  EXPECT_TRUE(uxuxv.isApprox(Su * v));
 }
 
 GTEST_TEST(SmallVectors, SpatialVector) {

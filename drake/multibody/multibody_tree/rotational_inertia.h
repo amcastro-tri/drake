@@ -92,6 +92,15 @@ class RotationalInertia {
     return I_Bo_F_.template selfadjointView<TriangularViewInUse>();
   }
 
+  /// Returns a view to the symmetric part of the matrix in use by
+  /// RotationalInertia.
+  // Note: operator=() is not defined for Eigen::SelfAdjointView and therefore
+  // we prefer to return a TriangularView here.
+  Eigen::TriangularView<Matrix3<T>, TriangularViewInUse>
+  get_mutable_symmetric_matrix_view() {
+    return I_Bo_F_.template triangularView<TriangularViewInUse>();
+  }
+
   /// Returns a constant reference to the underlying Eigen matrix. Notice that
   /// since RotationalInertia only uses the
   /// RotationalInertia::TriangularViewInUse portion of this
@@ -128,6 +137,42 @@ class RotationalInertia {
     return *this;
   }
 
+  bool IsNaN() const {
+    using std::isnan;
+    for (int i = 0; i < 3; ++i) {
+      for (int j = 0; j < 3; ++j) {
+        // We use operator()(int, int) here to automatically only check the
+        // portion in use according to TriangularViewInUse.
+        if (isnan(operator()(i, j))) return true;
+      }
+    }
+    return false;
+  }
+
+  /// Performs a number of chekcs to verify that this is a physically valid
+  /// rotational inertia.
+  /// The chekcs performed are:
+  /// - No NaN entries.
+  /// - Non-negative diagonals.
+  /// - Must satisfy triangle inequality.
+  /// - Products of inertia are limited by moments (diagonal entries).
+  bool IsValidRotationalInertia() const {
+    if (IsNaN()) return false;
+    auto d = I_Bo_F_.diagonal();
+    // Diagonals must be non-negative.
+    if ((d.array() < T(0)).any() ) return false;
+    // Checks triangle inequality
+    if (!( d[0] + d[1] >= d[2] && d[0] + d[2] >= d[1] && d[1] + d[2] >= d[0]))
+      return false;
+    // Products of inertia are limited by moments.
+    Vector3<T> p = get_products();  // Ixy, Ixz, Iyz.
+    if (!( d[0] >= std::abs(2 * p[2])
+        && d[1] >= std::abs(2 * p[1])
+        && d[2] >= std::abs(2 * p[0])))
+      return false;
+    return true;  // All tests passed.
+  }
+
   /// Given this rotational inertia `I_Bo_F` about `Bo` and expressed in frame
   /// `F`, this method computes the same inertia re-expressed in another
   /// frame `A`.
@@ -135,7 +180,9 @@ class RotationalInertia {
   /// @param[in] R_AF Rotation matrix from frame `F` to frame `A`.
   /// @returns A reference to `this` rotational inertia about `Bo` but now
   /// re-expressed in frame `A`.
-  RotationalInertia& ReExpressIn(const Matrix3<T>& R_AF) {
+  RotationalInertia& ReExpressInPlace(const Matrix3<T>& R_AF) {
+    // Note: using triangularView<TriangularViewInUse>() to only write on the
+    // triangular part in use causes serious aliasing problems.
     I_Bo_F_ = R_AF *
         I_Bo_F_.template selfadjointView<TriangularViewInUse>() *
         R_AF.transpose();
@@ -148,8 +195,8 @@ class RotationalInertia {
   /// @param[in] R_AF Rotation matrix from frame `F` to frame `A`.
   /// @returns I_Bo_A The same rotational inertia bout `Bo` expressed in frame
   /// `A`.
-  RotationalInertia ReExpressedIn(const Matrix3<T>& R_AF) const {
-    return RotationalInertia(*this).ReExpressIn(R_AF);
+  RotationalInertia ReExpress(const Matrix3<T>& R_AF) const {
+    return RotationalInertia(*this).ReExpressInPlace(R_AF);
   }
 
   /// Computes the rotational inertia for a unit-mass solid sphere of radius

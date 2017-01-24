@@ -79,16 +79,21 @@ class RotationalInertia {
 
   /// Returns a view to the symmetric part of the matrix in use by
   /// RotationalInertia.
-  const Eigen::SelfAdjointView<Matrix3<T>, TriangularViewInUse>&
+  const Eigen::SelfAdjointView<const Matrix3<T>, TriangularViewInUse>
   get_symmetric_matrix_view() const {
     return I_Bo_F_.template selfadjointView<TriangularViewInUse>();
   }
 
   /// Returns a constant reference to the underlying Eigen matrix. Notice that
-  /// since RotationalInertia only uses the upper triangular portion of this
-  /// matrix, the strictly lower part will be set to have NaN entries.
-  /// For a fully intialized
+  /// since RotationalInertia only uses the
+  /// RotationalInertia::TriangularViewInUse portion of this
+  /// matrix, the RotationalInertia::TriangularViewNotInUse part will be set to
+  /// have NaN entries.
   const Matrix3<T>& get_matrix() const { return I_Bo_F_; }
+
+  /// Get a copy to a full Matrix3 representation for this rotational inertia
+  /// including both lower and upper triangular parts.
+  Matrix3<T> CopyToFullMatrix3() const { return get_symmetric_matrix_view(); }
 
   void SetToNaN() {
     I_Bo_F_.setConstant(std::numeric_limits<
@@ -102,6 +107,25 @@ class RotationalInertia {
     // underlying Eigen matrix. The lower part is set to NaN to quickly detect
     // when the lower part is mistakenly used.
     I_Bo_F_.template triangularView<TriangularViewInUse>() = Matrix3<T>::Zero();
+  }
+
+  /// Assignment operator from a general Eigen expression.
+  // This method allows you to assign Eigen expressions to a RotationalInertia.
+  template<typename Derived>
+  RotationalInertia& operator=(const Eigen::MatrixBase<Derived>& EigenMatrix)
+  {
+    // Static asserts that EigenMatrix is of fixed size 3x3.
+    EIGEN_STATIC_ASSERT_MATRIX_SPECIFIC_SIZE(Derived, 3, 3);
+    I_Bo_F_ = EigenMatrix;
+    return *this;
+  }
+
+  RotationalInertia ReExpressIn(const Matrix3<T>& R_AF) {
+    RotationalInertia<T> I_Bo_A;
+    I_Bo_A = R_AF *
+        I_Bo_F_.template selfadjointView<TriangularViewInUse>() *
+        R_AF.transpose();
+    return I_Bo_A;
   }
 
   /// Computes the rotational inertia for a unit-mass solid sphere of radius
@@ -140,7 +164,29 @@ class RotationalInertia {
     return SolidBox(L, L, L);
   }
 
+  /// Computes the rotational inertia for a unit-mass rod along the z-axis
+  /// rotationg about its center.
+  /// @param[in] r The radius of the rod.
+  /// @param[in] L The length of the rod.
+  static RotationalInertia SolidRod(const T& r, const T& L) {
+    const T Iz = r * r / T(2);
+    const T Ix = L * L / T(12);
+    return RotationalInertia(Ix, Ix, Iz);
+  }
+
+  /// Computes the rotational inertia for a unit-mass rod along the z-axis
+  /// rotationg about one end.
+  /// @param[in] r The radius of the rod.
+  /// @param[in] L The length of the rod.
+  static RotationalInertia SolidRodAboutEnd(const T& r, const T& L) {
+    const T Iz = r * r / T(2);
+    const T Ix = L * L / T(3);
+    return RotationalInertia(Ix, Ix, Iz);
+  }
+
  private:
+  RotationalInertia() {}
+
   static void check_and_swap(int* i, int* j) {
     const bool swap =
         (int(TriangularViewInUse) == int(Eigen::Upper) && *i > *j) ||

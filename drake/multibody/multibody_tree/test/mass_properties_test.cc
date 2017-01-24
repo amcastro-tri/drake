@@ -3,6 +3,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/common/nice_type_name.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
+#include "drake/multibody/multibody_tree/spatial_inertia.h"
 
 #include <iostream>
 #include <sstream>
@@ -66,7 +67,7 @@ GTEST_TEST(RotationalInertia, ReExpressInAnotherFrame) {
       AngleAxisd(M_PI_2, Vector3d::UnitX()).toRotationMatrix();
   PRINT_VARn(R_FR);
 
-  RotationalInertia<double> I_Ro_F = I_Ro_R.ReExpressIn(R_FR);
+  RotationalInertia<double> I_Ro_F = I_Ro_R.ReExpressedIn(R_FR);
 
   // Now the R's z-axis is oriented along F's y-axis.
   EXPECT_NEAR(I_Ro_F(0, 0), Iperp, Eigen::NumTraits<double>::epsilon());
@@ -75,6 +76,26 @@ GTEST_TEST(RotationalInertia, ReExpressInAnotherFrame) {
 
   PRINT_VARn(I_Ro_F);
 
+}
+
+GTEST_TEST(SpatialInertia, SettersAndGetters) {
+  // Spatial inertia for a cube of unit mass computed about its center of mass
+  // and expressed in its principal axes frame.
+  const double Lx = 0.2, Ly = 1.0, Lz = 0.5;  // Box's lengths.
+  SpatialInertia<double> M_Bo_B(
+      1.0, Vector3d::UnitX(), RotationalInertia<double>::SolidBox(Lx, Ly, Lz));
+
+  // Replace this pring by the respective getters and check values.
+  PRINT_VARn(M_Bo_B);
+
+  // Place B rotated +90 degrees about W's x-axis.
+  Matrix3<double> R_WB =
+      AngleAxisd(M_PI_2, Vector3d::UnitX()).toRotationMatrix();
+  PRINT_VARn(R_WB);
+
+  SpatialInertia<double> M_Bo_W = M_Bo_B.ReExpressedIn(R_WB);
+
+  PRINT_VARn(M_Bo_W);
 }
 
 }

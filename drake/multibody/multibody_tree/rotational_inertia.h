@@ -27,6 +27,14 @@ class RotationalInertia {
     TriangularViewNotInUse = Eigen::StrictlyLower
   };
 
+  /// Default RotationalInertia constructor. Everything is left initialiezed to
+  /// NaN for a quick detection of un-initialized values.
+  RotationalInertia() {}
+
+  // Default copy constructor and copy assignment.
+  RotationalInertia(const RotationalInertia<T>& other) = default;
+  RotationalInertia& operator=(const RotationalInertia<T>& other) = default;
+
   /// Creates a principal rotational inertia with identical diagonal elements
   /// equal to @p I and zero products of inertia.
   /// As examples, consider the moments of inertia taken about their geometric
@@ -120,12 +128,28 @@ class RotationalInertia {
     return *this;
   }
 
-  RotationalInertia ReExpressIn(const Matrix3<T>& R_AF) {
-    RotationalInertia<T> I_Bo_A;
-    I_Bo_A = R_AF *
+  /// Given this rotational inertia `I_Bo_F` about `Bo` and expressed in frame
+  /// `F`, this method computes the same inertia re-expressed in another
+  /// frame `A`.
+  /// This operation is performed in-place modifying the original object.
+  /// @param[in] R_AF Rotation matrix from frame `F` to frame `A`.
+  /// @returns A reference to `this` rotational inertia about `Bo` but now
+  /// re-expressed in frame `A`.
+  RotationalInertia& ReExpressIn(const Matrix3<T>& R_AF) {
+    I_Bo_F_ = R_AF *
         I_Bo_F_.template selfadjointView<TriangularViewInUse>() *
         R_AF.transpose();
-    return I_Bo_A;
+    return *this;
+  }
+
+  /// Given this rotational inertia `I_Bo_F` about `Bo` and expressed in
+  /// frame `F`, this method computes the same inertia re-expressed in another
+  /// frame `A`.
+  /// @param[in] R_AF Rotation matrix from frame `F` to frame `A`.
+  /// @returns I_Bo_A The same rotational inertia bout `Bo` expressed in frame
+  /// `A`.
+  RotationalInertia ReExpressedIn(const Matrix3<T>& R_AF) const {
+    return RotationalInertia(*this).ReExpressIn(R_AF);
   }
 
   /// Computes the rotational inertia for a unit-mass solid sphere of radius
@@ -185,8 +209,6 @@ class RotationalInertia {
   }
 
  private:
-  RotationalInertia() {}
-
   static void check_and_swap(int* i, int* j) {
     const bool swap =
         (int(TriangularViewInUse) == int(Eigen::Upper) && *i > *j) ||

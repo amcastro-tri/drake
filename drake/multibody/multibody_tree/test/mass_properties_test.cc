@@ -67,7 +67,9 @@ GTEST_TEST(RotationalInertia, ReExpressInAnotherFrame) {
       AngleAxisd(M_PI_2, Vector3d::UnitX()).toRotationMatrix();
   PRINT_VARn(R_FR);
 
-  RotationalInertia<double> I_Ro_F = I_Ro_R.ReExpressedIn(R_FR);
+  RotationalInertia<double> I_Ro_F = I_Ro_R.ReExpress(R_FR);
+
+  PRINT_VARn(I_Ro_F.get_matrix());
 
   // Now the R's z-axis is oriented along F's y-axis.
   EXPECT_NEAR(I_Ro_F(0, 0), Iperp, Eigen::NumTraits<double>::epsilon());
@@ -76,9 +78,12 @@ GTEST_TEST(RotationalInertia, ReExpressInAnotherFrame) {
 
   PRINT_VARn(I_Ro_F);
 
+  // Check if after transformation this still is a physically valid inertia.
+  EXPECT_TRUE(I_Ro_F.IsValidRotationalInertia());
+
 }
 
-GTEST_TEST(SpatialInertia, SettersAndGetters) {
+GTEST_TEST(SpatialInertia, ReExpress) {
   // Spatial inertia for a cube of unit mass computed about its center of mass
   // and expressed in its principal axes frame.
   const double Lx = 0.2, Ly = 1.0, Lz = 0.5;  // Box's lengths.
@@ -93,9 +98,52 @@ GTEST_TEST(SpatialInertia, SettersAndGetters) {
       AngleAxisd(M_PI_2, Vector3d::UnitX()).toRotationMatrix();
   PRINT_VARn(R_WB);
 
-  SpatialInertia<double> M_Bo_W = M_Bo_B.ReExpressedIn(R_WB);
+  SpatialInertia<double> M_Bo_W = M_Bo_B.ReExpress(R_WB);
 
+  // Checks for physically correct spatial inertia.
+  EXPECT_TRUE(M_Bo_W.IsValidSpatialInertia());
+
+  // Replace this print by the respective checks of the new computed values.
+  // What was in y now is in z.
   PRINT_VARn(M_Bo_W);
+}
+
+GTEST_TEST(SpatialInertia, ShiftOrigin) {
+  // Place B rotated +90 degrees about W's x-axis.
+  Matrix3<double> R_WB =
+      AngleAxisd(M_PI_2, Vector3d::UnitX()).toRotationMatrix();
+
+  // Spatial inertia for a thin rod of unit mass computed about its center of
+  // mass and expressed in the world frame W.
+  const double mass = 1.0;
+  const double radius = 0.05, length = 1.0;
+  SpatialInertia<double> M_Bo_W = SpatialInertia<double>(
+      mass, Vector3d::Zero(),
+      RotationalInertia<double>::SolidRod(radius, length)).ReExpress(R_WB);
+
+  // Replace this print by the respective getters and check values.
+  PRINT_VARn(M_Bo_W);
+
+  // Vector from Bo, in this case Bo = Bc, to the top of the box.
+  Vector3d p_BoXo_W(0, 0.5, 0);
+
+  PRINT_VARn(p_BoXo_W.transpose());
+
+  // Computes spatial inertia about Xo, still expressed in W.
+  SpatialInertia<double> M_Xo_W = M_Bo_W.ShiftOrigin(p_BoXo_W);
+
+  // Replace this print by the respective checks of the new computed values.
+  // What was in y now is in z.
+  PRINT_VARn(M_Xo_W);
+
+  // Checks for physically correct spatial inertia.
+  EXPECT_TRUE(M_Xo_W.IsValidSpatialInertia());
+
+  // Expected moment of inertia for a rod when computed about one of its ends.
+  const double I_end = mass * length / 3.0;
+  const auto& I_Xo_W = M_Xo_W.get_rotational_inertia();
+  EXPECT_NEAR(I_Xo_W(0,0), I_end, Eigen::NumTraits<double>::epsilon());
+  EXPECT_NEAR(I_Xo_W(2,2), I_end, Eigen::NumTraits<double>::epsilon());
 }
 
 }

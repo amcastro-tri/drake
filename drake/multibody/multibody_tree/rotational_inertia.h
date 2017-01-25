@@ -112,6 +112,21 @@ class RotationalInertia {
   /// including both lower and upper triangular parts.
   Matrix3<T> CopyToFullMatrix3() const { return get_symmetric_matrix_view(); }
 
+  bool IsApprox(const RotationalInertia& M_Bo_F, double tolerance) {
+    return get_moments().isApprox(M_Bo_F.get_moments(), tolerance) &&
+           get_products().isApprox(M_Bo_F.get_products(), tolerance);
+  }
+
+  /// Adds rotational inertia @p `I_Bo_F` to this rotational inertia. This
+  /// operation is only valid if both inertias are computed about the same
+  /// center `Bo` and expressed in the same frame `F`.
+  /// @param[in] I_Bo_F A rotational inertia to be added to this inertia.
+  /// @returns A reference to `this` rotational inetia.
+  RotationalInertia& operator+=(const RotationalInertia<T>& I_Bo_F) {
+    this->get_mutable_symmetric_matrix_view() += I_Bo_F.get_matrix();
+    return *this;
+  }
+
   void SetToNaN() {
     I_Bo_F_.setConstant(std::numeric_limits<
         typename Eigen::NumTraits<T>::Literal>::quiet_NaN());
@@ -125,6 +140,10 @@ class RotationalInertia {
     // when the lower part is mistakenly used.
     I_Bo_F_.template triangularView<TriangularViewInUse>() = Matrix3<T>::Zero();
   }
+
+  /// Constructs a RotationalInertia from an Eigen matrix expression.
+  template<typename Derived>
+  RotationalInertia(const Eigen::MatrixBase<Derived>& m) : I_Bo_F_(m) {}
 
   /// Assignment operator from a general Eigen expression.
   // This method allows you to assign Eigen expressions to a RotationalInertia.
@@ -156,7 +175,7 @@ class RotationalInertia {
   /// - Non-negative diagonals.
   /// - Must satisfy triangle inequality.
   /// - Products of inertia are limited by moments (diagonal entries).
-  bool IsValidRotationalInertia() const {
+  bool IsPhysicallyValid() const {
     if (IsNaN()) return false;
     auto d = I_Bo_F_.diagonal();
     // Diagonals must be non-negative.
@@ -271,6 +290,14 @@ class RotationalInertia {
   Matrix3<T> I_Bo_F_{Matrix3<T>::Constant(std::numeric_limits<
       typename Eigen::NumTraits<T>::Literal>::quiet_NaN())};
 };
+
+template <typename T>
+inline RotationalInertia<T> operator*(
+    const T& s, const RotationalInertia<T>& I_Bo_F) {
+  RotationalInertia<T> sxI;
+  sxI.get_mutable_symmetric_matrix_view() = s * I_Bo_F.get_matrix();
+  return sxI;
+}
 
 template <typename T> inline
 std::ostream& operator<<(std::ostream& o,

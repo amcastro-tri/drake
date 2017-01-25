@@ -39,7 +39,9 @@ class SpatialInertia {
   /// expressed in a frame `F`.
   SpatialInertia(
       const T& mass, const Vector3<T>& com, const RotationalInertia<T>& I) :
-      mass_(mass), p_BoBc_F_(com), I_Bo_F_(I) {}
+      mass_(mass), p_BoBc_F_(com), I_Bo_F_(I) {
+    DRAKE_ASSERT(IsPhysicallyValid());
+  }
 
   // Default copy constructor and copy assignment.
   SpatialInertia(const SpatialInertia<T>& other) = default;
@@ -57,21 +59,43 @@ class SpatialInertia {
   /// - No NaN entries.
   /// - Positive mass.
   /// - Valid rotational inertia,
-  /// @see RotationalInertia::IsValidRotationalInertia().
-  bool IsValidSpatialInertia() const {
+  /// @see RotationalInertia::IsPhysicallyValid().
+  bool IsPhysicallyValid() const {
     if (isnan(mass_)) return false;
     if (p_BoBc_F_.array().isNaN().any()) return false;
     if (mass_ <= T(0)) return false;
-    if (!I_Bo_F_.IsValidRotationalInertia()) return false;
+    if (!I_Bo_F_.IsPhysicallyValid()) return false;
     return true;  // All tests passed.
+  }
+
+  bool IsApprox(const SpatialInertia& M_Bo_F,
+                double tolerance = Eigen::NumTraits<T>::epsilon()) {
+    using std::abs;
+    return
+        abs(mass_ - M_Bo_F.get_mass()) < tolerance &&
+        p_BoBc_F_.isApprox(M_Bo_F.get_com(), tolerance) &&
+        I_Bo_F_.IsApprox(M_Bo_F.get_rotational_inertia(), tolerance);
+  }
+
+  /// Adds spatial inertia @p `M_Bo_F` to this spatial inertia. This operation 
+  /// is only valid if both inertias are computed about the same center `Bo`
+  /// and expressed in the same frame `F`.
+  /// @param[in] M_Bo_F A spatial inertia to be added to this inertia.
+  /// @returns A reference to `this` spatial inetia.
+  SpatialInertia& operator+=(const SpatialInertia<T>& M_Bo_F) {
+    p_BoBc_F_ = get_mass() * get_com() + M_Bo_F.get_mass() * M_Bo_F.get_com();
+    mass_ += M_Bo_F.get_mass();
+    p_BoBc_F_ /= mass_;
+    I_Bo_F_ += M_Bo_F.I_Bo_F_;
+    return *this;
   }
 
   /// Given this spatial inertia `M_Bo_F` about `Bo` and expressed in frame `F`,
   /// this method re-expresses the same spatial inertia in another frame `A`.
   /// This operation is performed in-place modifying the original object.
   /// @param[in] R_AF Rotation matrix from frame `F` to frame `A`.
-  /// @returns A references to `this` object which now is the same spatial inertia
-  /// about `Bo` but expressed in frame `A`.
+  /// @returns A references to `this` object which now is the same spatial 
+  /// inertia about `Bo` but expressed in frame `A`.
   SpatialInertia& ReExpressInPlace(const Matrix3<T>& R_AF) {
     p_BoBc_F_ = R_AF * p_BoBc_F_;
     I_Bo_F_.ReExpressInPlace(R_AF);
@@ -143,6 +167,14 @@ class SpatialInertia {
   // Rotational inertia about Xo and expressed in Y.
   RotationalInertia<T> I_Bo_F_{};  // Defaults to NaN initialized inertia.
 };
+
+template <typename T>
+inline SpatialInertia<T> operator*(
+    const T& s, const SpatialInertia<T>& I_Bo_F) {
+  return SpatialInertia<T>(s * I_Bo_F.get_mass(),
+                           s * I_Bo_F.get_com(),
+                           s * I_Bo_F.get_rotational_inertia());
+}
 
 template <typename T> inline
 std::ostream& operator<<(std::ostream& o,

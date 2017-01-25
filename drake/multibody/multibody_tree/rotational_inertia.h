@@ -6,6 +6,7 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
 
 #include <iostream>
 #include <sstream>
@@ -125,6 +126,16 @@ class RotationalInertia {
   RotationalInertia& operator+=(const RotationalInertia<T>& I_Bo_F) {
     this->get_mutable_symmetric_matrix_view() += I_Bo_F.get_matrix();
     return *this;
+  }
+
+  /// Computes the product from the right between this inertia with the
+  /// vector @p w.
+  /// This inertia and vector @p w must be expressed in the same frame.
+  /// @param[in] w Vector to multiply from the right.
+  /// @returns The product from the right of `this` inertia with @p w.
+  Vector3<T> operator*(const Vector3<T>& w) const
+  {
+    return Vector3<T>(get_symmetric_matrix_view() * w);
   }
 
   void SetToNaN() {

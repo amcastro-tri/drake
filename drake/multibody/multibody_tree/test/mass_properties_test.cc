@@ -16,6 +16,7 @@ namespace math {
 namespace {
 
 using Eigen::AngleAxisd;
+using Eigen::NumTraits;
 using Eigen::Vector3d;
 
 GTEST_TEST(RotationalInertia, Symmetry) {
@@ -206,6 +207,60 @@ GTEST_TEST(SpatialInertia, ShiftOrigin) {
   const auto& I_Xo_W = M_Xo_W.get_rotational_inertia();
   EXPECT_NEAR(I_Xo_W(0,0), I_end, Eigen::NumTraits<double>::epsilon());
   EXPECT_NEAR(I_Xo_W(2,2), I_end, Eigen::NumTraits<double>::epsilon());
+}
+
+GTEST_TEST(SpatialInertia, ComputeKineticEnergy) {
+  const double mass = 2.5;
+  const double radius = 0.1;
+  const double length = 1.0;
+
+  // Spatial inertia of a rod along the z-axis computed about center of mass.
+  SpatialInertia<double> M_Bc_W(
+      mass,
+      Vector3d::Zero(),
+      mass * RotationalInertia<double>::SolidRod(radius, length));
+
+  // Spatial inertia about the top end of the bar.
+  SpatialInertia<double> M_Eo_W =
+      M_Bc_W.ShiftOrigin(length / 2 * Vector3d::UnitZ());
+  EXPECT_TRUE(M_Eo_W.IsPhysicallyValid());
+
+  // Assume a given angular velocity.
+  const double w0 = 2.5;  // Magnitude of the angular velocity.
+  const Vector3d w_WBc = -w0 * Vector3d::UnitY();
+
+  // Spatial velocity of its top end frame.
+  SpatialVector<double> V_WE(w_WBc, Vector3d::Zero());
+
+  // Spatial velocity of its center of mass.
+  SpatialVector<double> V_WB =
+      /* phi_BE */
+      ShiftOperator<double>(M_Eo_W.get_com()).transpose() * V_WE;
+
+  PRINT_VARn(V_WE);
+  PRINT_VARn(V_WB);
+  PRINT_VARn(M_Bc_W);
+
+  // Computes kinetic energy using spatial operations:
+  // Using spatial algebra about the center of mass:
+  double K_com = 0.5 * V_WB.dot(M_Bc_W * V_WB);
+
+  PRINT_VARn(M_Bc_W * V_WB);
+
+  // Using spatial algebra about the rod's end:
+  double K_end = 0.5 * V_WE.dot(M_Eo_W * V_WE);
+
+  PRINT_VAR(K_com);
+  PRINT_VAR(K_end);
+
+  // Expected kinetic energy of a rod rotation about its end.
+  const double Iend = mass * length * length / 3.0;
+  const double Kexpected = 0.5 * Iend * w0 * w0;
+  PRINT_VAR(Kexpected);
+
+  EXPECT_NEAR(Kexpected, K_com, 4 * NumTraits<double>::epsilon());
+  EXPECT_NEAR(Kexpected, K_end, 4 * NumTraits<double>::epsilon());
+
 }
 
 }

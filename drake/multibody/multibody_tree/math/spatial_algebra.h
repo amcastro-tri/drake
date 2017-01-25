@@ -7,11 +7,9 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/multibody_tree/math/vector_space.h"
 
 namespace drake {
 namespace multibody {
-namespace math {
 
 /// Given the spatial velocity `V_AB` of a frame `B` with respect to a frame `A`,
 /// compute the spatial velocity of a frame `Q` rigidly moving with `B` but
@@ -55,22 +53,6 @@ static auto ReExpressSpatialVelocity(
   return V_AB_X;
 }
 
-// SpatialVector traits.
-namespace internal {
-// Generic specialization for SpatialVector
-template <class V>
-struct traits<SpatialVector<V>> {
-  typedef V Vec;
-  enum {
-    kNumDimensions = VectorSpace<V>::kNumDimensions,
-    kSpatialVectorSize = VectorSpace<V>::kSpatialVectorSize,
-    kSpatialVectorAngularSize = VectorSpace<V>::kSpatialVectorAngularSize,
-    kSpatialVectorLinearSize = VectorSpace<V>::kSpatialVectorLinearSize
-  };
-};
-}
-
-
 template <typename T>
 class SpatialVector {
  public:
@@ -112,6 +94,10 @@ class SpatialVector {
   Vector3<T>& linear() {
     return *reinterpret_cast<Vector3<T>*>(
         V_.data() + kSpatialVectorAngularSize);
+  }
+
+  T dot(const SpatialVector& V) const {
+    return V_.dot(V.V_);
   }
 
  private:
@@ -305,6 +291,5 @@ std::ostream& operator<<(std::ostream& o,
   return o;
 }
 
-}  // math
 }  // namespace multibody
 }  // namespace drake

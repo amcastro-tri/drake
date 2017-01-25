@@ -7,6 +7,7 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/math/small_vectors.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
 
 #include <iostream>
@@ -88,6 +89,21 @@ class SpatialInertia {
     p_BoBc_F_ /= mass_;
     I_Bo_F_ += M_Bo_F.I_Bo_F_;
     return *this;
+  }
+
+  /// Computes the product from the right between this spatial inertia with the
+  /// spatial vector @p V. This spatial inertia and spatial vector @p V must be
+  /// expressed in the same frame.
+  /// @param[in] V Spatial vector to multiply from the right.
+  /// @returns The product from the right of `this` inertia with @p V.
+  SpatialVector<T> operator*(const SpatialVector<T>& V) const
+  {
+    const auto& v = V.linear();   // Linear velocity.
+    const auto& w = V.angular();  // Angular velocity.
+    const Vector3<T> mxp = mass_ * p_BoBc_F_;
+    return SpatialVector<T>(
+        I_Bo_F_ * w + mxp.cross(v), /* angular component */
+        mass_ * v - mxp.cross(w));                  /* linear component */
   }
 
   /// Given this spatial inertia `M_Bo_F` about `Bo` and expressed in frame `F`,

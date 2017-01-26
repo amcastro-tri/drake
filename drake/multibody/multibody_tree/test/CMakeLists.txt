@@ -1,9 +1,9 @@
 drake_add_cc_test(mass_properties_test)
 target_link_libraries(mass_properties_test Eigen3::Eigen drakeCommon)
 
-add_executable(multibody_tree_topology_test multibody_tree_topology_test.cc)
+#add_executable(multibody_tree_topology_test multibody_tree_topology_test.cc)
 #target_link_libraries(simple_continuous_time_system
 #  drakeSystemAnalysis)
 
-add_executable(double_pendulum double_pendulum.cc)
-target_link_libraries(double_pendulum drakeMultibodyTree)
+#add_executable(double_pendulum double_pendulum.cc)
+#target_link_libraries(double_pendulum drakeMultibodyTree)

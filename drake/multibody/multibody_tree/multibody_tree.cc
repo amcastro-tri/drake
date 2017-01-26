@@ -1,6 +1,7 @@
 #include "multibody_tree.h"
 
 #include "drake/common/eigen_types.h"
+#include "drake/multibody/multibody_tree/multibody_context.h"
 
 #include <queue>
 
@@ -32,10 +33,7 @@ Body<T>* MultibodyTree<T>::AddBody(std::unique_ptr<Body<T>> body) {
 
 template <typename T>
 void MultibodyTree<T>::CompileTopology() {
-  if (topology_.is_valid) {
-    throw std::runtime_error(
-        "Attempting to compile and already compiled topology");
-  }
+  if (topology_.is_valid) return;  // Nothing new to compile.
 
   auto& body_topologies = topology_.bodies_;
 
@@ -58,12 +56,14 @@ void MultibodyTree<T>::CompileTopology() {
       throw std::runtime_error("Attempting to assign parent body twice");
     }
     body_topologies[outbody].parent_body = inbody;
+    body_topologies[outbody].inboard_mobilizer = ijoint;
 
     if (body_topologies[inbody].has_child(outbody)) {
       // TODO: come up with a more verbose error message.
       throw std::runtime_error("Attempting to add outboard body twice");
     }
     body_topologies[inbody].child_bodies.push_back(outbody);
+    body_topologies[inbody].outboard_mobilizer.push_back(ijoint);
   }
 
   // Compute body levels in the tree. Root is the zero level.
@@ -120,6 +120,21 @@ void MultibodyTree<T>::Compile() {
     const int level = body_topologies[ibody].level;
     body_levels_[level].push_back(ibody);
   }
+
+  // Compute sizes and offsets.
+  // Arrange variables in a from base to tip order.
+  // Skip the world.
+  int position_start = 0, velocity_start = 0;
+  for (int level = 1; level < get_num_levels(); ++level) {
+    for (BodyIndex ibody: body_levels_[level]) {
+      JointIndex ijoint = topology_.bodies_[ibody].inboard_mobilizer;
+      joints_[ijoint]->set_start_indexes(position_start, velocity_start);
+      position_start += joints_[ijoint]->get_num_qs();
+      velocity_start += joints_[ijoint]->get_num_vs();
+    }
+  }
+  num_positions_ = position_start;
+  num_velocities_ = velocity_start;
 }
 
 template <typename T>
@@ -172,8 +187,21 @@ const Joint<T>& MultibodyTree<T>::get_joint(JointIndex joint_id) const {
 }
 
 template <typename T>
-void MultibodyTree<T>::UpdatePositionKinematics(PositionKinematicsCache<T>* pc) const {
-
+void MultibodyTree<T>::UpdatePositionKinematics(
+    const MultibodyTreeContext<T>& context) const {
+  // Base-to-Tip recursion.
+  // This skips the world, level = 0.
+  for (int level = 1; level < get_num_levels(); ++level) {
+    for (BodyIndex ibody: body_levels_[level]) {
+      JointIndex ijoint = topology_.bodies_[ibody].inboard_mobilizer;
+      // Update position kinematics that depend on mobilizers only:
+      // - X_FM, X_PB, X_WB, Ht_FM, Ht_PB_W
+      joints_[ijoint]->UpdatePositionKinematicsCache(context);
+      // Updates position kinematics quantities that depend on bodies:
+      // - com_W, p_PB_W, M_Bo_W
+      //bodies_[ibody]->UpdatePositionKinematicsCache(pc);
+    }
+  }
 }
 
 template class MultibodyTree<double>;

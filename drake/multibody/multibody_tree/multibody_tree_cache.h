@@ -12,6 +12,8 @@ namespace multibody {
 template <typename T>
 class PositionKinematicsCache {
 
+  //VectorX<T> H_FM_pool;
+
 };
 
 }  // namespace multibody

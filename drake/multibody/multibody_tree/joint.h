@@ -7,6 +7,9 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/body.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
+#include "drake/multibody/multibody_tree/multibody_tree_cache.h"
+#include "drake/multibody/multibody_tree/multibody_context.h"
+#include "multibody_context.h"
 
 namespace drake {
 namespace multibody {
@@ -17,11 +20,19 @@ template<typename T> class MultibodyTree;
 template <typename T>
 class Joint {
  public:
+  /// This is the type of the across joint velocity Jacobian or *hinge
+  /// map matrix* as defined by A. Jain. The maximim number of coluns for this
+  /// Jacobian is 6.
+  typedef Eigen::Matrix<T, 6, Eigen::Dynamic, Eigen::ColMajor, 6, 6>
+      SpatialVelocityJacobian;
+
+  //typedef const Eigen::Ref<const VectorX<T>>& ConstRefVectorX;
+
   /// Joint constructor. This API forces users writing their own joints having
   /// to provides at least this minimum information.
   Joint(const Body<T>& parent_body, const Body<T>& child_body,
         const Eigen::Isometry3d& X_PF, const Eigen::Isometry3d& X_BM) :
-      X_PF_(X_PF), X_BM_(X_BM) {
+      X_PF_(X_PF), X_BM_(X_BM), X_MB_(X_BM.inverse()) {
     // Bodies must have already been added to a multibody tree.
     DRAKE_DEMAND(parent_body.get_id().is_valid());
     DRAKE_DEMAND(child_body.get_id().is_valid());
@@ -30,7 +41,9 @@ class Joint {
     topology_.outboard_body = child_body.get_id();
   }
 
-  virtual int get_num_dofs() const = 0;
+  virtual int get_num_qs() const = 0;
+
+  virtual int get_num_vs() const = 0;
 
   /// Sets the parent tree of this body.
   /// This methods needs to be public so that MultibodyTree::AddJoint() can
@@ -40,6 +53,19 @@ class Joint {
 
   const JointTopology& get_topology() const { return topology_;}
 
+  void set_start_indexes(int position_start, int velocity_start) {
+    indexes_.position_start = position_start;
+    indexes_.num_positions = get_num_qs();
+    indexes_.velocity_start = velocity_start;
+    indexes_.num_velocities = get_num_vs();
+  }
+
+  //const Eigen::VectorBlock<const VectorX<T>>
+  auto get_positions_slice(
+      const Eigen::Ref<const VectorX<T>>& q) const {
+    return q.segment(indexes_.position_start, get_num_qs());
+  }
+
 #if 0
   const Body<T>& get_inboard_body() const {
     DRAKE_ASSERT(parent_tree_ != nullptr &&
@@ -48,8 +74,27 @@ class Joint {
   }
 #endif
 
-  const Isometry3<T>& get_pose_in_parent() const { return X_PF_; }
-  const Isometry3<T>& get_pose_in_child() const { return X_BM_; }
+  const Isometry3<T>& getX_PF() const { return X_PF_; }
+  const Isometry3<T>& getX_BM() const { return X_BM_; }
+  const Isometry3<T>& getX_MB() const { return X_MB_; }
+
+  /// Computes the across-joint transform `X_FM(q)` ginven the vector of
+  /// generalized postions `q`.
+  /// This method can be considered the *definition* of a given mobilizer.
+  virtual Isometry3<T> CalcAcrossJointTransform(
+      const Eigen::Ref<const VectorX<T>>& q) const = 0;
+
+  /// Computes the across joint velocity jacobian @p Ht as defined by A. Jain.
+  /// This Jacobian defines the spatial velocity subspace so that the spatial
+  /// velocity of frame `M` with respect to frame `F`, and expressed in `F`, is:
+  ///   `V_FM_F = Ht * v`
+  /// with `v` the vector of generalized velocities for this mobilizer.
+  virtual void CalcAcrossJointVelocityJacobian(
+      const Eigen::Ref<const VectorX<T>>& q,
+      Eigen::Ref<MatrixX<T>> Ht) const = 0;
+
+  virtual void UpdatePositionKinematicsCache(
+      const MultibodyTreeContext<T>& context) const = 0;
 
 #if 0
   /// Computes `qdot = N(q) * u` with `N(q)` the the kinematic coupling matrix.
@@ -80,48 +125,16 @@ class Joint {
 #endif
 
  protected:
+  // Joint inboard frame F in inboard body frame P.
   Isometry3<T> X_PF_{Isometry3<T>::Identity()};
+  // Joint outboard frame M in outboard body B.
   Isometry3<T> X_BM_{Isometry3<T>::Identity()};
+  Isometry3<T> X_MB_{Isometry3<T>::Identity()};
 
   // Joint's topology.
   MultibodyTree<T>* parent_tree_{nullptr};
   JointTopology topology_;
-};
-
-#if 0
-// Should we template on number of dof's to allow compiler optimizations?
-// See Simbody's RigidBodyNodeSpec.h
-template <typename T, int dofs>
-class JointWithOptions : public Joint<T> {
- public:
-    int get_num_dofs() const { return dofs; }
-
-    /// Computes `qdot = N(q) * v, where `N(q)` is the kinematic coupling
-    /// matrix.
-    void CalcQDot(const Context<T>&,
-                  Eigen::Ref<const MatrixX<T>> u,
-                  Eigen::Ref<MatrixX<T>> qdot) const override {
-      qdot.segment<ndofs>() = u.segment<ndofs>(); // default says qdot=u
-    }
-};
-#endif
-
-template <typename T>
-class RevoluteJoint : public Joint<T> {
-  using Joint<T>::parent_tree_;
- public:
-  /// Creates a revolute joint with axis_F expressed in the inboard frame F.
-  RevoluteJoint(const Body<T>& parent_body, const Body<T>& child_body,
-                const Eigen::Isometry3d& X_PF, const Eigen::Isometry3d& X_BM,
-                const Vector3<double> axis_F) :
-      Joint<T>(parent_body, child_body, X_PF, X_BM), axis_F_(axis_F) {}
-
-  int get_num_dofs() const final { return 1; }
-
- private:
-
-  // Default joint axis expressed in the inboard frame F.
-  Vector3<double> axis_F_;
+  JointIndexesInfo indexes_;
 };
 
 }  // namespace multibody

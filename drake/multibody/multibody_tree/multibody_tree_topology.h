@@ -11,10 +11,16 @@ namespace multibody {
 struct MultibodyTreeTopology;
 
 struct BodyTopology {
-  BodyIndex id{BodyIndex::Invalid()};
-  int level{-1};
+  BodyIndex id{BodyIndex::Invalid()};  // Unique id in the MultibodyTree.
+  int level{-1};  // Depth level in the MultibodyTree, level = 0 for the world.
+
+  // Connection to inboard/outboard bodies.
   BodyIndex parent_body{BodyIndex::Invalid()};
   std::vector<BodyIndex> child_bodies;
+
+  // Connection to inboard/outboard joints.
+  JointIndex inboard_mobilizer{JointIndex::Invalid()};
+  std::vector<JointIndex> outboard_mobilizer;
 
   /// Returns `true` if @p body represents a child body entry in this body
   /// topology.
@@ -39,6 +45,13 @@ struct MultibodyTreeTopology {
   /// It gets validated by MultibodyTree::Compile().
   void invalidate() { is_valid = false; }
   void validate() { is_valid = true; }
+};
+
+struct JointIndexesInfo {
+  int position_start;
+  int num_positions;
+  int velocity_start;
+  int num_velocities;
 };
 
 }  // namespace multibody

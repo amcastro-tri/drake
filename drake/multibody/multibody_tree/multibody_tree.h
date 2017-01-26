@@ -13,6 +13,7 @@
 #include "drake/multibody/multibody_tree/body.h"
 #include "drake/multibody/multibody_tree/joint.h"
 #include "drake/multibody/multibody_tree/multibody_tree_cache.h"
+#include "drake/multibody/multibody_tree/multibody_context.h"
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
 
 namespace drake {
@@ -57,6 +58,8 @@ class MultibodyTree {
 
   int get_num_joints() const { return static_cast<int>(joints_.size()); }
 
+  int get_num_levels() const { return static_cast<int>(body_levels_.size()); }
+
   const Body<T>& get_body(BodyIndex body_id) const;
 
   Body<T>& get_mutable_body(BodyIndex body_id) const;
@@ -85,7 +88,7 @@ class MultibodyTree {
   //  return context;
  // }
 
-  void UpdatePositionKinematics(PositionKinematicsCache<T>* pc) const;
+  void UpdatePositionKinematics(const MultibodyTreeContext<T>& context) const;
 
   /// Returns a constant reference to the *world* body.
   const Body<T>& get_world_body() const { return *bodies_[0]; }
@@ -117,6 +120,8 @@ class MultibodyTree {
   // When cloning/transmogrifying this struct can be copied right away.
   MultibodyTreeTopology topology_;
 
+  int num_positions_{0};
+  int num_velocities_{0};
 };
 
 }  // namespace multibody

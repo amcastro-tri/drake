@@ -4,7 +4,7 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/multibody_tree/mass_properties.h"
+#include "drake/multibody/multibody_tree/rotational_inertia.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
 
@@ -15,9 +15,16 @@ namespace multibody {
 // Forward declaration.
 template<typename T> class MultibodyTree;
 
-template <typename T>
+template <class V>
 class Body {
  public:
+  typedef V Vector;
+  typedef typename V::Scalar T;
+  typedef typename V::Spin Spin;
+  typedef typename V::SpatialVector SpatialVector;
+  typedef typename V::SpatialMatrix SpatialMatrix;
+  typedef typename V::RotationMatrix RotationMatrix;
+
   // Attorney-Client Idiom to allow MultibodyTree<T> to modify private topology
   // information in Body<T>.
   // see: http://stackoverflow.com/questions/3217390/clean-c-granular-friend-equivalent-answer-attorney-client-idiom/
@@ -33,17 +40,17 @@ class Body {
   /// immediately be added to a MultibodyTree.
   Body(const MassProperties<double>& mass_properties);
 
-  // Option 2 for creation: A factory. Body constructors are private however
-  // still accessible from within a factory. This allows setting the parent
-  // without exposing a dangerous public "set_parent()" method.
-  /// Creates a new body with the provided mass properties and adds it to the
-  /// @p parent_tree.
-  static Body<T>* CreateBody(
-      MultibodyTree<T>* parent_tree,
-      const MassProperties<double>& mass_properties);
+  /// Computes the rigid body inertia matrix for a given, fixed, value of the
+  /// flexible generalized coordinates @p qf.
+  virtual SpatialMatrix DoCalcSpatialInertia(const VectorX<T>& qf) const = 0;
 
-  const MassProperties<double>& get_default_mass_properties() const {
-    return default_mass_properties_;
+  /// Computes the total mass matrix of this body including the rigid dof's
+  /// block, the flexible dof's block and the off-diagonal blocks coupling rigid
+  /// and flexible modes.
+  /// The default implementation assumes M is the rigid body spatial inertia
+  /// computed with DoCalcSpatialInertia().
+  virtual void DoCalcMassMatrix(const VectorX<T>& qf, MatrixX<T>* M) const {
+    *M = DoCalcSpatialInertia(qf);
   }
 
   const Body<T>& get_inboard_body() const;
@@ -53,8 +60,6 @@ class Body {
   const BodyTopology& get_topology() const { return topology_; };
 
  private:
-  MassProperties<double> default_mass_properties_;
-
   // Topology.
   MultibodyTree<T>* parent_tree_{nullptr};
   BodyTopology topology_;

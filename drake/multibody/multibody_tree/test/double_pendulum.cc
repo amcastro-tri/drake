@@ -1,4 +1,5 @@
 #include "drake/multibody/multibody_tree/multibody_tree.h"
+#include "drake/multibody/multibody_tree/revolute_joint.h"
 
 #include <iostream>
 

@@ -189,8 +189,12 @@ class RotationalInertia {
 
   bool CalcPrincipalMomentsOfInertia(Vector3<T>* principal_moments) const {
     DRAKE_ASSERT(principal_moments != nullptr);
+    // Eigen's SelfAdjointEigenSolver only works with the lower diagonal part
+    // of the matrix. To avoid future issues in case we decide to use
+    // RotationalInertia::TriangularViewInUse = Eigen::Upper, here we use a
+    // local copy to a full matrix.
     Eigen::SelfAdjointEigenSolver<Matrix3<T>> solver(
-        I_Bo_F_, Eigen::EigenvaluesOnly);
+        CopyToFullMatrix3(), Eigen::EigenvaluesOnly);
     if (solver.info() != Eigen::Success) return false;
     *principal_moments = solver.eigenvalues();
     return true;
@@ -205,18 +209,20 @@ class RotationalInertia {
   /// - Products of inertia are limited by moments (diagonal entries).
   bool IsPhysicallyValid() const {
     if (IsNaN()) return false;
-    auto d = I_Bo_F_.diagonal();
+
+    // Compute principal moments of inertia.
+    Vector3<T> d;
+    if (!CalcPrincipalMomentsOfInertia(&d)) return false;
+
+    PRINT_VAR(d.transpose());
+
     // Diagonals must be non-negative.
     if ((d.array() < T(0)).any() ) return false;
+
     // Checks triangle inequality
     if (!( d[0] + d[1] >= d[2] && d[0] + d[2] >= d[1] && d[1] + d[2] >= d[0]))
       return false;
-    // Products of inertia are limited by moments.
-    Vector3<T> p = get_products();  // Ixy, Ixz, Iyz.
-    if (!( d[0] >= std::abs(2 * p[2])
-        && d[1] >= std::abs(2 * p[1])
-        && d[2] >= std::abs(2 * p[0])))
-      return false;
+
     return true;  // All tests passed.
   }
 

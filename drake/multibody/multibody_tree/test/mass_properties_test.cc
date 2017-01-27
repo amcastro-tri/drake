@@ -5,6 +5,7 @@
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
 #include "drake/multibody/multibody_tree/spatial_inertia.h"
 
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
@@ -18,6 +19,7 @@ namespace {
 using Eigen::AngleAxisd;
 using Eigen::NumTraits;
 using Eigen::Vector3d;
+using std::sort;
 
 GTEST_TEST(RotationalInertia, Symmetry) {
   RotationalInertia<double> I(3.14);
@@ -45,6 +47,13 @@ GTEST_TEST(RotationalInertia, Symmetry) {
 
   Matrix3<double> m = I.get_symmetric_matrix_view();
   PRINT_VARn(m);
+
+  PRINT_VARn(I.get_moments());
+
+  // In particular the use of get_products() tests the proper behavior of
+  // operator(i,j) regardless of the in-memory representation.
+  // Replace by EXPECT_EQ's on the values.
+  PRINT_VARn(I.get_products());
   //std::cout << I.get_matrix();
 }
 
@@ -82,6 +91,44 @@ GTEST_TEST(RotationalInertia, ReExpressInAnotherFrame) {
   // Check if after transformation this still is a physically valid inertia.
   EXPECT_TRUE(I_Ro_F.IsPhysicallyValid());
 
+}
+
+GTEST_TEST(RotationalInertia, PrincipalMomentsOfInertia) {
+  const double L1 = 3.0;
+  const double L2 = 1.0;
+  const double L3 = 5.0;
+
+  // Rotational inertia computed about the center of mass of the cube.
+  const RotationalInertia<double>& I_Bc_W =
+      RotationalInertia<double>::SolidBox(L1, L2, L3);
+
+  // Define a new frame Q by rotating +20 degrees about x and then z.
+  const double angle = 20 * M_PI / 180.0;
+  Matrix3<double> R_WQ =
+      (AngleAxisd(angle, Vector3d::UnitZ()) *
+       AngleAxisd(angle, Vector3d::UnitX())).toRotationMatrix();
+
+  // Compute the cube's spatial inertia in this frame Q.
+  // This results in a rotational inertia with all entries being non-zero, i.e
+  // far away from being diagonal or diagonalizable in any trivial way.
+  RotationalInertia<double> I_Bc_Q = I_Bc_W.ReExpress(R_WQ);
+
+  // Compute the principal moments.
+  Vector3d principal_moments;
+  EXPECT_TRUE(I_Bc_Q.CalcPrincipalMomentsOfInertia(
+      &principal_moments));
+  PRINT_VARn(principal_moments);
+
+  // The expected moments are those originally computed in I_Bc_W, though the
+  // return from RotationalInertia::CalcPrincipalMomentsOfInertia() is sorted
+  // in ascending order. Therefore reorder to perform comparison.
+  Vector3d expected_principal_moments = I_Bc_W.get_moments();
+  std::sort(expected_principal_moments.data(),
+            expected_principal_moments.data() +
+                expected_principal_moments.size());
+  PRINT_VAR(expected_principal_moments.transpose());
+  EXPECT_TRUE(expected_principal_moments.isApprox(
+      principal_moments, NumTraits<double>::epsilon()));
 }
 
 GTEST_TEST(SpatialInertia, PlusEqualOperator) {

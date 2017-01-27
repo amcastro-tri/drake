@@ -8,6 +8,8 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/math/spatial_algebra.h"
 
+#include <Eigen/Eigenvalues>
+
 #include <iostream>
 #include <sstream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
@@ -20,12 +22,16 @@ template <typename T>
 class RotationalInertia {
  public:
   enum {
-    // By default RotationalInertia only works on the upper part of the
+    // By default RotationalInertia only works on the lower part of the
     // underlying Eigen matrix.
-    TriangularViewInUse = Eigen::Upper,
+    // There is no strong reason for this particular choice.
+    // It was observed however that Eigen sometimes uses the lower part of a
+    // symmetric dense matrix. See Eigen::SelfAdjointEigenSolver. This is used
+    // by RotationalInertia::CalcPrincipalMomentsOfInertia().
+    TriangularViewInUse = Eigen::Lower,
     // The strictly lower part is set to NaN to quickly detect when used by
     // error.
-    TriangularViewNotInUse = Eigen::StrictlyLower
+    TriangularViewNotInUse = Eigen::StrictlyUpper
   };
 
   /// Default RotationalInertia constructor. Everything is left initialiezed to
@@ -58,9 +64,10 @@ class RotationalInertia {
   RotationalInertia(const T& Ixx, const T& Iyy, const T& Izz,
                     const T& Ixy, const T& Ixz, const T& Iyz) {
     // The TriangularViewNotInUse is left initialized to NaN.
-    auto triangular = I_Bo_F_.template selfadjointView<TriangularViewInUse>();
-    triangular(0, 0) = Ixx; triangular(1, 1) = Iyy; triangular(2, 2) = Izz;
-    triangular(0, 1) = Ixy; triangular(0, 2) = Ixz; triangular(1, 2) = Iyz;
+    auto& Iref = *this;
+    // Let the operator(i, j) decide on what portion (upper/lower) to write on.
+    Iref(0, 0) = Ixx; Iref(1, 1) = Iyy; Iref(2, 2) = Izz;
+    Iref(0, 1) = Ixy; Iref(0, 2) = Ixz; Iref(1, 2) = Iyz;
   }
 
   int rows() const { return 3;}
@@ -70,8 +77,9 @@ class RotationalInertia {
   Vector3<T> get_moments() const { return I_Bo_F_.diagonal(); }
 
   Vector3<T> get_products() const {
-    return Vector3<T>(
-        I_Bo_F_(0,1), I_Bo_F_(0,2), I_Bo_F_(1,2));
+    // Let operator(int ,int) decide what portion (upper/lower) to use.
+    const auto& Iref = *this;
+    return Vector3<T>(Iref(0,1), Iref(0,2), Iref(1,2));
   }
 
   T& operator()(int i, int j) {
@@ -177,6 +185,15 @@ class RotationalInertia {
       }
     }
     return false;
+  }
+
+  bool CalcPrincipalMomentsOfInertia(Vector3<T>* principal_moments) const {
+    DRAKE_ASSERT(principal_moments != nullptr);
+    Eigen::SelfAdjointEigenSolver<Matrix3<T>> solver(
+        I_Bo_F_, Eigen::EigenvaluesOnly);
+    if (solver.info() != Eigen::Success) return false;
+    *principal_moments = solver.eigenvalues();
+    return true;
   }
 
   /// Performs a number of chekcs to verify that this is a physically valid

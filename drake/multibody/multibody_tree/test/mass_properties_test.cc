@@ -144,7 +144,7 @@ GTEST_TEST(SpatialInertia, PlusEqualOperator) {
       mass_right,
       Vector3d::Zero(),
       mass_right * RotationalInertia<double>::SolidCube(L));
-  MRightBox_Wo_W.ShiftOriginInPlace(-Vector3d::UnitX());
+  MRightBox_Wo_W.ShiftInPlace(-Vector3d::UnitX());
   // Check if after transformation this still is a physically valid inertia.
   EXPECT_TRUE(MRightBox_Wo_W.IsPhysicallyValid());
 
@@ -157,7 +157,7 @@ GTEST_TEST(SpatialInertia, PlusEqualOperator) {
       mass_left,
       Vector3d::Zero(),
       mass_left * RotationalInertia<double>::SolidCube(L));
-  MLeftBox_Wo_W.ShiftOriginInPlace(Vector3d::UnitX());
+  MLeftBox_Wo_W.ShiftInPlace(Vector3d::UnitX());
   // Check if after transformation this still is a physically valid inertia.
   EXPECT_TRUE(MLeftBox_Wo_W.IsPhysicallyValid());
 
@@ -217,7 +217,7 @@ GTEST_TEST(SpatialInertia, ReExpress) {
   PRINT_VARn(M_Bo_W);
 }
 
-GTEST_TEST(SpatialInertia, ShiftOrigin) {
+GTEST_TEST(SpatialInertia, Shift) {
   // Place B rotated +90 degrees about W's x-axis.
   Matrix3<double> R_WB =
       AngleAxisd(M_PI_2, Vector3d::UnitX()).toRotationMatrix();
@@ -240,7 +240,7 @@ GTEST_TEST(SpatialInertia, ShiftOrigin) {
   PRINT_VARn(p_BoXo_W.transpose());
 
   // Computes spatial inertia about Xo, still expressed in W.
-  SpatialInertia<double> M_Xo_W = M_Bo_W.ShiftOrigin(p_BoXo_W);
+  SpatialInertia<double> M_Xo_W = M_Bo_W.Shift(p_BoXo_W);
 
   // Replace this print by the respective checks of the new computed values.
   // What was in y now is in z.
@@ -269,7 +269,7 @@ GTEST_TEST(SpatialInertia, ComputeKineticEnergy) {
 
   // Spatial inertia about the top end of the bar.
   SpatialInertia<double> M_Eo_W =
-      M_Bc_W.ShiftOrigin(length / 2 * Vector3d::UnitZ());
+      M_Bc_W.Shift(length / 2 * Vector3d::UnitZ());
   EXPECT_TRUE(M_Eo_W.IsPhysicallyValid());
 
   // Assume a given angular velocity.

@@ -133,7 +133,7 @@ class SpatialInertia {
   /// this method modifies this spatial inertia to be computed about a new
   /// origin Xo. The result still is expressed in frame `F`.
   /// This operation is performed in-place modifying the original object.
-  /// @see ShiftOrigin() which does not modify this object.
+  /// @see Shift() which does not modify this object.
   ///
   /// See Section 2.1.2, p. 20 of A. Jain's book.
   ///
@@ -141,7 +141,7 @@ class SpatialInertia {
   /// `Xo`, expressed in the spatial inertia frame `F`.
   /// @returns `M_Xo_F` This same spatial inertia but computed about
   /// origin `Xo`.
-  SpatialInertia& ShiftOriginInPlace(const Vector3<T>& p_BoXo_F) {
+  SpatialInertia& ShiftInPlace(const Vector3<T>& p_BoXo_F) {
     using math::CrossProductMatrixSquared;
     const Vector3<T> p_XoBc_F = p_BoBc_F_ - p_BoXo_F;
     const Matrix3<T> Sp_BoBc_F = CrossProductMatrixSquared(p_BoBc_F_);
@@ -156,7 +156,7 @@ class SpatialInertia {
   /// given this spatial inertia `M_Bo_F` about `Bo` and expressed in frame `F`,
   /// this method returns this spatial inertia to but computed about a new
   /// origin Xo. The result still is expressed in frame `F`.
-  /// @see ShiftOriginInPlace() for the in-place operation.
+  /// @see ShiftInPlace() for the in-place operation.
   ///
   /// See Section 2.1.2, p. 20 of A. Jain's book.
   ///
@@ -164,8 +164,8 @@ class SpatialInertia {
   /// `Xo`, expressed in the spatial inertia frame `F`.
   /// @returns `M_Xo_F` This same spatial inertia but computed about
   /// origin `Xo`.
-  SpatialInertia ShiftOrigin(const Vector3<T>& p_BoXo_F) const {
-    return SpatialInertia(*this).ShiftOriginInPlace(p_BoXo_F);
+  SpatialInertia Shift(const Vector3<T>& p_BoXo_F) const {
+    return SpatialInertia(*this).ShiftInPlace(p_BoXo_F);
   }
 
  private:

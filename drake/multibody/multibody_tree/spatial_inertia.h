@@ -9,6 +9,7 @@
 #include "drake/multibody/multibody_tree/math/small_vectors.h"
 #include "drake/multibody/multibody_tree/math/spatial_algebra.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
+#include "drake/multibody/multibody_tree/unit_inertia.h"
 
 #include <iostream>
 #include <sstream>
@@ -39,8 +40,8 @@ class SpatialInertia {
   /// @param[in] I Rotational inertia of the body computed about origin `Bo` and
   /// expressed in a frame `F`.
   SpatialInertia(
-      const T& mass, const Vector3<T>& com, const RotationalInertia<T>& I) :
-      mass_(mass), p_BoBc_F_(com), I_Bo_F_(I) {
+      const T& mass, const Vector3<T>& com, const UnitInertia<T>& I) :
+      mass_(mass), p_BoBc_F_(com), I_Bo_F_(mass * I) {
     DRAKE_ASSERT(IsPhysicallyValid());
   }
 

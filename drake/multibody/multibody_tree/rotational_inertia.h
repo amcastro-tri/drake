@@ -252,62 +252,6 @@ class RotationalInertia {
     return RotationalInertia(*this).ReExpressInPlace(R_AF);
   }
 
-  /// Computes the rotational inertia for a unit-mass solid sphere of radius
-  /// @p r taken about its center.
-  static RotationalInertia SolidSphere(const T& r) {
-    return RotationalInertia(T(0.4) * r * r);
-  }
-
-  /// Computes the rotational inertia for a unit-mass hollow sphere consisting
-  /// of an infinitesimally thin shell of radius @p r. The rotational inertia is
-  /// taken about the center of the sphere.
-  static RotationalInertia HollowSphere(const T& r) {
-    return RotationalInertia(T(2)/T(3) * r * r);
-  }
-
-  /// Computes the rotational inertia for a unit-mass solid box taken about its
-  /// geometric center. If one length is zero the inertia corresponds to that of
-  /// a thin rectangular sheet. If two lengths are zero the inertia corresponds
-  /// to that of a thin rod in the remaining direction.
-  /// @param[in] Lx The length of the box edge in the principal x-axis.
-  /// @param[in] Ly The length of the box edge in the principal y-axis.
-  /// @param[in] Lz The length of the box edge in the principal z-axis.
-  static RotationalInertia SolidBox(const T& Lx, const T& Ly, const T& Lz) {
-    const T one_twelfth = T(1) / T(12);
-    const T Lx2 = Lx * Lx, Ly2 = Ly * Ly, Lz2 = Lz * Lz;
-    return RotationalInertia(
-        one_twelfth * (Ly2 + Lz2),
-        one_twelfth * (Lx2 + Lz2),
-        one_twelfth * (Lx2 + Ly2));
-  }
-
-  /// Computes the rotational inertia for a unit-mass solid cube (a box with
-  /// equal sized sides) taken about its geometric center.
-  /// @param[in] L The length of each of the cube's sides.
-  static RotationalInertia SolidCube(const T& L) {
-    return SolidBox(L, L, L);
-  }
-
-  /// Computes the rotational inertia for a unit-mass rod along the z-axis
-  /// rotationg about its center.
-  /// @param[in] r The radius of the rod.
-  /// @param[in] L The length of the rod.
-  static RotationalInertia SolidRod(const T& r, const T& L) {
-    const T Iz = r * r / T(2);
-    const T Ix = L * L / T(12);
-    return RotationalInertia(Ix, Ix, Iz);
-  }
-
-  /// Computes the rotational inertia for a unit-mass rod along the z-axis
-  /// rotationg about one end.
-  /// @param[in] r The radius of the rod.
-  /// @param[in] L The length of the rod.
-  static RotationalInertia SolidRodAboutEnd(const T& r, const T& L) {
-    const T Iz = r * r / T(2);
-    const T Ix = L * L / T(3);
-    return RotationalInertia(Ix, Ix, Iz);
-  }
-
  private:
   static void check_and_swap(int* i, int* j) {
     const bool swap =

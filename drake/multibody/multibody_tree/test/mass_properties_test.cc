@@ -4,6 +4,7 @@
 #include "drake/common/nice_type_name.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
 #include "drake/multibody/multibody_tree/spatial_inertia.h"
+#include "drake/multibody/multibody_tree/unit_inertia.h"
 
 #include <algorithm>
 #include <iostream>
@@ -64,7 +65,7 @@ GTEST_TEST(RotationalInertia, ReExpressInAnotherFrame) {
   // principal axes.
   // Inertia computed about Ro and expressed in R.
   RotationalInertia<double> I_Ro_R =
-      RotationalInertia<double>::SolidRod(radius, length);
+      UnitInertia<double>::SolidRod(radius, length);
   // Momentum about its axis aligned with R's z-axis.
   const double Irr = I_Ro_R(2, 2);
   // Moment of inertia about an axis perpendicular to the rod's axis.
@@ -100,7 +101,7 @@ GTEST_TEST(RotationalInertia, PrincipalMomentsOfInertia) {
 
   // Rotational inertia computed about the center of mass of the cube.
   const RotationalInertia<double>& I_Bc_W =
-      RotationalInertia<double>::SolidBox(L1, L2, L3);
+      UnitInertia<double>::SolidBox(L1, L2, L3);
 
   // Define a new frame Q by rotating +20 degrees about x and then z.
   const double angle = 20 * M_PI / 180.0;
@@ -143,7 +144,7 @@ GTEST_TEST(SpatialInertia, PlusEqualOperator) {
   SpatialInertia<double> MRightBox_Wo_W(
       mass_right,
       Vector3d::Zero(),
-      mass_right * RotationalInertia<double>::SolidCube(L));
+      UnitInertia<double>::SolidCube(L));
   MRightBox_Wo_W.ShiftInPlace(-Vector3d::UnitX());
   // Check if after transformation this still is a physically valid inertia.
   EXPECT_TRUE(MRightBox_Wo_W.IsPhysicallyValid());
@@ -156,7 +157,7 @@ GTEST_TEST(SpatialInertia, PlusEqualOperator) {
   SpatialInertia<double> MLeftBox_Wo_W(
       mass_left,
       Vector3d::Zero(),
-      mass_left * RotationalInertia<double>::SolidCube(L));
+      UnitInertia<double>::SolidCube(L));
   MLeftBox_Wo_W.ShiftInPlace(Vector3d::UnitX());
   // Check if after transformation this still is a physically valid inertia.
   EXPECT_TRUE(MLeftBox_Wo_W.IsPhysicallyValid());
@@ -183,7 +184,7 @@ GTEST_TEST(SpatialInertia, PlusEqualOperator) {
   SpatialInertia<double> MExpected_Wo_W(
       mass,
       com,
-      mass * RotationalInertia<double>::SolidBox(2 * L, L, L));
+      UnitInertia<double>::SolidBox(2 * L, L, L));
   // Check if after transformation this still is a physically valid inertia.
   EXPECT_TRUE(MExpected_Wo_W.IsPhysicallyValid());
 
@@ -197,7 +198,7 @@ GTEST_TEST(SpatialInertia, ReExpress) {
   // and expressed in its principal axes frame.
   const double Lx = 0.2, Ly = 1.0, Lz = 0.5;  // Box's lengths.
   SpatialInertia<double> M_Bo_B(
-      1.0, Vector3d::UnitX(), RotationalInertia<double>::SolidBox(Lx, Ly, Lz));
+      1.0, Vector3d::UnitX(), UnitInertia<double>::SolidBox(Lx, Ly, Lz));
 
   // Replace this pring by the respective getters and check values.
   PRINT_VARn(M_Bo_B);
@@ -228,7 +229,7 @@ GTEST_TEST(SpatialInertia, Shift) {
   const double radius = 0.05, length = 1.0;
   SpatialInertia<double> M_Bo_W(
       mass, Vector3d::Zero(),
-      mass * RotationalInertia<double>::SolidRod(radius, length));
+      UnitInertia<double>::SolidRod(radius, length));
   M_Bo_W.ReExpressInPlace(R_WB);
 
   // Replace this print by the respective getters and check values.
@@ -265,7 +266,7 @@ GTEST_TEST(SpatialInertia, ComputeKineticEnergy) {
   SpatialInertia<double> M_Bc_W(
       mass,
       Vector3d::Zero(),
-      mass * RotationalInertia<double>::SolidRod(radius, length));
+      UnitInertia<double>::SolidRod(radius, length));
 
   // Spatial inertia about the top end of the bar.
   SpatialInertia<double> M_Eo_W =

@@ -1,7 +1,8 @@
-#include "multibody_tree.h"
+#include "drake/multibody/multibody_tree/multibody_tree.h"
 
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/multibody_tree/multibody_context.h"
+#include "drake/multibody/multibody_tree/frame.h"
+#include "drake/multibody/multibody_tree/multibody_tree_context.h"
 
 #include <queue>
 
@@ -16,21 +17,21 @@ using Eigen::Vector3d;
 template <typename T>
 MultibodyTree<T>::MultibodyTree() {
   // The "world" body has infinite mass.
-  Body<double>::CreateBody(this, MassProperties<double>::InfiniteMass());
+  AddBody(std::make_unique<Body<T>>(MassProperties<double>::InfiniteMass()));
 }
 
 template <typename T>
 Body<T>* MultibodyTree<T>::AddBody(std::unique_ptr<Body<T>> body) {
   DRAKE_DEMAND(body != nullptr);
   InvalidateTopology();
-  Body<T>* body_ptr = body.get();
-  // Access private body members through an attorney-client idiom.
-  Body<T>::TopologyAccess::set_parent_tree(body_ptr, this);
-  Body<T>::TopologyAccess::set_id(body_ptr, BodyIndex(get_num_bodies()));
+  Body<T>* body_raw_ptr = body.get();
+  body_raw_ptr->set_parent_tree(this);
+  body_raw_ptr->set_id(BodyIndex(get_num_bodies()));
   bodies_.push_back(std::move(body));
-  return body_ptr;
+  return body_raw_ptr;
 }
 
+#if 0
 template <typename T>
 void MultibodyTree<T>::CompileTopology() {
   if (topology_.is_valid) return;  // Nothing new to compile.
@@ -44,8 +45,8 @@ void MultibodyTree<T>::CompileTopology() {
   }
 
   // Create parent/child connections.
-  // Skip JointIndex(0), the "world's joint".
-  for (JointIndex ijoint(0); ijoint < get_num_joints(); ++ijoint) {
+  // Skip MobilizerIndex(0), the "world's joint".
+  for (MobilizerIndex ijoint(0); ijoint < get_num_joints(); ++ijoint) {
     const Joint<T>& joint = get_joint(ijoint);
     JointTopology joint_topology = joint.get_topology();
     BodyIndex inbody = joint_topology.inboard_body;
@@ -127,7 +128,7 @@ void MultibodyTree<T>::Compile() {
   int position_start = 0, velocity_start = 0;
   for (int level = 1; level < get_num_levels(); ++level) {
     for (BodyIndex ibody: body_levels_[level]) {
-      JointIndex ijoint = topology_.bodies_[ibody].inboard_mobilizer;
+      MobilizerIndex ijoint = topology_.bodies_[ibody].inboard_mobilizer;
       joints_[ijoint]->set_start_indexes(position_start, velocity_start);
       position_start += joints_[ijoint]->get_num_qs();
       velocity_start += joints_[ijoint]->get_num_vs();
@@ -160,6 +161,7 @@ void MultibodyTree<T>::PrintTopology() const {
     }
   }
 }
+#endif
 
 template <typename T>
 const Body<T>& MultibodyTree<T>::get_body(BodyIndex body_id) const {
@@ -167,6 +169,7 @@ const Body<T>& MultibodyTree<T>::get_body(BodyIndex body_id) const {
   return *bodies_[body_id];
 }
 
+#if 0
 template <typename T>
 Body<T>& MultibodyTree<T>::get_mutable_body(BodyIndex body_id) const {
   DRAKE_ASSERT(body_id.is_valid() && body_id < get_num_bodies());
@@ -181,28 +184,33 @@ const Body<T>& MultibodyTree<T>::get_body_inboard_body(
 }
 
 template <typename T>
-const Joint<T>& MultibodyTree<T>::get_joint(JointIndex joint_id) const {
+const Joint<T>& MultibodyTree<T>::get_joint(MobilizerIndex joint_id) const {
   DRAKE_ASSERT(joint_id.is_valid() && joint_id < get_num_joints());
   return *joints_[joint_id];
 }
+#endif
 
+#if 0
 template <typename T>
 void MultibodyTree<T>::UpdatePositionKinematics(
     const MultibodyTreeContext<T>& context) const {
   // Base-to-Tip recursion.
   // This skips the world, level = 0.
   for (int level = 1; level < get_num_levels(); ++level) {
-    for (BodyIndex ibody: body_levels_[level]) {
-      JointIndex ijoint = topology_.bodies_[ibody].inboard_mobilizer;
+    for (BodyNodeIndex body_node_index: body_node_levels_[level]) {
+      BodyNode* node = body_nodes_[body_node_index].get();
+      MobilizerIndex mobilizer_index = node->get_mobilizer_index();
+      BodyIndex body_index = node->get_body_index();
       // Update position kinematics that depend on mobilizers only:
       // - X_FM, X_PB, X_WB, Ht_FM, Ht_PB_W
-      joints_[ijoint]->UpdatePositionKinematicsCache(context);
+      body_nodes_[body_node_index]->UpdatePositionKinematicsCache(context);
       // Updates position kinematics quantities that depend on bodies:
       // - com_W, p_PB_W, M_Bo_W
-      //bodies_[ibody]->UpdatePositionKinematicsCache(pc);
+      //bodies_[body_index]->UpdatePositionKinematicsCache(context);
     }
   }
 }
+#endif
 
 template class MultibodyTree<double>;
 

@@ -1,5 +1,9 @@
+#include "drake/multibody/multibody_tree/body.h"
+#include "drake/multibody/multibody_tree/mobilizer.h"
 #include "drake/multibody/multibody_tree/multibody_tree.h"
-#include "drake/multibody/multibody_tree/revolute_joint.h"
+//#include "drake/multibody/multibody_tree/revolute_joint.h"
+#include "drake/multibody/multibody_tree/mass_properties.h"
+#include "drake/multibody/multibody_tree/unit_inertia.h"
 
 #include <iostream>
 
@@ -27,8 +31,35 @@ std::ostream& operator<<(
 }
 
 int DoMain() {
-  const double Ix = 1.0;
-  RotationalInertia<double> I_Bo_B(Ix, Ix, Ix);
+  const double length = 1.0;
+  UnitInertia<double> G_Bc_B = UnitInertia<double>::SolidCube(length);
+  (void) G_Bc_B;
+
+  MultibodyTree<double> model;
+
+  MassProperties<double> mass_properties(1.0, Vector3d::Zero(), G_Bc_B);
+  Body<double>* pendulum =
+      model.AddBody(make_unique<Body<double>>(mass_properties));
+  Body<double> world_body = model.get_world_body();
+
+  RigidBodyFrame<double>& Fframe =
+      world_body.RigidlyAttachFrame(Isometry3d::Identity());
+
+  RigidBodyFrame<double>& Mframe =
+      pendulum->RigidlyAttachFrame(Isometry3d::Identity());
+
+  Mobilizer<double>* pin_joint =
+      model.AddMobilizer(make_unique<Mobilizer<double>>(Fframe, Mframe));
+
+  (void) Fframe;
+  (void) Mframe;
+  (void) pin_joint;
+
+  PRINT_VAR(model.get_num_bodies());
+  PRINT_VAR(model.get_num_frames());
+  PRINT_VAR(model.get_num_mobilizers());
+
+#if 0
   MassProperties<double> mass_properties(1.0, Vector3d::Zero(), I_Bo_B);
 
   MultibodyTree<double> model;
@@ -101,6 +132,7 @@ int DoMain() {
 
   (void) pin1;
   (void) pin2;
+#endif
 
 #if 0
   MultibodyTree<double> tree;

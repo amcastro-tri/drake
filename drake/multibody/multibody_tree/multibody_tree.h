@@ -11,9 +11,11 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/body.h"
-#include "drake/multibody/multibody_tree/joint.h"
+//#include "drake/multibody/multibody_tree/body_node.h"
+#include "drake/multibody/multibody_tree/frame.h"
+#include "drake/multibody/multibody_tree/mobilizer.h"
 #include "drake/multibody/multibody_tree/multibody_tree_cache.h"
-#include "drake/multibody/multibody_tree/multibody_context.h"
+#include "drake/multibody/multibody_tree/multibody_tree_context.h"
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
 
 namespace drake {
@@ -29,26 +31,28 @@ class MultibodyTree {
 
   /// Takes ownership of @p body and assigns a unique id to it.
   /// @note
-  /// This method is called from within CreateBody(). It is not meant to be
-  /// called by end users.
   Body<T>* AddBody(std::unique_ptr<Body<T>> body);
 
-  /// Takes ownership of @p joint and assigns a unique id to it.
-  /// @note
-  /// This method is called from within the CreateJointType method.
-  /// It is not meant to be called by end users.
-  template <class JointType>
-  JointType* AddJoint(std::unique_ptr<JointType> joint) {
-    DRAKE_DEMAND(joint != nullptr);
+  template <class FrameType>
+  FrameType* AddFrame(std::unique_ptr<FrameType> frame) {
+    DRAKE_DEMAND(frame != nullptr);
     InvalidateTopology();
-    JointType* raw_joint_ptr = joint.get();
-    // Access private joint members through an attorney-client idiom.
-    // Joint<T>::TopologyAccess::set_parent_tree(raw_joint_ptr, this);
-    // Joint<T>::TopologyAccess::set_id(
-    //     raw_joint_ptr, JointIndex(get_num_joints()));
-    raw_joint_ptr->set_parent_tree(this);
-    joints_.push_back(std::move(joint));
-    return raw_joint_ptr;
+    FrameType* frame_raw_ptr = frame.get();
+    frame_raw_ptr->set_parent_tree(this);
+    frame_raw_ptr->set_id(FrameIndex(get_num_frames()));
+    frames_.push_back(std::move(frame));
+    return frame_raw_ptr;
+  }
+
+  template <class MobilizerType>
+  MobilizerType* AddMobilizer(std::unique_ptr<MobilizerType> mobilizer) {
+    DRAKE_DEMAND(mobilizer != nullptr);
+    InvalidateTopology();
+    MobilizerType* mobilizer_raw_ptr = mobilizer.get();
+    mobilizer_raw_ptr->set_parent_tree(this);
+    mobilizer_raw_ptr->set_id(MobilizerIndex(get_num_mobilizers()));
+    mobilizers_.push_back(std::move(mobilizer));
+    return mobilizer_raw_ptr;
   }
 
   /// Returns the number of bodies in the MultibodyTree including including the
@@ -56,17 +60,26 @@ class MultibodyTree {
   /// which no other bodies have been added, is one.
   int get_num_bodies() const { return static_cast<int>(bodies_.size()); }
 
-  int get_num_joints() const { return static_cast<int>(joints_.size()); }
+  int get_num_frames() const { return static_cast<int>(frames_.size()); }
+
+  int get_num_mobilizers() const {
+    return static_cast<int>(mobilizers_.size());
+  }
+
+  //int get_num_mobilizers() const { return static_cast<int>(mobilizers_.size()); }
 
   int get_num_levels() const { return static_cast<int>(body_levels_.size()); }
 
+  /// Returns a constant reference to the *world* body.
+  const Body<T>& get_world_body() const { return *bodies_[0]; }
+
   const Body<T>& get_body(BodyIndex body_id) const;
 
-  Body<T>& get_mutable_body(BodyIndex body_id) const;
+  //Body<T>& get_mutable_body(BodyIndex body_id) const;
 
-  const Joint<T>& get_joint(JointIndex joint_id) const;
-
-  const Body<T>& get_body_inboard_body(BodyIndex body_id) const;
+#if 0
+  //const Mobilizer<T>& get_joint(MobilizerIndex joint_id) const;
+  //const Body<T>& get_body_inboard_body(BodyIndex body_id) const;
 
   /// This method must be called after all elements in the tree (joints, bodies,
   /// force elements, constraints) were added and before any computations.
@@ -89,9 +102,7 @@ class MultibodyTree {
  // }
 
   void UpdatePositionKinematics(const MultibodyTreeContext<T>& context) const;
-
-  /// Returns a constant reference to the *world* body.
-  const Body<T>& get_world_body() const { return *bodies_[0]; }
+#endif
 
  private:
   // Invalidates tree topology when it changes.
@@ -100,10 +111,13 @@ class MultibodyTree {
     topology_.invalidate();
   }
 
-  void CompileTopology();
+  //void CompileTopology();
 
+  std::vector<std::unique_ptr<Frame<T>>> frames_;
   std::vector<std::unique_ptr<Body<T>>> bodies_;
-  std::vector<std::unique_ptr<Joint<T>>> joints_;
+  std::vector<std::unique_ptr<Mobilizer<T>>> mobilizers_;
+
+  //std::vector<std::unique_ptr<BodyNode<T>>> body_nodes_;
 
   // Topology cache: This is all the information needed regarding the
   // connectivity of the system that allows to perform efficient traversals for
@@ -115,6 +129,8 @@ class MultibodyTree {
   // for the level-th level in the tree, body_levels_[level] contains the
   // indexes of all bodies in that level. level = 0 refers to the world body.
   std::vector<std::vector<BodyIndex>> body_levels_;
+
+  //std::vector<std::vector<BodyNodeIndex>> body_node_levels_;
 
   // This struct contains all the topology information for this MultibodyTree.
   // When cloning/transmogrifying this struct can be copied right away.

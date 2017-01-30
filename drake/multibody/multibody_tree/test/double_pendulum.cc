@@ -1,8 +1,8 @@
 #include "drake/multibody/multibody_tree/body.h"
+#include "drake/multibody/multibody_tree/mass_properties.h"
 #include "drake/multibody/multibody_tree/mobilizer.h"
 #include "drake/multibody/multibody_tree/multibody_tree.h"
-//#include "drake/multibody/multibody_tree/revolute_joint.h"
-#include "drake/multibody/multibody_tree/mass_properties.h"
+#include "drake/multibody/multibody_tree/revolute_mobilizer.h"
 #include "drake/multibody/multibody_tree/unit_inertia.h"
 
 #include <iostream>
@@ -48,8 +48,9 @@ int DoMain() {
   RigidBodyFrame<double>& Mframe =
       pendulum->RigidlyAttachFrame(Isometry3d::Identity());
 
-  Mobilizer<double>* pin_joint =
-      model.AddMobilizer(make_unique<Mobilizer<double>>(Fframe, Mframe));
+  RevoluteMobilizer<double>* pin_joint =
+      model.AddMobilizer(make_unique<RevoluteMobilizer<double>>(
+          Fframe, Mframe, Vector3d::UnitZ()));
 
   (void) Fframe;
   (void) Mframe;
@@ -58,6 +59,9 @@ int DoMain() {
   PRINT_VAR(model.get_num_bodies());
   PRINT_VAR(model.get_num_frames());
   PRINT_VAR(model.get_num_mobilizers());
+
+  model.Compile();
+  model.PrintTopology();
 
 #if 0
   MassProperties<double> mass_properties(1.0, Vector3d::Zero(), I_Bo_B);

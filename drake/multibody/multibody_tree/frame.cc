@@ -18,6 +18,11 @@ const Body<T>& BodyFrame<T>::get_body() const {
 }
 
 template <typename T>
+BodyIndex BodyFrame<T>::get_body_id() const {
+  return body_id_;
+}
+
+template <typename T>
 RigidBodyFrame<T>::RigidBodyFrame(
     const Body<T>& body, const Isometry3<T>& X_BF) :
     BodyFrame<T>(body), X_BF_(X_BF) {}

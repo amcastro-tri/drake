@@ -19,32 +19,31 @@ template <typename T>
 class Mobilizer : public MultibodyTreeMember<Mobilizer<T>, MobilizerIndex> {
  public:
   /// Mobilizer constructor.
-  Mobilizer(const Frame<T>& inboard_frame, const Frame<T>& outboard_frame) {
+  Mobilizer(const BodyFrame<T>& inboard_frame,
+            const BodyFrame<T>& outboard_frame) {
     // Bodies must have already been added to a multibody tree.
     DRAKE_DEMAND(inboard_frame.get_id().is_valid());
     DRAKE_DEMAND(outboard_frame.get_id().is_valid());
     DRAKE_DEMAND(inboard_frame.get_id() != outboard_frame.get_id());
     inboard_frame_ = inboard_frame.get_id();
     outboard_frame_ = outboard_frame.get_id();
+    inboard_body_ = inboard_frame.get_body_id();
+    outboard_body_ = outboard_frame.get_body_id();
   }
 
-  //virtual int get_num_qs() const = 0;
+  virtual int get_num_positions() const = 0;
 
-  //virtual int get_num_vs() const = 0;
+  virtual int get_num_velocities() const = 0;
 
-#if 0
-  const Body<T>& get_inboard_body() const {
-    DRAKE_ASSERT(parent_tree_ != nullptr &&
-        "Mobilizer was not added to a MultibodyTree.");
-    return parent_tree_->get_Mobilizer_inboard_body(*this);
-  }
-#endif
+  BodyIndex get_inboard_body_id() const { return inboard_body_; }
+
+  BodyIndex get_outboard_body_id() const { return outboard_body_; }
 
   /// Computes the across-Mobilizer transform `X_FM(q)` ginven the vector of
   /// generalized postions `q`.
   /// This method can be considered the *definition* of a given mobilizer.
-  //virtual Isometry3<T> CalcAcrossMobilizerTransform(
-  //    const Eigen::Ref<const VectorX<T>>& q) const = 0;
+  virtual Isometry3<T> CalcAcrossMobilizerTransform(
+      const Eigen::Ref<const VectorX<T>>& q) const = 0;
 
   /// Computes the across Mobilizer velocity jacobian @p Ht as defined by A. Jain.
   /// This Jacobian defines the spatial velocity subspace so that the spatial
@@ -89,6 +88,8 @@ class Mobilizer : public MultibodyTreeMember<Mobilizer<T>, MobilizerIndex> {
  private:
   FrameIndex inboard_frame_;
   FrameIndex outboard_frame_;
+  BodyIndex inboard_body_;
+  BodyIndex outboard_body_;
 };
 
 }  // namespace multibody

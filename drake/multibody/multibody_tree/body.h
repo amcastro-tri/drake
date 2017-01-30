@@ -28,6 +28,10 @@ class Body : public MultibodyTreeMember<Body<T>, BodyIndex> {
 
   RigidBodyFrame<T>& RigidlyAttachFrame(const Isometry3<T>& X_BF);
 
+  virtual int get_num_positions() const { return 0; }
+
+  virtual int get_num_velocities() const { return 0; }
+
   /// Computes the rigid body inertia matrix for a given, fixed, value of the
   /// flexible generalized coordinates @p qf.
   //virtual SpatialMatrix DoCalcSpatialInertia(const VectorX<T>& qf) const = 0;

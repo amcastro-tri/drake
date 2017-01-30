@@ -27,6 +27,8 @@ class BodyFrame : public Frame<T> {
 
   const Body<T>& get_body() const;
 
+  BodyIndex get_body_id() const;
+
   /// @returns X_BF the pose of this frame `F` in the frame `B` of the body to
   /// which this frame rigidly attaches to.
   //const Isometry3<T>& GetPoseInBodyFrame(

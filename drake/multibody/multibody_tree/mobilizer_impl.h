@@ -5,31 +5,29 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/multibody_tree/joint.h"
-#include "drake/multibody/multibody_tree/multibody_context.h"
-#include "drake/multibody/multibody_tree/multibody_tree_cache.h"
-#include "drake/multibody/multibody_tree/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/frame.h"
+#include "drake/multibody/multibody_tree/mobilizer.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
 
 namespace drake {
 namespace multibody {
 
-template <typename T, int  nq, int nv, bool BequalsM = false>
-class JointImpl : public Joint<T> {
+template <typename T, int  nq, int nv>
+class MobilizerImpl : public Mobilizer<T> {
  public:
-  typedef Eigen::Matrix<T, nq, nv> HtMatrix;
+  typedef SpatialVelocityJacobian<T, nv> HMatrix;
 
-  JointImpl(const Body<T>& parent_body, const Body<T>& child_body,
-            const Eigen::Isometry3d& X_PF, const Eigen::Isometry3d& X_BM) :
-      Joint<T>(parent_body, child_body, X_PF, X_BM) {}
+  MobilizerImpl(const BodyFrame<T>& inboard_frame,
+                const BodyFrame<T>& outboard_frame) :
+      Mobilizer<T>(inboard_frame, outboard_frame) {}
 
-  int get_num_qs() const final { return nq;}
-  int get_num_vs() const final { return nv;}
+  int get_num_positions() const final { return nq;}
+  int get_num_velocities() const final { return nv;}
 
 #if 0
   HtMatrix* get_mutable_H_FM(const PositionKinematicsCache<T>& pc) const {
     return &pc.H_FM_pool[topology_.velocity_index];
   }
-#endif
 
   void UpdatePositionKinematicsCache(
       const MultibodyTreeContext<T>& context) const final
@@ -37,7 +35,6 @@ class JointImpl : public Joint<T> {
     PositionKinematicsCache<T>& pc = context.get_mutable_position_kinematics();
     const auto q = get_positions_slice(context.get_positions());
 
-#if 0
     get_mutable_X_FM(pc) = CalcAcrossJointTransform(q);
     // Since we are within a base-to-tip recursion loop, X_WP was already
     // computed and, with X_FM, we can now compute X_PB and X_WB.
@@ -50,9 +47,11 @@ class JointImpl : public Joint<T> {
     // body frame P and the child's body frame B expressed in the world's
     // frame W.
     CalcParentToChildJacobianInWorld(pc, get_mutable_Ht_PB_W(pc));
-#endif
   }
+#endif
  private:
+
+#if 0
   // Make NVI?? sot that the pointers are checked already when passed.
   // Not in this case since this method is not virtual but all joints need it.
   // Same for all mobilizers.
@@ -73,6 +72,7 @@ class JointImpl : public Joint<T> {
     X_PB = X_PF * X_FB;
     X_WB = X_WP * X_PB;
   }
+#endif
 
 #if 0
   void CalcParentToChildJacobianInWorld(

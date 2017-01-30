@@ -19,8 +19,8 @@ struct BodyTopology {
   std::vector<BodyIndex> child_bodies;
 
   // Connection to inboard/outboard joints.
-  JointIndex inboard_mobilizer{JointIndex::Invalid()};
-  std::vector<JointIndex> outboard_mobilizer;
+  MobilizerIndex inboard_mobilizer{MobilizerIndex::Invalid()};
+  std::vector<MobilizerIndex> outboard_mobilizer;
 
   /// Returns `true` if @p body represents a child body entry in this body
   /// topology.
@@ -32,8 +32,8 @@ struct BodyTopology {
 };
 
 struct JointTopology {
-  BodyIndex inboard_body{JointIndex::Invalid()};
-  BodyIndex outboard_body{JointIndex::Invalid()};
+  BodyIndex inboard_body{MobilizerIndex::Invalid()};
+  BodyIndex outboard_body{MobilizerIndex::Invalid()};
 };
 
 struct MultibodyTreeTopology {
@@ -47,7 +47,7 @@ struct MultibodyTreeTopology {
   void validate() { is_valid = true; }
 };
 
-struct JointIndexesInfo {
+struct MobilizerIndexesInfo {
   int position_start;
   int num_positions;
   int velocity_start;

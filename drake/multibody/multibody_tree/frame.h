@@ -5,7 +5,7 @@
 #include "drake/multibody/multibody_tree/body.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
-#include "drake/multibody/multibody_tree/multibody_tree_member.h"
+#include "drake/multibody/multibody_tree/multibody_tree_element.h"
 
 namespace drake {
 namespace multibody {
@@ -14,7 +14,7 @@ namespace multibody {
 template<typename T> class MultibodyTree;
 
 template <typename T>
-class Frame : public MultibodyTreeMember<Frame<T>, FrameIndex> {
+class Frame : public MultibodyTreeElement<Frame<T>, FrameIndex> {
  public:
   //virtual const Isommetry3<T>& get_pose_in_world(
   //   const MultibodyTreeContext<T>& context) const = 0;

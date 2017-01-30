@@ -7,7 +7,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/frame.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
-#include "drake/multibody/multibody_tree/multibody_tree_member.h"
+#include "drake/multibody/multibody_tree/multibody_tree_element.h"
 
 namespace drake {
 namespace multibody {
@@ -16,7 +16,7 @@ namespace multibody {
 template<typename T> class MultibodyTree;
 
 template <typename T>
-class Mobilizer : public MultibodyTreeMember<Mobilizer<T>, MobilizerIndex> {
+class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
  public:
   /// Mobilizer constructor.
   Mobilizer(const BodyFrame<T>& inboard_frame,

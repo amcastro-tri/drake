@@ -6,12 +6,12 @@ namespace multibody {
 // Forward declaration.
 template<typename T> class MultibodyTree;
 
-template <class MemberType, typename MemberIndexType>
-class MultibodyTreeMember;
+template <class ElementType, typename ElementIndexType>
+class MultibodyTreeElement;
 
-template <template <typename> class MemberType, typename T,
-    typename MemberIndexType>
-class MultibodyTreeMember<MemberType<T>, MemberIndexType> {
+template <template <typename> class ElementType, typename T,
+    typename ElementIndexType>
+class MultibodyTreeElement<ElementType<T>, ElementIndexType> {
  public:
   friend MultibodyTree<T>;
 
@@ -29,15 +29,15 @@ class MultibodyTreeMember<MemberType<T>, MemberIndexType> {
     return parent_tree_;
   }
 
-  MemberIndexType get_id() const { return id_;}
+  ElementIndexType get_id() const { return id_;}
 
  private:
   MultibodyTree<T>* parent_tree_;
-  MemberIndexType id_{MemberIndexType::Invalid()};
+  ElementIndexType id_{ElementIndexType::Invalid()};
 
   // Only MultibodyTree<T> can set these.
   void set_parent_tree(MultibodyTree<T>* tree) { parent_tree_ = tree; }
-  void set_id(MemberIndexType id) { id_ = id; }
+  void set_id(ElementIndexType id) { id_ = id; }
 };
 
 }  // namespace multibody

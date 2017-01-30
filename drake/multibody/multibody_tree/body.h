@@ -7,7 +7,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/mass_properties.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
-#include "drake/multibody/multibody_tree/multibody_tree_member.h"
+#include "drake/multibody/multibody_tree/multibody_tree_element.h"
 //#include "drake/multibody/multibody_tree/multibody_tree_topology.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
 
@@ -20,7 +20,7 @@ template<typename T> class MultibodyTree;
 template<typename T> class RigidBodyFrame;
 
 template <typename T>
-class Body : public MultibodyTreeMember<Body<T>, BodyIndex> {
+class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
  public:
   /// Creates a new body with the provided mass properties. This body must
   /// immediately be added to a MultibodyTree.

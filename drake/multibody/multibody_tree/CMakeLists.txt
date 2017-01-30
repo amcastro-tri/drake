@@ -17,7 +17,7 @@ drake_install_headers(
   mobilizer_impl.h
   mass_properties.h
   multibody_tree_context.h
-  multibody_tree_member.h
+  multibody_tree_element.h
   multibody_indexes.h
   multibody_tree.h
   multibody_tree_cache.h

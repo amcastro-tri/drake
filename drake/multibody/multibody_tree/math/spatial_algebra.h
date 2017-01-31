@@ -133,19 +133,36 @@ class SpatialVelocityJacobian {
   };
   typedef Eigen::Matrix<T, kSpatialVectorSize, ndofs> CoeffsEigenType;
 
+  /// Default constructor. For a dynamic-size Jacobian the number of columns is
+  /// initially zero. The method resize() can be called to allocate a given
+  /// number of columns on a dynamic-size Jacobian. resize() however will
+  /// trigger an assertion on fixed-size Jacobians.
+  SpatialVelocityJacobian() {}
+
+  /// This constructor is used for spatial velocity Jacobians of dynamic size.
+  /// The input parameter @p num_velocities has no effect for fixed sized
+  SpatialVelocityJacobian(int num_velocities) :
+      J_(int(kSpatialVectorSize), num_velocities) {}
+
+  /// Dynamically allocates @p num_columns for dynamic-size Jacobians.
+  /// This method will trigger an assertion for fixed-size Jacobians.
+  void resize(int num_columns) {
+    J_.resize(kSpatialVectorSize, num_columns);
+  }
+
   int rows() const { return J_.rows(); }
   int cols() const { return J_.cols(); }
 
   const T& operator()(int i, int j) const { return J_(i, j);}
 
   const SpatialVector<T>& col(int i) const {
-    DRAKE_ASSERT(0 < i && i < cols());
+    DRAKE_ASSERT(0 <= i && i < cols());
     // Assumes column major order. Eigen's default.
     return *reinterpret_cast<const SpatialVector<T>*>(&(J_.col(i)[0]));
   }
 
   SpatialVector<T>& col(int i) {
-    DRAKE_ASSERT(0 < i && i < cols());
+    DRAKE_ASSERT(0 <= i && i < cols());
     // Assumes column major order. Eigen's default.
     return *reinterpret_cast<SpatialVector<T>*>(&(J_.col(i)[0]));
   }
@@ -153,6 +170,14 @@ class SpatialVelocityJacobian {
   const CoeffsEigenType& get_coeffs() const { return J_;}
 
   CoeffsEigenType& get_mutable_coeffs() { return J_;}
+
+  static SpatialVelocityJacobian& MutableView(T* data) {
+    return *reinterpret_cast<SpatialVelocityJacobian*>(data);
+  }
+
+  const T* mutable_data() const { return J_.data(); }
+
+  T* mutable_data() { return J_.data(); }
 
  private:
   CoeffsEigenType J_;

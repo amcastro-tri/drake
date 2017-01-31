@@ -76,6 +76,24 @@ GTEST_TEST(SpatialAlgebra, SpatialVelocityJacobianShift) {
   EXPECT_TRUE(J_AQ.col(2).linear().isApprox(expected_J_AQ.col(2).linear()));
 }
 
+GTEST_TEST(SpatialAlgebra, DynamicSizeJacobian) {
+  SpatialVelocityJacobian<double, Eigen::Dynamic> J1;
+  EXPECT_EQ(J1.rows(), 6);
+  EXPECT_EQ(J1.cols(), 0);
+
+  J1.resize(4);
+  EXPECT_EQ(J1.rows(), 6);
+  EXPECT_EQ(J1.cols(), 4);
+
+  SpatialVelocityJacobian<double, Eigen::Dynamic> J2(3);
+  EXPECT_EQ(J2.rows(), 6);
+  EXPECT_EQ(J2.cols(), 3);
+
+  J2.resize(4);
+  EXPECT_EQ(J2.rows(), 6);
+  EXPECT_EQ(J2.cols(), 4);
+}
+
 }
 }  // math
 }  // multibody

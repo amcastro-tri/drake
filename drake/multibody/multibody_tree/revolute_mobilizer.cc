@@ -9,12 +9,19 @@ namespace drake {
 namespace multibody {
 
 template <typename T>
-Isometry3<T> RevoluteMobilizer<T>::CalcAcrossMobilizerTransform(
-    const Eigen::Ref<const VectorX<T>>& q) const {
-  DRAKE_ASSERT(q.size() == this->get_num_positions());
-  Isometry3<T> X_FM = Isometry3<T>::Identity();
-  X_FM.linear() = Eigen::AngleAxis<T>(q[0], axis_F_).toRotationMatrix();
-  return X_FM;
+RevoluteMobilizer<T>& RevoluteMobilizer<T>::set_angle(
+    MultibodyTreeContext<T>* context, const T& angle) {
+  Vector<T, nq>& q = this->get_mutable_positions(context);
+  q[0] = angle;
+  return *this;
+}
+
+template <typename T>
+RevoluteMobilizer<T>& RevoluteMobilizer<T>::set_angular_velocity(
+    MultibodyTreeContext<T>* context, const T& angular_velocity) {
+  Vector<T, nq>& q = this->get_mutable_velocities(context);
+  q[0] = angular_velocity;
+  return *this;
 }
 
 template <typename T>

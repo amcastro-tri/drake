@@ -15,6 +15,7 @@ class RevoluteMobilizer : public MobilizerImpl<T, 1, 1> {
   using typename MobilizerBase::HMatrix;
   using MobilizerBase::num_positions;
   using MobilizerBase::num_velocities;
+  using MobilizerBase::get_id;
  public:
   /// Creates a revolute joint with axis_F expressed in the inboard frame F.
   RevoluteMobilizer(const BodyFrame<T>& inboard_frame,
@@ -22,8 +23,17 @@ class RevoluteMobilizer : public MobilizerImpl<T, 1, 1> {
                     const Vector3<double> axis_F) :
       MobilizerBase(inboard_frame, outboard_frame), axis_F_(axis_F) {}
 
-  Isometry3<T> CalcAcrossMobilizerTransform(
-      const Eigen::Ref<const VectorX<T>>& q) const final;
+  /// Sets the state represented in @p context so that the generalized
+  /// coordinate representing the rotation angle equals @p angle.
+  /// @param[in] context The context of the MultibodyTree this mobilizers
+  /// belongs to.
+  /// @param[in] angle The desired angle in radians.
+  /// @returns a reference to `this` mobilizer.
+  RevoluteMobilizer<T>& set_angle(MultibodyTreeContext<T>* context,
+                                  const T& angle);
+
+  RevoluteMobilizer<T>& set_angular_velocity(MultibodyTreeContext<T>* context,
+                                             const T& angular_velocity);
 
   void CalcAcrossMobilizerTransform(
       const MobilizerContext<T>& context,

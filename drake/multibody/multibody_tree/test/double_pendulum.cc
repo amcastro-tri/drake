@@ -65,9 +65,16 @@ int DoMain() {
   model.PrintTopology();
   unique_ptr<MultibodyTreeContext<double>> context =
       model.CreateDefaultContext();
-  context->get_mutable_positions().setZero();
-  context->get_mutable_velocities().setZero();
+
+  //model.SetZeroConfiguration(context.get());
+  pin_joint->set_zero_configuration(context.get());
+  pin_joint->set_angular_velocity(context.get(), 0.0);
+  context->Print();
+
+  pin_joint->set_angle(context.get(), M_PI/6.0);
   model.UpdatePositionKinematics(*context);
+
+  cout << "Context after UpdatePositionKinematics():" << endl;
   context->Print();
 
 #if 0

@@ -53,6 +53,12 @@ class MultibodyTreeContext {
     return mobilizer_contexts_[mobilizer_id];
   }
 
+  MobilizerContext<T>& get_mutable_mobilizer_context(
+      MobilizerIndex mobilizer_id)
+  {
+    return mobilizer_contexts_[mobilizer_id];
+  }
+
   /// Returns the current time in seconds.
   const T& get_time() const { return time_sec_; }
 
@@ -85,9 +91,9 @@ class MultibodyTreeContext {
         CreateMobilizerPositionKinematics(tree_topology, mobilizer_id);
 
     // Pointer to its local positions entry.
-    const T* rigid_positions = q_.data() + rigid_positions_start;
+    T* rigid_positions = q_.data() + rigid_positions_start;
     // Pointer to its local velocities entry.
-    const T* rigid_velocities = v_.data() + rigid_velocities_start;
+    T* rigid_velocities = v_.data() + rigid_velocities_start;
 
     MobilizerContext<T> mobilizer_context(
         num_rigid_positions, num_rigid_velocities,

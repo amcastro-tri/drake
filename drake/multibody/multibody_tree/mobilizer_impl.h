@@ -17,6 +17,8 @@ namespace multibody {
 template <typename T, int  nq, int nv>
 class MobilizerImpl : public Mobilizer<T> {
  public:
+  using Mobilizer<T>::get_id;
+
   // static constexpr int i = 42; discouraged.
   // See answer in: http://stackoverflow.com/questions/37259807/static-constexpr-int-vs-old-fashioned-enum-when-and-why
   enum : int {num_positions = nq, num_velocities = nv};
@@ -29,6 +31,22 @@ class MobilizerImpl : public Mobilizer<T> {
 
   int get_num_positions() const final { return nq;}
   int get_num_velocities() const final { return nv;}
+
+  /// Sets the what is considered the _zero_ configuration for this mobilizer.
+  /// By default this method sets all degrees of freedom related to this
+  /// mobilizer to zero.
+  /// In general setting all generalized coordinates to zero does not represent
+  /// the _zero_ configuration and it might even not represent a mathematicaly
+  /// valid configuration. Consider for instance a QuaternionMobilizer, for
+  /// which its _zero_ configuration corresponds to the quaternion [1, 0, 0, 0].
+  /// For those cases the specific mobilizers must override this method.
+  virtual void set_zero_configuration(MultibodyTreeContext<T>* context) const {
+    get_mutable_positions(context).setZero();
+  }
+
+  void set_zero_velocities(MultibodyTreeContext<T>* context) const {
+    get_mutable_velocities(context).setZero();
+  }
 
 #if 0
   void UpdatePositionKinematics(
@@ -81,6 +99,39 @@ class MobilizerImpl : public Mobilizer<T> {
     CalcParentToChildJacobianInWorld(pc, get_mutable_Ht_PB_W(pc));
   }
 #endif
+ protected:
+
+  const MobilizerContext<T>& get_context(
+      const MultibodyTreeContext<T>& context) const {
+    return context.get_mobilizer_context(get_id());
+  }
+
+  MobilizerContext<T>& get_mutable_context(
+      MultibodyTreeContext<T>* context) const {
+    return context->get_mutable_mobilizer_context(get_id());
+  }
+
+  const Vector<T, nq>& get_positions(
+      const MultibodyTreeContext<T>& context) const
+  {
+    const MobilizerContext<T>& local_context = get_context(context);
+    return local_context.template get_positions<nq>();
+  }
+
+  /// Given a mutable MultibodyTreeContext this method regurns a mutable
+  /// reference vector to the portion of the generalized coordinates vector for
+  /// the entire MultibodyTree that correspods to this mobilizer.
+  /// The returned vector has the proper static size for fast computations.
+  Vector<T, nq>& get_mutable_positions(MultibodyTreeContext<T>* context) const {
+    MobilizerContext<T>& local_context = get_mutable_context(context);
+    return local_context.template get_mutable_positions<nq>();
+  }
+
+  Vector<T, nq>& get_mutable_velocities(MultibodyTreeContext<T>* context) const {
+    MobilizerContext<T>& local_context = get_mutable_context(context);
+    return local_context.template get_mutable_velocities<nq>();
+  }
+
  private:
 
 #if 0

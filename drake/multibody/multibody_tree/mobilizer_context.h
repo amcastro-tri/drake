@@ -43,7 +43,7 @@ template <typename T>
 class MobilizerContext {
  public:
   MobilizerContext(int num_positions, int num_velocities,
-                   const T* q, const T* v,
+                   T* q, T* v,
                    const MobilizerPositionKinematics<T>& position_kinematics) :
       num_positions_(num_positions), num_velocities_(num_velocities),
       q_(q), v_(v),
@@ -57,6 +57,18 @@ class MobilizerContext {
     return *reinterpret_cast<const Vector<T, nq>*>(q_);
   }
 
+  template <int nq>
+  Vector<T, nq>& get_mutable_positions() {
+    DRAKE_ASSERT(num_positions_ == nq);
+    return *reinterpret_cast<Vector<T, nq>*>(q_);
+  }
+
+  template <int nv>
+  Vector<T, nv>& get_mutable_velocities() {
+    DRAKE_ASSERT(num_velocities_ == nv);
+    return *reinterpret_cast<Vector<T, nv>*>(v_);
+  }
+
   MobilizerPositionKinematics<T>* get_mutable_position_kinematics() const {
     return &position_kinematics_;
   }
@@ -65,8 +77,8 @@ class MobilizerContext {
   // These entries are used for sanity checks on debug builds.
   int num_positions_, num_velocities_;
 
-  const T* q_;  // Pointer into the global array of positions.
-  const T* v_;  // Pointer into the global array of velocities.
+  T* q_;  // Pointer into the global array of positions.
+  T* v_;  // Pointer into the global array of velocities.
 
   // Cached entries.
   // MobilizerPositionKinematics provides:

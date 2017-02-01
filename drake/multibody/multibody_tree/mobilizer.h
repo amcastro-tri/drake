@@ -45,9 +45,6 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
   /// Computes the across-Mobilizer transform `X_FM(q)` ginven the vector of
   /// generalized postions `q`.
   /// This method can be considered the *definition* of a given mobilizer.
-  virtual Isometry3<T> CalcAcrossMobilizerTransform(
-      const Eigen::Ref<const VectorX<T>>& q) const = 0;
-
   virtual void CalcAcrossMobilizerTransform(
       const MobilizerContext<T>& context,
       MobilizerPositionKinematics<T>* pc) const = 0;

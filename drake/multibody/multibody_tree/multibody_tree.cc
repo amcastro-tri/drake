@@ -328,6 +328,7 @@ void MultibodyTree<T>::UpdatePositionKinematics(
       //bodies_[body_index]->UpdatePositionKinematicsCache(context);
     }
   }
+  // TODO: Validate cache entry for PositionKinematicsCache.
 }
 
 template class MultibodyTree<double>;

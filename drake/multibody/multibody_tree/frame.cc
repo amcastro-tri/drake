@@ -13,6 +13,9 @@ template <typename T>
 BodyFrame<T>::BodyFrame(const Body<T>& body) : body_id_(body.get_id()) {}
 
 template <typename T>
+BodyFrame<T>::BodyFrame(BodyIndex body_id) : body_id_(body_id) {}
+
+template <typename T>
 const Body<T>& BodyFrame<T>::get_body() const {
   return this->get_parent_tree().get_body(body_id_);
 }

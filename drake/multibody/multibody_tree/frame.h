@@ -25,6 +25,8 @@ class BodyFrame : public Frame<T> {
  public:
   BodyFrame(const Body<T>& body);
 
+  BodyFrame(BodyIndex body_id);
+
   const Body<T>& get_body() const;
 
   BodyIndex get_body_id() const;
@@ -63,6 +65,16 @@ class RigidBodyFrame : public BodyFrame<T> {
 
  private:
   Isometry3<T> X_BF_;
+
+#if 0
+  RigidBodyFrame(BodyIndex body_id, const Isometry3<T>& X_BF) :
+      BodyFrame<T>(body_id) {}
+
+  RigidBodyFrame<T>* DoDeepCloneTo(
+      const RigidBodyFrame<double>& other) const override {
+    return new RigidBodyFrame<T>(other.get_body_id(), X_BF_);
+  };
+#endif
 };
 
 }  // namespace multibody

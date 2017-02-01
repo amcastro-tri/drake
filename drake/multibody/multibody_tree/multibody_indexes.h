@@ -2,6 +2,8 @@
 
 #include "drake/common/drake_assert.h"
 
+#include <iostream>
+
 #define DrakeMultibody_DEFINE_INDEX_TYPE(NAME)   \
 class NAME {                         \
     int ix;                                 \
@@ -36,7 +38,15 @@ public:                                     \
     \
     static const NAME& Invalid() {static const NAME invalid; return invalid;}       \
     static bool isValid(int  i) {return i>=0;}                                      \
-};
+};  \
+    \
+inline std::ostream& operator<<(std::ostream& o, const NAME& index) {          \
+      if (index.is_invalid())                                                  \
+        o << "Invalid";                                                        \
+      else                                                                     \
+        o << int(index);                                                       \
+      return o;                                                                \
+    }                                                                          \
 
 namespace drake {
 namespace multibody {
@@ -44,5 +54,10 @@ DrakeMultibody_DEFINE_INDEX_TYPE(FrameIndex);
 DrakeMultibody_DEFINE_INDEX_TYPE(BodyIndex);
 DrakeMultibody_DEFINE_INDEX_TYPE(BodyNodeIndex);
 DrakeMultibody_DEFINE_INDEX_TYPE(MobilizerIndex);
+
+/// For every MultibodyTree<T> the *world* body _always_ has this unique
+/// identifier and it is always zero.
+static const BodyIndex kWorldBodyId(0);
+
 }  // namespace multibody
 }  // namespace drake

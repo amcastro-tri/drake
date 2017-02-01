@@ -38,6 +38,9 @@ void MultibodyTree<T>::CompileTopology() {
   if (topology_.is_valid) return;  // Nothing new to compile.
 
   auto& body_topologies = topology_.bodies_;
+  auto& mobilizer_topologies = topology_.mobilizers_;
+
+  mobilizer_topologies.resize(get_num_mobilizers());
 
   // Resize body topologies, assign id.
   body_topologies.resize(get_num_bodies());
@@ -92,34 +95,39 @@ void MultibodyTree<T>::CompileTopology() {
   }
   topology_.num_levels = num_levels;
 
-  // Mark this tree's topology as valid.
-  topology_.validate();
-}
-
-template <typename T>
-void MultibodyTree<T>::Compile() {
-  // Computes MultibodyTree<T>::topology_
-  CompileTopology();
-
-  auto& body_topologies = topology_.bodies_;
-
-  // Now that levels are computed by CompileTopology(), create a list of bodies
-  // ordered by level for fast traversals.
+  // Now that levels are computed, create a list of bodies ordered by level
+  // for fast traversals.
   body_levels_.resize(topology_.num_levels);
   for (BodyIndex body_id(0); body_id < get_num_bodies(); ++body_id) {
     const int level = body_topologies[body_id].level;
     body_levels_[level].push_back(body_id);
   }
 
-  // Create a BodyNode<T> for each Body<T>, order by levels.
+  // Compile BodyNodeTopology
+  topology_.body_nodes.resize(get_num_bodies());
   body_node_levels_.resize(topology_.num_levels);
+  auto& body_node_topologies = topology_.body_nodes;
   // BodyNode id's are not necessarily the same as Body id's.
   BodyNodeIndex body_node_id(0);
-  int position_start = 0, velocity_start = 0;
-  for (int level = 0; level < get_num_levels(); ++level) {
+  int rigid_position_start = 0, rigid_velocity_start = 0;
+  topology_.num_rigid_positions = 0;
+  topology_.num_rigid_velocities = 0;
+  topology_.num_flexible_positions = 0;
+  topology_.num_flexible_velocities = 0;
+  for (int level = 0; level < topology_.num_levels; ++level) {
     for (BodyIndex body_id: body_levels_[level]) {
       MobilizerIndex mobilizer_id = body_topologies[body_id].inboard_mobilizer;
-      auto body_node = make_unique<BodyNode<T>>(body_id, mobilizer_id);
+
+      // Record in BodyNodeTopology the Body and Mobilzer associated with it.
+      body_node_topologies[body_node_id].id = body_node_id;
+      body_node_topologies[body_node_id].body = body_id;
+      body_node_topologies[body_node_id].mobilizer = mobilizer_id;
+
+      // And vice-versa, store in BodyTopology and MobilizerTopology what
+      // BodyNode they associate with.
+      body_topologies[body_id].body_node = body_node_id;
+      if (mobilizer_id.is_valid())  // There is no inboard for the world.
+        mobilizer_topologies[mobilizer_id].body_node = body_node_id;
 
       // Compute sizes and offsets. Variables are arranged in a base to tip
       // order.
@@ -137,6 +145,75 @@ void MultibodyTree<T>::Compile() {
         num_flexible_velocities = body.get_num_velocities();
       }
 
+      body_node_topologies[body_node_id].SetArrayIndexes(
+          rigid_position_start, rigid_velocity_start,
+          num_rigid_positions, num_flexible_positions,
+          num_rigid_velocities, num_flexible_velocities);
+
+      rigid_position_start += (num_rigid_positions + num_flexible_positions);
+      rigid_velocity_start += (num_rigid_velocities + num_flexible_velocities);
+
+      topology_.num_rigid_positions += num_rigid_positions;
+      topology_.num_rigid_velocities += num_rigid_velocities;
+
+      topology_.num_flexible_positions += num_flexible_positions;
+      topology_.num_flexible_velocities += num_flexible_velocities;
+
+      body_node_levels_[level].push_back(body_node_id++);
+    }
+    topology_.num_positions =
+        topology_.num_rigid_positions + topology_.num_flexible_positions;
+    topology_.num_velocities =
+        topology_.num_rigid_velocities + topology_.num_flexible_velocities;
+  }
+
+  // Mark this tree's topology as valid.
+  topology_.validate();
+}
+
+template <typename T>
+void MultibodyTree<T>::Compile() {
+  // Computes MultibodyTree<T>::topology_
+  CompileTopology();
+
+  auto& body_topologies = topology_.bodies_;
+
+  // TODO(amcastro-tri): Reuse information in topology_.body_nodes since all
+  // sizes were already computed in CompileTopology().
+  // Create a BodyNode<T> for each Body<T>, order by levels.
+  // BodyNode id's are not necessarily the same as Body id's.
+  BodyNodeIndex body_node_id(0);
+  int position_start = 0, velocity_start = 0;
+  for (int level = 0; level < get_num_levels(); ++level) {
+    for (BodyIndex body_id: body_levels_[level]) {
+      MobilizerIndex mobilizer_id = body_topologies[body_id].inboard_mobilizer;
+      body_topologies[body_id].body_node = body_node_id;
+      auto body_node = make_unique<BodyNode<T>>(body_id, mobilizer_id);
+      body_node->set_parent_tree(this);
+      body_node->set_id(body_node_id);
+
+      // Compute sizes and offsets. Variables are arranged in a base to tip
+      // order.
+      // Sizes are zero for the world body.
+      int num_rigid_positions = 0;
+      int num_rigid_velocities = 0;
+      int num_flexible_positions = 0;
+      int num_flexible_velocities = 0;
+      int H_FM_pool_start = 0;
+      if (body_id != kWorldBodyId) {
+        const Body<T> &body = get_body(body_id);
+        const Mobilizer<T> &mobilizer = get_mobilizer(mobilizer_id);
+        num_rigid_positions = mobilizer.get_num_positions();
+        num_rigid_velocities = mobilizer.get_num_velocities();
+        num_flexible_positions = body.get_num_positions();
+        num_flexible_velocities = body.get_num_velocities();
+
+        //mobilizer.SetArrayIndexes(position_start, velocity_start,
+        //                          num_rigid_positions, num_rigid_velocities,
+        //                          H_FM_pool_start);
+        H_FM_pool_start += 6 * num_rigid_velocities;
+      }
+
       body_node->SetArrayIndexes(position_start, velocity_start,
                                  num_rigid_positions, num_flexible_positions,
                                  num_rigid_velocities, num_flexible_velocities);
@@ -145,9 +222,11 @@ void MultibodyTree<T>::Compile() {
       velocity_start += (num_rigid_velocities + num_flexible_velocities);
       // Finally, transfer ownership to the MultibodyTree.
       body_nodes_.push_back(std::move(body_node));
-      body_node_levels_[level].push_back(body_node_id++);
     }
   }
+
+  // Create BodyNodeTopology entries.
+
 }
 
 template <typename T>
@@ -161,9 +240,18 @@ void MultibodyTree<T>::PrintTopology() const {
     for (BodyIndex child: body_topologies[body_id].child_bodies) {
       PRINT_VAR(body_topologies[child].id);
     }
+    PRINT_VAR(body_topologies[body_id].body_node);
   }
 
   PRINT_VAR("");
+
+  for (MobilizerIndex mobilizer_id(0);
+       mobilizer_id < get_num_mobilizers(); ++mobilizer_id) {
+    PRINT_VAR(mobilizer_id);
+    PRINT_VAR(topology_.mobilizers_[mobilizer_id].inboard_body);
+    PRINT_VAR(topology_.mobilizers_[mobilizer_id].outboard_body);
+    PRINT_VAR(topology_.mobilizers_[mobilizer_id].body_node);
+  }
 
   PRINT_VAR(topology_.num_levels);
   for (int level = 0; level < topology_.num_levels; ++level) {
@@ -172,6 +260,21 @@ void MultibodyTree<T>::PrintTopology() const {
       PRINT_VAR(ibody);
     }
   }
+
+  PRINT_VAR("");
+
+  for (int level = 0; level < topology_.num_levels; ++level) {
+    PRINT_VAR(level);
+    for (BodyNodeIndex body_node_id: body_node_levels_[level]) {
+      PRINT_VAR(body_node_id);
+      PRINT_VAR(topology_.body_nodes[body_node_id].id);
+      PRINT_VAR(topology_.body_nodes[body_node_id].body);
+      PRINT_VAR(topology_.body_nodes[body_node_id].mobilizer);
+      PRINT_VAR(topology_.body_nodes[body_node_id].num_rigid_positions);
+      PRINT_VAR(topology_.body_nodes[body_node_id].num_rigid_velocities);
+    }
+  }
+
 }
 
 template <typename T>
@@ -208,27 +311,24 @@ const Joint<T>& MultibodyTree<T>::get_joint(MobilizerIndex joint_id) const {
 }
 #endif
 
-#if 0
 template <typename T>
 void MultibodyTree<T>::UpdatePositionKinematics(
     const MultibodyTreeContext<T>& context) const {
   // Base-to-Tip recursion.
   // This skips the world, level = 0.
   for (int level = 1; level < get_num_levels(); ++level) {
-    for (BodyNodeIndex body_node_index: body_node_levels_[level]) {
-      BodyNode* node = body_nodes_[body_node_index].get();
-      MobilizerIndex mobilizer_index = node->get_mobilizer_index();
-      BodyIndex body_index = node->get_body_index();
-      // Update position kinematics that depend on mobilizers only:
-      // - X_FM, X_PB, X_WB, Ht_FM, Ht_PB_W
-      body_nodes_[body_node_index]->UpdatePositionKinematicsCache(context);
+    for (BodyNodeIndex body_node_id: body_node_levels_[level]) {
+      const BodyNode<T>& node = *body_nodes_[body_node_id];
+
+      // Update per-node kinematics.
+      node.UpdatePositionKinematicsCache(context);
+
       // Updates position kinematics quantities that depend on bodies:
       // - com_W, p_PB_W, M_Bo_W
       //bodies_[body_index]->UpdatePositionKinematicsCache(context);
     }
   }
 }
-#endif
 
 template class MultibodyTree<double>;
 

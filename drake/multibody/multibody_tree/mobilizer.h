@@ -6,8 +6,8 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/frame.h"
+#include "drake/multibody/multibody_tree/mobilizer_context.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
-#include "drake/multibody/multibody_tree/multibody_tree_element.h"
 
 namespace drake {
 namespace multibody {
@@ -39,11 +39,22 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
 
   BodyIndex get_outboard_body_id() const { return outboard_body_; }
 
+  virtual void UpdatePositionKinematics(
+      const MultibodyTreeContext<T>& context) const = 0;
+
   /// Computes the across-Mobilizer transform `X_FM(q)` ginven the vector of
   /// generalized postions `q`.
   /// This method can be considered the *definition* of a given mobilizer.
   virtual Isometry3<T> CalcAcrossMobilizerTransform(
       const Eigen::Ref<const VectorX<T>>& q) const = 0;
+
+  virtual void CalcAcrossMobilizerTransform(
+      const MobilizerContext<T>& context,
+      MobilizerPositionKinematics<T>* pc) const = 0;
+
+  virtual void CalcAcrossMobilizerVelocityJacobian(
+      const MobilizerContext<T>& context,
+      MobilizerPositionKinematics<T>* pc) const = 0;
 
   /// Computes the across Mobilizer velocity jacobian @p Ht as defined by A. Jain.
   /// This Jacobian defines the spatial velocity subspace so that the spatial
@@ -51,8 +62,8 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
   ///   `V_FM_F = Ht * v`
   /// with `v` the vector of generalized velocities for this mobilizer.
   //virtual void CalcAcrossMobilizerVelocityJacobian(
-  //    const Eigen::Ref<const VectorX<T>>& q,
-  //    Eigen::Ref<MatrixX<T>> Ht) const = 0;
+  //    const MultibodyTreeContext<T>& context,
+  //    PositionKinematicsCache<T>* pc) const = 0;
 
 #if 0
   virtual void UpdatePositionKinematicsCache(

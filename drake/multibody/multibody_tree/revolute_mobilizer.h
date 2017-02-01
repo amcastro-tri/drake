@@ -12,7 +12,9 @@ namespace multibody {
 template <typename T>
 class RevoluteMobilizer : public MobilizerImpl<T, 1, 1> {
   typedef MobilizerImpl<T, 1, 1> MobilizerBase;
-  using MobilizerBase::HMatrix;
+  using typename MobilizerBase::HMatrix;
+  using MobilizerBase::num_positions;
+  using MobilizerBase::num_velocities;
  public:
   /// Creates a revolute joint with axis_F expressed in the inboard frame F.
   RevoluteMobilizer(const BodyFrame<T>& inboard_frame,
@@ -22,6 +24,14 @@ class RevoluteMobilizer : public MobilizerImpl<T, 1, 1> {
 
   Isometry3<T> CalcAcrossMobilizerTransform(
       const Eigen::Ref<const VectorX<T>>& q) const final;
+
+  void CalcAcrossMobilizerTransform(
+      const MobilizerContext<T>& context,
+      MobilizerPositionKinematics<T>* pc) const final;
+
+  void CalcAcrossMobilizerVelocityJacobian(
+      const MobilizerContext<T>& context,
+      MobilizerPositionKinematics<T>* pc) const final;
 
  private:
   // static constexpr int i = 42; discouraged.

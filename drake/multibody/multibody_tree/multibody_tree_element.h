@@ -38,6 +38,24 @@ class MultibodyTreeElement<ElementType<T>, ElementIndexType> {
   // Only MultibodyTree<T> can set these.
   void set_parent_tree(MultibodyTree<T>* tree) { parent_tree_ = tree; }
   void set_id(ElementIndexType id) { id_ = id; }
+
+#if 0
+  // Non-virtual interface (NVI) to DoDeepClone(). Derived classes must
+  // overwrite this method to allow the deep cloning of MultibodyTree to other
+  // scalar types.
+  template <typename ToScalar>
+  ElementType<ToScalar>* DeepCloneTo() const {
+    return ElementType<ToScalar>::DoDeepClone(*this);
+  };
+
+  // Derived classes must overwrite this method to allow the deep cloning of
+  // MultibodyTree to other scalar types.
+  virtual ElementType<T>* DoDeepCloneTo(const ElementType<double>& other) const
+  {
+    return nullptr;
+  };
+#endif
+
 };
 
 }  // namespace multibody

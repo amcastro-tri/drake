@@ -44,6 +44,10 @@ using Vector6 = Eigen::Matrix<Scalar, 6, 1>;
 template <typename Scalar>
 using VectorX = Eigen::Matrix<Scalar, Eigen::Dynamic, 1>;
 
+/// A column vector fixed-size, templated on scalar type.
+template <typename Scalar , int n>
+using Vector = Eigen::Matrix<Scalar, n, 1>;
+
 /// A row vector of size 2, templated on scalar type.
 template <typename Scalar>
 using RowVector2 = Eigen::Matrix<Scalar, 1, 2>;

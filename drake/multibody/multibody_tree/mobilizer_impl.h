@@ -7,6 +7,8 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/frame.h"
 #include "drake/multibody/multibody_tree/mobilizer.h"
+#include "drake/multibody/multibody_tree/multibody_tree_context.h"
+#include "drake/multibody/multibody_tree/multibody_tree_cache.h"
 #include "drake/multibody/multibody_tree/math/spatial_algebra.h"
 
 namespace drake {
@@ -15,6 +17,10 @@ namespace multibody {
 template <typename T, int  nq, int nv>
 class MobilizerImpl : public Mobilizer<T> {
  public:
+  // static constexpr int i = 42; discouraged.
+  // See answer in: http://stackoverflow.com/questions/37259807/static-constexpr-int-vs-old-fashioned-enum-when-and-why
+  enum : int {num_positions = nq, num_velocities = nv};
+
   typedef SpatialVelocityJacobian<T, nv> HMatrix;
 
   MobilizerImpl(const BodyFrame<T>& inboard_frame,
@@ -23,6 +29,32 @@ class MobilizerImpl : public Mobilizer<T> {
 
   int get_num_positions() const final { return nq;}
   int get_num_velocities() const final { return nv;}
+
+#if 0
+  void UpdatePositionKinematics(
+      const MultibodyTreeContext<T>& context) const final {
+
+    // Topological information.
+    const BodyNodeTopology& node_topology =
+        contex.get_body_node_topology(this->get_id());
+    const BodyNodeIndex node_id = node_topology.id;
+
+    // Extract const variables from the context.
+    auto q = context.get_positions().template segment<nq>(
+        node_topology.rigid_positions_start);
+
+    // Extract mutable variables from the cache.
+    // Cache entries are indexed by BodyNode id.
+    PositionKinematicsCache<T>* pc = context.get_mutable_position_kinematics();
+    HMatrix& H_FM = pc->get_mutable_H_FM_pool<nv>(node_id);
+
+    // Perform computations.
+    DoCalcAcrossMobilizerVelocityJacobian(q, &H_FM);
+  }
+#endif
+
+  void UpdatePositionKinematics(
+      const MultibodyTreeContext<T>& context) const final;
 
 #if 0
   HtMatrix* get_mutable_H_FM(const PositionKinematicsCache<T>& pc) const {

@@ -100,6 +100,10 @@ class SpatialVector {
     return V_.dot(V.V_);
   }
 
+  const T* data() const { return V_.data(); }
+
+  T* mutable_data() { return V_.data(); }
+
  private:
   CoeffsEigenType V_;
 };

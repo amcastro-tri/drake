@@ -21,6 +21,7 @@ using Eigen::Vector3d;
 using std::cout;
 using std::endl;
 using std::make_unique;
+using std::unique_ptr;
 
 template <typename T>
 std::ostream& operator<<(
@@ -62,6 +63,12 @@ int DoMain() {
 
   model.Compile();
   model.PrintTopology();
+  unique_ptr<MultibodyTreeContext<double>> context =
+      model.CreateDefaultContext();
+  context->get_mutable_positions().setZero();
+  context->get_mutable_velocities().setZero();
+  model.UpdatePositionKinematics(*context);
+  context->Print();
 
 #if 0
   MassProperties<double> mass_properties(1.0, Vector3d::Zero(), I_Bo_B);

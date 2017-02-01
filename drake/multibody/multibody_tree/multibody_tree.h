@@ -13,6 +13,7 @@
 #include "drake/multibody/multibody_tree/body.h"
 #include "drake/multibody/multibody_tree/body_node.h"
 #include "drake/multibody/multibody_tree/frame.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
 #include "drake/multibody/multibody_tree/mobilizer.h"
 #include "drake/multibody/multibody_tree/multibody_tree_cache.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
@@ -24,8 +25,6 @@ namespace multibody {
 template <typename T>
 class MultibodyTree {
  public:
-  const BodyIndex kWorldBodyId{0};
-
   /// Creates a MultibodyTree containing only a *world* body (with unique BodyId
   /// equal to 0).
   MultibodyTree();
@@ -108,6 +107,46 @@ class MultibodyTree {
 #endif
 
   void UpdatePositionKinematics(const MultibodyTreeContext<T>& context) const;
+
+  const MobilizerContext<T>& get_mobilizer_context(
+      const MultibodyTreeContext<T>& context, const Mobilizer<T>& mobilizer) const
+  {
+    return context.get_mobilizer_context(mobilizer.get_id());
+  }
+
+#if 0
+  /// Returns the entry into the PositionKinematicsCache for the first column of
+  /// H_FM corresponding to @p mobilizer_index.
+  /// This method is called within the constructor MobilizerPositionKinematics
+  /// to initialize the position kinematics for a given mobilizer.
+  SpatialVector<T>& get_mutable_mobilizer_H_FM(
+      const MultibodyTreeContext<T>& context,
+      MobilizerIndex mobilizer_index) const {
+    PositionKinematicsCache<T>* pc = context.get_mutable_position_kinematics();
+    BodyNodeIndex body_node_id =
+        topology_.mobilizers_[mobilizer_index].body_node;
+    int first_column = body_nodes_[body_node_id]->get_rigid_velocities_start();
+    return pc->get_mutable_H_FM_pool()[first_column];
+  };
+
+  const auto get_mobilizer_positions(
+      const MultibodyTreeContext<T>& context,
+      MobilizerIndex mobilizer_index) const {
+    PositionKinematicsCache<T>* pc = context.get_mutable_position_kinematics();
+    BodyNodeIndex body_node_id =
+        topology_.mobilizers_[mobilizer_index].body_node;
+    int positions_start =
+        body_nodes_[body_node_id]->get_rigid_positions_start();
+    int num_positions =
+        body_nodes_[body_node_id]->get_num_rigid_positions();
+    return context.get_positions().segment(positions_start, num_positions);
+  }
+#endif
+
+  std::unique_ptr<MultibodyTreeContext<T>> CreateDefaultContext() const {
+    auto context = std::make_unique<MultibodyTreeContext<T>>(topology_);
+    return context;
+  }
 
  private:
   // Invalidates tree topology when it changes.

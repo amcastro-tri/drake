@@ -1,5 +1,7 @@
 #include "drake/multibody/multibody_tree/revolute_mobilizer.h"
 
+#include "drake/multibody/multibody_tree/mobilizer_impl.h"
+
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
 
@@ -13,6 +15,25 @@ Isometry3<T> RevoluteMobilizer<T>::CalcAcrossMobilizerTransform(
   Isometry3<T> X_FM = Isometry3<T>::Identity();
   X_FM.linear() = Eigen::AngleAxis<T>(q[0], axis_F_).toRotationMatrix();
   return X_FM;
+}
+
+template <typename T>
+void RevoluteMobilizer<T>::CalcAcrossMobilizerTransform(
+    const MobilizerContext<T>& context,
+    MobilizerPositionKinematics<T>* pc) const {
+  const Vector<T, nq>& q = context.template get_positions<num_positions>();
+  Isometry3<T>& X_FM = pc->get_mutable_X_FM();
+  X_FM = Isometry3<T>::Identity();
+  X_FM.linear() = Eigen::AngleAxis<T>(q[0], axis_F_).toRotationMatrix();
+}
+
+template <typename T>
+void RevoluteMobilizer<T>::CalcAcrossMobilizerVelocityJacobian(
+    const MobilizerContext<T>& context,
+    MobilizerPositionKinematics<T>* pc) const {
+  HMatrix& H_FM = pc->template get_mutable_H_FM<num_velocities>();
+  H_FM.col(0).angular() = axis_F_;
+  H_FM.col(0).linear() = Vector3<T>::Zero();
 }
 
 #if 0

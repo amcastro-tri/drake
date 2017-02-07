@@ -43,6 +43,7 @@ class MaterialFrame : public Frame<T> {
     std::cout << "Frame id: " << topology_.id << std::endl;
     std::cout << "Body id: " << topology_.body_id << std::endl;
     std::cout << "Local body id: " << topology_.local_id << std::endl;
+    std::cout << "BodyNode id: " << topology_.body_node << std::endl;
     std::cout << "X_BF_index: " << topology_.X_BF_index << std::endl;
   }
 

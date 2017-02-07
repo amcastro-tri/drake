@@ -113,6 +113,8 @@ struct MaterialFrameTopology {
   FrameIndex id{FrameIndex::Invalid()};
   // Unique identifier of the body this material frame attaches to.
   BodyIndex body_id{BodyIndex::Invalid()};
+  // The index of the BodyNode associated with body_id.
+  BodyNodeIndex body_node{BodyNodeIndex::Invalid()};
   // Local frame id or index in the body.
   int local_id{-1};
   // Index in the pool of frame poses in the position kinematics cache.

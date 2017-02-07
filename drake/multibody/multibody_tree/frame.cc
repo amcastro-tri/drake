@@ -61,6 +61,7 @@ template <typename T>
 void RigidBodyFrame<T>::SetDefaults(MultibodyTreeContext<T>* context) {
   PositionKinematicsCache<T>* pc = context->get_mutable_position_kinematics();
   pc->get_mutable_X_BF(this->get_topology().X_BF_index) = X_BF_;
+  pc->get_mutable_X_MB(this->get_topology().body_node) = X_BF_.inverse();
 }
 
 #if 0

@@ -50,15 +50,44 @@ class PositionKinematicsCache {
     return X_BF_pool_[index];
   }
 
+  /// Returns a constant reference to the pose `X_MB` of the node body frame `B`
+  /// as measured and expressed in the "mobilized" frame `M`.
+  /// In general `X_MB(qf_B)` is a function of the flexible degrees of freedom
+  /// of the node body `B`.
+  /// @param[in] body_node_id The unique identifier for the computational
+  ///                         BodyNode object associated with body `B`.
+  /// @returns `X_MB` the pose of the the body frame `B` measured and
+  ///                 expressed in the "mobilized" frame `M` .
+  const Isometry3<T>& get_X_MB(BodyNodeIndex body_node_id) const {
+    return X_MB_pool_[body_node_id];
+  }
+
+  /// Returns a mutable reference to the pose `X_MB` of the node body frame `B`
+  /// as measured and expressed in the "mobilized" frame `M`.
+  /// In general `X_MB(qf_B)` is a function of the flexible degrees of freedom
+  /// of the node body `B`.
+  /// @param[in] body_node_id The unique identifier for the computational
+  ///                         BodyNode object associated with body `B`.
+  /// @returns `X_MB` the pose of the the body frame `B` measured and
+  ///                 expressed in the "mobilized" frame `M` .
+  Isometry3<T>& get_mutable_X_MB(BodyNodeIndex body_node_id) {
+    return X_MB_pool_[body_node_id];
+  }
+
   void Allocate(const MultibodyTreeTopology& tree_topology) {
     const int num_nodes = tree_topology.get_num_body_nodes();
     const int num_rigid_velocities = tree_topology.num_rigid_velocities;
     X_FM_pool_.resize(num_nodes);
-    X_FM_pool_[kWorldBodyId].setIdentity();
+    X_FM_pool_[kWorldBodyId] = Matrix4<T>::Constant(
+        Eigen::NumTraits<double>::quiet_NaN());  // Not used.
 
     H_FM_pool_.resize(num_rigid_velocities);
 
     X_BF_pool_.resize(tree_topology.X_BF_pool_size);
+
+    X_MB_pool_.resize(num_nodes);
+    X_MB_pool_[kWorldBodyId] = Matrix4<T>::Constant(
+        Eigen::NumTraits<double>::quiet_NaN());  // Not used.
   }
 
   void Print() {
@@ -77,6 +106,7 @@ class PositionKinematicsCache {
   X_PoolType X_FM_pool_;  // Indexed by BodyNodeIndex.
   H_FM_PoolType H_FM_pool_;  // Indexed by velocity_start.
   X_PoolType X_BF_pool_;  // Indexed by X_BF_index.
+  X_PoolType X_MB_pool_;  // Indexed by BodyNodeIndex.
 };
 
 }  // namespace multibody

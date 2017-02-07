@@ -150,6 +150,10 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
   const Mobilizer<T>* mobilizer_{nullptr};
 
   // Helper methods to extract entries from the context.
+
+  // Get from the position kinematics cache a constant reference to the pose
+  // X_PF of the "fixed" frame F as measured and expressed in the inboard
+  // (parent) body frame P.
   const Isometry3<T>& get_X_PF(const PositionKinematicsCache<T>* pc) const {
     const auto& pool = pc->get_X_BF_pool();
     DRAKE_ASSERT(topology_.X_PF_index < static_cast<int>(pool.size()));
@@ -160,6 +164,19 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     auto& pool = pc->get_mutable_X_BF_pool();
     DRAKE_ASSERT(topology_.X_PF_index < static_cast<int>(pool.size()));
     return pool[topology_.X_PF_index];
+  }
+
+  // Get from the position kinematics cache a constant reference to the pose
+  // `X_MB` of the node body frame `B` as measured and expressed in the
+  // "mobilized" frame `M`.
+  /// In general `X_MB(qf_B)` is a function of the flexible degrees of freedom
+  // of the node body `B`.
+  // @param[in] body_node_id The unique identifier for the computational
+  //                         BodyNode object associated with body `B`.
+  // @returns `X_MB` the pose of the the body frame `B` measured and
+  //                 expressed in the "mobilized" frame `M` .
+  const Isometry3<T>& get_X_MB(const PositionKinematicsCache<T>* pc) const {
+    return pc->get_X_MB(topology_.id);
   }
 
   void CalcAcrossMobilizerBodyPoses(
@@ -178,8 +195,10 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
       PRINT_VARn(X_PF.matrix());
     }
 
+    const Isometry3<T>& X_MB = get_X_MB(pc);
+    PRINT_VARn(X_MB.matrix());
+
 #if 0
-    const Isometry3<T>& X_MB = pc->get_X_MB();
     const Isometry3<T>& X_FM = pc->get_X_FM();
     const Isometry3<T>& X_WP = pc->get_X_WP();
 

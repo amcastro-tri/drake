@@ -215,6 +215,10 @@ void MultibodyTree<T>::CompileTopology() {
         // Inboard frame M index.
         FrameIndex outboard_frame_id =
             mobilizer_topologies[mobilizer_id].outboard_frame;
+        // Each frame that is the outboard frame of a mobilizer gets associated
+        // with the transform X_MB (the inverse of X_BM) for BodyNode
+        // body_node_id.
+        frame_topologies[outboard_frame_id].body_node = body_node_id;
 
         // The pool does not include the pose of the body frame.
         if (!topology_.material_frames[outboard_frame_id].is_body_frame()) {

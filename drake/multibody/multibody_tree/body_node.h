@@ -124,6 +124,8 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     std::cout << "  Level: " << topology_.level << std::endl;
     std::cout << "  Mobilizer: " << topology_.mobilizer << std::endl;
     std::cout << "  Body: " << topology_.body << std::endl;
+    std::cout << "  Parent BodyNode: " <<
+              topology_.parent_body_node << std::endl;
     std::cout << "  Num(qr): " << topology_.num_rigid_positions << std::endl;
     std::cout << "  Num(vr): " << topology_.num_rigid_velocities << std::endl;
     std::cout << "  Num(qf): " <<
@@ -179,6 +181,14 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     return pc->get_X_MB(topology_.id);
   }
 
+  const Isometry3<T>& get_X_FM(const PositionKinematicsCache<T>* pc) const {
+    return pc->get_X_FM(topology_.id);
+  }
+
+  const Isometry3<T>& get_X_WP(const PositionKinematicsCache<T>* pc) const {
+    return pc->get_X_WB(topology_.parent_body_node);
+  }
+
   void CalcAcrossMobilizerBodyPoses(
       const MultibodyTreeContext<T>& context) const {
     PositionKinematicsCache<T>* pc = context.get_mutable_position_kinematics();
@@ -197,10 +207,12 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
 
     const Isometry3<T>& X_MB = get_X_MB(pc);
     PRINT_VARn(X_MB.matrix());
+    const Isometry3<T>& X_FM = get_X_FM(pc);
+    PRINT_VARn(X_FM.matrix());
+    const Isometry3<T>& X_WP = get_X_WP(pc);
+    PRINT_VARn(X_WP.matrix());
 
 #if 0
-    const Isometry3<T>& X_FM = pc->get_X_FM();
-    const Isometry3<T>& X_WP = pc->get_X_WP();
 
     // Output (updating a cache entry):
     // - X_PB(qf_P, qr_B, qf_B)

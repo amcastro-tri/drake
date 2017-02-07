@@ -73,6 +73,9 @@ struct BodyNodeTopology {
   BodyIndex body;
   MobilizerIndex mobilizer;
 
+  // The unique identifier to the parent BodyNode of this node.
+  BodyNodeIndex parent_body_node;
+
   int num_rigid_positions;
   int rigid_positions_start;
   int num_rigid_velocities;

@@ -34,10 +34,12 @@ class PositionKinematicsCache {
   }
 
   const Isometry3<T>& get_X_FM(BodyNodeIndex body_id) const {
+    DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
     return X_FM_pool_[body_id];
   }
 
   Isometry3<T>& get_mutable_X_FM(BodyNodeIndex body_id) {
+    DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
     return X_FM_pool_[body_id];
   }
 
@@ -59,6 +61,7 @@ class PositionKinematicsCache {
   /// @returns `X_MB` the pose of the the body frame `B` measured and
   ///                 expressed in the "mobilized" frame `M` .
   const Isometry3<T>& get_X_MB(BodyNodeIndex body_node_id) const {
+    DRAKE_ASSERT(0 <= body_node_id && body_node_id < num_nodes_);
     return X_MB_pool_[body_node_id];
   }
 
@@ -71,13 +74,26 @@ class PositionKinematicsCache {
   /// @returns `X_MB` the pose of the the body frame `B` measured and
   ///                 expressed in the "mobilized" frame `M` .
   Isometry3<T>& get_mutable_X_MB(BodyNodeIndex body_node_id) {
+    DRAKE_ASSERT(0 <= body_node_id && body_node_id < num_nodes_);
     return X_MB_pool_[body_node_id];
   }
 
+  /// Returns a constant reference to the pose `X_WB` of the body `B`
+  /// (associated with node @p body_node_id) as measured and expressed in the
+  /// world frame `W`.
+  /// @param[in] body_node_id The unique identifier for the computational
+  ///                         BodyNode object associated with body `B`.
+  /// @returns `X_WB` the pose of the the body frame `B` measured and
+  ///                 expressed in the world frame `W`.
+  const Isometry3<T>& get_X_WB(BodyNodeIndex body_node_id) const {
+    DRAKE_ASSERT(0 <= body_node_id && body_node_id < num_nodes_);
+    return X_WB_pool_[body_node_id];
+  }
+
   void Allocate(const MultibodyTreeTopology& tree_topology) {
-    const int num_nodes = tree_topology.get_num_body_nodes();
+    num_nodes_ = tree_topology.get_num_body_nodes();
     const int num_rigid_velocities = tree_topology.num_rigid_velocities;
-    X_FM_pool_.resize(num_nodes);
+    X_FM_pool_.resize(num_nodes_);
     X_FM_pool_[kWorldBodyId] = Matrix4<T>::Constant(
         Eigen::NumTraits<double>::quiet_NaN());  // Not used.
 
@@ -85,9 +101,12 @@ class PositionKinematicsCache {
 
     X_BF_pool_.resize(tree_topology.X_BF_pool_size);
 
-    X_MB_pool_.resize(num_nodes);
+    X_MB_pool_.resize(num_nodes_);
     X_MB_pool_[kWorldBodyId] = Matrix4<T>::Constant(
         Eigen::NumTraits<double>::quiet_NaN());  // Not used.
+
+    X_WB_pool_.resize(num_nodes_);
+    X_WB_pool_[kWorldBodyId] = Isometry3<T>::Identity();
   }
 
   void Print() {
@@ -103,10 +122,12 @@ class PositionKinematicsCache {
   }
 
  private:
+  int num_nodes_{0};
   X_PoolType X_FM_pool_;  // Indexed by BodyNodeIndex.
   H_FM_PoolType H_FM_pool_;  // Indexed by velocity_start.
   X_PoolType X_BF_pool_;  // Indexed by X_BF_index.
   X_PoolType X_MB_pool_;  // Indexed by BodyNodeIndex.
+  X_PoolType X_WB_pool_;  // Indexed by BodyNodeIndex.
 };
 
 }  // namespace multibody

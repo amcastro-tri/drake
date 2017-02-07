@@ -160,8 +160,9 @@ void MultibodyTree<T>::CompileTopology() {
       // And vice-versa, store in BodyTopology and MobilizerTopology what
       // BodyNode they associate with.
       body_topologies[body_id].body_node = body_node_id;
-      if (mobilizer_id.is_valid())  // There is no inboard for the world.
+      if (mobilizer_id.is_valid()) {// There is no inboard for the world.
         mobilizer_topologies[mobilizer_id].body_node = body_node_id;
+      }
 
       // Compute sizes and offsets. Variables are arranged in a base to tip
       // order.
@@ -248,6 +249,16 @@ void MultibodyTree<T>::CompileTopology() {
         topology_.num_rigid_positions + topology_.num_flexible_positions;
     topology_.num_velocities =
         topology_.num_rigid_velocities + topology_.num_flexible_velocities;
+  }
+
+  // Now that each BodyTopology and BodyMobilizer was assigned a BodyNode, it
+  // is possible to identify the parent BodyNode for each BodyNode.
+  for (auto& body_node: body_node_topologies) {
+    if (body_node.mobilizer.is_valid()) {  // i.e. has a parent.
+      BodyIndex parent_body =
+          mobilizer_topologies[body_node.mobilizer].inboard_body;
+      body_node.parent_body_node = body_topologies[parent_body].body_node;
+    }
   }
 
   // Updates bodies' topology.

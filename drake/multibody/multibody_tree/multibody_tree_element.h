@@ -9,16 +9,13 @@ template<typename T> class MultibodyTree;
 template <class ElementType, typename ElementIndexType>
 class MultibodyTreeElement;
 
-template <template <typename> class ElementType, typename T,
-    typename ElementIndexType>
+template <template <typename> class ElementType, typename T, typename ElementIndexType>
 class MultibodyTreeElement<ElementType<T>, ElementIndexType> {
  public:
   friend MultibodyTree<T>;
 
   const MultibodyTree<T>& get_parent_tree() const {
-    if (parent_tree_ == nullptr || id_.is_invalid())
-      throw std::runtime_error(
-          "This multibody component was not added to a MultibodyTree.");
+    HasParentTreeOrThrows();
     return *parent_tree_;
   }
 
@@ -29,15 +26,40 @@ class MultibodyTreeElement<ElementType<T>, ElementIndexType> {
     return parent_tree_;
   }
 
-  ElementIndexType get_id() const { return id_;}
+  virtual ElementIndexType get_id() const { return id_;}
 
- private:
-  MultibodyTree<T>* parent_tree_;
+  /// Chekcs if this MultibodyTreeElement has been registered into a
+  /// MultibodyTree. If not, it throws an exception.
+  void HasParentTreeOrThrows() {
+    if (parent_tree_ == nullptr || id_.is_invalid()) {
+      throw std::runtime_error(
+          "This multibody component was not added to a MultibodyTree.");
+    }
+  }
+
+  template <template <typename> class OtherElementType, typename OtherElementIndexType>
+  void HasSameParentTreeOrThrows(
+      const MultibodyTreeElement<OtherElementType<T>, OtherElementIndexType>&
+      other) {
+    this->HasParentTreeOrThrows();
+    other.HasParentTreeOrThrows();
+    if (parent_tree_ != other.parent_tree_) {
+      throw std::runtime_error(
+          "These two MultibodyTreeElement's do not belong to the same tree.");
+    }
+  }
+
+  /// Gives MultibodyTree elements the opportunity to perform internal setup
+  /// when MultibodyTree::Compile() is invoked.
+  //virtual void Compile() = 0;
+
+ protected:
+  const MultibodyTree<T>* parent_tree_;
   ElementIndexType id_{ElementIndexType::Invalid()};
 
   // Only MultibodyTree<T> can set these.
-  void set_parent_tree(MultibodyTree<T>* tree) { parent_tree_ = tree; }
-  void set_id(ElementIndexType id) { id_ = id; }
+  void set_parent_tree(const MultibodyTree<T>* tree) { parent_tree_ = tree; }
+  virtual void set_id(ElementIndexType id) { id_ = id; }
 
 #if 0
   // Non-virtual interface (NVI) to DoDeepClone(). Derived classes must

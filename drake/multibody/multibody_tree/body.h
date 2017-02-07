@@ -5,32 +5,44 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/multibody_tree/mass_properties.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 #include "drake/multibody/multibody_tree/multibody_tree_element.h"
-//#include "drake/multibody/multibody_tree/multibody_tree_topology.h"
-#include "drake/multibody/multibody_tree/rotational_inertia.h"
-
+#include "drake/multibody/multibody_tree/multibody_tree_context.h"
 
 namespace drake {
 namespace multibody {
 
 // Forward declarations.
 template<typename T> class MultibodyTree;
-template<typename T> class RigidBodyFrame;
+template<typename T> class BodyFrame;
 
 template <typename T>
 class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
  public:
-  /// Creates a new body with the provided mass properties. This body must
-  /// immediately be added to a MultibodyTree.
-  Body(const MassProperties<double>& mass_properties);
+  virtual int get_num_positions() const = 0;
 
-  RigidBodyFrame<T>& RigidlyAttachFrame(const Isometry3<T>& X_BF);
+  virtual int get_num_velocities() const = 0;
 
-  virtual int get_num_positions() const { return 0; }
+  FrameIndex get_body_frame_id() const { return body_frame_id_;}
 
-  virtual int get_num_velocities() const { return 0; }
+  virtual void UpdatePositionKinematicsCache(
+      const MultibodyTreeContext<T>& context) = 0;
+
+  /// @returns The number of material frames attached to this body.
+  int get_num_frames() const { return static_cast<int>(frames_.size());}
+
+ protected:
+  void set_body_frame(FrameIndex body_frame_id)
+  {
+    // Asserts that the first frame added is the body frame.
+    DRAKE_ASSERT(frames_.size() == 0);
+    frames_.push_back(body_frame_id);
+    body_frame_id_ =  body_frame_id;
+  }
+
+ private:
+  FrameIndex body_frame_id_;
+  std::vector<FrameIndex> frames_;
 
   /// Computes the rigid body inertia matrix for a given, fixed, value of the
   /// flexible generalized coordinates @p qf.
@@ -54,42 +66,7 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
   // from within Body. However, even if public, its only useful to its friend
   // methods and therefore it's safe to have it here.
   //class PrivateAccessAttorney;
-
- private:
-  //MultibodyTree<T>* parent_tree_{nullptr};
-  //BodyIndex id_;
-  MassProperties<double> default_mass_properties_;
-
-  // List of frames rigidly attached to this body.
-  std::vector<FrameIndex> frames_;
-
-  //friend class PrivateAccessAttorney;  // Give trusted member class private access.
-  // Sets the parent tree of this body.
-  //void set_parent_tree(MultibodyTree<T>* parent);
-  //void set_id(BodyIndex id);
 };
-
-#if 0
-template <typename T>
-class Body<T>::PrivateAccessAttorney {
-  // Only these methods can change Body<T>'s topology.
-  friend Body<T>* MultibodyTree<T>::AddBody(std::unique_ptr<Body<T>> body);
-  //friend void MultibodyTree<T>::Compile();
-
-  // These methods allow the above MultibodyTree<T> methods to modify the
-  // topology of a body.
-  inline static void set_id(Body<T>* b, BodyIndex id) { b->set_id(id); }
-  inline static void set_parent_tree(Body<T>* b, MultibodyTree<T>* p) {
-    b->set_parent_tree(p);
-  }
-  //inline static void set_topology(Body<T>* b, const BodyTopology& t) {
-  //  b->set_topology(t);
- // }
-  //inline static void set_topology(Body<T>* b, const BodyTopology& t) {
-  //   b->set_topology(t);
-  //}
-};
-#endif
 
 }  // namespace multibody
 }  // namespace drake

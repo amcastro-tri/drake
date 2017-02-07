@@ -7,26 +7,26 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/frame.h"
 #include "drake/multibody/multibody_tree/mobilizer.h"
-#include "drake/multibody/multibody_tree/multibody_tree_context.h"
 #include "drake/multibody/multibody_tree/multibody_tree_cache.h"
+#include "drake/multibody/multibody_tree/multibody_tree_context.h"
 #include "drake/multibody/multibody_tree/math/spatial_algebra.h"
 
 namespace drake {
 namespace multibody {
 
-template <typename T, int  nq, int nv>
+template <typename T, int  num_positions, int num_velocities>
 class MobilizerImpl : public Mobilizer<T> {
  public:
   using Mobilizer<T>::get_id;
 
   // static constexpr int i = 42; discouraged.
   // See answer in: http://stackoverflow.com/questions/37259807/static-constexpr-int-vs-old-fashioned-enum-when-and-why
-  enum : int {num_positions = nq, num_velocities = nv};
+  enum : int {nq = num_positions, nv = num_velocities};
 
   typedef SpatialVelocityJacobian<T, nv> HMatrix;
 
-  MobilizerImpl(const BodyFrame<T>& inboard_frame,
-                const BodyFrame<T>& outboard_frame) :
+  MobilizerImpl(const MaterialFrame<T>& inboard_frame,
+                const MaterialFrame<T>& outboard_frame) :
       Mobilizer<T>(inboard_frame, outboard_frame) {}
 
   int get_num_positions() const final { return nq;}
@@ -48,74 +48,16 @@ class MobilizerImpl : public Mobilizer<T> {
     get_mutable_velocities(context).setZero();
   }
 
-#if 0
-  void UpdatePositionKinematics(
-      const MultibodyTreeContext<T>& context) const final {
-
-    // Topological information.
-    const BodyNodeTopology& node_topology =
-        contex.get_body_node_topology(this->get_id());
-    const BodyNodeIndex node_id = node_topology.id;
-
-    // Extract const variables from the context.
-    auto q = context.get_positions().template segment<nq>(
-        node_topology.rigid_positions_start);
-
-    // Extract mutable variables from the cache.
-    // Cache entries are indexed by BodyNode id.
-    PositionKinematicsCache<T>* pc = context.get_mutable_position_kinematics();
-    HMatrix& H_FM = pc->get_mutable_H_FM_pool<nv>(node_id);
-
-    // Perform computations.
-    DoCalcAcrossMobilizerVelocityJacobian(q, &H_FM);
-  }
-#endif
-
-  void UpdatePositionKinematics(
+  void UpdatePositionKinematicsCache(
       const MultibodyTreeContext<T>& context) const final;
 
-#if 0
-  HtMatrix* get_mutable_H_FM(const PositionKinematicsCache<T>& pc) const {
-    return &pc.H_FM_pool[topology_.velocity_index];
-  }
-
-  void UpdatePositionKinematicsCache(
-      const MultibodyTreeContext<T>& context) const final
-  {
-    PositionKinematicsCache<T>& pc = context.get_mutable_position_kinematics();
-    const auto q = get_positions_slice(context.get_positions());
-
-    get_mutable_X_FM(pc) = CalcAcrossJointTransform(q);
-    // Since we are within a base-to-tip recursion loop, X_WP was already
-    // computed and, with X_FM, we can now compute X_PB and X_WB.
-    CalcBodyPoses(pc, get_mutable_X_PB(pc), get_mutable_X_WB(pc));
-
-    // Computes the across joint Jacobian Ht_FM(q) expressed in F.
-    CalcAcrossJointVelocityJacobian(q, get_mutable_Ht_FM(pc));
-
-    // Computes Ht_PB_W, the across joint velocity Jacobian between the parent's
-    // body frame P and the child's body frame B expressed in the world's
-    // frame W.
-    CalcParentToChildJacobianInWorld(pc, get_mutable_Ht_PB_W(pc));
-  }
-#endif
  protected:
-
-  const MobilizerContext<T>& get_context(
-      const MultibodyTreeContext<T>& context) const {
-    return context.get_mobilizer_context(get_id());
-  }
-
-  MobilizerContext<T>& get_mutable_context(
-      MultibodyTreeContext<T>* context) const {
-    return context->get_mutable_mobilizer_context(get_id());
-  }
-
   const Vector<T, nq>& get_positions(
       const MultibodyTreeContext<T>& context) const
   {
-    const MobilizerContext<T>& local_context = get_context(context);
-    return local_context.template get_positions<nq>();
+    DRAKE_ASSERT(topology_.num_positions == nq);
+    return *reinterpret_cast<const Vector<T, nq>*>(
+        context.get_positions().data() + get_positions_start());
   }
 
   /// Given a mutable MultibodyTreeContext this method regurns a mutable
@@ -123,39 +65,42 @@ class MobilizerImpl : public Mobilizer<T> {
   /// the entire MultibodyTree that correspods to this mobilizer.
   /// The returned vector has the proper static size for fast computations.
   Vector<T, nq>& get_mutable_positions(MultibodyTreeContext<T>* context) const {
-    MobilizerContext<T>& local_context = get_mutable_context(context);
-    return local_context.template get_mutable_positions<nq>();
+    DRAKE_ASSERT(topology_.num_positions == nq);
+    return *reinterpret_cast<Vector<T, nq>*>(
+        context->get_mutable_positions().data() + get_positions_start());
   }
 
-  Vector<T, nq>& get_mutable_velocities(MultibodyTreeContext<T>* context) const {
-    MobilizerContext<T>& local_context = get_mutable_context(context);
-    return local_context.template get_mutable_velocities<nq>();
+  const Vector<T, nv>& get_velocities(
+      const MultibodyTreeContext<T>& context) const
+  {
+    DRAKE_ASSERT(topology_.num_velocities == nv);
+    return *reinterpret_cast<const Vector<T, nv>*>(
+        context.get_velocities().data() + get_velocities_start());
+  }
+
+  Vector<T, nq>& get_mutable_velocities(MultibodyTreeContext<T>* context) const
+  {
+    return *reinterpret_cast<Vector<T, nv>*>(
+        context->get_mutable_velocities().data() + get_velocities_start());
+  }
+
+  const Isometry3<T>& get_X_FM(const PositionKinematicsCache<T>& pc) const {
+    return pc.get_X_FM(topology_.body_node);
+  }
+
+  Isometry3<T>& get_mutable_X_FM(PositionKinematicsCache<T>* pc) const {
+    return pc->get_mutable_X_FM(topology_.body_node);
+  }
+
+  HMatrix& get_mutable_H_FM(PositionKinematicsCache<T>* pc) const {
+    return *reinterpret_cast<HMatrix*>(
+        pc->get_mutable_H_FM_pool()[topology_.velocities_start].mutable_data());
   }
 
  private:
-
-#if 0
-  // Make NVI?? sot that the pointers are checked already when passed.
-  // Not in this case since this method is not virtual but all joints need it.
-  // Same for all mobilizers.
-  void CalcBodyPoses(const PositionKinematicsCache<T>& pc,
-                     Isometry3<T>* mutable_X_PB, Isometry3<T>* mutable_X_WB) const {
-    DRAKE_ASSERT(mutable_X_PB != nullptr);
-    DRAKE_ASSERT(mutable_X_WB != nullptr);
-    const Isometry3d<T>& X_PF = getX_PF();
-    const Isometry3d<T>& X_MB = getX_MB();
-    // Just computed by UpdatePositionKinematicsCache().
-    const Isometry3d<T>& X_FM = getX_FM(pc);
-    // Computed as part of the base-to-tip recursion.
-    const Isometry3d<T>& X_WP = getX_WP(pc);
-    Isometry3d<T>& X_PB = *mutable_X_PB;
-    Isometry3d<T>& X_WB = *mutable_X_WB;
-
-    const Isometry3d<T> X_FB = (BequalsM ? X_FM : X_FM * X_MB);
-    X_PB = X_PF * X_FB;
-    X_WB = X_WP * X_PB;
-  }
-#endif
+  using Mobilizer<T>::topology_;
+  using Mobilizer<T>::get_positions_start;
+  using Mobilizer<T>::get_velocities_start;
 
 #if 0
   void CalcParentToChildJacobianInWorld(
@@ -192,25 +137,6 @@ class MobilizerImpl : public Mobilizer<T> {
       //   Ht_PB_W = R_WF * Ht_FB.
       Ht_PB_W = R_WF * ShiftSpatialVelocity(Ht_FM, r_MB_F);
     }
-  }
-#endif
-
-  // Some ideas here with API's taking Eigen vectors.
-#if 0
-  // Defaults to identity. Assumes nq == nv.
-  virtual void CalcN(const Ref<const VectorX<T>>& q, Ref<MatrixX<T>> N) override {
-    std::cout << __PRETTY_FUNCTION__ << std::endl;
-    assert(nq == nv);
-    N.setIdentity(nv, nv);
-  }
-  virtual void MultiplyByN(const Ref<const VectorX<T>>& q, const Ref<const VectorX<T>>& v, Ref<VectorX<T>> N_times_v) override {
-    std::cout << __PRETTY_FUNCTION__ << std::endl;
-    assert(nq == nv);
-    N_times_v.template head<nq>() = v.template head<nq>();
-  }
-  Isometry3<T> CalcX_FM(const Ref<const VectorX<T>>& q) {
-    std::cout << __PRETTY_FUNCTION__ << std::endl;
-    return Isometry3<T>::Identity();
   }
 #endif
 

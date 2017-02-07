@@ -1,6 +1,7 @@
 #include "drake/multibody/multibody_tree/revolute_mobilizer.h"
 
 #include "drake/multibody/multibody_tree/mobilizer_impl.h"
+#include "drake/multibody/multibody_tree/multibody_tree.h"
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
@@ -9,16 +10,35 @@ namespace drake {
 namespace multibody {
 
 template <typename T>
-RevoluteMobilizer<T>& RevoluteMobilizer<T>::set_angle(
-    MultibodyTreeContext<T>* context, const T& angle) {
+RevoluteMobilizer<T>& RevoluteMobilizer<T>::Create(
+    MultibodyTree<T>* tree,
+    const MaterialFrame<T>& inboard_frame,
+    const MaterialFrame<T>& outboard_frame, const Vector3<double> axis_F) {
+  // Notice that here we cannot use std::make_unique since constructors are made
+  // private to avoid users creating mobilizers by other means other than
+  // calling Create().
+  RevoluteMobilizer<T>* mobilizer =
+      new RevoluteMobilizer<T>(inboard_frame, outboard_frame, axis_F);
+  // tree takes ownership.
+  MobilizerIndex mobilizer_id =
+      tree->AddMobilizer(std::unique_ptr<Mobilizer<T>>(mobilizer));
+  mobilizer->set_parent_tree(tree);
+  mobilizer->set_id(mobilizer_id);
+
+  return *mobilizer;
+}
+
+template <typename T>
+const RevoluteMobilizer<T>& RevoluteMobilizer<T>::set_angle(
+    MultibodyTreeContext<T>* context, const T& angle) const {
   Vector<T, nq>& q = this->get_mutable_positions(context);
   q[0] = angle;
   return *this;
 }
 
 template <typename T>
-RevoluteMobilizer<T>& RevoluteMobilizer<T>::set_angular_velocity(
-    MultibodyTreeContext<T>* context, const T& angular_velocity) {
+const RevoluteMobilizer<T>& RevoluteMobilizer<T>::set_angular_velocity(
+    MultibodyTreeContext<T>* context, const T& angular_velocity) const {
   Vector<T, nq>& q = this->get_mutable_velocities(context);
   q[0] = angular_velocity;
   return *this;
@@ -26,34 +46,22 @@ RevoluteMobilizer<T>& RevoluteMobilizer<T>::set_angular_velocity(
 
 template <typename T>
 void RevoluteMobilizer<T>::CalcAcrossMobilizerTransform(
-    const MobilizerContext<T>& context,
-    MobilizerPositionKinematics<T>* pc) const {
-  const Vector<T, nq>& q = context.template get_positions<num_positions>();
-  Isometry3<T>& X_FM = pc->get_mutable_X_FM();
+    const MultibodyTreeContext<T>& context,
+    PositionKinematicsCache<T>* pc) const {
+  const Vector<T, nq>& q = this->get_positions(context);
+  Isometry3<T>& X_FM = this->get_mutable_X_FM(pc);
   X_FM = Isometry3<T>::Identity();
   X_FM.linear() = Eigen::AngleAxis<T>(q[0], axis_F_).toRotationMatrix();
 }
 
 template <typename T>
 void RevoluteMobilizer<T>::CalcAcrossMobilizerVelocityJacobian(
-    const MobilizerContext<T>& context,
-    MobilizerPositionKinematics<T>* pc) const {
-  HMatrix& H_FM = pc->template get_mutable_H_FM<num_velocities>();
+    const MultibodyTreeContext<T>& context,
+    PositionKinematicsCache<T>* pc) const {
+  HMatrix& H_FM = this->get_mutable_H_FM(pc);
   H_FM.col(0).angular() = axis_F_;
   H_FM.col(0).linear() = Vector3<T>::Zero();
 }
-
-#if 0
-template <typename T>
-void RevoluteMobilizer<T>::CalcAcrossJointVelocityJacobian(
-    const Eigen::Ref<const VectorX<T>>& q, Eigen::Ref<MatrixX<T>> Ht) const {
-  // auto& V = SpatialVector::mutable_view(Ht.col(0));
-  // V.angular() = axis_F_;
-  // V.linear() = Vector3<T>::Zero();
-  Ht.template head<3>() = axis_F_;  // Angular component.
-  Ht.template tail<3>() = Vector3<T>::Zero();  // Linear component.
-}
-#endif
 
 // Explicitly instantiates on the most common scalar types.
 template class RevoluteMobilizer<double>;

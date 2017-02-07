@@ -32,6 +32,14 @@ class PositionKinematicsCache {
     return H_FM_pool_;
   }
 
+  const Isometry3<T>& get_X_FM(BodyNodeIndex body_id) const {
+    return X_FM_pool_[body_id];
+  }
+
+  Isometry3<T>& get_mutable_X_FM(BodyNodeIndex body_id) {
+    return X_FM_pool_[body_id];
+  }
+
   void Allocate(const MultibodyTreeTopology& tree_topology) {
     const int num_nodes = tree_topology.get_num_body_nodes();
     const int num_rigid_velocities = tree_topology.num_rigid_velocities;

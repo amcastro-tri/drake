@@ -16,14 +16,11 @@ namespace drake {
 namespace multibody {
 
 template <typename T, int  nq, int nv>
-void MobilizerImpl<T, nq, nv>::UpdatePositionKinematics(
+void MobilizerImpl<T, nq, nv>::UpdatePositionKinematicsCache(
     const MultibodyTreeContext<T>& context) const {
-  const MobilizerContext<T>& mobilizer_context =
-      this->get_parent_tree().get_mobilizer_context(context, *this);
-  MobilizerPositionKinematics<T>* pc =
-      mobilizer_context.get_mutable_position_kinematics();
-  this->CalcAcrossMobilizerTransform(mobilizer_context, pc);
-  this->CalcAcrossMobilizerVelocityJacobian(mobilizer_context, pc);
+  PositionKinematicsCache<T>* pc = context.get_mutable_position_kinematics();
+  this->CalcAcrossMobilizerTransform(context, pc);
+  this->CalcAcrossMobilizerVelocityJacobian(context, pc);
 }
 
 // Macro used to explicitly instantiate implementations on all sizes needed.

@@ -2,80 +2,101 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/multibody_tree/body.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
-#include "drake/multibody/multibody_tree/multibody_tree_context.h"
 #include "drake/multibody/multibody_tree/multibody_tree_element.h"
 
 namespace drake {
 namespace multibody {
 
-// Forward declaration.
-template<typename T> class MultibodyTree;
+// Forward declarations.
+template <class T> class Body;
+template <class T> class MultibodyTree;
+template <class T> class RigidBody;
 
 template <typename T>
-class Frame : public MultibodyTreeElement<Frame<T>, FrameIndex> {
- public:
-  //virtual const Isommetry3<T>& get_pose_in_world(
-  //   const MultibodyTreeContext<T>& context) const = 0;
-};
+class Frame : public MultibodyTreeElement<Frame<T>, FrameIndex> {};
 
 template <typename T>
-class BodyFrame : public Frame<T> {
+class MaterialFrame : public Frame<T> {
  public:
-  BodyFrame(const Body<T>& body);
+  BodyIndex get_body_id() const { return body_id_;}
 
-  BodyFrame(BodyIndex body_id);
+ protected:
+  /// @param[in] Local frame id in the body referenced by @p body_id.
+  MaterialFrame(const Body<T>& body);
 
-  const Body<T>& get_body() const;
-
-  BodyIndex get_body_id() const;
-
-  /// @returns X_BF the pose of this frame `F` in the frame `B` of the body to
-  /// which this frame rigidly attaches to.
-  //const Isometry3<T>& GetPoseInBodyFrame(
-  //    const MultibodyTreeContext<T>& context) const {
-  //  return get_body().GetFramePoseInBodyFrame(*this, context);
-  //}
-
-  // const Isommetry3<T>& get_pose_in_world(
-  //   const MultibodyTreeContext<T>& context) const override {
-  //   Body<T>& body = get_parent_tree().get_body(body_id);
-  //   return body.get_frame_pose_in_world(*this, context);
-  // }
  private:
   BodyIndex body_id_{BodyIndex::Invalid()};
 };
 
 template <typename T>
-class RigidBodyFrame : public BodyFrame<T> {
+class BodyFrame : public MaterialFrame<T> {
  public:
-  RigidBodyFrame(const Body<T>& body, const Isometry3<T>& X_BF);
-
-  //const Isometry3<T>& GetPoseInBodyFrame(
-  //    const MultibodyTreeContext<T>& context) const {
-  //  return X_BF_;
-  //}
-
-  // const Isommetry3<T>& get_pose_in_world(
-  //   const MultibodyTreeContext<T>& context) const override {
-  //   Body<T>& body = get_parent_tree().get_body(body_id);
-  //   return body.get_frame_pose_in_world(*this, context);
-  // }
+  /// Creates a new BodyFrame and adds it to the MultibodyTree @p tree.
+  /// The MultibodyTree @param tree takes ownership of the frame.
+  static BodyFrame<T>& Create(MultibodyTree<T>* tree, const Body<T>& body);
 
  private:
+  BodyFrame(const Body<T>& body);
+};
+
+/// This class represents a frame `F` with pose `X_BF` measured and expressed in
+/// the body frame `B` of a rigid body.
+template <typename T>
+class RigidBodyFrame : public MaterialFrame<T> {
+ public:
+  static RigidBodyFrame<T>& Create(
+      MultibodyTree<T>* tree,
+      const RigidBody<T>& body, const Isometry3<T>& X_BF);
+
+ private:
+  RigidBodyFrame(const RigidBody<T>& B, const Isometry3<T>& X_BF);
+
   Isometry3<T> X_BF_;
+};
 
 #if 0
-  RigidBodyFrame(BodyIndex body_id, const Isometry3<T>& X_BF) :
-      BodyFrame<T>(body_id) {}
+/// This class represents a frame `F` with a fixed offset `X_MF` to a material
+/// frame `M`.
+/// This material frame `M` could either be:
+///   - A body frame `B` case in which `F` will move rigidly with `B`.
+///   - A SoftMaterialFrame `M` on a body `B` case in which the pose of `F` in
+///     the frame of the body will be determined by the
+///     flexible degrees of freedom of that body.
+template <typename T>
+class FixedOffsetFrame : public MaterialFrame<T> {
+ public:
+  FixedOffsetFrame(const MaterialFrame<T>& M, const Isometry3<T>& X_MF);
 
-  RigidBodyFrame<T>* DoDeepCloneTo(
-      const RigidBodyFrame<double>& other) const override {
-    return new RigidBodyFrame<T>(other.get_body_id(), X_BF_);
-  };
-#endif
+ private:
+  Isometry3<T> X_MF_;
+  // Id of the MaterialFrame this frame moves with.
+  FrameIndex material_frame_id_;
 };
+#endif
+
+#if 0
+/// This class represents a frame `M` attached to a material point on a
+/// soft body `B`. The pose `X_BM(qf_B)` of frame `M` measured and expressed in
+/// `B` will in genearal be a function of the flexible degrees of freedom `qf_B`
+/// of body `B`.
+template <typename T>
+class SoftBodyFrame : public MaterialFrame<T> {
+ public:
+  SoftBodyFrame(const SoftBody<T>& body) : MaterialFrame(body.get_id()) {}
+
+  /// @returns the local identifier of this frame in the parent SoftBody.
+  int get_local_id() const { return local_id_;}
+
+  /// Sets the local identifier of this frame in the parent SoftBody.
+  /// Users SHOULD NOT call this method. It is used internally for quick
+  /// indexing of each SoftBody's frames.
+  void set_local_id(int local_id) const { local_id_ = local_id;}
+
+ private:
+  int local_id_;  // Id of this frame in the parent SoftBody.
+};
+#endif
 
 }  // namespace multibody
 }  // namespace drake

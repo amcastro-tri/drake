@@ -6,6 +6,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/mobilizer.h"
 #include "drake/multibody/multibody_tree/multibody_tree_element.h"
+#include "drake/multibody/multibody_tree/multibody_tree_topology.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
 
@@ -18,6 +19,14 @@ template<typename T> class MultibodyTree;
 template <typename T>
 class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
  public:
+  BodyNode(BodyNodeTopology topology,
+           const Body<T>* body, const Mobilizer<T>* mobilizer) :
+      topology_(topology), body_(body), mobilizer_(mobilizer) {
+    DRAKE_ASSERT(body != nullptr);
+    DRAKE_ASSERT(!(mobilizer == nullptr && body->get_id() != kWorldBodyId));
+  }
+
+#if 0
   BodyNode(BodyIndex body_id, MobilizerIndex mobilizer_id) :
       body_id_(body_id), mobilizer_id_(mobilizer_id) {}
 
@@ -36,55 +45,115 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     flexible_velocities_start_ = velocity_start + num_rigid_velocities;
     num_flexible_velocities_ = num_flexible_velocities;
   }
+#endif
 
-  int get_rigid_positions_start() const { return rigid_positions_start_;}
-  int get_num_rigid_positions() const { return num_rigid_positions_;}
-  int get_rigid_velocities_start() const { return rigid_velocities_start_;}
+  int get_rigid_positions_start() const
+  {
+    return topology_.rigid_positions_start;
+  }
+
+  int get_num_rigid_positions() const
+  {
+    return topology_.num_rigid_positions;
+  }
+
+  int get_rigid_velocities_start() const
+  {
+    return topology_.rigid_velocities_start;
+  }
 
   const Body<T>& get_body() const {
-    return this->get_parent_tree().get_body(body_id_);
+    DRAKE_ASSERT(body_ != nullptr);
+    return *body_;
   }
 
   const Mobilizer<T>& get_mobilizer() const {
-    return this->get_parent_tree().get_mobilizer(mobilizer_id_);
+    DRAKE_ASSERT(mobilizer_ != nullptr);
+    return *mobilizer_;
   }
 
-  MobilizerIndex get_mobilizer_id() const { return mobilizer_id_; }
+  MobilizerIndex get_mobilizer_id() const { return topology_.mobilizer;}
 
-  BodyIndex get_body_id() const { return body_id_; }
+  BodyIndex get_body_id() const { return topology_.body;}
 
   /// Computes the rigid body inertia matrix for a given, fixed, value of the
   /// flexible generalized coordinates @p qf.
   //virtual SpatialMatrix DoCalcSpatialInertia(const VectorX<T>& qf) const = 0;
 
+  // void CalcPositionsKinematics(context, PositionKinematics<T> some_output_structure).
+  // UpdatePostionKinematics calls CalcPositionKinematics.
+
   void UpdatePositionKinematicsCache(
       const MultibodyTreeContext<T>& context) const {
-    const Mobilizer<T>& mobilizer = get_mobilizer();
+    //const Mobilizer<T>& mobilizer = get_mobilizer();
+    //const Body<T>& body = get_body();
 
+#if 0
     // Update position kinematics that depend on mobilizers only:
     // - X_FM(q), H_FM(q), HdotTimesV_FM(q)
-    mobilizer.UpdatePositionKinematics(context);
+    mobilizer.UpdatePositionKinematicsCache(context);
 
-    //Similarly here for body updates ....
-    // Then right here we can do across body updates assuming we are in a
-    // tip-to-base loop...
+    // Update all body frames attached this body.
+    // In particular, the pose X_BM of the inboard frame M in B will be
+    // immediately used below to compute across mobilizer transforms between
+    // body frames concluding with the update of the body pose X_WB.
+    // The outboard frames attached to this body will be used in the
+    // computations at the next tree level.
+    // These body frame updates depend in general of the flexible generalized
+    // coordinates of the body.
+    body.UpdateAttachedBodyFrames(context);
+
+    // Perform across-body computations. These couple rigid motions given by
+    // the mobilizer connecting inboard and outboard bodies and the flexible
+    // motions of those two bodies.
+    // These computations assume a base-to-tip recursion. They are generic,
+    // independent of the specific mobilizer or body model and can be performed
+    // by the BodyNode.
+
+#endif
   }
 
  private:
-  BodyIndex body_id_;
-  MobilizerIndex mobilizer_id_;
+  BodyNodeTopology topology_;
+  // Pointers for fast access.
+  const Body<T>* body_{nullptr};
+  const Mobilizer<T>* mobilizer_{nullptr};
 
-  // Position indexes
-  int rigid_positions_start_{-1};
-  int num_rigid_positions_{0};
-  int flexible_positions_start_{-1};
-  int num_flexible_positions_{0};
+#if 0
+  // Helper methods to extract entries from the context.
+  const Isometry3<T>& get_X_PF(const PositionKinematicsCache<T>* pc) {
+    return pc->get_X_BF_pool()[topology_.X_PF_index];
+  }
+#endif
 
-  // Velocity indexes.
-  int rigid_velocities_start_{-1};
-  int num_rigid_velocities_{0};
-  int flexible_velocities_start_{-1};
-  int num_flexible_velocities_{0};
+#if 0
+  void CalcAcrossMobilizerBodyPoses(
+      const MultibodyTreeContext<T>& context) const {
+    PositionKinematicsCache<T>* pc = context.get_mutable_position_kinematics();
+
+    // Input (const):
+    // - X_PF(qf_P)
+    // - X_MB(qf_B)
+    // - X_FM(qr_B)
+    // - X_WP(q(W:B), where q(W:B) includes all positions in the kinematics path
+    //                from body B to the world W.
+    const Isometry3<T>& X_PF = get_X_PF(pc);
+    (void) X_PF;
+    const Isometry3<T>& X_MB = pc->get_X_MB();
+    const Isometry3<T>& X_FM = pc->get_X_FM();
+    const Isometry3<T>& X_WP = pc->get_X_WP();
+
+    // Output (updating a cache entry):
+    // - X_PB(qf_P, qr_B, qf_B)
+    // - X_WB(q(W:B), qf_P, qr_B, qf_B)
+    Isometry3<T>& X_PB = pc->get_X_PB();
+    Isometry3<T>& X_WB = pc->get_X_WB();
+
+    const Isometry3<T> X_FB = (BequalsM ? X_FM : X_FM * X_MB);
+    X_PB = X_PF * X_FB;
+    X_WB = X_WP * X_PB;
+  }
+#endif
 };
 
 }  // namespace multibody

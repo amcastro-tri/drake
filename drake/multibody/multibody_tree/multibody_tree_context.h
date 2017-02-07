@@ -5,7 +5,6 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/multibody_tree/mobilizer_context.h"
 #include "drake/multibody/multibody_tree/multibody_tree_cache.h"
 
 #include <iostream>
@@ -28,6 +27,7 @@ class MultibodyTreeContext {
     // Allocate cache entries.
     position_kinematics_.Allocate(tree_topology);
 
+#if 0
     // Setup per-mobilizer contexts.
     mobilizer_contexts_.reserve(tree_topology.get_num_mobilizers());
     for (MobilizerIndex mobilizer_id(0);
@@ -35,6 +35,7 @@ class MultibodyTreeContext {
       mobilizer_contexts_.push_back(
           CreateMobilizerContext(tree_topology, mobilizer_id));
     }
+#endif
   }
 
   const VectorX<T>& get_positions() const { return q_; }
@@ -47,6 +48,7 @@ class MultibodyTreeContext {
     return &position_kinematics_;
   }
 
+#if 0
   const MobilizerContext<T>& get_mobilizer_context(
       MobilizerIndex mobilizer_id) const
   {
@@ -58,6 +60,7 @@ class MultibodyTreeContext {
   {
     return mobilizer_contexts_[mobilizer_id];
   }
+#endif
 
   /// Returns the current time in seconds.
   const T& get_time() const { return time_sec_; }
@@ -73,6 +76,8 @@ class MultibodyTreeContext {
   VectorX<T> q_, v_;
   // Cached kinematics.
   mutable PositionKinematicsCache<T> position_kinematics_;
+
+#if 0
   // Mobilizer contexts indexed by mobilizer id.
   std::vector<MobilizerContext<T>> mobilizer_contexts_;
 
@@ -122,6 +127,7 @@ class MultibodyTreeContext {
 
     return MobilizerPositionKinematics<T>(X_FM, H_FM);
   }
+#endif
 };
 
 }  // namespace multibody

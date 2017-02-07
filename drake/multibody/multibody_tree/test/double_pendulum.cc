@@ -1,9 +1,10 @@
-#include "drake/multibody/multibody_tree/body.h"
+#include "drake/multibody/multibody_tree/rigid_body.h"
 #include "drake/multibody/multibody_tree/mass_properties.h"
 #include "drake/multibody/multibody_tree/mobilizer.h"
 #include "drake/multibody/multibody_tree/multibody_tree.h"
 #include "drake/multibody/multibody_tree/revolute_mobilizer.h"
 #include "drake/multibody/multibody_tree/unit_inertia.h"
+#include "drake/multibody/multibody_tree/weld_mobilizer.h"
 
 #include <iostream>
 
@@ -16,6 +17,7 @@ namespace drake {
 namespace multibody {
 
 using Eigen::Isometry3d;
+using Eigen::Translation3d;
 using Eigen::Vector3d;
 
 using std::cout;
@@ -36,26 +38,96 @@ int DoMain() {
   UnitInertia<double> G_Bc_B = UnitInertia<double>::SolidCube(length);
   (void) G_Bc_B;
 
-  MultibodyTree<double> model;
+  auto owned_model = std::make_unique<MultibodyTree<double>>();
+  MultibodyTree<double>* model = owned_model.get();
 
   MassProperties<double> mass_properties(1.0, Vector3d::Zero(), G_Bc_B);
-  Body<double>* pendulum =
-      model.AddBody(make_unique<Body<double>>(mass_properties));
-  Body<double> world_body = model.get_world_body();
+  const RigidBody<double>& upper_body =
+      RigidBody<double>::Create(model, mass_properties);
+  //const RigidBody<double>& lower_body =
+  //    RigidBody<double>::Create(model, mass_properties);
+  const Body<double>& world_body = model->get_world_body();
 
-  RigidBodyFrame<double>& Fframe =
-      world_body.RigidlyAttachFrame(Isometry3d::Identity());
+  //(void) lower_body;
+  (void) world_body;
 
-  RigidBodyFrame<double>& Mframe =
-      pendulum->RigidlyAttachFrame(Isometry3d::Identity());
+  const auto& shoulder_inboard_frame = model->get_world_frame();
 
-  RevoluteMobilizer<double>* pin_joint =
+  // Pose of the mobilized frame M in the body frame B.
+  Isometry3d X_BM(Translation3d(0.0, 0.5, 0.0));
+  const auto& shoulder_outboard_frame =
+      RigidBodyFrame<double>::Create(model, upper_body, X_BM);
+
+  const RevoluteMobilizer<double>& shoulder_mobilizer =
+      RevoluteMobilizer<double>::Create(
+          model, shoulder_inboard_frame, shoulder_outboard_frame,
+          Vector3d::UnitZ());
+
+  model->Compile();
+  model->PrintTopology();
+  unique_ptr<MultibodyTreeContext<double>> context =
+      model->CreateDefaultContext();
+
+  //model.SetZeroConfiguration(context.get());
+  shoulder_mobilizer.set_zero_configuration(context.get());
+  shoulder_mobilizer.set_angular_velocity(context.get(), 0.0);
+  context->Print();
+
+  model->UpdatePositionKinematicsCache(*context);
+  context->Print();
+
+#if 0
+  elbow_mobilizer->set_zero_configuration(context.get());
+  elbow_mobilizer->set_angular_velocity(context.get(), 0.0);
+  context->Print();
+
+  elbow_mobilizer->set_angular_velocity(context.get(), M_PI / 6.0);
+  model.UpdatePositionKinematicsCache(*context);
+
+  cout << "Context after UpdatePositionKinematicsCache():" << endl;
+  context->Print();
+#endif
+
+#if 0
+  // Shoulder inboard frame IS the world frame.
+  // TODO: Refactor ReferenceFrame to ReferenceFrame.
+  const BodyFrame<double>& shoulder_inboard_frame = world_body.get_body_frame();
+
+  // Pose of the shoulder outboard frame So in the frame U of the upper body.
+  // TODO: see how to use Eigen::Translation.
+  Isometry3d X_USo = Isometry3d::Identity();
+  X_USo.translation() = Vector3d(0.0, 0.5, 0.0);
+  // Rigidly attach the shoulder outboard frame to the upper body.
+  RigidBodyFrame<double>& shoulder_outboard_frame =
+      upper_body->RigidlyAttachFrame(X_USo);
+
+  // Create the shoulder mobilizer between the inboard (world) and outboard (So)
+  // frames.
+  RevoluteMobilizer<double>* shoulder_mobilizer =
       model.AddMobilizer(make_unique<RevoluteMobilizer<double>>(
-          Fframe, Mframe, Vector3d::UnitZ()));
+          shoulder_inboard_frame, shoulder_outboard_frame, Vector3d::UnitZ()));
 
-  (void) Fframe;
-  (void) Mframe;
-  (void) pin_joint;
+  // Pose of the elbow inboard frame Ei in the frame U of the upper body.
+  Isometry3d X_UEi = Isometry3d::Identity();
+  X_UEi.translation() = Vector3d(0.0, -0.5, 0.0);
+  // Frame rigidly attached to the end of the upper body. In general for this
+  // example we will assume the upper body is rigid and therefore the use of a
+  // rigidly attached frame.
+  RigidBodyFrame<double>& elbow_inboard_frame =
+      upper_body->RigidlyAttachFrame(X_UEi);
+
+  // Pose of the elbow outboard frame Eo in the frame of the lower body L.
+  Isometry3d X_LEo = Isometry3d::Identity();
+  X_LEo.translation() = Vector3d(0.0, 0.5, 0.0);
+  // End frame Le rigidly attaches to the lower body L.
+  RigidBodyFrame<double>& elbow_outboard_frame =
+      lower_body->RigidlyAttachFrame(X_LEo);
+
+  // Now with all the necessary frames defined, create the elbow mobilizer
+  // between the inboard (Ei) and outboard (Eo) elbow frames.
+  RevoluteMobilizer<double>* elbow_mobilizer =
+      model.AddMobilizer(make_unique<RevoluteMobilizer<double>>(
+          elbow_inboard_frame, elbow_outboard_frame, Vector3d::UnitZ()));
 
   PRINT_VAR(model.get_num_bodies());
   PRINT_VAR(model.get_num_frames());
@@ -67,15 +139,18 @@ int DoMain() {
       model.CreateDefaultContext();
 
   //model.SetZeroConfiguration(context.get());
-  pin_joint->set_zero_configuration(context.get());
-  pin_joint->set_angular_velocity(context.get(), 0.0);
+  shoulder_mobilizer->set_zero_configuration(context.get());
+  shoulder_mobilizer->set_angular_velocity(context.get(), 0.0);
+  elbow_mobilizer->set_zero_configuration(context.get());
+  elbow_mobilizer->set_angular_velocity(context.get(), 0.0);
   context->Print();
 
-  pin_joint->set_angle(context.get(), M_PI/6.0);
-  model.UpdatePositionKinematics(*context);
+  elbow_mobilizer->set_angular_velocity(context.get(), M_PI / 6.0);
+  model.UpdatePositionKinematicsCache(*context);
 
-  cout << "Context after UpdatePositionKinematics():" << endl;
+  cout << "Context after UpdatePositionKinematicsCache():" << endl;
   context->Print();
+#endif
 
 #if 0
   MassProperties<double> mass_properties(1.0, Vector3d::Zero(), I_Bo_B);

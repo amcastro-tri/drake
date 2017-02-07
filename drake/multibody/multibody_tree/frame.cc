@@ -15,7 +15,7 @@ namespace multibody {
 template <typename T>
 MaterialFrame<T>::MaterialFrame(const Body<T>& body) {
   DRAKE_ASSERT(body.get_id().is_valid());
-  body_id_ = body.get_id();
+  topology_.body_id = body.get_id();
 }
 
 template <typename T>
@@ -56,6 +56,12 @@ template <typename T>
 RigidBodyFrame<T>::RigidBodyFrame(
     const RigidBody<T>& body, const Isometry3<T>& X_BF) :
     MaterialFrame<T>(body), X_BF_(X_BF) {}
+
+template <typename T>
+void RigidBodyFrame<T>::SetDefaults(MultibodyTreeContext<T>* context) {
+  PositionKinematicsCache<T>* pc = context->get_mutable_position_kinematics();
+  pc->get_mutable_X_BF(this->get_topology().X_BF_index) = X_BF_;
+}
 
 #if 0
 template <typename T>

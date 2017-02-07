@@ -3,7 +3,11 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
+#include "drake/multibody/multibody_tree/multibody_tree_context.h"
 #include "drake/multibody/multibody_tree/multibody_tree_element.h"
+#include "drake/multibody/multibody_tree/multibody_tree_topology.h"
+
+#include <iostream>
 
 namespace drake {
 namespace multibody {
@@ -19,14 +23,40 @@ class Frame : public MultibodyTreeElement<Frame<T>, FrameIndex> {};
 template <typename T>
 class MaterialFrame : public Frame<T> {
  public:
-  BodyIndex get_body_id() const { return body_id_;}
+  BodyIndex get_body_id() const { return topology_.body_id;}
+
+  const MaterialFrameTopology get_topology() const { return topology_;}
+
+  /// Sets the topological information for this mobilizer.
+  /// This is an implementation detail. User code should never call it.
+  void SetTopology(const MaterialFrameTopology& topology) {
+    topology_ = topology;
+  }
+
+  /// Gives frame the opportunity to set default entries in the context
+  /// tipically in the form of cache entries. This allows to precompute cache
+  /// entries that do not change in time at initialization.
+  /// Defaults to a no-op.
+  virtual void SetDefaults(MultibodyTreeContext<T>* context) {}
+
+  void PrintTopology() const {
+    std::cout << "Frame id: " << topology_.id << std::endl;
+    std::cout << "Body id: " << topology_.body_id << std::endl;
+    std::cout << "Local body id: " << topology_.local_id << std::endl;
+    std::cout << "X_BF_index: " << topology_.X_BF_index << std::endl;
+  }
 
  protected:
   /// @param[in] Local frame id in the body referenced by @p body_id.
   MaterialFrame(const Body<T>& body);
 
+  void set_id(FrameIndex id) override {
+    MultibodyTreeElement<Frame<T>, FrameIndex>::set_id(id);
+    topology_.id = id;
+  }
+
  private:
-  BodyIndex body_id_{BodyIndex::Invalid()};
+  MaterialFrameTopology topology_;
 };
 
 template <typename T>
@@ -48,6 +78,8 @@ class RigidBodyFrame : public MaterialFrame<T> {
   static RigidBodyFrame<T>& Create(
       MultibodyTree<T>* tree,
       const RigidBody<T>& body, const Isometry3<T>& X_BF);
+
+  void SetDefaults(MultibodyTreeContext<T>* context) final;
 
  private:
   RigidBodyFrame(const RigidBody<T>& B, const Isometry3<T>& X_BF);

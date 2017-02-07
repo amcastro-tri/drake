@@ -23,8 +23,9 @@ template <typename T>
 class PositionKinematicsCache {
  public:
   typedef eigen_aligned_std_vector<SpatialVector<T>> H_FM_PoolType;
+  typedef eigen_aligned_std_vector<Isometry3<T>> X_PoolType;
 
-  eigen_aligned_std_vector<Isometry3<T>>& get_mutable_X_FM_pool() {
+  X_PoolType& get_mutable_X_FM_pool() {
     return X_FM_pool_;
   }
 
@@ -40,12 +41,24 @@ class PositionKinematicsCache {
     return X_FM_pool_[body_id];
   }
 
+  int get_X_BF_pool_size() const { return static_cast<int>(X_BF_pool_.size());}
+  const X_PoolType& get_X_BF_pool() const { return X_BF_pool_;}
+  X_PoolType& get_mutable_X_BF_pool() { return X_BF_pool_;}
+  const Isometry3<T>& get_X_BF(int index) const { return X_BF_pool_[index];}
+  Isometry3<T>& get_mutable_X_BF(int index) {
+    DRAKE_ASSERT( 0 <= index && index < get_X_BF_pool_size());
+    return X_BF_pool_[index];
+  }
+
   void Allocate(const MultibodyTreeTopology& tree_topology) {
     const int num_nodes = tree_topology.get_num_body_nodes();
     const int num_rigid_velocities = tree_topology.num_rigid_velocities;
     X_FM_pool_.resize(num_nodes);
     X_FM_pool_[kWorldBodyId].setIdentity();
+
     H_FM_pool_.resize(num_rigid_velocities);
+
+    X_BF_pool_.resize(tree_topology.X_BF_pool_size);
   }
 
   void Print() {
@@ -61,9 +74,9 @@ class PositionKinematicsCache {
   }
 
  private:
-  // Pools are indexed by BodyNodeIndex.
-  eigen_aligned_std_vector<Isometry3<T>> X_FM_pool_;
-  H_FM_PoolType H_FM_pool_;
+  X_PoolType X_FM_pool_;  // Indexed by BodyNodeIndex.
+  H_FM_PoolType H_FM_pool_;  // Indexed by velocity_start.
+  X_PoolType X_BF_pool_;  // Indexed by X_BF_index.
 };
 
 }  // namespace multibody

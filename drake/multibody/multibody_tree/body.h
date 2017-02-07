@@ -31,6 +31,43 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
   /// @returns The number of material frames attached to this body.
   int get_num_frames() const { return static_cast<int>(frames_.size());}
 
+  const BodyTopology& get_topology() const { return topology_;}
+
+  /// Sets the topological information for this mobilizer. Topological
+  /// information includes connectivity such as inboard and outboard frames and
+  /// bodies as well as degrees of freedom indexing information.
+  /// This is an implementation detail. User code should never call it.
+  void SetTopology(const BodyTopology& topology) {
+    topology_ = topology;
+  }
+
+  void PrintTopology() const {
+    std::cout << "Body id: " << topology_.id << std::endl;
+    std::cout << "Body level: " << topology_.level << std::endl;
+    std::cout << "Parent body: " << topology_.parent_body << std::endl;
+
+    if (topology_.get_num_children() != 0) {
+      std::cout << "Children ( " <<
+                topology_.get_num_children() << "): ";
+      std::cout << topology_.child_bodies[0];
+      for (int ichild = 1; ichild < topology_.get_num_children(); ++ichild) {
+        std::cout << ", " << topology_.child_bodies[ichild];
+      }
+      std::cout << std::endl;
+    }
+
+    std::cout << "Material frames (" <<
+              topology_.get_num_material_frames() << "): ";
+    std::cout << topology_.material_frames[0];
+    for (int iframe = 1;
+         iframe < topology_.get_num_material_frames(); ++iframe) {
+      std::cout << ", " << topology_.material_frames[iframe];
+    }
+    std::cout << std::endl;
+
+    std::cout << "Body node: " << topology_.body_node << std::endl;
+  }
+
  protected:
   void set_body_frame(FrameIndex body_frame_id)
   {
@@ -41,6 +78,8 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
   }
 
  private:
+  BodyTopology topology_;
+
   FrameIndex body_frame_id_;
   std::vector<FrameIndex> frames_;
 

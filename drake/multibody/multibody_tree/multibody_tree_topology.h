@@ -26,6 +26,8 @@ struct BodyTopology {
   // The index of the BodyNode associated with this body in the MultibodyTree.
   BodyNodeIndex body_node;
 
+  int get_num_children() const { return static_cast<int>(child_bodies.size());}
+
   int get_num_material_frames() const
   {
     return static_cast<int>(material_frames.size());
@@ -84,7 +86,10 @@ struct BodyNodeTopology {
   // Index into the pool of material frames attached to a body (X_BF_pool) that
   // references the pose of the inboard frame F measured and expressed in the
   // parent body frame P.
-  int X_PF_index;
+  int X_PF_index{-1};
+
+  // The "fixed" frame F is the parent body frame P.
+  bool F_equals_P{false};
 
   void SetArrayIndexes(int position_start, int velocity_start,
                        int number_rigid_positions, int number_flexible_positions,
@@ -110,9 +115,11 @@ struct MaterialFrameTopology {
   BodyIndex body_id{BodyIndex::Invalid()};
   // Local frame id or index in the body.
   int local_id{-1};
+  // Index in the pool of frame poses in the position kinematics cache.
+  int X_BF_index{-1};
 
-  MaterialFrameTopology(FrameIndex id, BodyIndex body_id, int local_id) :
-      id(id), body_id(body_id), local_id(local_id) {}
+  /// `true` if this frame corresponds to a BodyFrame. `false` otherwise.
+  bool is_body_frame() const { return local_id == 0;}
 };
 
 struct MultibodyTreeTopology {
@@ -142,13 +149,16 @@ struct MultibodyTreeTopology {
     return body.id;
   }
 
-  FrameIndex add_material_frame(BodyIndex body_id) {
-    DRAKE_ASSERT(body_id.is_valid() && body_id < get_num_bodies());
+  FrameIndex add_material_frame(const MaterialFrameTopology& frame) {
+    const BodyIndex body_id = frame.body_id;
+    DRAKE_ASSERT(is_valid_body_id(body_id));
     invalidate();
     FrameIndex frame_id(get_num_material_frames());
     BodyTopology& body_topology = bodies_[body_id];
     int local_id = body_topology.get_num_material_frames();
-    material_frames.emplace_back(frame_id, body_id, local_id);
+    material_frames.push_back(frame);
+    material_frames.back().id = frame_id;
+    material_frames.back().local_id = local_id;
     body_topology.material_frames.push_back(frame_id);
     return frame_id;
   }

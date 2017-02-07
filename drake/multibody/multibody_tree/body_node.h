@@ -10,6 +10,10 @@
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
 
+#include <iostream>
+#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
+#define PRINT_VARn(x) std::cout <<  #x ":\n" << x << std::endl;
+
 namespace drake {
 namespace multibody {
 
@@ -88,6 +92,8 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     //const Mobilizer<T>& mobilizer = get_mobilizer();
     //const Body<T>& body = get_body();
 
+    CalcAcrossMobilizerBodyPoses(context);
+
 #if 0
     // Update position kinematics that depend on mobilizers only:
     // - X_FM(q), H_FM(q), HdotTimesV_FM(q)
@@ -113,20 +119,49 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
 #endif
   }
 
+  void PrintTopology() const {
+    std::cout << "BodyNode id: " << topology_.id << std::endl;
+    std::cout << "  Level: " << topology_.level << std::endl;
+    std::cout << "  Mobilizer: " << topology_.mobilizer << std::endl;
+    std::cout << "  Body: " << topology_.body << std::endl;
+    std::cout << "  Num(qr): " << topology_.num_rigid_positions << std::endl;
+    std::cout << "  Num(vr): " << topology_.num_rigid_velocities << std::endl;
+    std::cout << "  Num(qf): " <<
+              topology_.num_flexible_positions << std::endl;
+    std::cout << "  Num(vf): " <<
+              topology_.num_flexible_velocities << std::endl;
+    std::cout << "  qr_start: " <<
+              topology_.rigid_positions_start << std::endl;
+    std::cout << "  vr_start: " <<
+              topology_.rigid_velocities_start << std::endl;
+    std::cout << "  qf_start: " <<
+              topology_.flexible_positions_start << std::endl;
+    std::cout << "  vf_start: " <<
+              topology_.flexible_velocities_start << std::endl;
+    std::cout << "  X_PF_index: " << topology_.X_PF_index << std::endl;
+    std::cout << "  F_equals_P: " <<
+              (topology_.F_equals_P ? "true" : "false") << std::endl;
+  }
+
  private:
   BodyNodeTopology topology_;
   // Pointers for fast access.
   const Body<T>* body_{nullptr};
   const Mobilizer<T>* mobilizer_{nullptr};
 
-#if 0
   // Helper methods to extract entries from the context.
-  const Isometry3<T>& get_X_PF(const PositionKinematicsCache<T>* pc) {
-    return pc->get_X_BF_pool()[topology_.X_PF_index];
+  const Isometry3<T>& get_X_PF(const PositionKinematicsCache<T>* pc) const {
+    const auto& pool = pc->get_X_BF_pool();
+    DRAKE_ASSERT(topology_.X_PF_index < static_cast<int>(pool.size()));
+    return pool[topology_.X_PF_index];
   }
-#endif
 
-#if 0
+  Isometry3<T>& get_mutable_X_PF(PositionKinematicsCache<T>* pc) const {
+    auto& pool = pc->get_mutable_X_BF_pool();
+    DRAKE_ASSERT(topology_.X_PF_index < static_cast<int>(pool.size()));
+    return pool[topology_.X_PF_index];
+  }
+
   void CalcAcrossMobilizerBodyPoses(
       const MultibodyTreeContext<T>& context) const {
     PositionKinematicsCache<T>* pc = context.get_mutable_position_kinematics();
@@ -137,8 +172,13 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // - X_FM(qr_B)
     // - X_WP(q(W:B), where q(W:B) includes all positions in the kinematics path
     //                from body B to the world W.
-    const Isometry3<T>& X_PF = get_X_PF(pc);
-    (void) X_PF;
+
+    if (!topology_.F_equals_P) {
+      const Isometry3<T>& X_PF = get_X_PF(pc);
+      PRINT_VARn(X_PF.matrix());
+    }
+
+#if 0
     const Isometry3<T>& X_MB = pc->get_X_MB();
     const Isometry3<T>& X_FM = pc->get_X_FM();
     const Isometry3<T>& X_WP = pc->get_X_WP();
@@ -150,10 +190,18 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     Isometry3<T>& X_WB = pc->get_X_WB();
 
     const Isometry3<T> X_FB = (BequalsM ? X_FM : X_FM * X_MB);
+
+    if (topology_.F_equals_P) {
+      X_PB = X_FB;
+    } else {
+      const Isometry3<T>& X_PF = get_X_PF(pc);
+      X_PB = X_PF * X_FB;
+    }
+
     X_PB = X_PF * X_FB;
     X_WB = X_WP * X_PB;
-  }
 #endif
+  }
 };
 
 }  // namespace multibody

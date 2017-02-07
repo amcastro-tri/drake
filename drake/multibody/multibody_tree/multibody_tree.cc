@@ -35,7 +35,7 @@ BodyIndex MultibodyTree<T>::AddBody(std::unique_ptr<Body<T>> body) {
 template <typename T>
 FrameIndex MultibodyTree<T>::AddMaterialFrame(std::unique_ptr<MaterialFrame<T>> frame) {
   DRAKE_DEMAND(frame != nullptr);
-  FrameIndex id = topology_.add_material_frame(frame->get_body_id());
+  FrameIndex id = topology_.add_material_frame(frame->get_topology());
   material_frames_.push_back(std::move(frame));
   return id;
 }
@@ -56,6 +56,7 @@ void MultibodyTree<T>::CompileTopology() {
   auto& body_topologies = topology_.bodies_;
   auto& mobilizer_topologies = topology_.mobilizers_;
   auto& body_node_topologies = topology_.body_nodes;
+  auto& frame_topologies = topology_.material_frames;
 
   mobilizer_topologies.resize(get_num_mobilizers());
 
@@ -152,6 +153,7 @@ void MultibodyTree<T>::CompileTopology() {
 
       // Record in BodyNodeTopology the Body and Mobilzer associated with it.
       body_node_topologies[body_node_id].id = body_node_id;
+      body_node_topologies[body_node_id].level = level;
       body_node_topologies[body_node_id].body = body_id;
       body_node_topologies[body_node_id].mobilizer = mobilizer_id;
 
@@ -187,6 +189,43 @@ void MultibodyTree<T>::CompileTopology() {
             num_rigid_positions, num_rigid_velocities);
       }
 
+      // Sets NodeTopology::X_PF_index, the index into the pool of material
+      // frame poses for the F frame in the parent body P.
+      if (mobilizer_id.is_valid()) {  // There is no mobilizer for the world.
+        // Inboard frame F index.
+        FrameIndex inboard_frame_id =
+            mobilizer_topologies[mobilizer_id].inboard_frame;
+
+        // The pool does not include the pose of the body frame.
+        if (!topology_.material_frames[inboard_frame_id].is_body_frame()) {
+          const int inboard_frame_local_id =
+              topology_.material_frames[inboard_frame_id].local_id;
+          const int X_BF_index = /* minus one because "0" is the body frame.*/
+              topology_.X_BF_pool_size + inboard_frame_local_id - 1;
+          frame_topologies[inboard_frame_id].X_BF_index = X_BF_index;
+
+          // Same index for the parent fixed frame F in this BodyNode.
+          body_node_topologies[body_node_id].F_equals_P = false;
+          body_node_topologies[body_node_id].X_PF_index = X_BF_index;
+        } else {
+          // Indicates that frame F is the parent body frame P.
+          body_node_topologies[body_node_id].F_equals_P = true;
+        }
+
+        // Inboard frame M index.
+        FrameIndex outboard_frame_id =
+            mobilizer_topologies[mobilizer_id].outboard_frame;
+
+        // The pool does not include the pose of the body frame.
+        if (!topology_.material_frames[outboard_frame_id].is_body_frame()) {
+          const int outboard_frame_local_id =
+              topology_.material_frames[outboard_frame_id].local_id;
+          const int X_BF_index = /* minus one because "0" is the body frame.*/
+              topology_.X_BF_pool_size + outboard_frame_local_id - 1;
+          frame_topologies[outboard_frame_id].X_BF_index = X_BF_index;
+        }
+      }  // if (mobilizer_id.is_valid())
+
       // Does not include the body frame in the pool of material frames.
       topology_.X_BF_pool_size += (body_topology.get_num_material_frames() - 1);
 
@@ -207,7 +246,18 @@ void MultibodyTree<T>::CompileTopology() {
         topology_.num_rigid_velocities + topology_.num_flexible_velocities;
   }
 
-  // Set mobilizers topology.
+  // Updates bodies' topology.
+  for (BodyIndex body_id(0);
+       body_id < get_num_bodies(); ++body_id) {
+    bodies_[body_id]->SetTopology(body_topologies[body_id]);
+  }
+
+  // Updates frames' topology.
+  for (const auto& frame: material_frames_) {
+    frame->SetTopology(topology_.material_frames[frame->get_id()]);
+  }
+
+  // Updates mobilizers' topology.
   for (MobilizerIndex mobilizer_id(0);
        mobilizer_id < get_num_mobilizers(); ++mobilizer_id) {
     mobilizers_[mobilizer_id]->SetTopology(mobilizer_topologies[mobilizer_id]);
@@ -238,24 +288,26 @@ void MultibodyTree<T>::Compile() {
 
 template <typename T>
 void MultibodyTree<T>::PrintTopology() const {
-  auto& body_topologies = topology_.bodies_;
 
-  for (BodyIndex body_id(0); body_id < get_num_bodies(); ++body_id) {
-    PRINT_VAR(body_id);
-    PRINT_VAR(body_topologies[body_id].level);
-    PRINT_VAR(body_topologies[body_id].parent_body);
-    for (BodyIndex child: body_topologies[body_id].child_bodies) {
-      PRINT_VAR(body_topologies[child].id);
-    }
-    PRINT_VAR(body_topologies[body_id].body_node);
+  std::cout << "Bodies: " << std::endl;
+  for (const auto& body: bodies_) {
+    body->PrintTopology();
   }
+  std::cout << std::endl;
 
-  PRINT_VAR("");
+  std::cout << "Frames: " << std::endl;
+  for (const auto& frame: material_frames_) {
+    frame->PrintTopology();
+  }
+  std::cout << std::endl;
 
+  std::cout << "Mobilizers: " << std::endl;
   for (const auto& mobilizer: mobilizers_) {
     mobilizer->PrintTopology();
   }
+  std::cout << std::endl;
 
+  std::cout << "Levels: " << std::endl;
   PRINT_VAR(topology_.num_levels);
   for (int level = 0; level < topology_.num_levels; ++level) {
     PRINT_VAR(level);
@@ -263,20 +315,11 @@ void MultibodyTree<T>::PrintTopology() const {
       PRINT_VAR(ibody);
     }
   }
+  std::cout << std::endl;
 
-  PRINT_VAR("");
-
-  for (int level = 0; level < topology_.num_levels; ++level) {
-    PRINT_VAR(level);
-    for (BodyNodeIndex body_node_id: body_node_levels_[level]) {
-      PRINT_VAR(body_node_id);
-      PRINT_VAR(topology_.body_nodes[body_node_id].id);
-      PRINT_VAR(topology_.body_nodes[body_node_id].body);
-      PRINT_VAR(topology_.body_nodes[body_node_id].mobilizer);
-      PRINT_VAR(topology_.body_nodes[body_node_id].num_rigid_positions);
-      PRINT_VAR(topology_.body_nodes[body_node_id].num_rigid_velocities);
-    }
-  }
+  std::cout << "Body nodes: " << std::endl;
+  for (const auto& body_node: body_nodes_)
+    body_node->PrintTopology();
 
   PRINT_VAR(topology_.X_BF_pool_size);
 }

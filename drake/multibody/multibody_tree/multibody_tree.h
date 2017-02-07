@@ -127,7 +127,16 @@ class MultibodyTree {
 
   std::unique_ptr<MultibodyTreeContext<T>> CreateDefaultContext() const {
     auto context = std::make_unique<MultibodyTreeContext<T>>(topology_);
+    SetDefaults(context.get());
     return context;
+  }
+
+  /// Sets default values in the context including pre-computed cache entries.
+  void SetDefaults(MultibodyTreeContext<T>* context) const {
+    // Gives materials frames with a constant offset to their bodies the
+    // chance to write their value into the cache.
+    for (const auto& frame: material_frames_)
+      frame->SetDefaults(context);
   }
 
  private:

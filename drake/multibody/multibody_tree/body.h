@@ -41,6 +41,13 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
     topology_ = topology;
   }
 
+  const Isometry3<T>& get_pose_in_world(
+      const MultibodyTreeContext<T>& context) const
+  {
+    // TODO(amcastro-tri): Check cache validity?
+    return context.get_position_kinematics().get_X_WB(topology_.body_node);
+  }
+
   void PrintTopology() const {
     std::cout << "Body id: " << topology_.id << std::endl;
     std::cout << "Body level: " << topology_.level << std::endl;

@@ -73,8 +73,11 @@ int DoMain() {
   shoulder_mobilizer.set_angular_velocity(context.get(), 0.0);
   context->Print();
 
+  shoulder_mobilizer.set_angle(context.get(), M_PI / 6.0);
   model->UpdatePositionKinematicsCache(*context);
   context->Print();
+  const auto& X_WU = upper_body.get_pose_in_world(*context);
+  PRINT_VARn(X_WU.matrix());
 
 #if 0
   elbow_mobilizer->set_zero_configuration(context.get());

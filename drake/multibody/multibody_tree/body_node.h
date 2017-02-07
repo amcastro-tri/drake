@@ -189,6 +189,14 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     return pc->get_X_WB(topology_.parent_body_node);
   }
 
+  Isometry3<T>& get_mutable_X_PB(PositionKinematicsCache<T>* pc) const {
+    return pc->get_mutable_X_PB(topology_.id);
+  }
+
+  Isometry3<T>& get_mutable_X_WB(PositionKinematicsCache<T>* pc) const {
+    return pc->get_mutable_X_WB(topology_.id);
+  }
+
   void CalcAcrossMobilizerBodyPoses(
       const MultibodyTreeContext<T>& context) const {
     PositionKinematicsCache<T>* pc = context.get_mutable_position_kinematics();
@@ -199,28 +207,19 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // - X_FM(qr_B)
     // - X_WP(q(W:B), where q(W:B) includes all positions in the kinematics path
     //                from body B to the world W.
-
-    if (!topology_.F_equals_P) {
-      const Isometry3<T>& X_PF = get_X_PF(pc);
-      PRINT_VARn(X_PF.matrix());
-    }
-
     const Isometry3<T>& X_MB = get_X_MB(pc);
-    PRINT_VARn(X_MB.matrix());
     const Isometry3<T>& X_FM = get_X_FM(pc);
-    PRINT_VARn(X_FM.matrix());
     const Isometry3<T>& X_WP = get_X_WP(pc);
-    PRINT_VARn(X_WP.matrix());
-
-#if 0
 
     // Output (updating a cache entry):
     // - X_PB(qf_P, qr_B, qf_B)
     // - X_WB(q(W:B), qf_P, qr_B, qf_B)
-    Isometry3<T>& X_PB = pc->get_X_PB();
-    Isometry3<T>& X_WB = pc->get_X_WB();
+    Isometry3<T>& X_PB = get_mutable_X_PB(pc);
+    Isometry3<T>& X_WB = get_mutable_X_WB(pc);
 
-    const Isometry3<T> X_FB = (BequalsM ? X_FM : X_FM * X_MB);
+    // TODO(amcastro-tri): Consider logic for the common case B = M.
+    // In that case X_FB = X_FM as suggested by setting X_MB = Id.
+    const Isometry3<T> X_FB = X_FM * X_MB;
 
     if (topology_.F_equals_P) {
       X_PB = X_FB;
@@ -229,9 +228,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
       X_PB = X_PF * X_FB;
     }
 
-    X_PB = X_PF * X_FB;
     X_WB = X_WP * X_PB;
-#endif
   }
 };
 

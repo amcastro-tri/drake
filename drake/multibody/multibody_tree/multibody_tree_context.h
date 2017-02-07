@@ -44,6 +44,10 @@ class MultibodyTreeContext {
   VectorX<T>& get_mutable_positions() { return q_; }
   VectorX<T>& get_mutable_velocities() { return v_; }
 
+  const PositionKinematicsCache<T>& get_position_kinematics() const {
+    return position_kinematics_;
+  }
+
   PositionKinematicsCache<T>* get_mutable_position_kinematics() const {
     return &position_kinematics_;
   }

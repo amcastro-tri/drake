@@ -44,9 +44,45 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
   const Isometry3<T>& get_pose_in_world(
       const MultibodyTreeContext<T>& context) const
   {
-    // TODO(amcastro-tri): Check cache validity?
+    // TODO(amcastro-tri): Check cache validity
     return context.get_position_kinematics().get_X_WB(topology_.body_node);
   }
+
+  /// Returns from the current state in the @p context the position of the
+  /// center of mass for this body measured and expressed in the
+  /// world frame `W`.
+  const Vector3<T>& get_com_W(
+      const MultibodyTreeContext<T>& context) const
+  {
+    // TODO(amcastro-tri): Check cache validity
+    return context.get_position_kinematics().get_com_W(topology_.id);
+  }
+
+  const SpatialInertia<T>& get_M_Bo_W(
+      const MultibodyTreeContext<T>& context) const
+  {
+    return context.get_position_kinematics().get_M_Bo_W(topology_.id);
+  }
+
+  /// Computes the center of mass of this body measured and expressed in its
+  /// implicity body frame B.
+  /// @param[in] context Context cotaining the state of the MultibodyTree.
+  /// @returns com_B The center of mass of this body measured and expressed in
+  ///                its implicity body frame `B`.
+  virtual Vector3<T> CalcCenterOfMassInBodyFrame(
+      const MultibodyTreeContext<T>& context) const = 0;
+
+  /// Computes the UnitInertia of this body as measured and expressed in the
+  /// body frame `B`.
+  /// @param[in] context Context cotaining the state of the MultibodyTree.
+  /// @returns G_Bo_B UnitInertia of this body computed about the origin `Bo`
+  ///                 of its frame `B`, expressed in `B`.
+  virtual UnitInertia<T> CalcUnitInertiaInBodyFrame(
+      const MultibodyTreeContext<T>& context) const = 0;
+
+  /// Computes the mass of the body for the current configuration of the
+  /// @p context.
+  virtual T CalcMass(const MultibodyTreeContext<T>& context) const = 0;
 
   void PrintTopology() const {
     std::cout << "Body id: " << topology_.id << std::endl;

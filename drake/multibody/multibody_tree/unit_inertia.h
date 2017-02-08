@@ -54,6 +54,11 @@ class UnitInertia : public RotationalInertia<T> {
     RotationalInertia<T>::operator=(EigenMatrix);
     return *this;
   }
+
+  /// Constructs a UnitInertia from a RotationalInertia. This constructor has
+  /// no way to verify that the input rotational inertia IS a unit inertia.
+  /// It is the responsability of the user to pass a valid unit inertia.
+  UnitInertia(const RotationalInertia<T>& I) : RotationalInertia<T>(I) {}
   
   /// Given this unit inertia `G_Bo_F` about `Bo` and expressed in frame
   /// `F`, this method computes the same inertia re-expressed in another
@@ -73,7 +78,7 @@ class UnitInertia : public RotationalInertia<T> {
   /// @returns G_Bo_A The same unit inertia bout `Bo` expressed in frame
   /// `A`.
   UnitInertia ReExpress(const Matrix3<T>& R_AF) const {
-    return RotationalInertia<T>::ReExpress(R_AF);
+    return UnitInertia<T>(RotationalInertia<T>::ReExpress(R_AF));
   }
 
   /// @name UnitInertia's for common 3D objects.

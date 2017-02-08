@@ -146,6 +146,9 @@ class RotationalInertia {
     return Vector3<T>(get_symmetric_matrix_view() * w);
   }
 
+  /// Sets this inertia to have NaN entries. Typically used to quickly detect
+  /// uninitialized values since NaN will trigger a chain of invalid
+  /// computations that then can be tracked to the source.
   void SetToNaN() {
     I_Bo_F_.setConstant(std::numeric_limits<
         typename Eigen::NumTraits<T>::Literal>::quiet_NaN());

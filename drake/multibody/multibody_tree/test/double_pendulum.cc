@@ -16,6 +16,7 @@
 namespace drake {
 namespace multibody {
 
+using Eigen::AngleAxisd;
 using Eigen::Isometry3d;
 using Eigen::Translation3d;
 using Eigen::Vector3d;
@@ -34,9 +35,15 @@ std::ostream& operator<<(
 }
 
 int DoMain() {
-  const double length = 1.0;
-  UnitInertia<double> G_Bc_B = UnitInertia<double>::SolidCube(length);
-  (void) G_Bc_B;
+  const double length = 0.3;
+  const double radius = 0.005;
+  // Unit inertia in the "geometry" frame G computed about the geometric
+  // center Gc.
+  UnitInertia<double> G_Gc_G = UnitInertia<double>::SolidRod(radius, length);
+  // Transformation from the geometry frame G to the body frame B.
+  Isometry3d X_BG(AngleAxisd(M_PI_2, Vector3d::UnitX()));
+  UnitInertia<double> G_Bc_B = G_Gc_G.ReExpress(X_BG.rotation());
+  PRINT_VARn(G_Bc_B);
 
   auto owned_model = std::make_unique<MultibodyTree<double>>();
   MultibodyTree<double>* model = owned_model.get();
@@ -71,13 +78,19 @@ int DoMain() {
   //model.SetZeroConfiguration(context.get());
   shoulder_mobilizer.set_zero_configuration(context.get());
   shoulder_mobilizer.set_angular_velocity(context.get(), 0.0);
+  model->UpdatePositionKinematicsCache(*context);
   context->Print();
+  PRINT_VARn(upper_body.get_pose_in_world(*context).matrix());
+  PRINT_VARn(upper_body.get_com_W(*context).transpose());
+  PRINT_VARn(upper_body.get_M_Bo_W(*context));
 
   shoulder_mobilizer.set_angle(context.get(), M_PI / 6.0);
   model->UpdatePositionKinematicsCache(*context);
   context->Print();
   const auto& X_WU = upper_body.get_pose_in_world(*context);
   PRINT_VARn(X_WU.matrix());
+  PRINT_VARn(upper_body.get_com_W(*context).transpose());
+  PRINT_VARn(upper_body.get_M_Bo_W(*context));
 
 #if 0
   elbow_mobilizer->set_zero_configuration(context.get());

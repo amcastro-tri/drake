@@ -24,32 +24,32 @@ namespace multibody {
 template <typename T>
 class MassProperties {
  public:
-  /// Constructor from mass, center of mass and rotational inertia.
+  /// Constructor from mass, center of mass and unit rotational inertia.
   /// @param mass The mass of the bodyy.
   /// @param com_B Body center of mass measured and expressed in B.
-  /// @param I_Bo_B Rotational inertia about B's origin Bo expressed in B.
+  /// @param G_Bo_B Unit rotational inertia about B's origin Bo expressed in B.
   MassProperties(const T& mass, const Vector3<T>& com_B,
-                 const RotationalInertia<T>& I_Bo_B) :
-      mass_(mass), com_B_(com_B), I_Bo_B_(I_Bo_B) { }
+                 const UnitInertia<T>& G_Bo_B) :
+      mass_(mass), com_B_(com_B), G_Bo_B_(G_Bo_B) { }
 
   const T& get_mass() const { return mass_; }
   const Vector3<T>& get_com() const { return com_B_; }
-  const RotationalInertia<T>& get_rotational_inertia() const { return I_Bo_B_; }
+  const UnitInertia<T>& get_unit_inertia() const { return G_Bo_B_; }
 
   /// Returns the MassProperties object for a body of infinite mass.
   /// Center of mass and rotational inertia are meaningless.
   static MassProperties<double> InfiniteMass() {
     return MassProperties<double>(
         Eigen::NumTraits<double>::infinity(),
-        Eigen::Vector3d::Zero(), RotationalInertia<double>(0.0));
+        Eigen::Vector3d::Zero(), UnitInertia<double>(0.0));
   }
 
  private:
   T mass_;
   // center of mass measured and expressed in B.
   Vector3<T> com_B_;
-  // Rotational inertia around Bo and expressed in B.
-  RotationalInertia<T> I_Bo_B_;
+  // Unit inertia around Bo and expressed in B.
+  UnitInertia<T> G_Bo_B_;
 };
 
 template <typename T>
@@ -59,9 +59,9 @@ static inline std::ostream& operator<<(
       << " mass = " << mp.get_mass() << std::endl
       << " com = " << mp.get_com().transpose() << std::endl
       << " Ixx, Iyy, Izz = " <<
-      mp.get_rotational_inertia().get_moments().transpose() << std::endl
+      mp.get_unit_inertia().get_moments().transpose() << std::endl
       << " Ixy, Ixz, Iyz = " <<
-      mp.get_rotational_inertia().get_products().transpose() << std::endl;
+      mp.get_unit_inertia().get_products().transpose() << std::endl;
 }
 
 

@@ -23,7 +23,7 @@ template <typename T>
 class SpatialInertia {
  public:
   /// Default SpatialInertia constructor initializes mass, center of mass and
-  /// rotational inertia to invalide NaN's for a quick detection of
+  /// rotational inertia to invalid NaN's for a quick detection of
   /// un-initialized values.
   SpatialInertia() {}
 
@@ -54,6 +54,15 @@ class SpatialInertia {
   const Vector3<T>& get_com() const { return p_BoBc_F_;}
 
   const RotationalInertia<T>& get_rotational_inertia() const { return I_Bo_F_;}
+
+  /// Sets this spatial inertia to have NaN entries. Typically used to quickly
+  /// detect uninitialized values since NaN will trigger a chain of invalid
+  /// computations that then can be tracked to the source.
+  void SetToNaN() {
+    mass_ = nan();
+    p_BoBc_F_.setConstant(nan());
+    I_Bo_F_.SetToNaN();
+  }
 
   /// Performs a number of checks to verify that this is a physically valid
   /// spatial inertia.

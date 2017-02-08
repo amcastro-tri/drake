@@ -5,10 +5,12 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/mobilizer.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
 #include "drake/multibody/multibody_tree/multibody_tree_element.h"
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
+#include "drake/multibody/multibody_tree/spatial_inertia.h"
 
 #include <iostream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
@@ -89,34 +91,23 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
 
   void UpdatePositionKinematicsCache(
       const MultibodyTreeContext<T>& context) const {
-    //const Mobilizer<T>& mobilizer = get_mobilizer();
-    //const Body<T>& body = get_body();
+    // This method should not be called for the "world" body node.
+    DRAKE_ASSERT(topology_.body != kWorldBodyId);
 
+    // This computes into the PositionKinematicsCache:
+    // - X_PB(qf_P, qr_B, qf_B)
+    // - X_WB(q(W:P), qf_P, qr_B, qf_B)
+    // It assumes:
+    // - The body for this node updates its attached frame poses X_BF(qf_B).
+    // - We are in a base-to-tip recursion and therefore X_PF(qf_P) and X_WP are
+    //   available.
     CalcAcrossMobilizerBodyPoses(context);
 
-#if 0
-    // Update position kinematics that depend on mobilizers only:
-    // - X_FM(q), H_FM(q), HdotTimesV_FM(q)
-    mobilizer.UpdatePositionKinematicsCache(context);
-
-    // Update all body frames attached this body.
-    // In particular, the pose X_BM of the inboard frame M in B will be
-    // immediately used below to compute across mobilizer transforms between
-    // body frames concluding with the update of the body pose X_WB.
-    // The outboard frames attached to this body will be used in the
-    // computations at the next tree level.
-    // These body frame updates depend in general of the flexible generalized
-    // coordinates of the body.
-    body.UpdateAttachedBodyFrames(context);
-
-    // Perform across-body computations. These couple rigid motions given by
-    // the mobilizer connecting inboard and outboard bodies and the flexible
-    // motions of those two bodies.
-    // These computations assume a base-to-tip recursion. They are generic,
-    // independent of the specific mobilizer or body model and can be performed
-    // by the BodyNode.
-
-#endif
+    // Update Body specific kinematics. These are:
+    // - phi_PB_W: shift operator from P to B.
+    // - com_W: center of mass.
+    // - M_Bo_W: Spatial inertia.
+    UpdateBodySpecificKinematicsCache(context);
   }
 
   void PrintTopology() const {
@@ -189,12 +180,32 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     return pc->get_X_WB(topology_.parent_body_node);
   }
 
+  const Isometry3<T>& get_X_PB(const PositionKinematicsCache<T>* pc) const {
+    return pc->get_X_PB(topology_.id);
+  }
+
   Isometry3<T>& get_mutable_X_PB(PositionKinematicsCache<T>* pc) const {
     return pc->get_mutable_X_PB(topology_.id);
   }
 
+  const Isometry3<T>& get_X_WB(const PositionKinematicsCache<T>* pc) const {
+    return pc->get_X_WB(topology_.id);
+  }
+
   Isometry3<T>& get_mutable_X_WB(PositionKinematicsCache<T>* pc) const {
     return pc->get_mutable_X_WB(topology_.id);
+  }
+
+  ShiftOperator<T>& get_mutable_phi_PB_W(PositionKinematicsCache<T>* pc) const {
+    return pc->get_mutable_phi_PB_W(topology_.body);
+  }
+
+  Vector3<T>& get_mutable_com_W(PositionKinematicsCache<T>* pc) const {
+    return pc->get_mutable_com_W(topology_.body);
+  }
+
+  SpatialInertia<T>& get_mutable_M_Bo_W(PositionKinematicsCache<T>* pc) const {
+    return pc->get_mutable_M_Bo_W(topology_.body);
   }
 
   void CalcAcrossMobilizerBodyPoses(
@@ -213,7 +224,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
 
     // Output (updating a cache entry):
     // - X_PB(qf_P, qr_B, qf_B)
-    // - X_WB(q(W:B), qf_P, qr_B, qf_B)
+    // - X_WB(q(W:P), qf_P, qr_B, qf_B)
     Isometry3<T>& X_PB = get_mutable_X_PB(pc);
     Isometry3<T>& X_WB = get_mutable_X_WB(pc);
 
@@ -229,6 +240,40 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     }
 
     X_WB = X_WP * X_PB;
+  }
+
+  void UpdateBodySpecificKinematicsCache(
+      const MultibodyTreeContext<T>& context) const {
+    PositionKinematicsCache<T> *pc = context.get_mutable_position_kinematics();
+
+    // Just computed as part of a base-to-tip recursion by
+    // CalcAcrossMobilizerBodyPoses().
+    const Isometry3<T>& X_WB = get_X_WB(pc);
+
+    // Output into the PositionKinematicsCache:
+    ShiftOperator<T>& phi_PB_W = get_mutable_phi_PB_W(pc);
+    Vector3<T>& com_W = get_mutable_com_W(pc);
+    SpatialInertia<T>& M_Bo_W = get_mutable_M_Bo_W(pc);
+
+    // Shift operator between the parent body P and this node's body B,
+    // expressed in the world frame W.
+    phi_PB_W = ShiftOperator<T>(
+        /* p_PB_W = R_WP * p_PB */
+        get_X_WP(pc).rotation() * get_X_PB(pc).translation());
+
+    // Compute center of mass Bc of body B measured and expressed in B.
+    Vector3<T> com_B = body_->CalcCenterOfMassInBodyFrame(context);
+
+    // com_W = p_WP + R_WB * p_BBc_B = p_WP + p_BBc_W.
+    com_W = X_WB * com_B;
+
+    // Compute the rotational (unit) inertia for this node's body in the
+    // world frame.
+    UnitInertia<T> G_Bo_B = body_->CalcUnitInertiaInBodyFrame(context);
+    UnitInertia<T> G_Bo_W = G_Bo_B.ReExpress(X_WB.rotation());
+
+    // Spatial inertia of this node's body in the world frame.
+    M_Bo_W = SpatialInertia<T>(body_->CalcMass(context), com_W, G_Bo_W);
   }
 };
 

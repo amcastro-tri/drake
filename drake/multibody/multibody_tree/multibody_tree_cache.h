@@ -10,6 +10,7 @@
 #include "drake/multibody/multibody_tree/mobilizer_context.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
+#include "drake/multibody/multibody_tree/spatial_inertia.h"
 
 #include <iostream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
@@ -24,6 +25,9 @@ class PositionKinematicsCache {
  public:
   typedef eigen_aligned_std_vector<SpatialVector<T>> H_FM_PoolType;
   typedef eigen_aligned_std_vector<Isometry3<T>> X_PoolType;
+  typedef eigen_aligned_std_vector<ShiftOperator<T>> ShiftOperatorPoolType;
+  typedef eigen_aligned_std_vector<Vector3<T>> Vector3PoolType;
+  typedef eigen_aligned_std_vector<SpatialInertia<T>> SpatialMatrixPoolType;
 
   X_PoolType& get_mutable_X_FM_pool() {
     return X_FM_pool_;
@@ -113,6 +117,36 @@ class PositionKinematicsCache {
     return X_PB_pool_[body_node_id];
   }
 
+  const Isometry3<T>& get_X_PB(BodyNodeIndex body_node_id) const {
+    DRAKE_ASSERT(0 <= body_node_id && body_node_id < num_nodes_);
+    return X_PB_pool_[body_node_id];
+  }
+
+  ShiftOperator<T>& get_mutable_phi_PB_W(BodyIndex body_id) {
+    DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
+    return phi_PB_W_pool_[body_id];
+  }
+
+  const Vector3<T>& get_com_W(BodyIndex body_id) const {
+    DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
+    return com_W_pool_[body_id];
+  }
+
+  Vector3<T>& get_mutable_com_W(BodyIndex body_id) {
+    DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
+    return com_W_pool_[body_id];
+  }
+
+  const SpatialInertia<T>& get_M_Bo_W(BodyIndex body_id) const {
+    DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
+    return M_Bo_W_pool_[body_id];
+  }
+
+  SpatialInertia<T>& get_mutable_M_Bo_W(BodyIndex body_id) {
+    DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
+    return M_Bo_W_pool_[body_id];
+  }
+
   void Allocate(const MultibodyTreeTopology& tree_topology) {
     num_nodes_ = tree_topology.get_num_body_nodes();
     const int num_rigid_velocities = tree_topology.num_rigid_velocities;
@@ -134,6 +168,15 @@ class PositionKinematicsCache {
     X_PB_pool_.resize(num_nodes_);
     X_PB_pool_[kWorldBodyId] = Matrix4<T>::Constant(
         Eigen::NumTraits<double>::quiet_NaN());  // It should not be used.
+
+    phi_PB_W_pool_.resize(num_nodes_);
+    phi_PB_W_pool_[kWorldBodyId].SetToNaN();  // It should not be used.
+
+    com_W_pool_.resize(num_nodes_);
+    com_W_pool_[kWorldBodyId].setZero();
+
+    M_Bo_W_pool_.resize(num_nodes_);
+    M_Bo_W_pool_[kWorldBodyId].SetToNaN();
   }
 
   void Print() {
@@ -150,12 +193,15 @@ class PositionKinematicsCache {
 
  private:
   int num_nodes_{0};
-  X_PoolType X_FM_pool_;  // Indexed by BodyNodeIndex.
-  H_FM_PoolType H_FM_pool_;  // Indexed by velocity_start.
-  X_PoolType X_BF_pool_;  // Indexed by X_BF_index.
-  X_PoolType X_MB_pool_;  // Indexed by BodyNodeIndex.
-  X_PoolType X_WB_pool_;  // Indexed by BodyNodeIndex.
-  X_PoolType X_PB_pool_;  // Indexed by BodyNodeIndex.
+  X_PoolType X_FM_pool_;                 // Indexed by BodyNodeIndex.
+  H_FM_PoolType H_FM_pool_;              // Indexed by velocity_start.
+  X_PoolType X_BF_pool_;                 // Indexed by X_BF_index.
+  X_PoolType X_MB_pool_;                 // Indexed by BodyNodeIndex.
+  X_PoolType X_WB_pool_;                 // Indexed by BodyNodeIndex.
+  X_PoolType X_PB_pool_;                 // Indexed by BodyNodeIndex.
+  ShiftOperatorPoolType phi_PB_W_pool_;  // Indexed by BodyIndex.
+  Vector3PoolType com_W_pool_;           // Indexed by BodyIndex.
+  SpatialMatrixPoolType M_Bo_W_pool_;    // Indexed by BodyIndex.
 };
 
 }  // namespace multibody

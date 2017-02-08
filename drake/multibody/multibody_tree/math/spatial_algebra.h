@@ -198,19 +198,53 @@ template <typename T> class ShiftOperatorTranspose;
 template <typename T>
 class ShiftOperator {
  public:
+  /// Default constructor leaves the offset uninitialized resulting in a zero
+  /// cost operation.
+  ShiftOperator() {}
+
   /// Constructs a rigid body transformation operator between a pair of frames
-  /// `X` and `Y` given a vector @p l from `Xo` to `Yo`. For a vector @p l_F
+  /// `X` and `Y` given a vector @p offset_XoYo_F from `Xo` to `Yo`.
+  /// For a vector @p offset_XoYo_F expressed in a frame `F`, this operator can
+  /// only operate on spatial vectors expressed in the same frame `F`.
+  /// @param[in] offset_XoYo_F Vector from `Xo` to `Yo` expressed in an implicit
+  ///                          frame `F`.
+  ShiftOperator(const Vector3<T>& offset_XoYo_F) : offset_(offset_XoYo_F) {}
+
+#if 0
+  /// Constructs a rigid body transformation operator between a pair of frames
+  /// `X` and `Y` given an arbitrary Eigen expression of a vector
+  /// @p offset_XoYo_F from `Xo` to `Yo`. For a vector @p offset_XoYo_F
   /// expressed in a frame `F`, this operator can only operate on spatial
   /// vectors expressed in the same frame `F`.
-  /// @param[in] l_F Vector from `Xo` to `Yo` expressed in an implicit
-  /// frame `F`.
-  ShiftOperator(const Vector3<T> offset_XoYo_F) : offset_(offset_XoYo_F) {}
+  /// @param[in] offset_XoYo_F Vector from `Xo` to `Yo` expressed in an implicit
+  ///                          frame `F`.
+  template<typename Derived>
+  ShiftOperator(const Eigen::MatrixBase<Derived>& offset_XoYo_F) {
+    // Static asserts that EigenMatrix is of fixed size 3x1.
+    EIGEN_STATIC_ASSERT_MATRIX_SPECIFIC_SIZE(Derived, 3, 1);
+    offset_ = offset_XoYo_F;
+  }
+#endif
 
   // Returns the vector from the origin of frame X to the origin of frame Y
   // expressed in the implicit frame F.
   const Vector3<T>& offset() const { return offset_; }
 
   ShiftOperatorTranspose<T> transpose() const;
+
+  /// Creates a %ShiftOperator initialized with a NaN offset vector.
+  static ShiftOperator<T> NaN() {
+    return ShiftOperator<T>(Vector3<T>::Constant(std::numeric_limits<
+        typename Eigen::NumTraits<T>::Literal>::quiet_NaN()));
+  }
+
+  /// Sets the offset of this operator to NaN. Typically used to quickly detect
+  /// uninitialized values since NaN will trigger a chain of invalid
+  /// computations that then can be tracked to the source.
+  void SetToNaN() {
+    offset_.setConstant(std::numeric_limits<
+        typename Eigen::NumTraits<T>::Literal>::quiet_NaN());
+  }
 
  private:
   Vector3<T> offset_;

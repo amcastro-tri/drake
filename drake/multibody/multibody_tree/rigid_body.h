@@ -66,6 +66,30 @@ class RigidBody : public Body<T> {
   static RigidBody<T>& Create(MultibodyTree<T>* tree,
                               const MassProperties<T>& mass_properties);
 
+  /// Returns the default center of mass of this body measured and expressed in
+  /// its implicity body frame `B`. The returned center of mass is independent
+  /// of the input @p context.
+  Vector3<T> CalcCenterOfMassInBodyFrame(
+      const MultibodyTreeContext<T>& context) const final {
+    return default_mass_properties_.get_com();
+  }
+
+  /// Returns the default UnitInertia of this body as measured and expressed in
+  /// the body frame `B`. The returned unit inertia is independent of the input
+  /// @p context.
+  /// @param[in] context Context cotaining the state of the MultibodyTree.
+  /// @returns G_Bo_B UnitInertia of this body computed about the origin `Bo`
+  ///                 of its frame `B`, expressed in `B`.
+  UnitInertia<T> CalcUnitInertiaInBodyFrame(
+      const MultibodyTreeContext<T>& context) const final {
+    return default_mass_properties_.get_unit_inertia();
+  }
+
+  /// Returns the default mass of the body.
+  T CalcMass(const MultibodyTreeContext<T>& context) const final {
+    return default_mass_properties_.get_mass();
+  }
+
  private:
   MassProperties<double> default_mass_properties_;
 

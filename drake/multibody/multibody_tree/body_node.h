@@ -32,27 +32,6 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     DRAKE_ASSERT(!(mobilizer == nullptr && body->get_id() != kWorldBodyId));
   }
 
-#if 0
-  BodyNode(BodyIndex body_id, MobilizerIndex mobilizer_id) :
-      body_id_(body_id), mobilizer_id_(mobilizer_id) {}
-
-  void SetArrayIndexes(int position_start, int velocity_start,
-                       int num_rigid_positions, int num_flexible_positions,
-                       int num_rigid_velocities, int num_flexible_velocities) {
-    // Positions are arranged first: Rigid DOF's followed by flexible DOF's.
-    rigid_positions_start_ = position_start;
-    num_rigid_positions_ = num_rigid_positions;
-    flexible_positions_start_ = position_start + num_rigid_positions;
-    num_flexible_positions_ = num_flexible_positions;
-
-    // Velocities follow positions: Rigid DOF's followed by flexible DOF's.
-    rigid_velocities_start_ = velocity_start;
-    num_rigid_velocities_ = num_rigid_velocities;     
-    flexible_velocities_start_ = velocity_start + num_rigid_velocities;
-    num_flexible_velocities_ = num_flexible_velocities;
-  }
-#endif
-
   int get_rigid_positions_start() const
   {
     return topology_.rigid_positions_start;
@@ -82,13 +61,6 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
 
   BodyIndex get_body_id() const { return topology_.body;}
 
-  /// Computes the rigid body inertia matrix for a given, fixed, value of the
-  /// flexible generalized coordinates @p qf.
-  //virtual SpatialMatrix DoCalcSpatialInertia(const VectorX<T>& qf) const = 0;
-
-  // void CalcPositionsKinematics(context, PositionKinematics<T> some_output_structure).
-  // UpdatePostionKinematics calls CalcPositionKinematics.
-
   void UpdatePositionKinematicsCache(
       const MultibodyTreeContext<T>& context) const {
     // This method should not be called for the "world" body node.
@@ -110,11 +82,38 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     UpdateBodySpecificKinematicsCache(context);
   }
 
+  void CalcCompositeBodyInertia_TipToBase(
+      const PositionKinematicsCache<T>& pc,
+      eigen_aligned_std_vector<SpatialInertia<T>>& cbi_array)
+  {
+    SpatialInertia<T>& R_Bo_W = cbi_array[topology_.body];
+    R_Bo_W = get_M_Bo_W(pc);  // Initialize to this node's body inertia.
+    for (BodyIndex child: topology_.child_bodies) {
+      // Spatial inertia computed about the child's frame origin Co,
+      // expressed in world.
+      // Already computed in the next level within the tip-to-base recursion.
+      const SpatialInertia<T>& R_Co_W = cbi_array[child];
+      // Vector from the child body Co (the B) to this body Bo (the P).
+      const Vector3<T>& p_CoBo_W = -pc.get_phi_PB_W(child).offset();
+      // Shifts from Co to Bo and adds it to the total CBI for B.
+      R_Bo_W += R_Co_W.Shift(p_CoBo_W);
+    }
+  }
+
   void PrintTopology() const {
     std::cout << "BodyNode id: " << topology_.id << std::endl;
     std::cout << "  Level: " << topology_.level << std::endl;
     std::cout << "  Mobilizer: " << topology_.mobilizer << std::endl;
     std::cout << "  Body: " << topology_.body << std::endl;
+    if (topology_.get_num_children() != 0) {
+      std::cout << "Children ( " <<
+                topology_.get_num_children() << "): ";
+      std::cout << topology_.child_bodies[0];
+      for (int ichild = 1; ichild < topology_.get_num_children(); ++ichild) {
+        std::cout << ", " << topology_.child_bodies[ichild];
+      }
+      std::cout << std::endl;
+    }
     std::cout << "  Parent BodyNode: " <<
               topology_.parent_body_node << std::endl;
     std::cout << "  Num(qr): " << topology_.num_rigid_positions << std::endl;
@@ -196,12 +195,22 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     return pc->get_mutable_X_WB(topology_.id);
   }
 
+  const ShiftOperator<T>& get_phi_PB_W(
+      const PositionKinematicsCache<T>& pc) const {
+    return pc.get_phi_PB_W(topology_.body);
+  }
+
   ShiftOperator<T>& get_mutable_phi_PB_W(PositionKinematicsCache<T>* pc) const {
     return pc->get_mutable_phi_PB_W(topology_.body);
   }
 
   Vector3<T>& get_mutable_com_W(PositionKinematicsCache<T>* pc) const {
     return pc->get_mutable_com_W(topology_.body);
+  }
+
+  const SpatialInertia<T>& get_M_Bo_W(
+      const PositionKinematicsCache<T>& pc) const {
+    return pc.get_M_Bo_W(topology_.body);
   }
 
   SpatialInertia<T>& get_mutable_M_Bo_W(PositionKinematicsCache<T>* pc) const {

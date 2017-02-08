@@ -156,6 +156,8 @@ void MultibodyTree<T>::CompileTopology() {
       body_node_topologies[body_node_id].level = level;
       body_node_topologies[body_node_id].body = body_id;
       body_node_topologies[body_node_id].mobilizer = mobilizer_id;
+      body_node_topologies[body_node_id].child_bodies =
+          body_topologies[body_id].child_bodies;
 
       // And vice-versa, store in BodyTopology and MobilizerTopology what
       // BodyNode they associate with.
@@ -401,16 +403,28 @@ void MultibodyTree<T>::UpdatePositionKinematicsCache(
   for (int level = 1; level < get_num_levels(); ++level) {
     for (BodyNodeIndex body_node_id: body_node_levels_[level]) {
       const BodyNode<T>& node = *body_nodes_[body_node_id];
-
       // Update per-node kinematics.
       node.UpdatePositionKinematicsCache(context);
-
-      // Updates position kinematics quantities that depend on bodies:
-      // - com_W, p_PB_W, M_Bo_W
-      //bodies_[body_index]->UpdatePositionKinematicsCache(context);
     }
   }
   // TODO: Validate cache entry for PositionKinematicsCache.
+}
+
+template <typename T>
+void MultibodyTree<T>::CalcCompositeBodyInertias(
+    const MultibodyTreeContext<T>& context,
+    eigen_aligned_std_vector<SpatialInertia<T>>& cbi_array) const {
+  // TODO: check PositionKinematicsValidity.
+  const PositionKinematicsCache<T>& pc = context.get_position_kinematics();
+
+  // Perform a tip-to-base recursion. The world (level = 0) is not included.
+  for (int level = get_num_levels() - 1; level > 0; --level) {
+    for (BodyNodeIndex body_node_id: body_node_levels_[level]) {
+      const auto& node = body_nodes_[body_node_id];
+      // Update per-node kinematics.
+      node->CalcCompositeBodyInertia_TipToBase(pc, cbi_array);
+    }
+  }
 }
 
 template class MultibodyTree<double>;

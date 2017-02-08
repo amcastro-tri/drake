@@ -84,46 +84,21 @@ class MultibodyTree {
   /// Useful for debugging.
   void PrintTopology() const;
 
-#if 0
-  /// Creates a default context allocated with AllocateContext() and initialized
-  /// by SetDefaults().
-  //std::unique_ptr<Context<T>> CreateDefaultContext() const {
-  //  std::unique_ptr<Context<T>> context = AllocateContext();
-  //  SetDefaults(context.get());
-  //  return context;
- // }
-#endif
+  void UpdatePositionKinematicsCache(
+      const MultibodyTreeContext<T>& context) const;
 
-  void UpdatePositionKinematicsCache(const MultibodyTreeContext<T>& context) const;
-
-#if 0
-  /// Returns the entry into the PositionKinematicsCache for the first column of
-  /// H_FM corresponding to @p mobilizer_index.
-  /// This method is called within the constructor MobilizerPositionKinematics
-  /// to initialize the position kinematics for a given mobilizer.
-  SpatialVector<T>& get_mutable_mobilizer_H_FM(
-      const MultibodyTreeContext<T>& context,
-      MobilizerIndex mobilizer_index) const {
-    PositionKinematicsCache<T>* pc = context.get_mutable_position_kinematics();
-    BodyNodeIndex body_node_id =
-        topology_.mobilizers_[mobilizer_index].body_node;
-    int first_column = body_nodes_[body_node_id]->get_rigid_velocities_start();
-    return pc->get_mutable_H_FM_pool()[first_column];
-  };
-
-  const auto get_mobilizer_positions(
-      const MultibodyTreeContext<T>& context,
-      MobilizerIndex mobilizer_index) const {
-    PositionKinematicsCache<T>* pc = context.get_mutable_position_kinematics();
-    BodyNodeIndex body_node_id =
-        topology_.mobilizers_[mobilizer_index].body_node;
-    int positions_start =
-        body_nodes_[body_node_id]->get_rigid_positions_start();
-    int num_positions =
-        body_nodes_[body_node_id]->get_num_rigid_positions();
-    return context.get_positions().segment(positions_start, num_positions);
+  void UpdateCompositeBodyInertiasCache(
+      const MultibodyTreeContext<T>& context) const {
+    // TODO: check if positions kinematics is updated. Throw if not.
+    CompositeBodyInertiasCache<T>* cbi_cache = context.get_mutable_cbi_cache();
+    CalcCompositeBodyInertias(
+        context, cbi_cache->get_mutable_R_Bo_W_pool());
+    // TODO: mark cache entry as updated.
   }
-#endif
+
+  void CalcCompositeBodyInertias(
+      const MultibodyTreeContext<T>& context,
+      eigen_aligned_std_vector<SpatialInertia<T>>& cbi_array) const;
 
   std::unique_ptr<MultibodyTreeContext<T>> CreateDefaultContext() const {
     auto context = std::make_unique<MultibodyTreeContext<T>>(topology_);

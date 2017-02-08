@@ -7,7 +7,6 @@
 #include "drake/common/eigen_stl_types.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/math/spatial_algebra.h"
-#include "drake/multibody/multibody_tree/mobilizer_context.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
 #include "drake/multibody/multibody_tree/spatial_inertia.h"
@@ -120,6 +119,11 @@ class PositionKinematicsCache {
   const Isometry3<T>& get_X_PB(BodyNodeIndex body_node_id) const {
     DRAKE_ASSERT(0 <= body_node_id && body_node_id < num_nodes_);
     return X_PB_pool_[body_node_id];
+  }
+
+  const ShiftOperator<T>& get_phi_PB_W(BodyIndex body_id) const {
+    DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
+    return phi_PB_W_pool_[body_id];
   }
 
   ShiftOperator<T>& get_mutable_phi_PB_W(BodyIndex body_id) {

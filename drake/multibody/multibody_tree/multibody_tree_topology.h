@@ -76,6 +76,9 @@ struct BodyNodeTopology {
   // The unique identifier to the parent BodyNode of this node.
   BodyNodeIndex parent_body_node;
 
+  // The list of child bodies to this node's body.
+  std::vector<BodyIndex> child_bodies;
+
   int num_rigid_positions;
   int rigid_positions_start;
   int num_rigid_velocities;
@@ -93,6 +96,9 @@ struct BodyNodeTopology {
 
   // The "fixed" frame F is the parent body frame P.
   bool F_equals_P{false};
+
+  /// Returns the number of children to this node.
+  int get_num_children() const { return static_cast<int>(child_bodies.size());}
 
   void SetArrayIndexes(int position_start, int velocity_start,
                        int number_rigid_positions, int number_flexible_positions,

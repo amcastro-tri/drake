@@ -24,6 +24,7 @@ class WeldMobilizer : public MobilizerImpl<T, 0, 0> {
                 const Isometry3<T>& X_FM) :
       MobilizerBase(inboard_frame, outboard_frame), X_FM_(X_FM) {}
 
+#if 0
   void CalcAcrossMobilizerTransform(
       const MobilizerContext<T>& context,
       MobilizerPositionKinematics<T>* pc) const final {
@@ -34,6 +35,7 @@ class WeldMobilizer : public MobilizerImpl<T, 0, 0> {
   void CalcAcrossMobilizerVelocityJacobian(
       const MobilizerContext<T>& context,
       MobilizerPositionKinematics<T>* pc) const final {}
+#endif
 
  private:
   // static constexpr int i = 42; discouraged.

@@ -86,6 +86,7 @@ int DoMain() {
 
   shoulder_mobilizer.set_angle(context.get(), M_PI / 6.0);
   model->UpdatePositionKinematicsCache(*context);
+  model->UpdateCompositeBodyInertiasCache(*context);
   context->Print();
   const auto& X_WU = upper_body.get_pose_in_world(*context);
   PRINT_VARn(X_WU.matrix());

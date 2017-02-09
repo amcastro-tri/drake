@@ -141,6 +141,45 @@ GTEST_TEST(SpatialAlgebra, SpatialVelocityJacobianTranspose) {
                                    Eigen::NumTraits<double>::epsilon()));
 }
 
+GTEST_TEST(SpatialAlgebra, JacobianTransposeTimeJacobian) {
+  // Linear velocity of frame B measured and expressed in frame A.
+  Vector3d v_AB(1, 2, 0);
+
+  // Angular velocity of frame B measured and expressed in frame A.
+  Vector3d w_AB(0, 0, 3);
+
+  // Spatial velocity of frame B with respect to A and expressed in A.
+  SpatialVector<double> V_AB(w_AB, v_AB);
+
+  const int ncols = 3;
+  SpatialVelocityJacobianUpTo6<double> J_AB(ncols);
+
+  J_AB.col(0) =      V_AB;
+  J_AB.col(1) = 2. * V_AB;
+  J_AB.col(2) = 3. * V_AB;
+
+  // Convert J_AB into an Eigen matrix.
+  Matrix<double, 6, ncols> J_AB_matrix = J_AB.get_coeffs();
+
+  // Get the transpose of J_AB and convert it to an Eigen matrix.
+  Matrix<double, ncols, 6> Jt_AB_matrix = J_AB.transpose().get_coeffs();
+
+  EXPECT_TRUE(J_AB_matrix.isApprox(Jt_AB_matrix.transpose(),
+                                   Eigen::NumTraits<double>::epsilon()));
+
+  // Notice that even when the return of this operation is a MatrixUpTo6, it can
+  // still be assigned to a Matrix3. This would still compile if assigned to a
+  // Matrix4 however the assignment would assert at runtime.
+  Matrix3<double> Q = J_AB.transpose() * J_AB;
+  Matrix3<double> Q_expected;
+  // Precomputed outside Drake.
+  Q_expected <<
+             14, 28, 42,
+             28, 56, 84,
+             42, 84, 126;
+  EXPECT_TRUE(Q.isApprox(Q_expected, Eigen::NumTraits<double>::epsilon()));
+}
+
 }
 }  // math
 }  // multibody

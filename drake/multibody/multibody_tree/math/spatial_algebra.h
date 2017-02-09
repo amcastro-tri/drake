@@ -259,20 +259,22 @@ SpatialVelocityJacobian<T, ndofs>::transpose() const {
 template <typename T>
 using SpatialVelocityJacobianUpTo6 = SpatialVelocityJacobian<T, Eigen::Dynamic>;
 
-#if 0
+template <typename T>
+using SpatialVelocityJacobianUpTo6Transpose =
+SpatialVelocityJacobianTranspose<T, Eigen::Dynamic>;
+
 /// This method multiplies the transpose of a Jacobian matrix Ja with another
 /// Jacobian Jb. The input Jacobians Ja and Jb are expected to be of dynamic
 /// size up-to a maximum of six and therefore the expected result of this
 /// operation is a dynamic sized matrix with a fixed size at compile time of
 /// up-to six rows and columns.
-template <typename T, int JaT_ndofs, int Jb_ndofs>
+template <typename T>
 inline MatrixUpTo6<T> operator*(
-    const SpatialVelocityJacobianTranspose<T, JaT_ndofs>& Ja,
-    const SpatialVelocityJacobian<T, Jb_ndofs>& Jb)
+    const SpatialVelocityJacobianUpTo6Transpose<T>& Ja,
+    const SpatialVelocityJacobianUpTo6<T>& Jb)
 {
-
+  return Ja.get_coeffs() * Jb.get_coeffs();
 };
-#endif
 
 // Forward declaration of the ShiftOperator's transpose.
 template <typename T> class ShiftOperatorTranspose;

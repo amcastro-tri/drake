@@ -121,11 +121,21 @@ class PositionKinematicsCache {
     return X_PB_pool_[body_node_id];
   }
 
+  /// Returns a constant references to the rigid body shift operator between
+  /// a body `B` and its parent `P`. The input parameter identifies body `B`.
+  /// @param[in] body_id Unique identifier to body `B`.
+  /// @returns phi_PB_W The rigid body shift operator between a body `B` and its
+  ///                   parent `P` expressed in the world frame `W`.
   const ShiftOperator<T>& get_phi_PB_W(BodyIndex body_id) const {
     DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
     return phi_PB_W_pool_[body_id];
   }
 
+  /// Returns a mutable references to the rigid body shift operator between
+  /// a body `B` and its parent `P`. The input parameter identifies body `B`.
+  /// @param[in] body_id Unique identifier to body `B`.
+  /// @returns phi_PB_W The rigid body shift operator between a body `B` and its
+  ///                   parent `P` expressed in the world frame `W`.
   ShiftOperator<T>& get_mutable_phi_PB_W(BodyIndex body_id) {
     DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
     return phi_PB_W_pool_[body_id];

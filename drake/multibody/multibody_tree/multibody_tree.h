@@ -87,18 +87,78 @@ class MultibodyTree {
   void UpdatePositionKinematicsCache(
       const MultibodyTreeContext<T>& context) const;
 
+  /// This method updates the cache entry for composite body inertias which
+  /// contains the composite body inertia `R_Bo_W` for each body `B` computed
+  /// about this body frame's origing `Bo` and expressed in the world frame `W`.
+  /// This method assumes that postion kinematics were already computed by an
+  /// invocation to UpdatePositionKinematicsCache() which updates:
+  // - Spatial inertia M_Bo_W of body B.
+  // - Shift operator phi_PB_W from parent to child body.
   void UpdateCompositeBodyInertiasCache(
       const MultibodyTreeContext<T>& context) const {
     // TODO: check if positions kinematics is updated. Throw if not.
+    // Specifically, this method needs from the cache:
+    // - Spatial inertia M_Bo_W of body B.
+    // - Shift operator phi_PB_W from parent to child body.
     CompositeBodyInertiasCache<T>* cbi_cache = context.get_mutable_cbi_cache();
     CalcCompositeBodyInertias(
         context, cbi_cache->get_mutable_R_Bo_W_pool());
     // TODO: mark cache entry as updated.
   }
 
+  /// Computes the Composite Body Inertia (CBI) associated with each body.
+  /// The composite body inertia associated with a body is defined as the
+  /// effective spatial inertia of the composite body formed by all bodies
+  /// outboard of the mobilizer that endows rigid body motions to that body.
+  ///
+  /// For an in depth discussion refer to Section 4.1.2 of A. Jain's
+  /// book, p. 59.
+  ///
+  /// The composite body inertia for the i-th body around its frame origin Boi
+  /// is computed as:
+  ///   Ri(i) = Ii(i) + \sum_{\forall j\in C(i)} Rj(i)
+  /// where C(i) is the set of bodies children of body i. In the
+  /// equation above it is implicit that the CRB inertia for body j computed
+  /// about body-j's origin (Rj(j)) is translated to body-i's origin Boi so that
+  /// the summation is valid. This translation transformation is described by
+  /// the parallel axis theorem for spatial inertias (Eq. 2.12 in A. Jain's
+  /// book, p. 20).
+  /// This method is O(N) with N the number of bodies in the tree.
+  ///
+  /// Computing CRB's about the world's origin might lead to numerical problems
+  /// for large offsets from the origin. This might become more noticeable for
+  /// instance in car simulations with large offsets of the many smaller
+  /// components of a car from the origin.
+  /// A better approach is described in Section 4.1.2 of A. Jain's book, p. 59
+  /// where the CBI of body k is computed about the body frame origin for
+  /// body this body k. All CBI's are expressed in the world frame `W`.
   void CalcCompositeBodyInertias(
       const MultibodyTreeContext<T>& context,
       eigen_aligned_std_vector<SpatialInertia<T>>& cbi_array) const;
+
+#if 0
+  /// Computes the positive definite mass matrix of the multibody system in
+  /// quasi-coordinates \f$M(q)\f$, defined by
+  /// \f$T = \frac{1}{2} v^T M(q) v\f$, where \f$ T\f$ is the kinetic energy.
+  ///
+  /// The mass matrix also appears in the manipulator equations
+  ///  \f[
+  ///  M(q) \dot{v} + C(q, v, f_\text{ext}) = B(q) u
+  /// \f]
+  ///
+  /// This method uses The Composite Rigid Body (CRB) method, which being
+  /// O(N^2) in computational complexity, is the most efficient approch for
+  /// computing the mass matrix explicitly.
+  ///
+  /// @param[in] context The current state of the system.
+  /// @param[out] MassMatrix A pointer to a properly sized matrix to hold the
+  ///                        mass matrix \f$ M(q) \f$.
+  ///
+  /// Note: Calling this method updates, if needed, the cache entry for
+  /// composite body inertias.
+  void CalcMassMatrix(const MultibodyTreeContext<T>& context,
+                            MatrixX<T>* MassMatrix);
+#endif
 
   std::unique_ptr<MultibodyTreeContext<T>> CreateDefaultContext() const {
     auto context = std::make_unique<MultibodyTreeContext<T>>(topology_);

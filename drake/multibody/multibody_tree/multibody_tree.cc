@@ -386,6 +386,7 @@ void MultibodyTree<T>::UpdatePositionKinematicsCache(
   // independent of all others. This could be performed even in parallel.
   // TODO(amcastro-tri): have a list of SoftBody's here since only their
   // kinematics changes with time.
+  // TODO: make this name more specific.
   for (const auto& body: bodies_)
     body->UpdatePositionKinematicsCache(context);
 
@@ -404,7 +405,7 @@ void MultibodyTree<T>::UpdatePositionKinematicsCache(
     for (BodyNodeIndex body_node_id: body_node_levels_[level]) {
       const BodyNode<T>& node = *body_nodes_[body_node_id];
       // Update per-node kinematics.
-      node.UpdatePositionKinematicsCache(context);
+      node.UpdatePositionKinematicsCache_BaseToTip(context);
     }
   }
   // TODO: Validate cache entry for PositionKinematicsCache.
@@ -426,6 +427,135 @@ void MultibodyTree<T>::CalcCompositeBodyInertias(
     }
   }
 }
+
+#if 0
+template <typename T>
+void MultibodyTree<T>::CalcMassMatrix(
+    const MultibodyTreeContext<T>& context, MatrixX<T>* MassMatrix) {
+  // TODO(amcastro-tri): Extend implementation to be able to handle flexible
+  // bodies.
+
+  DRAKE_ASSERT(MassMatrix != nullptr);
+  MatrixX<T>& M = *MassMatrix;
+  // Verify the matrix was properly allocated from the calling site.
+  //DRAKE_ASSERT(M.cols() == get_num_velocities());
+  //DRAKE_ASSERT(M.rows() == get_num_velocities());
+
+
+  // TODO: the comment below was copied from an old PR 4591.
+  // Update to match new implementation.
+
+  // The Composite Body Inertia (CBI) method has a very simple physical
+  // interpretation that allows for a quick derivation.
+  // In the absence of external forces and with v = 0, the velocity dependent
+  // Coriolis and gyroscopic forces C(q,v) are zero and hence M * vdot = Q.
+  // This means we can compute the i-th column in M by setting the i-th
+  // component of vdot to be one, i.e. vdot_p = 1 for p = i and zero otherwise.
+  // Physically, this means that all bodies outboard from joint i move
+  // rigidly together as a composite body. Hence the force exerted by joint i
+  // on its outboard body i can be computed as
+  //   f(i) = R(i) * alpha(i), since b(i) = 0 for v = 0. (A Jain, Eq. 6.3).
+  // where b(i) contains the Coriolis and centrifugal terms for body i.
+  // Since accelerations are zero for bodies toward the base from joint i
+  // (and velocities are zero), these bodies are instantaneously in static
+  // equilibrium, and therefore
+  //   f(pi) = phi(pi, i) * f(i) (A Jain, Eq. 5.1).
+  // with pi representing the parent of body i.
+  //
+  // The j-th component of Q can be computed by simply projecting f(i) onto
+  // the generalized forces as
+  //   Q_j = H(j)_I * f(i)_I, for all j towards the base from i.
+  // From M * vdot = Q, this means
+  //   M_ji = H(j)_I * f(i)_I
+  // Notice that if spatial forces are computed about the joint-i outboard
+  // frame, they need to be converted to the parent body frame before projecting
+  //   Q_j = H(j) * f(k), s.t. pk = j.
+  // This leads to the recursive formulation in Algorithm 4.2 in A Jain's
+  // book, p. 64, where X(j) (the spatial force here referred to as f(j)) is
+  // recursively transformed before projecting for the next parent.
+  // The above procedure therefore allows computing the lower-diagonal terms
+  // of M, which is all we need, since the matrix is symmetric.
+
+  const PositionKinematicsCache<T>& pc = context.get_position_kinematics();
+  const CompositeBodyInertiasCache<T>& cbi = context.get_cbi_cache();
+
+  // Matrix where each column contains a SpatialVector. The maximum number of
+  // columns is six.
+  SpatialVelocityJacobianUpTo6<T> F;
+
+  // Across mobilizer Jacobian between a body B and its parent P expressed in
+  // the world frame W.
+  SpatialVelocityJacobianUpTo6<T> H_PB_W;
+
+  // Matrix containing the block entry coupling node j (spanning rows) with
+  // node i (spanning columns).
+  // Since the maximum number of degrees of freedom a mobilizer can add is six,
+  // the maximum size of this matrix is 6x6 (most commonly 1x1 for things like
+  // revolute mobilizers).
+  MatrixUpTo6<T> Hji;
+
+  // Loop over the columns of M.
+  for (BodyNodeIndex node_i(0); node_i < get_num_bodies(); ++node_i) {
+    const BodyNodeTopology& node_i_topology = topology_.body_nodes[node_i];
+    BodyIndex body_i = node_i_topology.body;
+    // Skip the world.
+    // TODO: consider just running through nodes? then we can just skip the
+    // world starting at level 1.
+    if (body_i != kWorldBodyId) {
+      const MobilizerIndex mobilizer_i = node_i_topology.mobilizer;
+      const int v_start_i = node_i_topology.rigid_velocities_start;
+      const int nv_i = node_i_topology.num_rigid_velocities;
+
+      // TODO: get_R_Bo_W should take BodyNodeIndex to avoid paging problems!!!
+      const SpatialInertia<T>& R_Bo_W = cbi.get_R_Bo_W(body_i);
+
+      // For vdot with vdot_i = 1 and zero otherwise, the spatial
+      // acceleration is simply alpha_i = Ht_I (A Jain, Eq. 5.57, p. 95).
+      H_PB_W = pc.get_H_PB_W(node_i);
+
+      // This is the force exerted by the i-th joint on its outboard body.
+      // It is computed using the i-th CBI as f(i) = R(i) * alpha(i).
+      F = R_Bo_W * H_PB_W;
+
+      // Hii, project force for the i-th joint using H transpose.
+      M.block(v_start_i, v_start_i, nv_i, nv_i) = H_PB_W.transpose() * F;
+
+      // Computes off-diagonal elements in the mass matrix M.
+      // Recursion on body-j (spanning rows in M) moving towards the base
+      // from body-i's parent (spanning columns in M).
+      BodyNodeIndex node_j = node_i_topology.parent_body_node;
+      BodyNodeIndex node_j_previous = node_i;  // Child towards i.
+      const BodyNodeTopology& node_j_topology = topology_.body_nodes[node_j];
+      while ( node_j != 0) {  // Stops at the world, skips it.
+        const int v_start_j = node_j_topology.rigid_velocities_start;
+        const int nv_j = node_j_topology.num_rigid_velocities;
+
+        // Rigid transformation between node j and the previous node j.
+        const ShiftOperator<T>& phi_BjBjp = pc.get_phi_PB_W(node_j_previous);
+
+        // This is the same force caused by the acceleration of node i but
+        // computed about the origin of the body frame Bj for node j.
+        F = phi_BjBjp * F;
+
+        // Computes the lower-triangular mass matrix elements by projecting
+        // onto the generalized forces for joint-j. F is constant when
+        // described as a Plucker spatial force. A recursive transformation
+        // is required when expressed in the local frame as in Algorithm 4.2 in
+        // A Jain's book, p. 64.
+        H_PB_W = pc.get_H_PB_W(node_j);
+        Hji = H_PB_W.transpose() * F;
+
+        M.block(v_start_j, v_start_i, nv_j, nv_i) = Hji;
+        // M is symmetric.
+        M.block(v_start_i, v_start_j, nv_i, nv_j) = Hji.transpose();
+
+        node_j_previous = node_j;
+        node_j = node_j_topology.parent_body_node;
+      }  // node_j
+    }
+  }  // node_i
+}
+#endif
 
 template class MultibodyTree<double>;
 

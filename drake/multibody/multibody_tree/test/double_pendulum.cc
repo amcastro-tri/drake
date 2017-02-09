@@ -38,17 +38,17 @@ int DoMain() {
   const double length = 0.3;
   const double radius = 0.005;
   // Unit inertia in the "geometry" frame G computed about the geometric
-  // center Gc.
-  UnitInertia<double> G_Gc_G = UnitInertia<double>::SolidRod(radius, length);
+  // center Gcm.
+  UnitInertia<double> G_Gcm_G = UnitInertia<double>::SolidRod(radius, length);
   // Transformation from the geometry frame G to the body frame B.
   Isometry3d X_BG(AngleAxisd(M_PI_2, Vector3d::UnitX()));
-  UnitInertia<double> G_Bc_B = G_Gc_G.ReExpress(X_BG.rotation());
-  PRINT_VARn(G_Bc_B);
+  UnitInertia<double> G_Bcm_B = G_Gcm_G.ReExpress(X_BG.rotation());
+  PRINT_VARn(G_Bcm_B);
 
   auto owned_model = std::make_unique<MultibodyTree<double>>();
   MultibodyTree<double>* model = owned_model.get();
 
-  MassProperties<double> mass_properties(1.0, Vector3d::Zero(), G_Bc_B);
+  MassProperties<double> mass_properties(1.0, Vector3d::Zero(), G_Bcm_B);
   const RigidBody<double>& upper_body =
       RigidBody<double>::Create(model, mass_properties);
   //const RigidBody<double>& lower_body =

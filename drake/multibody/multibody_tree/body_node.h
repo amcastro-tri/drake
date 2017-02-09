@@ -61,7 +61,8 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
 
   BodyIndex get_body_id() const { return topology_.body;}
 
-  void UpdatePositionKinematicsCache(
+  /// This method can anly be called within a base-to-tip loop.
+  void UpdatePositionKinematicsCache_BaseToTip(
       const MultibodyTreeContext<T>& context) const {
     // This method should not be called for the "world" body node.
     DRAKE_ASSERT(topology_.body != kWorldBodyId);
@@ -79,9 +80,14 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // - phi_PB_W: shift operator from P to B.
     // - com_W: center of mass.
     // - M_Bo_W: Spatial inertia.
-    UpdateBodySpecificKinematicsCache(context);
+    UpdateBodySpecificKinematicsCache_BaseToTip(context);
+
+
   }
 
+  /// Computes the composite body inertia (CBI) for this node's body.
+  /// By definition, the CBI of a body is the composition of its
+  /// children's CBI's.
   void CalcCompositeBodyInertia_TipToBase(
       const PositionKinematicsCache<T>& pc,
       eigen_aligned_std_vector<SpatialInertia<T>>& cbi_array)
@@ -251,7 +257,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     X_WB = X_WP * X_PB;
   }
 
-  void UpdateBodySpecificKinematicsCache(
+  void UpdateBodySpecificKinematicsCache_BaseToTip(
       const MultibodyTreeContext<T>& context) const {
     PositionKinematicsCache<T> *pc = context.get_mutable_position_kinematics();
 

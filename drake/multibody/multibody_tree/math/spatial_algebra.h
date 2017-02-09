@@ -124,6 +124,27 @@ inline SpatialVector<T> operator*(
   return SpatialVector<T>(s * V.angular(), s * V.linear());
 }
 
+namespace internal {
+// Helper traits-like struct to determine the number of columns at compile time
+// of the internal Eigen representation of SpatialVelocityJacobian.
+template <int ndofs>
+struct SpatialVelocityJacobianMaxSize {
+  enum { kMaxCols = ndofs};
+};
+
+// Specialization to Eigen::Dynamic. In this case we want a maximum fixed size
+// of six (6) to avoid dynamic memory allocation for fast computations.
+// See Eigen documentation here:
+// http://eigen.tuxfamily.org/dox/classEigen_1_1Matrix.html#maxrows
+template <>
+struct SpatialVelocityJacobianMaxSize<Eigen::Dynamic> {
+  enum { kMaxCols = 6};
+};
+}  // namespace internal
+
+// Forward declaration of the SpatialVelocityJacobian's transpose.
+template <typename T, int ndofs> class SpatialVelocityJacobianTranspose;
+
 /// Class representing the Hinge matrix...
 /// Essentially a matrix containing a SpatialVector in the column corresponding
 /// to a generalized velocity.
@@ -133,9 +154,14 @@ class SpatialVelocityJacobian {
   enum {
     kSpatialVectorSize = 6,
     kSpatialVectorAngularSize = 3,
-    kSpatialVectorLinearSize = 3
+    kSpatialVectorLinearSize = 3,
+    kMaxCols = internal::SpatialVelocityJacobianMaxSize<ndofs>::kMaxCols
   };
-  typedef Eigen::Matrix<T, kSpatialVectorSize, ndofs> CoeffsEigenType;
+  typedef Eigen::Matrix<T,
+                        kSpatialVectorSize, ndofs, /*size*/
+                        0, /*options*/
+                        kSpatialVectorSize, kMaxCols> /*max size*/
+      CoeffsEigenType;
 
   /// Default constructor. For a dynamic-size Jacobian the number of columns is
   /// initially zero. The method resize() can be called to allocate a given
@@ -171,6 +197,8 @@ class SpatialVelocityJacobian {
     return *reinterpret_cast<SpatialVector<T>*>(&(J_.col(i)[0]));
   }
 
+  SpatialVelocityJacobianTranspose<T, ndofs> transpose() const;
+
   const CoeffsEigenType& get_coeffs() const { return J_;}
 
   CoeffsEigenType& get_mutable_coeffs() { return J_;}
@@ -186,6 +214,65 @@ class SpatialVelocityJacobian {
  private:
   CoeffsEigenType J_;
 };
+
+template <typename T, int ndofs>
+class SpatialVelocityJacobianTranspose {
+ public:
+  typedef Eigen::Transpose<
+      typename SpatialVelocityJacobian<T, ndofs>::CoeffsEigenType>
+      TransposeEigenType;
+  typedef Eigen::Transpose<
+      const typename SpatialVelocityJacobian<T, ndofs>::CoeffsEigenType>
+      ConstTransposeEigenType;
+
+  explicit SpatialVelocityJacobianTranspose(
+      const SpatialVelocityJacobian<T, ndofs>& H) : H_(H) {}
+
+  int rows() const { return H_.cols(); }
+  int cols() const { return H_.rows(); }
+
+  const T& operator()(int i, int j) const { return H_(j, i);}
+
+  const ConstTransposeEigenType get_coeffs() const {
+    return H_.get_coeffs().transpose();
+  }
+
+  TransposeEigenType get_mutable_coeffs() {
+    return H_.get_coeffs().transpose();
+  }
+
+ private:
+  const SpatialVelocityJacobian<T, ndofs>& H_;
+};
+
+template <typename T, int ndofs>
+inline SpatialVelocityJacobianTranspose<T, ndofs>
+SpatialVelocityJacobian<T, ndofs>::transpose() const {
+  return SpatialVelocityJacobianTranspose<T, ndofs>(*this);
+}
+
+
+/// This defines a SpatialVelocityJacobian with a maximum number of columns at
+/// compile time of six (6).
+/// The biggest reason why you might want to use this class is to avoid dynamic
+/// memory allocation.
+template <typename T>
+using SpatialVelocityJacobianUpTo6 = SpatialVelocityJacobian<T, Eigen::Dynamic>;
+
+#if 0
+/// This method multiplies the transpose of a Jacobian matrix Ja with another
+/// Jacobian Jb. The input Jacobians Ja and Jb are expected to be of dynamic
+/// size up-to a maximum of six and therefore the expected result of this
+/// operation is a dynamic sized matrix with a fixed size at compile time of
+/// up-to six rows and columns.
+template <typename T, int JaT_ndofs, int Jb_ndofs>
+inline MatrixUpTo6<T> operator*(
+    const SpatialVelocityJacobianTranspose<T, JaT_ndofs>& Ja,
+    const SpatialVelocityJacobian<T, Jb_ndofs>& Jb)
+{
+
+};
+#endif
 
 // Forward declaration of the ShiftOperator's transpose.
 template <typename T> class ShiftOperatorTranspose;

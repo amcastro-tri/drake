@@ -17,6 +17,7 @@ namespace multibody {
 namespace math {
 namespace {
 
+using Eigen::Matrix;
 using Eigen::Vector3d;
 
 GTEST_TEST(SpatialAlgebra, SpatialVelocityShift) {
@@ -92,6 +93,52 @@ GTEST_TEST(SpatialAlgebra, DynamicSizeJacobian) {
   J2.resize(4);
   EXPECT_EQ(J2.rows(), 6);
   EXPECT_EQ(J2.cols(), 4);
+
+  // For SpatialVelocityJacobianUpTo6 the maximum number of colums must be 6.
+  EXPECT_EQ(SpatialVelocityJacobianUpTo6<double>::kMaxCols, 6);
+  // For any other know at compile time Jacobian size the maximum number of
+  // columns must match this known size.
+  // Note: EXPECT_EQ is a macro and therefore gets confused with angle brackets
+  // and commas in between. Therefore we use an extra set of parentheses.
+  EXPECT_EQ((SpatialVelocityJacobian<double, 1>::kMaxCols), 1);
+  EXPECT_EQ((SpatialVelocityJacobian<double, 3>::kMaxCols), 3);
+  EXPECT_EQ((SpatialVelocityJacobian<double, 5>::kMaxCols), 5);
+
+  // Even though the maximum number of columns is six we still can resize
+  // the number of columns to any other number lower or equal than six.
+  SpatialVelocityJacobianUpTo6<double> J3;
+  EXPECT_EQ(J3.rows(), 6);
+  EXPECT_EQ(J3.cols(), 0);
+  J3.resize(4);
+  EXPECT_EQ(J3.rows(), 6);
+  EXPECT_EQ(J3.cols(), 4);
+}
+
+GTEST_TEST(SpatialAlgebra, SpatialVelocityJacobianTranspose) {
+  // Linear velocity of frame B measured and expressed in frame A.
+  Vector3d v_AB(1, 2, 0);
+
+  // Angular velocity of frame B measured and expressed in frame A.
+  Vector3d w_AB(0, 0, 3);
+
+  // Spatial velocity of frame B with respect to A and expressed in A.
+  SpatialVector<double> V_AB(w_AB, v_AB);
+
+  const int ncols = 3;
+  SpatialVelocityJacobian<double, ncols> J_AB;
+
+  J_AB.col(0) =      V_AB;
+  J_AB.col(1) = 2. * V_AB;
+  J_AB.col(2) = 3. * V_AB;
+
+  // Convert J_AB into an Eigen matrix.
+  Matrix<double, 6, 3> J_AB_matrix = J_AB.get_coeffs();
+
+  // Get the transpose of J_AB and convert it to an Eigen matrix.
+  Matrix<double, 3, 6> Jt_AB_matrix = J_AB.transpose().get_coeffs();
+
+  EXPECT_TRUE(J_AB_matrix.isApprox(Jt_AB_matrix.transpose(),
+                                   Eigen::NumTraits<double>::epsilon()));
 }
 
 }

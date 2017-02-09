@@ -104,6 +104,12 @@ class SpatialVector {
 
   T* mutable_data() { return V_.data(); }
 
+  bool IsApprox(const SpatialVector<T>& other,
+                double tolerance = Eigen::NumTraits<T>::epsilon()) {
+    return linear().isApprox(other.linear(), tolerance) &&
+           angular().isApprox(other.angular(), tolerance);
+  }
+
  private:
   CoeffsEigenType V_;
 };
@@ -188,13 +194,15 @@ class SpatialVelocityJacobian {
   const SpatialVector<T>& col(int i) const {
     DRAKE_ASSERT(0 <= i && i < cols());
     // Assumes column major order. Eigen's default.
-    return *reinterpret_cast<const SpatialVector<T>*>(&(J_.col(i)[0]));
+    return *reinterpret_cast<const SpatialVector<T>*>(
+        J_.data() + kSpatialVectorSize * i);
   }
 
   SpatialVector<T>& col(int i) {
     DRAKE_ASSERT(0 <= i && i < cols());
     // Assumes column major order. Eigen's default.
-    return *reinterpret_cast<SpatialVector<T>*>(&(J_.col(i)[0]));
+    return *reinterpret_cast<SpatialVector<T>*>(
+        J_.data() + kSpatialVectorSize * i);
   }
 
   SpatialVelocityJacobianTranspose<T, ndofs> transpose() const;

@@ -55,6 +55,18 @@ class SpatialInertia {
 
   const RotationalInertia<T>& get_rotational_inertia() const { return I_Bo_F_;}
 
+  /// Get a copy to a full Matrix3 representation for this rotational inertia
+  /// including both lower and upper triangular parts.
+  Matrix6<T> CopyToFullMatrix6() const {
+    using math::CrossProductMatrix;
+    Matrix6<T> M;
+    M.template block<3, 3>(0, 0) = I_Bo_F_.CopyToFullMatrix3();
+    M.template block<3, 3>(0, 3) = mass_ * CrossProductMatrix(p_BoBc_F_);
+    M.template block<3, 3>(3, 0) = -M.template block<3, 3>(0, 3);
+    M.template block<3, 3>(3, 3) = mass_ * Matrix3<T>::Identity();
+    return M;
+  }
+
   /// Sets this spatial inertia to have NaN entries. Typically used to quickly
   /// detect uninitialized values since NaN will trigger a chain of invalid
   /// computations that then can be tracked to the source.
@@ -113,7 +125,28 @@ class SpatialInertia {
     const Vector3<T> mxp = mass_ * p_BoBc_F_;
     return SpatialVector<T>(
         I_Bo_F_ * w + mxp.cross(v), /* angular component */
-        mass_ * v - mxp.cross(w));                  /* linear component */
+        mass_ * v - mxp.cross(w));  /* linear component */
+  }
+
+  /// Computes the product from the right between this spatial inertia with each
+  /// column in the SpatialVelocityJacobian @p J.
+  /// This spatial inertia and Jacobian @p J must both be expressed in the same
+  /// frame.
+  /// @param[in] J SpatialVelocityJacobian to multiply from the right.
+  /// @returns A SpatialVelocityJacobian with the j-th column equal to the product
+  ///          from the right of `this` inertia with the j-th column of @p J.
+  template <int ndofs>
+  SpatialVelocityJacobian<T, ndofs> operator*(
+      const SpatialVelocityJacobian<T, ndofs>& J) const
+  {
+    // Provide size argument in constructor for the
+    // SpatialVelocityJacobianUpTo6 case. Size argument has no effect for fixed
+    // sized Jacobians.
+    SpatialVelocityJacobian<T, ndofs> MxJ(J.cols());
+    for (int j = 0; j < J.cols(); ++j) {
+      MxJ.col(j) = this->operator*(J.col(j));
+    }
+    return MxJ;
   }
 
   /// Given this spatial inertia `M_Bo_F` about `Bo` and expressed in frame `F`,

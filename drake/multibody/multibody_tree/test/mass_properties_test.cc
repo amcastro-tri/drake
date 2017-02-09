@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <iostream>
 #include <sstream>
+#include <drake/multibody/multibody_tree/math/spatial_algebra.h>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
 #define PRINT_VARn(x) std::cout <<  #x ":\n" << x << std::endl;
 
@@ -255,6 +256,66 @@ GTEST_TEST(SpatialInertia, Shift) {
   const auto& I_Xo_W = M_Xo_W.get_rotational_inertia();
   EXPECT_NEAR(I_Xo_W(0,0), I_end, Eigen::NumTraits<double>::epsilon());
   EXPECT_NEAR(I_Xo_W(2,2), I_end, Eigen::NumTraits<double>::epsilon());
+}
+
+// This tests the implementation of two product operators:
+// 1. SpatialVector operator*(const SpatialVector& V) const;
+// 2. SpatialVelocityJacobian operator*(const SpatialVelocityJacobian& J) const;
+//
+// The first operator allows to multiply a SpatialInertia with a SpatialVector
+// from the right.
+// The second operator allows to multiply a SpatialInertia with a
+// SpatialVelocityJacobian. A SpatialVelocityJacobian can be viewed as a matrix
+// where each column is a SpatialVector.
+GTEST_TEST(SpatialInertia, ProductWithSpatialVectors) {
+  const double mass = 2.5;
+  const double radius = 0.1;
+  const double length = 1.0;
+
+  // Spatial inertia of a rod along the z-axis computed about center of mass.
+  SpatialInertia<double> M_Bc_W(
+      mass,
+      Vector3d::Zero(),
+      UnitInertia<double>::SolidRod(radius, length));
+
+  // Spatial inertia about the top end of the bar.
+  SpatialInertia<double> M_Eo_W =
+      M_Bc_W.Shift(length / 2 * Vector3d::UnitZ());
+  EXPECT_TRUE(M_Eo_W.IsPhysicallyValid());
+
+  // Assume a given linear velocity.
+  const Vector3d v_WB(-1, 2, 8);
+
+  // Assume a given angular velocity.
+  const Vector3d w_WB(1, 2, 3);
+
+  // Spatial velocity of its top end frame.
+  SpatialVector<double> V_WB(w_WB, v_WB);
+
+  // Product of a SpatialInertia times a SpatialVector
+  SpatialVector<double> F_WB = M_Bc_W * V_WB;
+
+  SpatialVector<double> F_expected(
+      Vector3d(5.0 / 24.0, 5.0 / 12.0, 0.0375),
+      Vector3d(-2.5, 5.0, 20.0));
+  EXPECT_TRUE(F_WB.IsApprox(F_expected, Eigen::NumTraits<double>::epsilon()));
+
+  // Jacobian with three columns but a maximum up to six columns.
+  SpatialVelocityJacobianUpTo6<double> H(3);
+  H.col(0) = V_WB;
+  H.col(1) = 2. * V_WB;
+  H.col(2) = 3. * V_WB;
+  EXPECT_EQ(H.cols(), 3);  // Verifying the constructor did the right thing.
+
+  // Product of a SpatialInertia times a SpatialVelocityJacobian.
+  SpatialVelocityJacobianUpTo6<double> MxH = M_Bc_W * H;
+  EXPECT_EQ(MxH.rows(), 6);  // Trivial. This is always true.
+  EXPECT_EQ(MxH.cols(), H.cols());  // Depends on the size of H.
+  EXPECT_TRUE(MxH.col(0).IsApprox(F_WB, Eigen::NumTraits<double>::epsilon()));
+  EXPECT_TRUE(MxH.col(1).IsApprox(
+      2.0 * F_WB, Eigen::NumTraits<double>::epsilon()));
+  EXPECT_TRUE(MxH.col(2).IsApprox(
+      3.0 * F_WB, Eigen::NumTraits<double>::epsilon()));
 }
 
 GTEST_TEST(SpatialInertia, ComputeKineticEnergy) {

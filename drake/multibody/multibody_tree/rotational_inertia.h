@@ -217,8 +217,6 @@ class RotationalInertia {
     Vector3<T> d;
     if (!CalcPrincipalMomentsOfInertia(&d)) return false;
 
-    PRINT_VAR(d.transpose());
-
     // Diagonals must be non-negative.
     if ((d.array() < T(0)).any() ) return false;
 

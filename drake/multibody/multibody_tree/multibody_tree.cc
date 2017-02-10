@@ -1,6 +1,7 @@
 #include "drake/multibody/multibody_tree/multibody_tree.h"
 
 #include "drake/common/eigen_types.h"
+#include "drake/multibody/multibody_tree/body_node_impl.h"
 #include "drake/multibody/multibody_tree/frame.h"
 #include "drake/multibody/multibody_tree/mass_properties.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
@@ -294,11 +295,18 @@ void MultibodyTree<T>::Compile() {
   for (const auto& node_topology: body_node_topologies) {
     const Body<T>* body = bodies_[node_topology.body].get();
     const Mobilizer<T>* mobilizer = nullptr;
+    std::unique_ptr<BodyNode<T>> body_node;
     // The world body node has not mobilizer.
-    if (node_topology.mobilizer.is_valid())
+    if (node_topology.mobilizer.is_valid()) {
       mobilizer = mobilizers_[node_topology.mobilizer].get();
-    auto body_node = make_unique<BodyNode<T>>(
-        node_topology, body, mobilizer);
+      // Only the mobilizer knows how to create a body node with compile-time
+      // fixed sizes.
+      body_node = mobilizer->CreateBodyNode(node_topology, body, mobilizer);
+    } else {
+      // The world's BodyNode.
+      body_node = std::make_unique<BodyNodeImpl<T, 0, 0>>(
+          node_topology, body, mobilizer);
+    }
     body_nodes_.push_back(std::move(body_node));
   }
 }

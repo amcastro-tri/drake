@@ -141,7 +141,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
               (topology_.F_equals_P ? "true" : "false") << std::endl;
   }
 
- private:
+ protected:
   BodyNodeTopology topology_;
   // Pointers for fast access.
   const Body<T>* body_{nullptr};

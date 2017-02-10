@@ -14,6 +14,8 @@ namespace multibody {
 
 // Forward declaration.
 template<typename T> class MultibodyTree;
+template<typename T> class Body;
+template<typename T> class BodyNode;
 
 template <typename T>
 class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
@@ -57,46 +59,6 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
       const MultibodyTreeContext<T>& context,
       PositionKinematicsCache<T>* pc) const = 0;
 
-  /// Computes the across Mobilizer velocity jacobian @p Ht as defined by A. Jain.
-  /// This Jacobian defines the spatial velocity subspace so that the spatial
-  /// velocity of frame `M` with respect to frame `F`, and expressed in `F`, is:
-  ///   `V_FM_F = Ht * v`
-  /// with `v` the vector of generalized velocities for this mobilizer.
-  //virtual void CalcAcrossMobilizerVelocityJacobian(
-  //    const MultibodyTreeContext<T>& context,
-  //    PositionKinematicsCache<T>* pc) const = 0;
-
-#if 0
-  virtual void UpdatePositionKinematicsCache(
-      const MultibodyTreeContext<T>& context) const = 0;
-
-  /// Computes `qdot = N(q) * u` with `N(q)` the the kinematic coupling matrix.
-  /// `N(q)` can be cached in the @p context.
-  virtual void CalcQDot(
-      const Context<T>& context,
-      Eigen::Ref<const MatrixX<T>> u, Eigen::Ref<MatrixX<T>> qdot) const = 0;
-
-  /// Returns the transform `X_FM` from the outboard frame `M` to the inboard
-  /// frame `F`.
-  /// This method is an NVI to DoCalcOutboardFameToInboardFrameTranform() so
-  /// that valid cached entries do not need to be recomputed.
-  Isometry3<T>& CalcOutboardFameToInboardFrameTranform(
-      const Context<T>& context) {
-    /*
-    Cache<T>* cache = context.get_mutable_cache();
-    if (!cache->is_valid(my_ticket)) {
-      cache->get_mutable_entry(my_ticket).set_value(
-          DoCalcOutboardFametoInboardFrameTranform(context));
-    }
-    return cache->get_entry(my_ticket).value<Isometry3<T>>();
-    */
-    return DoCalcOutboardFameToInboardFrameTranform(context);
-  }
-
-  Isometry3<T>& DoCalcOutboardFameToInboardFrameTranform(
-      const Context<T>& context) = 0;
-#endif
-
   MobilizerIndex get_id() const override {
     return topology_.id;
   }
@@ -110,6 +72,10 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
   void SetTopology(const MobilizerTopology& topology) {
     topology_ = topology;
   }
+
+  virtual std::unique_ptr<BodyNode<T>> CreateBodyNode(
+      const BodyNodeTopology& topology,
+      const Body<T>* body, const Mobilizer<T>* mobilizer) const = 0;
 
   void PrintTopology() const {
     std::cout << "Mobilizer id: " << topology_.id << std::endl;

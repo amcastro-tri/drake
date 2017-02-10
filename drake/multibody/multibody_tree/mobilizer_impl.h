@@ -11,6 +11,9 @@
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
 #include "drake/multibody/multibody_tree/math/spatial_algebra.h"
 
+// Forward declaration.
+template<typename T> class Body;  // Only needed for CreateBodyNode().
+
 namespace drake {
 namespace multibody {
 
@@ -96,6 +99,10 @@ class MobilizerImpl : public Mobilizer<T> {
     return *reinterpret_cast<HMatrix*>(
         pc->get_mutable_H_FM_pool()[topology_.velocities_start].mutable_data());
   }
+
+  std::unique_ptr<BodyNode<T>> CreateBodyNode(
+      const BodyNodeTopology& topology,
+      const Body<T>* body, const Mobilizer<T>* mobilizer) const final;
 
  private:
   using Mobilizer<T>::topology_;

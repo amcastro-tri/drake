@@ -13,6 +13,7 @@ drake_install_libraries(drakeMultibodyTree)
 drake_install_headers(
   body.h
   body_node.h
+  body_node_impl.h
 #  frame.h
   mobilizer.h
 #  mobilizer_context.h

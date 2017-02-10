@@ -219,8 +219,43 @@ class SpatialVelocityJacobian {
 
   T* mutable_data() { return J_.data(); }
 
+  bool IsApprox(const SpatialVelocityJacobian& other,
+                double tolerance = Eigen::NumTraits<T>::epsilon()) {
+    return get_coeffs().isApprox(other.get_coeffs(), tolerance);
+  }
+
  private:
   CoeffsEigenType J_;
+};
+
+/// Operator multiplication of a rotation matrix @p R_AB times a
+/// SpatialVelocityJacobian @p J_XY_B. This operator re-expresses the angular
+/// and linear components of the Jacobian @p J_XY_B in a frame `A`.
+/// Essentially for each column `V_XY_B` in `J_XY_B` this operator performs the
+/// operation:
+///   Vw_XY_A = R_AB * Vw_XY_B
+///   Vv_XY_A = R_AB * Vv_XY_B
+/// where:
+///   Vw_XY = Vw_XY.angular(), the angular component of the spatial vector.
+///   Vv_XY = Vv_XY.linear() , the linear component of the spatial vector.
+template <typename T, int ndofs>
+inline SpatialVelocityJacobian<T, ndofs> operator*(
+    const Matrix3<T>& R_AB, const SpatialVelocityJacobian<T, ndofs>& J_XY_B)
+{
+  SpatialVelocityJacobian<T, ndofs> J_XY_A;
+  auto& Eigen_J_XY_A = J_XY_A.get_mutable_coeffs();
+  const auto& Eigen_J_XY_B = J_XY_B.get_coeffs();
+
+  // Re-express angular components.
+  // TODO: have a SpatialVelocityJacobian::topRows (or similar name).
+  Eigen_J_XY_A.template topRows<3>().noalias() =
+      R_AB * Eigen_J_XY_B.template topRows<3>();
+
+  // Re-express linear components.
+  Eigen_J_XY_A.template bottomRows<3>().noalias() =
+      R_AB * Eigen_J_XY_B.template bottomRows<3>();
+
+  return J_XY_A;
 };
 
 template <typename T, int ndofs>

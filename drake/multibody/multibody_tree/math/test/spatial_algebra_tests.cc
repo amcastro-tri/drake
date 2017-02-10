@@ -17,8 +17,10 @@ namespace multibody {
 namespace math {
 namespace {
 
+using Eigen::AngleAxisd;
 using Eigen::Matrix;
 using Eigen::Vector3d;
+using Eigen::Matrix3d;
 
 GTEST_TEST(SpatialAlgebra, SpatialVelocityShift) {
   // Linear velocity of frame B measured and expressed in frame A.
@@ -75,6 +77,45 @@ GTEST_TEST(SpatialAlgebra, SpatialVelocityJacobianShift) {
   EXPECT_TRUE(J_AQ.col(0).linear().isApprox(expected_J_AQ.col(0).linear()));
   EXPECT_TRUE(J_AQ.col(1).linear().isApprox(expected_J_AQ.col(1).linear()));
   EXPECT_TRUE(J_AQ.col(2).linear().isApprox(expected_J_AQ.col(2).linear()));
+}
+
+// This tests the multiplication operation by a rotation matrix in order to
+// re-express a spatial vector in another frame.
+GTEST_TEST(SpatialAlgebra, ReExpress) {
+  // Linear velocity of frame Y with measured in X and expressed in B.
+  Vector3d v_XY_B(1, 2, 0);
+
+  // Angular velocity of frame Y with measured in X and expressed in B.
+  Vector3d w_XY_B(0, 0, 3);
+
+  // Spatial velocity of frame Y with measured in X and expressed in B.
+  SpatialVector<double> V_AB(w_XY_B, v_XY_B);
+
+  // Rotation of -90 degrees along y-axis leads to:
+  // xhat_B =  zhat_A
+  // yhat_B =  yhat_A
+  // zhat_B = -xhat_A
+  Matrix3d R_AB(AngleAxisd(M_PI_2, Vector3d::UnitY()));
+
+  // An example Jacobian for the spatial velocity of frame Y measured in X and
+  // expressed in B.
+  const int ncols = 3;
+  SpatialVelocityJacobian<double, ncols> J_XY_B;
+  J_XY_B.col(0) =      V_AB;
+  J_XY_B.col(1) = 2. * V_AB;
+  J_XY_B.col(2) = 3. * V_AB;
+
+  // Re-express J_XY_B in frame A by simply multiplying by R_AB.
+  SpatialVelocityJacobian<double, ncols> J_XY_A = R_AB * J_XY_B;
+
+  // Expected result.
+  SpatialVector<double> V_expected(R_AB * w_XY_B, R_AB * v_XY_B);
+  SpatialVelocityJacobian<double, ncols> J_expected;
+  J_expected.col(0) =      V_expected;
+  J_expected.col(1) = 2. * V_expected;
+  J_expected.col(2) = 3. * V_expected;
+
+  EXPECT_TRUE(J_XY_A.IsApprox(J_expected, Eigen::NumTraits<double>::epsilon()));
 }
 
 GTEST_TEST(SpatialAlgebra, DynamicSizeJacobian) {

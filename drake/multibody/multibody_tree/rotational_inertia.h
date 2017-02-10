@@ -268,6 +268,11 @@ class RotationalInertia {
   // lower part of the matrix. Only the upper part should be used.
   Matrix3<T> I_Bo_F_{Matrix3<T>::Constant(std::numeric_limits<
       typename Eigen::NumTraits<T>::Literal>::quiet_NaN())};
+
+ public:
+#ifndef SWIG
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+#endif
 };
 
 template <typename T>

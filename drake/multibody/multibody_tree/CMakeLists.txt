@@ -1,4 +1,5 @@
 add_library_with_exports(LIB_NAME drakeMultibodyTree SOURCE_FILES
+  body_node_impl.cc
   frame.cc
   mobilizer_impl.cc
 #  joint.cc
@@ -14,6 +15,7 @@ drake_install_headers(
   body.h
   body_node.h
   body_node_impl.h
+  body_node_welded.h
 #  frame.h
   mobilizer.h
 #  mobilizer_context.h

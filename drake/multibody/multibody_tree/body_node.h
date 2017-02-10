@@ -4,6 +4,7 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
+#include "drake/multibody/multibody_tree/body.h"
 #include "drake/multibody/multibody_tree/mobilizer.h"
 #include "drake/multibody/multibody_tree/math/spatial_algebra.h"
 #include "drake/multibody/multibody_tree/multibody_tree_element.h"
@@ -47,6 +48,11 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     return topology_.rigid_velocities_start;
   }
 
+  int get_num_rigid_velocities() const
+  {
+    return topology_.num_rigid_velocities;
+  }
+
   const Body<T>& get_body() const {
     DRAKE_ASSERT(body_ != nullptr);
     return *body_;
@@ -82,7 +88,11 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // - M_Bo_W: Spatial inertia.
     UpdateBodySpecificKinematicsCache_BaseToTip(context);
 
-
+    // With H_FM(qr) already in the cache (computed by
+    // Mobilizer::UpdatePositionKinematicsCache()) this call updates the cache
+    // entries for H_PB_W, the Jacobian for the SpatialVelocity jump between
+    // body B and its parent body P expressed in the world frame W.
+    UpdateAcrossBodiesSpatialVelocityJacobian(context);
   }
 
   /// Computes the composite body inertia (CBI) for this node's body.
@@ -152,8 +162,8 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
   // Get from the position kinematics cache a constant reference to the pose
   // X_PF of the "fixed" frame F as measured and expressed in the inboard
   // (parent) body frame P.
-  const Isometry3<T>& get_X_PF(const PositionKinematicsCache<T>* pc) const {
-    const auto& pool = pc->get_X_BF_pool();
+  const Isometry3<T>& get_X_PF(const PositionKinematicsCache<T>& pc) const {
+    const auto& pool = pc.get_X_BF_pool();
     DRAKE_ASSERT(topology_.X_PF_index < static_cast<int>(pool.size()));
     return pool[topology_.X_PF_index];
   }
@@ -250,7 +260,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     if (topology_.F_equals_P) {
       X_PB = X_FB;
     } else {
-      const Isometry3<T>& X_PF = get_X_PF(pc);
+      const Isometry3<T>& X_PF = get_X_PF(*pc);
       X_PB = X_PF * X_FB;
     }
 
@@ -290,6 +300,9 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // Spatial inertia of this node's body in the world frame.
     M_Bo_W = SpatialInertia<T>(body_->CalcMass(context), com_W, G_Bo_W);
   }
+
+  virtual void UpdateAcrossBodiesSpatialVelocityJacobian(
+      const MultibodyTreeContext<T>& context) const = 0;
 };
 
 }  // namespace multibody

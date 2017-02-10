@@ -22,7 +22,7 @@ namespace multibody {
 template <typename T>
 class PositionKinematicsCache {
  public:
-  typedef eigen_aligned_std_vector<SpatialVector<T>> H_FM_PoolType;
+  typedef eigen_aligned_std_vector<SpatialVector<T>> HMatrix_PoolType;
   typedef eigen_aligned_std_vector<Isometry3<T>> X_PoolType;
   typedef eigen_aligned_std_vector<ShiftOperator<T>> ShiftOperatorPoolType;
   typedef eigen_aligned_std_vector<Vector3<T>> Vector3PoolType;
@@ -32,8 +32,20 @@ class PositionKinematicsCache {
     return X_FM_pool_;
   }
 
-  H_FM_PoolType& get_mutable_H_FM_pool() {
+  const HMatrix_PoolType& get_H_FM_pool() const {
     return H_FM_pool_;
+  }
+
+  HMatrix_PoolType& get_mutable_H_FM_pool() {
+    return H_FM_pool_;
+  }
+
+  const HMatrix_PoolType& get_H_PB_W_pool() const {
+    return H_PB_W_pool_;
+  }
+
+  HMatrix_PoolType& get_mutable_H_PB_W_pool() {
+    return H_PB_W_pool_;
   }
 
   const Isometry3<T>& get_X_FM(BodyNodeIndex body_id) const {
@@ -169,6 +181,7 @@ class PositionKinematicsCache {
         Eigen::NumTraits<double>::quiet_NaN());  // It should not be used.
 
     H_FM_pool_.resize(num_rigid_velocities);
+    H_PB_W_pool_.resize(num_rigid_velocities);
 
     X_BF_pool_.resize(tree_topology.X_BF_pool_size);
 
@@ -208,7 +221,8 @@ class PositionKinematicsCache {
  private:
   int num_nodes_{0};
   X_PoolType X_FM_pool_;                 // Indexed by BodyNodeIndex.
-  H_FM_PoolType H_FM_pool_;              // Indexed by velocity_start.
+  HMatrix_PoolType H_FM_pool_;           // Indexed by velocity_start.
+  HMatrix_PoolType H_PB_W_pool_;         // Indexed by velocity_start.
   X_PoolType X_BF_pool_;                 // Indexed by X_BF_index.
   X_PoolType X_MB_pool_;                 // Indexed by BodyNodeIndex.
   X_PoolType X_WB_pool_;                 // Indexed by BodyNodeIndex.

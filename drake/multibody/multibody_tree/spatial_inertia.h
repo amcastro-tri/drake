@@ -225,6 +225,11 @@ class SpatialInertia {
   Vector3<T> p_BoBc_F_{Vector3<T>::Constant(nan())};
   // Rotational inertia about Xo and expressed in Y.
   RotationalInertia<T> I_Bo_F_{};  // Defaults to NaN initialized inertia.
+
+ public:
+#ifndef SWIG
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+#endif
 };
 
 template <typename T>

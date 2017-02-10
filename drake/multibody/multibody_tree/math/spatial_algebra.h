@@ -112,6 +112,11 @@ class SpatialVector {
 
  private:
   CoeffsEigenType V_;
+
+ public:
+#ifndef SWIG
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+#endif
 };
 
 template <typename T> inline
@@ -211,6 +216,10 @@ class SpatialVelocityJacobian {
 
   CoeffsEigenType& get_mutable_coeffs() { return J_;}
 
+  static const SpatialVelocityJacobian& View(const T* data) {
+    return *reinterpret_cast<const SpatialVelocityJacobian*>(data);
+  }
+
   static SpatialVelocityJacobian& MutableView(T* data) {
     return *reinterpret_cast<SpatialVelocityJacobian*>(data);
   }
@@ -226,6 +235,11 @@ class SpatialVelocityJacobian {
 
  private:
   CoeffsEigenType J_;
+
+ public:
+#ifndef SWIG
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+#endif
 };
 
 /// Operator multiplication of a rotation matrix @p R_AB times a
@@ -380,6 +394,11 @@ class ShiftOperator {
 
  private:
   Vector3<T> offset_;
+
+ public:
+#ifndef SWIG
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+#endif
 };
 
 template <typename T>

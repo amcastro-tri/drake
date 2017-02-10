@@ -2,6 +2,7 @@
 
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/body_node_impl.h"
+#include "drake/multibody/multibody_tree/body_node_welded.h"
 #include "drake/multibody/multibody_tree/frame.h"
 #include "drake/multibody/multibody_tree/mass_properties.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
@@ -304,7 +305,7 @@ void MultibodyTree<T>::Compile() {
       body_node = mobilizer->CreateBodyNode(node_topology, body, mobilizer);
     } else {
       // The world's BodyNode.
-      body_node = std::make_unique<BodyNodeImpl<T, 0, 0>>(
+      body_node = std::make_unique<BodyNodeWelded<T>>(
           node_topology, body, mobilizer);
     }
     body_nodes_.push_back(std::move(body_node));

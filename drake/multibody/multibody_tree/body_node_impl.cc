@@ -79,17 +79,45 @@ void BodyNodeImpl<T, nq, nv>::UpdateVelocityKinematicsCache_BaseToTip(
   // Generalized velocities local to this node's mobilizer.
   const Vector<T, nv>& vm = this->get_mobilizer_velocities(context);
 
+  // Contribution due to the time derivative of the mobilizer's positions.
   get_mutable_V_PB_W(vc) = get_H_PB_W(pc) * vm;
 
-  // TODO(amcastro-tri): compute Hdot_FM
-  // TODO(amcastro-tri): compute Hdot_PB_W
+  // Compute Hdot_FM, the time derivative is taken in the F frame.
+  // For simple mobilizer like a RevoluteMobilizer Hdot_FM = 0.
+  mobilizer_->CalcAcrossMobilizerVelocityJacobianDot(context, vc);
+
+  // Compute Hdot_PB_W using the above computed Hdot_FM. Notice that the time
+  // derivative in Hdot_PB_W is computed in the world frame W and is then
+  // expressed in the world frame.
+
+
+
 
   // Update velocity V_WB of this body's node in the world frame.
   const SpatialVector<T>& V_WP = get_V_WP(*vc);
   const SpatialVector<T>& V_PB_W = get_V_PB_W(*vc);
   const ShiftOperatorTranspose<T>& ST_PB_W = this->get_phi_PB_W(pc).transpose();
+
+  // This is Eq. 5.6 in Jain (2010), p. 77.
   get_mutable_V_WB(vc) = ST_PB_W * V_WP + V_PB_W;
 }
+
+template <typename T, int  nq, int nv>
+void BodyNodeImpl<T, nq, nv>::CalcBodySpatialAcceleration_BaseToTip(
+    const PositionKinematicsCache<T>& pc,
+    const VelocityKinematicsCache<T>& vc,
+    const Eigen::Ref<const VectorX<T>>& vdot_pool,
+    std::vector<SpatialVector<T>>* A_WB_pool) const {
+  SpatialVector<T>& A_WB = A_WB_pool->[get_id()];
+  const Vector<T, nv>& vmdot = get_mobilizer_velocities_from_pool(vdot_pool);
+
+  // Since this method is called from a base-to-tip recursion, we can assume the
+  // spatial acceleration of the parent body was already updated.
+  const SpatialVector<T>& A_WP = A_WB_pool->[topology_.parent_body_node];
+
+
+};
+
 
 // Macro used to explicitly instantiate implementations on all sizes needed.
 #define EXPLICITLY_INSTANTIATE(T) \

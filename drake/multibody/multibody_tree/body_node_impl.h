@@ -44,16 +44,26 @@ class BodyNodeImpl : public BodyNode<T> {
   void UpdateVelocityKinematicsCache_BaseToTip(
       const MultibodyTreeContext<T>& context) const;
 
+  void CalcBodySpatialAcceleration_BaseToTip(
+      const PositionKinematicsCache<T>& pc,
+      const VelocityKinematicsCache<T>& vc,
+      const Eigen::Ref<const VectorX<T>>& vdot,
+      std::vector<SpatialVector<T>>* A_WB_pool) const final;
+
   /// Helper methods access the context.
   const Vector<T, nv>& get_mobilizer_velocities(
       const MultibodyTreeContext<T>& context) const
   {
-    return *reinterpret_cast<const Vector<T, nv>*>(
-        context.get_velocities().data() + this->get_rigid_velocities_start());
+    //return *reinterpret_cast<const Vector<T, nv>*>(
+    //    context.get_velocities().data() + this->get_rigid_velocities_start());
+    return get_mobilizer_velocities_from_pool(context.get_velocities());
   }
 
-  /// Helper methods to generalized positions and velocities as fixed size
-  /// vectors.
+  /// Helper methods to access node quantities as expressions of fixed size.
+  const Vector<T, nv> get_mobilizer_velocities_from_pool(
+      const Eigen::Ref<const VectorX<T>>& vdot_pool) const {
+    return *reinterpret_cast<const Vector<T, nv>*>(vdot_pool[this->get_id()]);
+  };
 
   /// Helper Methods to access the position kinematics cache.
 

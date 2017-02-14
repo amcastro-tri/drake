@@ -105,6 +105,17 @@ class MobilizerImpl : public Mobilizer<T> {
         pc->get_mutable_H_FM_pool()[topology_.velocities_start].mutable_data());
   }
 
+  const HMatrix& get_Hdot_FM(const VelocityKinematicsCache<T>& vc) const {
+    return *reinterpret_cast<const HMatrix*>(
+        vc.get_Hdot_FM_pool()[topology_.velocities_start].data());
+  }
+
+  HMatrix& get_mutable_Hdot_FM(VelocityKinematicsCache<T>* vc) const {
+    return *reinterpret_cast<HMatrix*>(
+        vc->get_mutable_Hdot_FM_pool()[
+            topology_.velocities_start].mutable_data());
+  }
+
   std::unique_ptr<BodyNode<T>> CreateBodyNode(
       const BodyNodeTopology& topology,
       const Body<T>* body, const Mobilizer<T>* mobilizer) const final;

@@ -64,6 +64,14 @@ void RevoluteMobilizer<T>::CalcAcrossMobilizerVelocityJacobian(
 }
 
 template <typename T>
+void RevoluteMobilizer<T>::CalcAcrossMobilizerVelocityJacobianDot(
+    const MultibodyTreeContext<T>& context,
+    VelocityKinematicsCache<T>* vc) const {
+  HMatrix& Hdot_FM = this->get_mutable_Hdot_FM(vc);
+  Hdot_FM.col(0).SetZero();
+}
+
+template <typename T>
 void RevoluteMobilizer<T>::CalcQDot(
     const MultibodyTreeContext<T>& context, Eigen::Ref<VectorX<T>> qdot) const {
   DRAKE_ASSERT(qdot.size() == nq);

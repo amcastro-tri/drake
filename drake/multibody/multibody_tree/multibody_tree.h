@@ -139,6 +139,21 @@ class MultibodyTree {
       const MultibodyTreeContext<T>& context,
       eigen_aligned_std_vector<SpatialInertia<T>>& cbi_array) const;
 
+  /// This method implements the Newton-Euler inverse dynamics algorithm for
+  /// computing the inverset dynamics of this MultibodyTree. This algorithm is
+  /// `O(N)` in complexity and involves a base-to-tip recursion to compute
+  /// spatial velocities and accelerations and a tip-to-base recursion to
+  /// compute generalized forces at each mobilizer.
+  /// For a detalied discussion of the algorithm refer to Section 5.3.1 of
+  /// Jain (2010), p. 88.
+  void InverseDynamics(
+      const MultibodyTreeContext<T>& context,
+      const Eigen::Ref<const VectorX<T>>& vdot,
+      const Eigen::Ref<const VectorX<T>>& external_generalized_forces,
+      const std::vector<SpatialVector<T>>& external_body_forces,
+      std::vector<SpatialVector<T>>* body_spatial_accelerations,
+      Eigen::Ref<VectorX<T>> generalized_forces) const;
+
 #if 0
   /// Computes the positive definite mass matrix of the multibody system in
   /// quasi-coordinates \f$M(q)\f$, defined by

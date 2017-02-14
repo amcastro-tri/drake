@@ -55,6 +55,11 @@ class MobilizerImpl : public Mobilizer<T> {
       const MultibodyTreeContext<T>& context) const final;
 
  protected:
+  Vector<T, nv>& VelocityView(Eigen::Ref<VectorX<T>> v) const {
+    DRAKE_ASSERT(v.size() == nv);
+    return *reinterpret_cast<Vector<T, nv>*>(v.data());
+  }
+
   const Vector<T, nq>& get_positions(
       const MultibodyTreeContext<T>& context) const
   {

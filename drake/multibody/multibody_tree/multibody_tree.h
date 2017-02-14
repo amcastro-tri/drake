@@ -87,6 +87,9 @@ class MultibodyTree {
   void UpdatePositionKinematicsCache(
       const MultibodyTreeContext<T>& context) const;
 
+  void UpdateVelocityKinematicsCache(
+      const MultibodyTreeContext<T>& context) const;
+
   /// This method updates the cache entry for composite body inertias which
   /// contains the composite body inertia `R_Bo_W` for each body `B` computed
   /// about this body frame's origing `Bo` and expressed in the world frame `W`.

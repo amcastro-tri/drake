@@ -11,6 +11,7 @@
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
 #include "drake/multibody/multibody_tree/spatial_inertia.h"
+#include "drake/multibody/multibody_tree/velocity_kinematics_cache.h"
 
 #include <iostream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
@@ -39,6 +40,23 @@ class BodyNodeImpl : public BodyNode<T> {
   void UpdateAcrossBodiesSpatialVelocityJacobian(
       const MultibodyTreeContext<T>& context) const final;
 
+  /// This method can anly be called within a base-to-tip loop.
+  void UpdateVelocityKinematicsCache_BaseToTip(
+      const MultibodyTreeContext<T>& context) const;
+
+  /// Helper methods access the context.
+  const Vector<T, nv>& get_mobilizer_velocities(
+      const MultibodyTreeContext<T>& context) const
+  {
+    return *reinterpret_cast<const Vector<T, nv>*>(
+        context.get_velocities().data() + this->get_rigid_velocities_start());
+  }
+
+  /// Helper methods to generalized positions and velocities as fixed size
+  /// vectors.
+
+  /// Helper Methods to access the position kinematics cache.
+
   const HMatrix& get_H_FM(const PositionKinematicsCache<T>& pc) const {
     return *reinterpret_cast<const HMatrix*>(
         pc.get_H_FM_pool()[this->get_rigid_velocities_start()].data());
@@ -65,6 +83,49 @@ class BodyNodeImpl : public BodyNode<T> {
     return HMatrix::MutableView(
         pool[this->get_rigid_velocities_start()].mutable_data());
   }
+
+  // Helper methods to extract entries from the velocity kinematics cache.
+
+  /// @returns a mutable reference to the vector of time derivatives of the
+  /// mobilizer generalized positions `qm` corresponding to this node's
+  /// mobilizer.
+  Vector<T, nq>& get_mutable_qmdot(VelocityKinematicsCache<T>* vc) const {
+    DRAKE_ASSERT(this->get_num_rigid_positions() == nq);
+    return *reinterpret_cast<Vector<T, nq>*>(
+        vc->get_mutable_qdot_pool().data() + this->get_rigid_positions_start());
+  }
+
+  const Vector<T, nv>& get_qmdot(const VelocityKinematicsCache<T>& vc) const
+  {
+    DRAKE_ASSERT(this->get_num_rigid_velocities() == nv);
+    return *reinterpret_cast<const Vector<T, nv>*>(
+        vc.get_qdot_pool().data() + this->get_rigid_positions_start());
+  }
+
+  const SpatialVector<T>& get_V_PB_W(const VelocityKinematicsCache<T> vc) const {
+    return vc.get_V_PB_W(this->get_id());
+  }
+
+  SpatialVector<T>& get_mutable_V_PB_W(VelocityKinematicsCache<T>* vc) const {
+    return vc->get_mutable_V_PB_W(this->get_id());
+  }
+
+  const SpatialVector<T>& get_V_WB(const VelocityKinematicsCache<T>& vc) const {
+    return vc.get_V_WB(this->get_id());
+  }
+
+  SpatialVector<T>& get_mutable_V_WB(VelocityKinematicsCache<T>* vc) const {
+    return vc->get_mutable_V_WB(this->get_id());
+  }
+
+  /// @returns the spatial velocity `V_WP` of the body `P` in the parent node.
+  const SpatialVector<T>& get_V_WP(const VelocityKinematicsCache<T>& vc) const {
+    return vc.get_V_WB(this->topology_.parent_body_node);
+  }
+
+ protected:
+  using BodyNode<T>::body_;
+  using BodyNode<T>::mobilizer_;
 };
 
 }  // namespace multibody

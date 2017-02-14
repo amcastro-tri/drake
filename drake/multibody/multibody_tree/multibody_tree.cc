@@ -421,6 +421,24 @@ void MultibodyTree<T>::UpdatePositionKinematicsCache(
 }
 
 template <typename T>
+void MultibodyTree<T>::UpdateVelocityKinematicsCache(
+    const MultibodyTreeContext<T>& context) const {
+  // TODO(amcastro-tri): Loop over bodies to compute velocity kinematics updates
+  // corresponding to flexible bodies.
+
+  // Perform a base-to-tip recursion computing body velocities.
+  // This skips the world, level = 0.
+  for (int level = 1; level < get_num_levels(); ++level) {
+    for (BodyNodeIndex body_node_id: body_node_levels_[level]) {
+      const BodyNode<T>& node = *body_nodes_[body_node_id];
+      // Update per-node kinematics.
+      node.UpdateVelocityKinematicsCache_BaseToTip(context);
+    }
+  }
+  // TODO: Validate cache entry for VelocityKinematicsCache.
+}
+
+template <typename T>
 void MultibodyTree<T>::CalcCompositeBodyInertias(
     const MultibodyTreeContext<T>& context,
     eigen_aligned_std_vector<SpatialInertia<T>>& cbi_array) const {

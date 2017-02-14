@@ -77,21 +77,25 @@ int DoMain() {
 
   //model.SetZeroConfiguration(context.get());
   shoulder_mobilizer.set_zero_configuration(context.get());
-  shoulder_mobilizer.set_angular_velocity(context.get(), 0.0);
+  shoulder_mobilizer.set_angular_velocity(context.get(), 1.0);
   model->UpdatePositionKinematicsCache(*context);
+  model->UpdateVelocityKinematicsCache(*context);
   context->Print();
   PRINT_VARn(upper_body.get_pose_in_world(*context).matrix());
   PRINT_VARn(upper_body.get_com_W(*context).transpose());
   PRINT_VARn(upper_body.get_M_Bo_W(*context));
+  PRINT_VARn(upper_body.get_spatial_velocity_in_world(*context));
 
   shoulder_mobilizer.set_angle(context.get(), M_PI / 6.0);
   model->UpdatePositionKinematicsCache(*context);
+  model->UpdateVelocityKinematicsCache(*context);
   model->UpdateCompositeBodyInertiasCache(*context);
   context->Print();
   const auto& X_WU = upper_body.get_pose_in_world(*context);
   PRINT_VARn(X_WU.matrix());
   PRINT_VARn(upper_body.get_com_W(*context).transpose());
   PRINT_VARn(upper_body.get_M_Bo_W(*context));
+  PRINT_VARn(upper_body.get_spatial_velocity_in_world(*context));
 
 #if 0
   elbow_mobilizer->set_zero_configuration(context.get());

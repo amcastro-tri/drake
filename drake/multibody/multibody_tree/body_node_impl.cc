@@ -8,6 +8,7 @@
 #include "drake/multibody/multibody_tree/mobilizer.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
 #include "drake/multibody/multibody_tree/multibody_tree_cache.h"
+#include "drake/multibody/multibody_tree/velocity_kinematics_cache.h"
 #include "drake/multibody/multibody_tree/math/spatial_algebra.h"
 
 namespace drake {
@@ -60,6 +61,34 @@ void BodyNodeImpl<T, nq, nv>::UpdateAcrossBodiesSpatialVelocityJacobian(
   // Perform H_PB = phiT_MB * H_FM in the F frame and re-express in the
   // world frame W.
   H_PB_W = R_WF * (phiT_MB_F.transpose() * H_FM);
+}
+
+template <typename T, int  nq, int nv>
+void BodyNodeImpl<T, nq, nv>::UpdateVelocityKinematicsCache_BaseToTip(
+    const MultibodyTreeContext<T>& context) const {
+  // This method should not be called for the "world" body node.
+  DRAKE_ASSERT(this->topology_.body != kWorldBodyId);
+
+  const PositionKinematicsCache<T>& pc = context.get_position_kinematics();
+  VelocityKinematicsCache<T>* vc = context.get_mutable_velocity_kinematics();
+
+  // Given the generalize velocity v, update qdot for each mobilizer.
+  // qdot = N(q) * v
+  mobilizer_->CalcQDot(context, get_mutable_qmdot(vc));
+
+  // Generalized velocities local to this node's mobilizer.
+  const Vector<T, nv>& vm = this->get_mobilizer_velocities(context);
+
+  get_mutable_V_PB_W(vc) = get_H_PB_W(pc) * vm;
+
+  // TODO(amcastro-tri): compute Hdot_FM
+  // TODO(amcastro-tri): compute Hdot_PB_W
+
+  // Update velocity V_WB of this body's node in the world frame.
+  const SpatialVector<T>& V_WP = get_V_WP(*vc);
+  const SpatialVector<T>& V_PB_W = get_V_PB_W(*vc);
+  const ShiftOperatorTranspose<T>& ST_PB_W = this->get_phi_PB_W(pc).transpose();
+  get_mutable_V_WB(vc) = ST_PB_W * V_WP + V_PB_W;
 }
 
 // Macro used to explicitly instantiate implementations on all sizes needed.

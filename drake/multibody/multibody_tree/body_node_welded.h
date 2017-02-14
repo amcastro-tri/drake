@@ -33,6 +33,9 @@ class BodyNodeWelded : public BodyNode<T> {
   /// therefore this method results in a no-op.
   void UpdateAcrossBodiesSpatialVelocityJacobian(
       const MultibodyTreeContext<T>& context) const final {}
+
+  void UpdateVelocityKinematicsCache_BaseToTip(
+      const MultibodyTreeContext<T>& context) const final {};
 };
 
 }  // namespace multibody

@@ -133,7 +133,7 @@ class PositionKinematicsCache {
     return X_PB_pool_[body_node_id];
   }
 
-  /// Returns a constant references to the rigid body shift operator between
+  /// Returns a constant reference to the rigid body shift operator between
   /// a body `B` and its parent `P`. The input parameter identifies body `B`.
   /// @param[in] body_id Unique identifier to body `B`.
   /// @returns phi_PB_W The rigid body shift operator between a body `B` and its

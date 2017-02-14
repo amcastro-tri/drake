@@ -59,6 +59,9 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
       const MultibodyTreeContext<T>& context,
       PositionKinematicsCache<T>* pc) const = 0;
 
+  virtual void CalcQDot(const MultibodyTreeContext<T>& context,
+                        Eigen::Ref<VectorX<T>> qdot) const = 0;
+
   MobilizerIndex get_id() const override {
     return topology_.id;
   }

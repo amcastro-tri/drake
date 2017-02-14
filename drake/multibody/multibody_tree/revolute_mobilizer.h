@@ -45,6 +45,12 @@ class RevoluteMobilizer : public MobilizerImpl<T, 1, 1> {
       const MultibodyTreeContext<T>& context,
       PositionKinematicsCache<T>* pc) const final;
 
+  /// @param[in] context The state of the MultibodyTree.
+  /// @param[out] qdot The time derivative of the generalized coordinates for
+  ///                  this mobilizer.
+  void CalcQDot(const MultibodyTreeContext<T>& context,
+                Eigen::Ref<VectorX<T>> qdot) const final;
+
  private:
   // Creates a revolute joint with axis_F expressed in the inboard frame F.
   RevoluteMobilizer(const MaterialFrame<T>& inboard_frame,

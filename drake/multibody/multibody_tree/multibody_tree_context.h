@@ -7,6 +7,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/multibody_tree_cache.h"
 #include "drake/multibody/multibody_tree/composite_body_inertias_cache.h"
+#include "drake/multibody/multibody_tree/velocity_kinematics_cache.h"
 
 #include <iostream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
@@ -27,6 +28,7 @@ class MultibodyTreeContext {
 
     // Allocate cache entries.
     position_kinematics_.Allocate(tree_topology);
+    velocity_kinematics_.Allocate(tree_topology);
     composite_body_inertias_.Allocate(tree_topology);
   }
 
@@ -44,6 +46,14 @@ class MultibodyTreeContext {
     return &position_kinematics_;
   }
 
+  const VelocityKinematicsCache<T>& get_velocity_kinematics() const {
+    return velocity_kinematics_;
+  }
+
+  VelocityKinematicsCache<T>* get_mutable_velocity_kinematics() const {
+    return &velocity_kinematics_;
+  }
+
   const CompositeBodyInertiasCache<T>& get_cbi_cache() const {
     return composite_body_inertias_;
   }
@@ -59,6 +69,7 @@ class MultibodyTreeContext {
     PRINT_VAR(q_.transpose());
     PRINT_VAR(v_.transpose());
     position_kinematics_.Print();
+    velocity_kinematics_.Print();
     composite_body_inertias_.Print();
   }
 
@@ -67,6 +78,7 @@ class MultibodyTreeContext {
   VectorX<T> q_, v_;
   // Cached entries.
   mutable PositionKinematicsCache<T> position_kinematics_;
+  mutable VelocityKinematicsCache<T> velocity_kinematics_;
   mutable CompositeBodyInertiasCache<T> composite_body_inertias_;
 };
 

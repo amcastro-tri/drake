@@ -69,6 +69,15 @@ class SpatialVector {
     V_ << w, v;
   }
 
+  /// Constructs a SpatialVector from an Eigen expression.
+  /// This methods static asserts at compile time that the input expression
+  /// @p v has a compile time size of six (6).
+  template<typename Derived>
+  SpatialVector(const Eigen::MatrixBase<Derived>& v) {
+    EIGEN_STATIC_ASSERT_MATRIX_SPECIFIC_SIZE(Derived, 6, 1);
+    V_ = v;
+  }
+
   int size() const { return kSpatialVectorSize; }
   int angular_size() const { return kSpatialVectorAngularSize; }
   int linear_size() const { return kSpatialVectorLinearSize; }
@@ -110,7 +119,21 @@ class SpatialVector {
            angular().isApprox(other.angular(), tolerance);
   }
 
+  void SetZero() {
+    V_.setZero();
+  }
+
+  void SetToNaN() {
+   V_.setConstant(nan());
+  }
+
  private:
+  // Helper method for NaN initialization.
+  static constexpr T nan() {
+    return std::numeric_limits<
+        typename Eigen::NumTraits<T>::Literal>::quiet_NaN();
+  }
+
   CoeffsEigenType V_;
 
  public:
@@ -133,6 +156,13 @@ inline SpatialVector<T> operator*(
     const T& s, const SpatialVector<T>& V)
 {
   return SpatialVector<T>(s * V.angular(), s * V.linear());
+}
+
+template <typename T>
+inline SpatialVector<T> operator+(
+    const SpatialVector<T>& Va, const SpatialVector<T>& Vb)
+{
+  return SpatialVector<T>(Va.get_coeffs() + Vb.get_coeffs());
 }
 
 namespace internal {
@@ -270,6 +300,15 @@ inline SpatialVelocityJacobian<T, ndofs> operator*(
       R_AB * Eigen_J_XY_B.template bottomRows<3>();
 
   return J_XY_A;
+};
+
+/// @returns V_XY_E The spatial velocity of frame `Y` measured in frame `X`,
+///                 expressed in frame `E`.
+template <typename T, int ndofs>
+inline SpatialVector<T> operator*(
+    const SpatialVelocityJacobian<T, ndofs>& J_XY_E, const Vector<T, ndofs>& v)
+{
+  return SpatialVector<T>(J_XY_E.get_coeffs() * v);
 };
 
 template <typename T, int ndofs>

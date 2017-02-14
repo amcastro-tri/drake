@@ -33,6 +33,8 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     DRAKE_ASSERT(!(mobilizer == nullptr && body->get_id() != kWorldBodyId));
   }
 
+  BodyNodeIndex get_id() const final { return topology_.id;}
+
   int get_rigid_positions_start() const
   {
     return topology_.rigid_positions_start;
@@ -94,6 +96,10 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // body B and its parent body P expressed in the world frame W.
     UpdateAcrossBodiesSpatialVelocityJacobian(context);
   }
+
+  /// This method can anly be called within a base-to-tip loop.
+  virtual void UpdateVelocityKinematicsCache_BaseToTip(
+      const MultibodyTreeContext<T>& context) const = 0;
 
   /// Computes the composite body inertia (CBI) for this node's body.
   /// By definition, the CBI of a body is the composition of its
@@ -211,6 +217,11 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     return pc->get_mutable_X_WB(topology_.id);
   }
 
+  /// Returns a constant reference to the rigid body shift operator between
+  /// this node's body `B` and its parent `P`.
+  /// @param[in] pc The position kinematics cache.
+  /// @returns phi_PB_W The rigid body shift operator between this node's body
+  ///                   `B` and its parent `P` expressed in the world frame `W`.
   const ShiftOperator<T>& get_phi_PB_W(
       const PositionKinematicsCache<T>& pc) const {
     return pc.get_phi_PB_W(topology_.body);

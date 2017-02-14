@@ -64,6 +64,13 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
     return context.get_position_kinematics().get_M_Bo_W(topology_.id);
   }
 
+  const SpatialVector<T>& get_spatial_velocity_in_world(
+      const MultibodyTreeContext<T>& context) const
+  {
+    // TODO(amcastro-tri): Check cache validity
+    return context.get_velocity_kinematics().get_V_WB(topology_.body_node);
+  }
+
   /// Computes the center of mass of this body measured and expressed in its
   /// implicity body frame B.
   /// @param[in] context Context cotaining the state of the MultibodyTree.

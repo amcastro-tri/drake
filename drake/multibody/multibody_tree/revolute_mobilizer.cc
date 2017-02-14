@@ -39,8 +39,8 @@ const RevoluteMobilizer<T>& RevoluteMobilizer<T>::set_angle(
 template <typename T>
 const RevoluteMobilizer<T>& RevoluteMobilizer<T>::set_angular_velocity(
     MultibodyTreeContext<T>* context, const T& angular_velocity) const {
-  Vector<T, nq>& q = this->get_mutable_velocities(context);
-  q[0] = angular_velocity;
+  Vector<T, nq>& v = this->get_mutable_velocities(context);
+  v[0] = angular_velocity;
   return *this;
 }
 
@@ -61,6 +61,13 @@ void RevoluteMobilizer<T>::CalcAcrossMobilizerVelocityJacobian(
   HMatrix& H_FM = this->get_mutable_H_FM(pc);
   H_FM.col(0).angular() = axis_F_;
   H_FM.col(0).linear() = Vector3<T>::Zero();
+}
+
+template <typename T>
+void RevoluteMobilizer<T>::CalcQDot(
+    const MultibodyTreeContext<T>& context, Eigen::Ref<VectorX<T>> qdot) const {
+  DRAKE_ASSERT(qdot.size() == nq);
+  this->VelocityView(qdot) = this->get_velocities(context);
 }
 
 // Explicitly instantiates on the most common scalar types.

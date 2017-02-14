@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
@@ -36,6 +37,12 @@ class BodyNodeWelded : public BodyNode<T> {
 
   void UpdateVelocityKinematicsCache_BaseToTip(
       const MultibodyTreeContext<T>& context) const final {};
+
+  void CalcBodySpatialAcceleration_BaseToTip(
+      const PositionKinematicsCache<T>& pc,
+      const VelocityKinematicsCache<T>& vc,
+      const Eigen::Ref<const VectorX<T>>& vdot,
+      std::vector<SpatialVector<T>>* A_WB_pool) const final {};
 };
 
 }  // namespace multibody

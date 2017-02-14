@@ -70,6 +70,11 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
       const MultibodyTreeContext<T>& context,
       PositionKinematicsCache<T>* pc) const = 0;
 
+  /// Computes the time derivative of H_FM in the F frame.
+  virtual void CalcAcrossMobilizerVelocityJacobianDot(
+      const MultibodyTreeContext<T>& context,
+      VelocityKinematicsCache<T>* vc) const = 0;
+
   virtual void CalcQDot(const MultibodyTreeContext<T>& context,
                         Eigen::Ref<VectorX<T>> qdot) const = 0;
 

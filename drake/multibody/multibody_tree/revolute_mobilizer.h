@@ -45,6 +45,10 @@ class RevoluteMobilizer : public MobilizerImpl<T, 1, 1> {
       const MultibodyTreeContext<T>& context,
       PositionKinematicsCache<T>* pc) const final;
 
+  void CalcAcrossMobilizerVelocityJacobianDot(
+      const MultibodyTreeContext<T>& context,
+      VelocityKinematicsCache<T>* vc) const final;
+
   /// @param[in] context The state of the MultibodyTree.
   /// @param[out] qdot The time derivative of the generalized coordinates for
   ///                  this mobilizer.

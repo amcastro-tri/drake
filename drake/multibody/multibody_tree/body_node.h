@@ -129,6 +129,12 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     }
   }
 
+  virtual void CalcBodySpatialAcceleration_BaseToTip(
+      const PositionKinematicsCache<T>& pc,
+      const VelocityKinematicsCache<T>& vc,
+      const Eigen::Ref<const VectorX<T>>& vdot,
+      std::vector<SpatialVector<T>>* A_WB_pool) const = 0;
+
   void PrintTopology() const {
     std::cout << "BodyNode id: " << topology_.id << std::endl;
     std::cout << "  Level: " << topology_.level << std::endl;

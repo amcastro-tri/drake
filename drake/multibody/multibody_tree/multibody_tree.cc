@@ -443,6 +443,36 @@ void MultibodyTree<T>::CalcCompositeBodyInertias(
   }
 }
 
+template <typename T>
+void MultibodyTree<T>::InverseDynamics(
+    const MultibodyTreeContext<T>& context,
+    const Eigen::Ref<const VectorX<T>>& vdot,
+    const Eigen::Ref<const VectorX<T>>& external_generalized_forces,
+    const std::vector<SpatialVector<T>>& external_body_forces,
+    std::vector<SpatialVector<T>>* body_spatial_accelerations,
+    Eigen::Ref<VectorX<T>> generalized_forces) const {
+
+  DRAKE_ASSERT(body_spatial_accelerations != nullptr);
+  DRAKE_ASSERT(
+      static_cast<int>(body_spatial_accelerations->size()) == get_num_bodies());
+  DRAKE_ASSERT(
+      static_cast<int>(generalized_forces.size()) == get_num_mobilizers());
+
+  // TODO(amcastro-tri): check cache validity.
+  const PositionKinematicsCache<T>& pc = context.get_position_kinematics();
+  const VelocityKinematicsCache<T>& vc = context.get_velocity_kinematics();
+
+  // Base-to-tip recursion to compute spatial accelerations.
+  for (int level = 1; level < get_num_levels(); ++level) {
+    for (BodyNodeIndex body_node_id: body_node_levels_[level]) {
+      const auto& node = body_nodes_[body_node_id];
+      node->CalcBodySpatialAcceleration_BaseToTip(
+          pc, vc, vdot, body_spatial_accelerations);
+    }
+  }
+
+}
+
 #if 0
 template <typename T>
 void MultibodyTree<T>::CalcMassMatrix(

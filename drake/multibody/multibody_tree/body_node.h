@@ -56,18 +56,25 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
   }
 
   const Body<T>& get_body() const {
-    DRAKE_ASSERT(body_ != nullptr);
-    return *body_;
+    DRAKE_ASSERT(get_body_id().is_valid());
+    return this->get_parent_tree().get_body(get_body_id());
+  }
+
+  const Body<T>& get_parent_body() const {
+    DRAKE_ASSERT(get_parent_body_id().is_valid());
+    return this->get_parent_tree().get_body(get_parent_body_id());
   }
 
   const Mobilizer<T>& get_mobilizer() const {
-    DRAKE_ASSERT(mobilizer_ != nullptr);
-    return *mobilizer_;
+    DRAKE_ASSERT(get_mobilizer_id().is_valid());
+    return this->get_parent_tree().get_mobilizer(get_mobilizer_id());
   }
 
   MobilizerIndex get_mobilizer_id() const { return topology_.mobilizer;}
 
   BodyIndex get_body_id() const { return topology_.body;}
+
+  BodyIndex get_parent_body_id() const { return topology_.parent_body;}
 
   /// This method can anly be called within a base-to-tip loop.
   void UpdatePositionKinematicsCache_BaseToTip(
@@ -248,6 +255,18 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
       const MultibodyTreeContext<T>& context) const {
     PositionKinematicsCache<T>* pc = context.get_mutable_position_kinematics();
 
+    // Body for this node.
+    const Body<T>& BodyB = get_body();
+
+    // Body for this node's parent, or the parent body P.
+    const Body<T>& BodyP = get_parent_body();
+
+    // Inboard/Outboard frames of this node's mobilizer.
+    const MaterialFrame<T>& FrameF = get_mobilizer().get_inboard_frame();
+    DRAKE_ASSERT(FrameF.get_body_id() == BodyP.get_id());
+    const MaterialFrame<T>& FrameM = get_mobilizer().get_outboard_frame();
+    DRAKE_ASSERT(FrameM.get_body_id() == BodyB.get_id());
+
     // Input (const):
     // - X_PF(qf_P)
     // - X_MB(qf_B)
@@ -267,6 +286,12 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // TODO(amcastro-tri): Consider logic for the common case B = M.
     // In that case X_FB = X_FM as suggested by setting X_MB = Id.
     const Isometry3<T> X_FB = X_FM * X_MB;
+
+    // Given the pose X_FB of body frame B measured in the mobilizer inboard
+    // frame F, we can ask frame F (who's parent body is P) for the pose of body
+    // B measured in the frame of the parent body P.
+    // In the particular case F = B, this method directly returns X_FB.
+    //X_PB = F.get_offset_pose_in_body(contex, X_FB);
 
     if (topology_.F_equals_P) {
       X_PB = X_FB;

@@ -28,7 +28,8 @@ template <typename T, int  nq, int nv>
 std::unique_ptr<BodyNode<T>> MobilizerImpl<T, nq, nv>::CreateBodyNode(
     const BodyNodeTopology& topology,
     const Body<T>* body, const Mobilizer<T>* mobilizer) const {
-  return std::make_unique<BodyNodeImpl<T, nq, nv>>(topology, body, mobilizer);
+  return std::make_unique<BodyNodeImpl<T, nq, nv>>(
+      &this->get_parent_tree(), topology, body, mobilizer);
 }
 
 // Macro used to explicitly instantiate implementations on all sizes needed.

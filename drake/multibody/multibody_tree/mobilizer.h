@@ -8,12 +8,12 @@
 #include "drake/multibody/multibody_tree/frame.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
+#include "drake/multibody/multibody_tree/multibody_tree_element.h"
 
 namespace drake {
 namespace multibody {
 
 // Forward declaration.
-template<typename T> class MultibodyTree;
 template<typename T> class Body;
 template<typename T> class BodyNode;
 
@@ -33,6 +33,8 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
     topology_.outboard_body = outboard_frame.get_body_id();
   }
 
+  MobilizerIndex get_id() const final { return topology_.id;}
+
   virtual int get_num_positions() const = 0;
 
   virtual int get_num_velocities() const = 0;
@@ -44,6 +46,15 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
   BodyIndex get_inboard_frame_id() const { return topology_.inboard_frame; }
 
   BodyIndex get_outboard_frame_id() const { return topology_.outboard_frame; }
+
+
+  const MaterialFrame<T>& get_inboard_frame() const {
+    return this->get_parent_tree().get_material_frame(topology_.inboard_frame);
+  }
+
+  const MaterialFrame<T>& get_outboard_frame() const {
+    return this->get_parent_tree().get_material_frame(topology_.outboard_frame);
+  }
 
   virtual void UpdatePositionKinematicsCache(
       const MultibodyTreeContext<T>& context) const = 0;
@@ -61,10 +72,6 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
 
   virtual void CalcQDot(const MultibodyTreeContext<T>& context,
                         Eigen::Ref<VectorX<T>> qdot) const = 0;
-
-  MobilizerIndex get_id() const override {
-    return topology_.id;
-  }
 
   const MobilizerTopology& get_topology() const { return topology_;}
 

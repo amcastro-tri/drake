@@ -78,6 +78,7 @@ int DoMain() {
   //model.SetZeroConfiguration(context.get());
   shoulder_mobilizer.set_zero_configuration(context.get());
   shoulder_mobilizer.set_angular_velocity(context.get(), 1.0);
+  PRINT_VARn(model->get_num_mobilizers());
   model->UpdatePositionKinematicsCache(*context);
   model->UpdateVelocityKinematicsCache(*context);
   context->Print();

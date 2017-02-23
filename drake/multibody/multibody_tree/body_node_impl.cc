@@ -6,6 +6,7 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/mobilizer.h"
+#include "drake/multibody/multibody_tree/multibody_tree.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
 #include "drake/multibody/multibody_tree/multibody_tree_cache.h"
 #include "drake/multibody/multibody_tree/velocity_kinematics_cache.h"
@@ -90,6 +91,31 @@ void BodyNodeImpl<T, nq, nv>::UpdateVelocityKinematicsCache_BaseToTip(
   const ShiftOperatorTranspose<T>& ST_PB_W = this->get_phi_PB_W(pc).transpose();
   get_mutable_V_WB(vc) = ST_PB_W * V_WP + V_PB_W;
 }
+
+#if 0
+template <typename T, int  nq, int nv>
+BodyNodeImpl<T, nq, nv>& BodyNodeImpl<T, nq, nv>::Create(
+    MultibodyTree<T>* tree) {
+
+  tree->get_topology();
+
+  // Notice that here we cannot use std::make_unique since constructors are made
+  // private to avoid users creating bodies by other means other than calling
+  // Create().
+
+  RigidBody<T>* body = new RigidBody<T>(mass_properties);
+  // tree takes ownership.
+  BodyIndex body_id = tree->AddBody(std::unique_ptr<Body<T>>(body));
+  body->set_parent_tree(tree);
+  body->set_id(body_id);
+
+  // Create a BodyFrame associated with this body.
+  BodyFrame<T>& body_frame = BodyFrame<T>::Create(tree, *body);
+  body->set_body_frame(body_frame.get_id());
+
+  return *body;
+}
+#endif
 
 // Macro used to explicitly instantiate implementations on all sizes needed.
 #define EXPLICITLY_INSTANTIATE(T) \

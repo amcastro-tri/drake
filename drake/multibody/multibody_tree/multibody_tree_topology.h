@@ -70,8 +70,10 @@ struct BodyNodeTopology {
   BodyNodeIndex id{BodyNodeIndex::Invalid()};  // Unique id in the parent tree.
   int level{-1};  // Depth level in the MultibodyTree, level = 0 for the world.
 
-  BodyIndex body;
-  MobilizerIndex mobilizer;
+  BodyIndex body;         // this node's body B.
+  BodyIndex parent_body;  // The parent body P.
+
+  MobilizerIndex mobilizer;  // The mobilizer connecting bodies P and B.
 
   // The unique identifier to the parent BodyNode of this node.
   BodyNodeIndex parent_body_node;

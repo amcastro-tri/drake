@@ -262,6 +262,7 @@ void MultibodyTree<T>::CompileTopology() {
       BodyIndex parent_body =
           mobilizer_topologies[body_node.mobilizer].inboard_body;
       body_node.parent_body_node = body_topologies[parent_body].body_node;
+      body_node.parent_body = parent_body;
     }
   }
 
@@ -348,19 +349,6 @@ void MultibodyTree<T>::PrintTopology() const {
     body_node->PrintTopology();
 
   PRINT_VAR(topology_.X_BF_pool_size);
-}
-
-template <typename T>
-const Body<T>& MultibodyTree<T>::get_body(BodyIndex body_id) const {
-  DRAKE_ASSERT(body_id.is_valid() && body_id < get_num_bodies());
-  return *bodies_[body_id];
-}
-
-template <typename T>
-const Mobilizer<T>& MultibodyTree<T>::get_mobilizer(
-    MobilizerIndex mobilizer_id) const {
-  DRAKE_ASSERT(mobilizer_id.is_valid() && mobilizer_id < get_num_mobilizers());
-  return *mobilizers_[mobilizer_id];
 }
 
 #if 0

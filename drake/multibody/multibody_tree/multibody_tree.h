@@ -61,13 +61,26 @@ class MultibodyTree {
         material_frames_[bodies_[0]->get_body_frame_id()].get());
   }
 
-  const Body<T>& get_body(BodyIndex body_id) const;
+  const Body<T>& get_body(BodyIndex body_id) const {
+    DRAKE_ASSERT(body_id.is_valid() && body_id < get_num_bodies());
+    return *bodies_[body_id];
+  }
 
   Body<T>* get_mutable_body(BodyIndex body_id) const {
     return bodies_[body_id].get();
   }
 
-  const Mobilizer<T>& get_mobilizer(MobilizerIndex mobilizer_id) const;
+  const Mobilizer<T>& get_mobilizer(MobilizerIndex mobilizer_id) const {
+    DRAKE_ASSERT(
+        mobilizer_id.is_valid() && mobilizer_id < get_num_mobilizers());
+    return *mobilizers_[mobilizer_id];
+  }
+
+  const MaterialFrame<T>& get_material_frame(FrameIndex frame_id) const {
+    DRAKE_ASSERT(
+        frame_id.is_valid() && frame_id < get_num_frames());
+    return *material_frames_[frame_id];
+  }
 
   //const Mobilizer<T>& get_joint(MobilizerIndex joint_id) const;
   //const Body<T>& get_body_inboard_body(BodyIndex body_id) const;
@@ -79,6 +92,8 @@ class MultibodyTree {
   /// Sizes needed to allocate Context and Cache entries are determined with
   /// this call.
   void Compile();
+
+  const MultibodyTreeTopology& get_topology() const { return topology_;}
 
   /// Prints the topology of this multibody tree to standard output.
   /// Useful for debugging.

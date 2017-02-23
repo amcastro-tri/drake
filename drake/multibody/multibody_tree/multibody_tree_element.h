@@ -1,5 +1,7 @@
 #pragma once
 
+#include "drake/common/drake_assert.h"
+
 namespace drake {
 namespace multibody {
 
@@ -15,7 +17,7 @@ class MultibodyTreeElement<ElementType<T>, ElementIndexType> {
   friend MultibodyTree<T>;
 
   const MultibodyTree<T>& get_parent_tree() const {
-    HasParentTreeOrThrows();
+    DRAKE_ASSERT_VOID(HasParentTreeOrThrows());
     return *parent_tree_;
   }
 
@@ -30,8 +32,8 @@ class MultibodyTreeElement<ElementType<T>, ElementIndexType> {
 
   /// Chekcs if this MultibodyTreeElement has been registered into a
   /// MultibodyTree. If not, it throws an exception.
-  void HasParentTreeOrThrows() {
-    if (parent_tree_ == nullptr || id_.is_invalid()) {
+  void HasParentTreeOrThrows() const {
+    if (parent_tree_ == nullptr || get_id().is_invalid()) {
       throw std::runtime_error(
           "This multibody component was not added to a MultibodyTree.");
     }
@@ -54,7 +56,7 @@ class MultibodyTreeElement<ElementType<T>, ElementIndexType> {
   //virtual void Compile() = 0;
 
  protected:
-  const MultibodyTree<T>* parent_tree_;
+  const MultibodyTree<T>* parent_tree_{nullptr};
   ElementIndexType id_{ElementIndexType::Invalid()};
 
   // Only MultibodyTree<T> can set these.

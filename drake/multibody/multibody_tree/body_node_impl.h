@@ -8,6 +8,7 @@
 #include "drake/multibody/multibody_tree/mobilizer.h"
 #include "drake/multibody/multibody_tree/math/spatial_algebra.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
+#include "drake/multibody/multibody_tree/multibody_tree.h"
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
 #include "drake/multibody/multibody_tree/spatial_inertia.h"
@@ -33,9 +34,11 @@ class BodyNodeImpl : public BodyNode<T> {
   using BodyNode<T>::get_X_MB;
   using BodyNode<T>::get_X_FM;
 
-  BodyNodeImpl(BodyNodeTopology topology,
+  BodyNodeImpl(const MultibodyTree<T>* tree, const BodyNodeTopology& topology,
                const Body<T>* body, const Mobilizer<T>* mobilizer) :
-      BodyNode<T>(topology, body, mobilizer) {}
+      BodyNode<T>(topology, body, mobilizer) {
+    this->set_parent_tree(tree);
+  }
 
   void UpdateAcrossBodiesSpatialVelocityJacobian(
       const MultibodyTreeContext<T>& context) const final;

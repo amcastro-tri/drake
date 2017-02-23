@@ -27,6 +27,14 @@ class MaterialFrame : public Frame<T> {
 
   const MaterialFrameTopology get_topology() const { return topology_;}
 
+  /// Given the pose `X_MF` of frame `F` measured in this frame `M`, return the
+  /// pose of frame `F` measured and expressed in the frame `B` of the body
+  /// to which this material frame is attached.
+  /// In the particular case `M = B`, this method directly returns `X_MF`.
+  virtual Isometry3<T> get_offset_pose_in_body(
+      const MultibodyTreeContext<T>& context,
+      const Isometry3<T>& X_MF) const = 0;
+
   /// Sets the topological information for this mobilizer.
   /// This is an implementation detail. User code should never call it.
   void SetTopology(const MaterialFrameTopology& topology) {
@@ -67,6 +75,17 @@ class BodyFrame : public MaterialFrame<T> {
   /// The MultibodyTree @param tree takes ownership of the frame.
   static BodyFrame<T>& Create(MultibodyTree<T>* tree, const Body<T>& body);
 
+  /// Given the pose `X_MF` of frame `F` measured in this material frame `M`,
+  /// return the pose of frame `F` measured and expressed in the frame `B` of
+  /// the body to which this material frame is attached.
+  /// In this particular case since `this` material frame `M` IS the frame of
+  /// body `B`, this method directly returns `X_MF`.
+  Isometry3<T> get_offset_pose_in_body(
+      const MultibodyTreeContext<T>& context,
+      const Isometry3<T>& X_MF) const final {
+    return X_MF;
+  }
+
  private:
   BodyFrame(const Body<T>& body);
 };
@@ -78,14 +97,25 @@ class RigidBodyFrame : public MaterialFrame<T> {
  public:
   static RigidBodyFrame<T>& Create(
       MultibodyTree<T>* tree,
-      const RigidBody<T>& body, const Isometry3<T>& X_BF);
+      const RigidBody<T>& body, const Isometry3<T>& X_BM);
 
   void SetDefaults(MultibodyTreeContext<T>* context) final;
 
- private:
-  RigidBodyFrame(const RigidBody<T>& B, const Isometry3<T>& X_BF);
+  /// Given the pose `X_MF` of frame `F` measured in this material frame `M`,
+  /// return the pose of frame `F` measured and expressed in the frame `B` of
+  /// the body to which this material frame is attached.
+  /// For `this` rigid body frame `M` with pose `X_BM` measured and expressed in
+  /// body frame `B`, this method computes `X_BF = X_BM * X_MF`.
+  Isometry3<T> get_offset_pose_in_body(
+      const MultibodyTreeContext<T>& context,
+      const Isometry3<T>& X_MF) const final {
+    return X_BM_ * X_MF;
+  }
 
-  Isometry3<T> X_BF_;
+ private:
+  RigidBodyFrame(const RigidBody<T>& B, const Isometry3<T>& X_BM);
+
+  Isometry3<T> X_BM_;
 };
 
 #if 0

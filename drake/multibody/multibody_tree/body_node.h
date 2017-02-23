@@ -291,14 +291,9 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // frame F, we can ask frame F (who's parent body is P) for the pose of body
     // B measured in the frame of the parent body P.
     // In the particular case F = B, this method directly returns X_FB.
-    //X_PB = F.get_offset_pose_in_body(contex, X_FB);
-
-    if (topology_.F_equals_P) {
-      X_PB = X_FB;
-    } else {
-      const Isometry3<T>& X_PF = get_X_PF(*pc);
-      X_PB = X_PF * X_FB;
-    }
+    // For flexible bodies this gives the chance to frame F to pull its pose
+    // from the context.
+    X_PB = FrameF.get_offset_pose_in_body(context, X_FB);
 
     X_WB = X_WP * X_PB;
   }

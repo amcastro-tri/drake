@@ -39,12 +39,12 @@ BodyFrame<T>::BodyFrame(
 
 template <typename T>
 RigidBodyFrame<T>& RigidBodyFrame<T>::Create(
-    MultibodyTree<T>* tree, const RigidBody<T>& body, const Isometry3<T>& X_BF)
+    MultibodyTree<T>* tree, const RigidBody<T>& body, const Isometry3<T>& X_BM)
 {
   // Notice that here we cannot use std::make_unique since constructors are made
   // private to avoid users creating frames by other means other than calling
   // Create().
-  RigidBodyFrame<T>* frame = new RigidBodyFrame<T>(body, X_BF);
+  RigidBodyFrame<T>* frame = new RigidBodyFrame<T>(body, X_BM);
   FrameIndex frame_id =
       tree->AddMaterialFrame(std::unique_ptr<MaterialFrame<T>>(frame));
   frame->set_parent_tree(tree);
@@ -54,14 +54,14 @@ RigidBodyFrame<T>& RigidBodyFrame<T>::Create(
 
 template <typename T>
 RigidBodyFrame<T>::RigidBodyFrame(
-    const RigidBody<T>& body, const Isometry3<T>& X_BF) :
-    MaterialFrame<T>(body), X_BF_(X_BF) {}
+    const RigidBody<T>& body, const Isometry3<T>& X_BM) :
+    MaterialFrame<T>(body), X_BM_(X_BM) {}
 
 template <typename T>
 void RigidBodyFrame<T>::SetDefaults(MultibodyTreeContext<T>* context) {
   PositionKinematicsCache<T>* pc = context->get_mutable_position_kinematics();
-  pc->get_mutable_X_BF(this->get_topology().X_BF_index) = X_BF_;
-  pc->get_mutable_X_MB(this->get_topology().body_node) = X_BF_.inverse();
+  pc->get_mutable_X_BF(this->get_topology().X_BF_index) = X_BM_;
+  pc->get_mutable_X_MB(this->get_topology().body_node) = X_BM_.inverse();
 }
 
 #if 0

@@ -13,15 +13,6 @@ package(
 )
 
 drake_cc_library(
-    name = "multibody_tree_indexes",
-    srcs = [],
-    hdrs = ["multibody_tree_indexes.h"],
-    deps = [
-        "//drake/common:type_safe_index",
-    ],
-)
-
-drake_cc_library(
     name = "multibody_tree",
     srcs = [
         "multibody_tree.cc",
@@ -30,12 +21,23 @@ drake_cc_library(
     hdrs = [
         "body.h",
         "multibody_tree.h",
+        "multibody_tree_context.h",
         "multibody_tree_element.h",
+        "position_kinematics_cache.h",
         "rigid_body.h",
     ],
     deps = [
         ":multibody_tree_indexes",
         "//drake/common:autodiff",
+    ],
+)
+
+drake_cc_library(
+    name = "multibody_tree_indexes",
+    srcs = [],
+    hdrs = ["multibody_tree_indexes.h"],
+    deps = [
+        "//drake/common:type_safe_index",
     ],
 )
 
@@ -59,14 +61,22 @@ drake_cc_library(
     ],
 )
 
+# === test/ ===
+
 drake_cc_googletest(
-    name = "multibody_tree_indexes_tests",
-    deps = [":multibody_tree_indexes"],
+    name = "double_pendulum_test",
+    #    defines = ["EIGEN_RUNTIME_NO_MALLOC"],
+    deps = [":multibody_tree"],
 )
 
 drake_cc_googletest(
     name = "multibody_tree_creation_tests",
     deps = [":multibody_tree"],
+)
+
+drake_cc_googletest(
+    name = "multibody_tree_indexes_tests",
+    deps = [":multibody_tree_indexes"],
 )
 
 drake_cc_googletest(

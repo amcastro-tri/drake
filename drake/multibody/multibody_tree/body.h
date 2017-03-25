@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "drake/common/drake_copyable.h"
+#include "drake/multibody/multibody_tree/multibody_tree_context.h"
 #include "drake/multibody/multibody_tree/multibody_tree_element.h"
 #include "drake/multibody/multibody_tree/multibody_tree_indexes.h"
 
@@ -38,6 +39,15 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
   /// At MultibodyTree::Compile() time, each body will retrieve its topology
   /// from the parent MultibodyTree.
   virtual void Compile() {}
+
+
+  const Isometry3<T>& get_pose_in_world(
+      const MultibodyTreeContext<T>& context) const
+  {
+    return this->get_parent_tree().get_body_pose_in_world(
+        context, this->get_index());
+  }
+
  protected:
   // Default constructor. Only sub-classes can use it.
   Body() = default;

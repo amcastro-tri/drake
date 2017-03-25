@@ -1,5 +1,12 @@
 #pragma once
 
+// We allow checking for the occurrence of dynamic memory allocation is Debug
+// builds.
+#ifndef NDEBUG
+// Define this symbol to enable runtime tests for allocations.
+#define EIGEN_RUNTIME_NO_MALLOC
+#endif
+
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -7,6 +14,7 @@
 
 #include "drake/common/drake_copyable.h"
 #include "drake/multibody/multibody_tree/body.h"
+#include "drake/multibody/multibody_tree/multibody_tree_context.h"
 
 namespace drake {
 namespace multibody {
@@ -141,6 +149,20 @@ class MultibodyTree {
   /// @throws std::logic_error If users attempt to call this method on an
   ///         already compiled %MultibodyTree.
   void Compile();
+
+  /// @pre The method Compile() must be called before attempting to create a
+  /// context in order for the %MulitbodyTree topology to be valid at the moment
+  /// of allocating resources.
+  ///
+  /// @throws std::logic_error If users attempt to call this method on a
+  ///         %MultibodyTree with an invalid topology.
+  std::unique_ptr<MultibodyTreeContext<T>> CreateDefaultContext() const;
+
+   /// Sets default values in the context including pre-computed cache entries.
+  void SetDefaults(MultibodyTreeContext<T>* context) const {}
+
+  const Isometry3<T>& get_body_pose_in_world(
+      const MultibodyTreeContext<T>& context, BodyIndex index) const;
 
  private:
   // TODO(amcastro-tri): In future PR's adding MBT computational methods, write

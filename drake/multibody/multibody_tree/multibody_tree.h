@@ -15,6 +15,7 @@
 #include "drake/common/drake_copyable.h"
 #include "drake/multibody/multibody_tree/body.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
+#include "drake/systems/framework/context.h"
 
 namespace drake {
 namespace multibody {
@@ -156,13 +157,15 @@ class MultibodyTree {
   ///
   /// @throws std::logic_error If users attempt to call this method on a
   ///         %MultibodyTree with an invalid topology.
-  std::unique_ptr<MultibodyTreeContext<T>> CreateDefaultContext() const;
+  //std::unique_ptr<MultibodyTreeContext<T>> CreateDefaultContext() const;
+
+  std::unique_ptr<systems::Context<T>> CreateDefaultContext() const;
 
    /// Sets default values in the context including pre-computed cache entries.
-  void SetDefaults(MultibodyTreeContext<T>* context) const {}
+  void SetDefaults(systems::Context<T>* context) const {}
 
   const Isometry3<T>& get_body_pose_in_world(
-      const MultibodyTreeContext<T>& context, BodyIndex index) const;
+      const systems::Context<T>& context, BodyIndex index) const;
 
  private:
   // TODO(amcastro-tri): In future PR's adding MBT computational methods, write
@@ -179,6 +182,10 @@ class MultibodyTree {
   // TODO(amcastro-tri): this flag will go within the topology class in a
   // future PR.
   bool topology_is_valid_{false};
+
+  // Cache tickets.
+  // These cache tickets should be set just once in CreateDefaultContext().
+  mutable systems::CacheTicket position_kinematics_ticket_;
 };
 
 }  // namespace multibody

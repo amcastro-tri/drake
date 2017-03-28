@@ -75,7 +75,7 @@ drake_cc_library(
     deps = [
         ":unit_inertia",
         "//drake/math:gradient",
-        "//drake/multibody/multibody_tree/math:spatial_algebra",
+        "//drake/multibody/multibody_tree/math:spatial_algebra_old",
     ],
 )
 

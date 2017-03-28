@@ -217,6 +217,10 @@ class GeneralSpatialVector : public SpatialVector<GeneralSpatialVector, T> {
   GeneralSpatialVector<T> Shift(const Vector3<T>& p_BQ_E) const {
     return GeneralSpatialVector<T>(*this).ShiftInPlace(p_BQ_E);
   }
+
+  T dot(const GeneralSpatialVector<T>& V) const {
+    return this->get_coeffs().dot(V.get_coeffs());
+  }
 };
 
 template <typename T>

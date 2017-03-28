@@ -120,8 +120,8 @@ class SpatialInertia {
   /// @returns The product from the right of `this` inertia with @p V.
   GeneralSpatialVector<T> operator*(const GeneralSpatialVector<T>& V) const
   {
-    const auto& v = V.linear();   // Linear velocity.
-    const auto& w = V.angular();  // Angular velocity.
+    const auto& v = V.translational();   // Linear velocity.
+    const auto& w = V.rotational();  // Angular velocity.
     const Vector3<T> mxp = mass_ * p_BoBc_F_;
     return GeneralSpatialVector<T>(
         I_Bo_F_ * w + mxp.cross(v), /* angular component */

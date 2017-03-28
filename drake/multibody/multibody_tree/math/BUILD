@@ -26,6 +26,7 @@ drake_cc_library(
     hdrs = [
         "small_vectors.h",
         "spatial_algebra_old.h",
+        "spatial_vector.h",
     ],
     deps = [
         "//drake/common",

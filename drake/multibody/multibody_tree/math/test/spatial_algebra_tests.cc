@@ -39,8 +39,8 @@ GTEST_TEST(SpatialAlgebra, SpatialVelocityShift) {
   GeneralSpatialVector<double> V_AQ = phi_BQ_A.transpose() * V_AB;
   GeneralSpatialVector<double> expected_V_AQ(w_AB, {7, 8, 0});
 
-  EXPECT_TRUE(V_AQ.angular().isApprox(expected_V_AQ.angular()));
-  EXPECT_TRUE(V_AQ.linear().isApprox(expected_V_AQ.linear()));
+  EXPECT_TRUE(V_AQ.rotational().isApprox(expected_V_AQ.rotational()));
+  EXPECT_TRUE(V_AQ.translational().isApprox(expected_V_AQ.translational()));
 }
 
 GTEST_TEST(SpatialAlgebra, SpatialVelocityJacobianShift) {
@@ -70,13 +70,13 @@ GTEST_TEST(SpatialAlgebra, SpatialVelocityJacobianShift) {
   expected_J_AQ.col(1) = 2. * GeneralSpatialVector<double>(w_AB, {7, 8, 0});
   expected_J_AQ.col(2) = 3. * GeneralSpatialVector<double>(w_AB, {7, 8, 0});
 
-  EXPECT_TRUE(J_AQ.col(0).angular().isApprox(expected_J_AQ.col(0).angular()));
-  EXPECT_TRUE(J_AQ.col(1).angular().isApprox(expected_J_AQ.col(1).angular()));
-  EXPECT_TRUE(J_AQ.col(2).angular().isApprox(expected_J_AQ.col(2).angular()));
+  EXPECT_TRUE(J_AQ.col(0).rotational().isApprox(expected_J_AQ.col(0).rotational()));
+  EXPECT_TRUE(J_AQ.col(1).rotational().isApprox(expected_J_AQ.col(1).rotational()));
+  EXPECT_TRUE(J_AQ.col(2).rotational().isApprox(expected_J_AQ.col(2).rotational()));
 
-  EXPECT_TRUE(J_AQ.col(0).linear().isApprox(expected_J_AQ.col(0).linear()));
-  EXPECT_TRUE(J_AQ.col(1).linear().isApprox(expected_J_AQ.col(1).linear()));
-  EXPECT_TRUE(J_AQ.col(2).linear().isApprox(expected_J_AQ.col(2).linear()));
+  EXPECT_TRUE(J_AQ.col(0).translational().isApprox(expected_J_AQ.col(0).translational()));
+  EXPECT_TRUE(J_AQ.col(1).translational().isApprox(expected_J_AQ.col(1).translational()));
+  EXPECT_TRUE(J_AQ.col(2).translational().isApprox(expected_J_AQ.col(2).translational()));
 }
 
 // This tests the multiplication operation by a rotation matrix in order to

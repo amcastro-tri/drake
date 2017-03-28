@@ -59,8 +59,8 @@ void RevoluteMobilizer<T>::CalcAcrossMobilizerVelocityJacobian(
     const MultibodyTreeContext<T>& context,
     PositionKinematicsCache<T>* pc) const {
   HMatrix& H_FM = this->get_mutable_H_FM(pc);
-  H_FM.col(0).angular() = axis_F_;
-  H_FM.col(0).linear() = Vector3<T>::Zero();
+  H_FM.col(0).rotational() = axis_F_;
+  H_FM.col(0).translational() = Vector3<T>::Zero();
 }
 
 template <typename T>

@@ -111,7 +111,6 @@ drake_cc_googletest(
     name = "mass_properties_test",
     deps = [
         ":spatial_inertia",
-        "//drake/multibody/multibody_tree/math:spatial_algebra_old",
     ],
 )
 

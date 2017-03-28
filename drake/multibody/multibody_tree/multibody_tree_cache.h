@@ -203,7 +203,7 @@ class PositionKinematicsCache {
     com_W_pool_[kWorldBodyId].setZero();
 
     M_Bo_W_pool_.resize(num_nodes_);
-    M_Bo_W_pool_[kWorldBodyId].SetToNaN();
+    M_Bo_W_pool_[kWorldBodyId].SetNaN();
   }
 
   void Print() {

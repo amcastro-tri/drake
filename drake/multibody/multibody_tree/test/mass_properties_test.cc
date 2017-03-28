@@ -2,6 +2,7 @@
 
 #include "drake/common/eigen_types.h"
 #include "drake/common/nice_type_name.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
 #include "drake/multibody/multibody_tree/spatial_inertia.h"
 #include "drake/multibody/multibody_tree/unit_inertia.h"
@@ -32,22 +33,18 @@ GTEST_TEST(RotationalInertia, Symmetry) {
   std::cout << I(1,1) << std::endl;
   std::cout << std::endl;
 
+  // NOT ALLOWED
   //I(0,2) = -1.0;
-  I(2,0) = -1.0;
-  std::cout << I(0,0) << std::endl;
-  std::cout << I(0,2) << std::endl;
-  std::cout << I(2,0) << std::endl;
-  std::cout << I(1,1) << std::endl;
+  //I(2,0) = -1.0;
+  //std::cout << I(0,0) << std::endl;
+  //std::cout << I(0,2) << std::endl;
+  //std::cout << I(2,0) << std::endl;
+  //std::cout << I(1,1) << std::endl;
 
 
   PRINT_VARn(I);
 
-  PRINT_VARn(I.get_matrix());
-
   PRINT_VARn(I.CopyToFullMatrix3());
-
-  Matrix3<double> m = I.get_symmetric_matrix_view();
-  PRINT_VARn(m);
 
   PRINT_VARn(I.get_moments());
 
@@ -55,7 +52,7 @@ GTEST_TEST(RotationalInertia, Symmetry) {
   // operator(i,j) regardless of the in-memory representation.
   // Replace by EXPECT_EQ's on the values.
   PRINT_VARn(I.get_products());
-  //std::cout << I.get_matrix();
+  //std::cout << I.CopyToFullMatrix3();
 }
 
 GTEST_TEST(RotationalInertia, ReExpressInAnotherFrame) {
@@ -65,7 +62,7 @@ GTEST_TEST(RotationalInertia, ReExpressInAnotherFrame) {
   // principal axes.
   // Inertia computed about Ro and expressed in R.
   RotationalInertia<double> I_Ro_R =
-      UnitInertia<double>::SolidRod(radius, length);
+      UnitInertia<double>::SolidCylinder(radius, length);
   // Momentum about its axis aligned with R's z-axis.
   const double Irr = I_Ro_R(2, 2);
   // Moment of inertia about an axis perpendicular to the rod's axis.
@@ -80,7 +77,7 @@ GTEST_TEST(RotationalInertia, ReExpressInAnotherFrame) {
 
   RotationalInertia<double> I_Ro_F = I_Ro_R.ReExpress(R_FR);
 
-  PRINT_VARn(I_Ro_F.get_matrix());
+  PRINT_VARn(I_Ro_F.CopyToFullMatrix3());
 
   // Now the R's z-axis is oriented along F's y-axis.
   EXPECT_NEAR(I_Ro_F(0, 0), Iperp, Eigen::NumTraits<double>::epsilon());
@@ -90,7 +87,7 @@ GTEST_TEST(RotationalInertia, ReExpressInAnotherFrame) {
   PRINT_VARn(I_Ro_F);
 
   // Check if after transformation this still is a physically valid inertia.
-  EXPECT_TRUE(I_Ro_F.IsPhysicallyValid());
+  EXPECT_TRUE(I_Ro_F.CouldBePhysicallyValid());
 
 }
 
@@ -115,9 +112,7 @@ GTEST_TEST(RotationalInertia, PrincipalMomentsOfInertia) {
   RotationalInertia<double> I_Bc_Q = I_Bc_W.ReExpress(R_WQ);
 
   // Compute the principal moments.
-  Vector3d principal_moments;
-  EXPECT_TRUE(I_Bc_Q.CalcPrincipalMomentsOfInertia(
-      &principal_moments));
+  Vector3d principal_moments = I_Bc_Q.CalcPrincipalMomentsOfInertia();
   PRINT_VARn(principal_moments);
 
   // The expected moments are those originally computed in I_Bc_W, though the
@@ -229,7 +224,7 @@ GTEST_TEST(SpatialInertia, Shift) {
   const double radius = 0.05, length = 1.0;
   SpatialInertia<double> M_Bo_W(
       mass, Vector3d::Zero(),
-      UnitInertia<double>::SolidRod(radius, length));
+      UnitInertia<double>::SolidCylinder(radius, length));
   M_Bo_W.ReExpressInPlace(R_WB);
 
   // Replace this print by the respective getters and check values.
@@ -252,7 +247,7 @@ GTEST_TEST(SpatialInertia, Shift) {
 
   // Expected moment of inertia for a rod when computed about one of its ends.
   const double I_end = mass * length / 3.0;
-  const auto& I_Xo_W = M_Xo_W.get_rotational_inertia();
+  const auto& I_Xo_W = M_Xo_W.CalcRotationalInertia();
   EXPECT_NEAR(I_Xo_W(0,0), I_end, Eigen::NumTraits<double>::epsilon());
   EXPECT_NEAR(I_Xo_W(2,2), I_end, Eigen::NumTraits<double>::epsilon());
 }
@@ -275,7 +270,7 @@ GTEST_TEST(SpatialInertia, ProductWithSpatialVectors) {
   SpatialInertia<double> M_Bc_W(
       mass,
       Vector3d::Zero(),
-      UnitInertia<double>::SolidRod(radius, length));
+      UnitInertia<double>::SolidCylinder(radius, length));
 
   // Spatial inertia about the top end of the bar.
   SpatialInertia<double> M_Eo_W =
@@ -326,7 +321,7 @@ GTEST_TEST(SpatialInertia, ComputeKineticEnergy) {
   SpatialInertia<double> M_Bc_W(
       mass,
       Vector3d::Zero(),
-      UnitInertia<double>::SolidRod(radius, length));
+      UnitInertia<double>::SolidCylinder(radius, length));
 
   // Spatial inertia about the top end of the bar.
   SpatialInertia<double> M_Eo_W =

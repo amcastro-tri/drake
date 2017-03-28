@@ -75,6 +75,18 @@ drake_cc_library(
     deps = [
         ":unit_inertia",
         "//drake/math:gradient",
+        "//drake/multibody/multibody_tree/math:spatial_algebra",
+        "//drake/multibody/multibody_tree/math:spatial_algebra_old",
+    ],
+)
+
+drake_cc_library(
+    name = "spatial_inertia_old",
+    srcs = [],
+    hdrs = ["spatial_inertia_old.h"],
+    deps = [
+        ":unit_inertia",
+        "//drake/math:gradient",
         "//drake/multibody/multibody_tree/math:spatial_algebra_old",
     ],
 )
@@ -99,6 +111,7 @@ drake_cc_googletest(
     name = "mass_properties_test",
     deps = [
         ":spatial_inertia",
+        "//drake/multibody/multibody_tree/math:spatial_algebra_old",
     ],
 )
 

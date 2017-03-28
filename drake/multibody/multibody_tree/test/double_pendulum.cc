@@ -39,7 +39,7 @@ int DoMain() {
   const double radius = 0.005;
   // Unit inertia in the "geometry" frame G computed about the geometric
   // center Gcm.
-  UnitInertia<double> G_Gcm_G = UnitInertia<double>::SolidRod(radius, length);
+  UnitInertia<double> G_Gcm_G = UnitInertia<double>::SolidCylinder(radius, length);
   // Transformation from the geometry frame G to the body frame B.
   Isometry3d X_BG(AngleAxisd(M_PI_2, Vector3d::UnitX()));
   UnitInertia<double> G_Bcm_B = G_Gcm_G.ReExpress(X_BG.rotation());

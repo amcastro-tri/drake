@@ -18,9 +18,19 @@ drake_cc_library(
     hdrs = [
         "small_vectors.h",
         "spatial_algebra_old.h",
-        "spatial_vector.h",
     ],
     deps = [
+        ":general_spatial_vector",
+        "//drake/common",
+    ],
+)
+
+drake_cc_library(
+    name = "general_spatial_vector",
+    srcs = [],
+    hdrs = ["general_spatial_vector.h"],
+    deps = [
+        ":spatial_vector",
         "//drake/common",
     ],
 )

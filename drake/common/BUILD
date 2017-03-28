@@ -27,7 +27,6 @@ drake_cc_library(
         "never_destroyed.h",
         "text_logging.h",
     ],
-    linkstatic = 1,
     deps = [
         "@eigen//:eigen",
         "@spdlog//:spdlog",
@@ -44,13 +43,11 @@ drake_cc_library(
 drake_cc_library(
     name = "dummy_value",
     hdrs = ["dummy_value.h"],
-    linkstatic = 1,
 )
 
 drake_cc_library(
     name = "number_traits",
     hdrs = ["number_traits.h"],
-    linkstatic = 1,
 )
 
 # Drake's specific ScalarType-providing libraries.
@@ -58,7 +55,6 @@ drake_cc_library(
     name = "double",
     srcs = ["double_overloads.cc"],
     hdrs = ["double_overloads.h"],
-    linkstatic = 1,
 )
 
 drake_cc_library(
@@ -67,7 +63,6 @@ drake_cc_library(
         "autodiff_overloads.h",
         "eigen_autodiff_types.h",
     ],
-    linkstatic = 1,
     deps = [
         ":common",
         ":cond",
@@ -78,7 +73,6 @@ drake_cc_library(
 drake_cc_library(
     name = "extract_double",
     hdrs = ["extract_double.h"],
-    linkstatic = 1,
     deps = [
         ":common",
         ":nice_type_name",
@@ -90,7 +84,6 @@ drake_cc_library(
     name = "functional_form",
     srcs = ["functional_form.cc"],
     hdrs = ["functional_form.h"],
-    linkstatic = 1,
     deps = [
         ":common",
         ":dummy_value",
@@ -104,7 +97,6 @@ drake_cc_library(
         "polynomial.h",
         "trig_poly.h",
     ],
-    linkstatic = 1,
     deps = [
         ":autodiff",
         ":common",
@@ -132,7 +124,6 @@ drake_cc_library(
         "symbolic_variable.h",
         "symbolic_variables.h",
     ],
-    linkstatic = 1,
     deps = [
         ":common",
         ":cond",
@@ -153,6 +144,16 @@ drake_cc_library(
     ],
 )
 
+drake_cc_library(
+    name = "type_safe_index",
+    srcs = [],
+    hdrs = ["type_safe_index.h"],
+    deps = [
+        ":common",
+        ":nice_type_name",
+    ],
+)
+
 # Miscellaneous utilities.
 drake_cc_library(
     name = "drake_path",
@@ -161,7 +162,6 @@ drake_cc_library(
     # testonly = 1,
     srcs = ["drake_path.cc"],
     hdrs = ["drake_path.h"],
-    linkstatic = 1,
     deps = [
         ":common",
     ],
@@ -187,7 +187,6 @@ drake_cc_library(
     name = "eigen_matrix_compare",
     testonly = 1,
     hdrs = ["eigen_matrix_compare.h"],
-    linkstatic = 1,
     deps = [
         ":common",
     ],
@@ -196,7 +195,6 @@ drake_cc_library(
 drake_cc_library(
     name = "is_approx_equal_abstol",
     hdrs = ["is_approx_equal_abstol.h"],
-    linkstatic = 1,
     deps = [
         ":common",
     ],
@@ -206,7 +204,6 @@ drake_cc_library(
     name = "monomial",
     srcs = ["monomial.cc"],
     hdrs = ["monomial.h"],
-    linkstatic = 1,
     deps = [
         ":common",
         ":symbolic",
@@ -217,7 +214,6 @@ drake_cc_library(
     name = "nice_type_name",
     srcs = ["nice_type_name.cc"],
     hdrs = ["nice_type_name.h"],
-    linkstatic = 1,
     deps = [
         ":common",
     ],
@@ -226,7 +222,6 @@ drake_cc_library(
 drake_cc_library(
     name = "sorted_vectors_have_intersection",
     hdrs = ["sorted_vectors_have_intersection.h"],
-    linkstatic = 1,
     deps = [
         ":common",
     ],
@@ -238,11 +233,13 @@ drake_cc_library(
     # TODO(jwnimmer-tri) Ideally, gflags BUILD would do this for us.  Figure
     # out what's going on.  Definitely don't let "-pthread" get copy-pasta'd
     # throughout our code.
-    linkopts = ["-pthread"],
-    linkstatic = 1,
+    linkopts = select({
+        "//tools:linux": ["-pthread"],
+        "//conditions:default": [],
+    }),
     deps = [
-        ":common",
         "@gflags//:gflags",
+        ":common",
     ],
 )
 
@@ -252,7 +249,6 @@ drake_cc_library(
     name = "random_polynomial_matrix",
     testonly = 1,
     hdrs = ["test/random_polynomial_matrix.h"],
-    linkstatic = 1,
     deps = [
         ":polynomial",
     ],
@@ -262,7 +258,6 @@ drake_cc_library(
     name = "measure_execution",
     testonly = 1,
     hdrs = ["test/measure_execution.h"],
-    linkstatic = 1,
 )
 
 drake_cc_googletest(
@@ -500,6 +495,11 @@ drake_cc_googletest(
         ":common",
         ":polynomial",
     ],
+)
+
+drake_cc_googletest(
+    name = "type_safe_index_test",
+    deps = [":type_safe_index"],
 )
 
 # TODO(jwnimmer-tri) These tests are currently missing...

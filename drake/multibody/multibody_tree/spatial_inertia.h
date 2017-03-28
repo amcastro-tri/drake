@@ -10,6 +10,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/math/cross_product.h"
 #include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
 #include "drake/multibody/multibody_tree/unit_inertia.h"
 

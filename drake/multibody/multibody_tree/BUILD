@@ -103,6 +103,28 @@ drake_cc_library(
 # === test/ ===
 
 drake_cc_googletest(
+    name = "rotational_inertia_tests",
+    deps = [
+        ":rotational_inertia",
+        "//drake/common:autodiff",
+    ],
+)
+
+drake_cc_googletest(
+    name = "spatial_inertia_tests",
+    deps = [
+        ":spatial_inertia",
+    ],
+)
+
+drake_cc_googletest(
+    name = "unit_inertia_tests",
+    deps = [
+        ":unit_inertia",
+    ],
+)
+
+drake_cc_googletest(
     name = "multibody_tree_topology_test",
     deps = [":multibody_tree"],
 )

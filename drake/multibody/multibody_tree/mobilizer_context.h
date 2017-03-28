@@ -36,7 +36,7 @@ class MobilizerPositionKinematics {
  private:
   Isometry3<T>* X_FM_;
   T* H_FM_;  // Pointer into the first column of H_FM(q)
-  //SpatialVector<T>* HdotTimesV_FM_;
+  //GeneralSpatialVector<T>* HdotTimesV_FM_;
 };
 
 template <typename T>

@@ -4,7 +4,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/frame.h"
 #include "drake/multibody/multibody_tree/mobilizer_impl.h"
-#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 
 namespace drake {
 namespace multibody {

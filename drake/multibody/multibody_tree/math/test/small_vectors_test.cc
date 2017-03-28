@@ -5,7 +5,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/common/nice_type_name.h"
 #include "drake/multibody/multibody_tree/math/small_vectors.h"
-#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 
 #include <iostream>
 #include <sstream>
@@ -67,7 +67,7 @@ GTEST_TEST(SmallVectors, SpatialVector) {
   Vector3d v(1, 2, 3);
 
   // Spatial velocity of frame Y measured and expressed in X.
-  SpatialVector<double> V_XY(w, v);
+  GeneralSpatialVector<double> V_XY(w, v);
 
   EXPECT_TRUE(V_XY.angular().isApprox(w));
   EXPECT_TRUE(V_XY.linear().isApprox(v));

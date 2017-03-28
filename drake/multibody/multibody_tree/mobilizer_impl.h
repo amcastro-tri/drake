@@ -9,7 +9,7 @@
 #include "drake/multibody/multibody_tree/mobilizer.h"
 #include "drake/multibody/multibody_tree/multibody_tree_cache.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
-#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 
 // Forward declaration.
 template<typename T> class Body;  // Only needed for CreateBodyNode().

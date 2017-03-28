@@ -64,7 +64,7 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
     return context.get_position_kinematics().get_M_Bo_W(topology_.id);
   }
 
-  const SpatialVector<T>& get_spatial_velocity_in_world(
+  const GeneralSpatialVector<T>& get_spatial_velocity_in_world(
       const MultibodyTreeContext<T>& context) const
   {
     // TODO(amcastro-tri): Check cache validity

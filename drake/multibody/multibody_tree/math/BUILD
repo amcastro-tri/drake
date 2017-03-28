@@ -25,7 +25,7 @@ drake_cc_library(
     srcs = [],
     hdrs = [
         "small_vectors.h",
-        "spatial_algebra.h",
+        "spatial_algebra_old.h",
     ],
     deps = [
         "//drake/common",

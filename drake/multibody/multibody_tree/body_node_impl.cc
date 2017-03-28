@@ -10,7 +10,7 @@
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
 #include "drake/multibody/multibody_tree/multibody_tree_cache.h"
 #include "drake/multibody/multibody_tree/velocity_kinematics_cache.h"
-#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 
 namespace drake {
 namespace multibody {
@@ -95,8 +95,8 @@ void BodyNodeImpl<T, nq, nv>::UpdateVelocityKinematicsCache_BaseToTip(
 
 
   // Update velocity V_WB of this body's node in the world frame.
-  const SpatialVector<T>& V_WP = get_V_WP(*vc);
-  const SpatialVector<T>& V_PB_W = get_V_PB_W(*vc);
+  const GeneralSpatialVector<T>& V_WP = get_V_WP(*vc);
+  const GeneralSpatialVector<T>& V_PB_W = get_V_PB_W(*vc);
   const ShiftOperatorTranspose<T>& ST_PB_W = this->get_phi_PB_W(pc).transpose();
 
   // This is Eq. 5.6 in Jain (2010), p. 77.
@@ -133,8 +133,8 @@ void BodyNodeImpl<T, nq, nv>::CalcBodySpatialAcceleration_BaseToTip(
     const PositionKinematicsCache<T>& pc,
     const VelocityKinematicsCache<T>& vc,
     const Eigen::Ref<const VectorX<T>>& vdot_pool,
-    std::vector<SpatialVector<T>>* A_WB_pool) const {
-  SpatialVector<T>& A_WB = (*A_WB_pool)[this->get_id()];
+    std::vector<GeneralSpatialVector<T>>* A_WB_pool) const {
+  GeneralSpatialVector<T>& A_WB = (*A_WB_pool)[this->get_id()];
   const Vector<T, nv>& vmdot = get_mobilizer_velocities_from_pool(vdot_pool);
   (void) A_WB;
   (void) vmdot;
@@ -142,7 +142,7 @@ void BodyNodeImpl<T, nq, nv>::CalcBodySpatialAcceleration_BaseToTip(
   // Since this method is called from a base-to-tip recursion, we can assume the
   // spatial acceleration of the parent body was already updated.
   // TODO: access this body body_node_id to avoid paging.
-  //const SpatialVector<T>& A_WP = (*A_WB_pool)[this->get_parent_node()];
+  //const GeneralSpatialVector<T>& A_WP = (*A_WB_pool)[this->get_parent_node()];
 
 
 };

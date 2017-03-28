@@ -6,7 +6,7 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_stl_types.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
 #include "drake/multibody/multibody_tree/spatial_inertia.h"
@@ -22,7 +22,7 @@ namespace multibody {
 template <typename T>
 class PositionKinematicsCache {
  public:
-  typedef eigen_aligned_std_vector<SpatialVector<T>> HMatrix_PoolType;
+  typedef eigen_aligned_std_vector<GeneralSpatialVector<T>> HMatrix_PoolType;
   typedef eigen_aligned_std_vector<Isometry3<T>> X_PoolType;
   typedef eigen_aligned_std_vector<ShiftOperator<T>> ShiftOperatorPoolType;
   typedef eigen_aligned_std_vector<Vector3<T>> Vector3PoolType;

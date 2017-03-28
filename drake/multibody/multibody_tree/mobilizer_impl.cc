@@ -11,7 +11,7 @@
 #include "drake/multibody/multibody_tree/multibody_tree.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
 #include "drake/multibody/multibody_tree/multibody_tree_cache.h"
-#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 
 namespace drake {
 namespace multibody {

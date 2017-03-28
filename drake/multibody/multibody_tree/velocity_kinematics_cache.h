@@ -6,10 +6,10 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_stl_types.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
-#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 
 #include <iostream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
@@ -21,8 +21,8 @@ namespace multibody {
 template <typename T>
 class VelocityKinematicsCache {
  public:
-  typedef std::vector<SpatialVector<T>> HMatrix_PoolType;
-  typedef std::vector<SpatialVector<T>> SpatialVelocity_PoolType;
+  typedef std::vector<GeneralSpatialVector<T>> HMatrix_PoolType;
+  typedef std::vector<GeneralSpatialVector<T>> SpatialVelocity_PoolType;
 
   const VectorX<T>& get_qdot_pool() const { return qdot_;}
 
@@ -47,7 +47,7 @@ class VelocityKinematicsCache {
   /// @returns a constant reference to the spatial velocity of the body node's
   /// body `B` measured in its parent body `P` and expressed in the world
   /// frame `W`.
-  const SpatialVector<T>& get_V_PB_W(BodyNodeIndex body_id) const {
+  const GeneralSpatialVector<T>& get_V_PB_W(BodyNodeIndex body_id) const {
     DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
     return V_PB_W_pool_[body_id];
   }
@@ -55,17 +55,17 @@ class VelocityKinematicsCache {
   /// @returns a mutable reference to the spatial velocity of the body node's
   /// body `B` measured in its parent body `P` and expressed in the world
   /// frame `W`.
-  SpatialVector<T>& get_mutable_V_PB_W(BodyNodeIndex body_id) {
+  GeneralSpatialVector<T>& get_mutable_V_PB_W(BodyNodeIndex body_id) {
     DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
     return V_PB_W_pool_[body_id];
   }
 
-  const SpatialVector<T>& get_V_WB(BodyNodeIndex body_id) const {
+  const GeneralSpatialVector<T>& get_V_WB(BodyNodeIndex body_id) const {
     DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
     return V_WB_pool_[body_id];
   }
 
-  SpatialVector<T>& get_mutable_V_WB(BodyNodeIndex body_id) {
+  GeneralSpatialVector<T>& get_mutable_V_WB(BodyNodeIndex body_id) {
     DRAKE_ASSERT(0 <= body_id && body_id < num_nodes_);
     return V_WB_pool_[body_id];
   }
@@ -89,7 +89,7 @@ class VelocityKinematicsCache {
 
   void Print() {
     PRINT_VAR(V_PB_W_pool_.size());
-    for (const SpatialVector<T>& V_PB_W: V_PB_W_pool_) {
+    for (const GeneralSpatialVector<T>& V_PB_W: V_PB_W_pool_) {
       PRINT_VAR(V_PB_W);
     }
   }

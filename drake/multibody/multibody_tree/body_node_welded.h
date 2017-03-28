@@ -7,7 +7,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/body_node.h"
 #include "drake/multibody/multibody_tree/mobilizer.h"
-#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
@@ -42,7 +42,7 @@ class BodyNodeWelded : public BodyNode<T> {
       const PositionKinematicsCache<T>& pc,
       const VelocityKinematicsCache<T>& vc,
       const Eigen::Ref<const VectorX<T>>& vdot,
-      std::vector<SpatialVector<T>>* A_WB_pool) const final {};
+      std::vector<GeneralSpatialVector<T>>* A_WB_pool) const final {};
 };
 
 }  // namespace multibody

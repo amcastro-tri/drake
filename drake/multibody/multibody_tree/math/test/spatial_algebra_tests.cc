@@ -5,7 +5,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/common/nice_type_name.h"
 #include "drake/multibody/multibody_tree/math/small_vectors.h"
-#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 
 #include <iostream>
 #include <sstream>
@@ -30,14 +30,14 @@ GTEST_TEST(SpatialAlgebra, SpatialVelocityShift) {
   Vector3d w_AB(0, 0, 3);
 
   // Spatial velocity of frame B with respect to A and expressed in A.
-  SpatialVector<double> V_AB(w_AB, v_AB);
+  GeneralSpatialVector<double> V_AB(w_AB, v_AB);
 
   // A shift operator representing the rigid body transformation from frame B
   // to frame Q, expressed in A.
   ShiftOperator<double> phi_BQ_A({2, -2, 0});
 
-  SpatialVector<double> V_AQ = phi_BQ_A.transpose() * V_AB;
-  SpatialVector<double> expected_V_AQ(w_AB, {7, 8, 0});
+  GeneralSpatialVector<double> V_AQ = phi_BQ_A.transpose() * V_AB;
+  GeneralSpatialVector<double> expected_V_AQ(w_AB, {7, 8, 0});
 
   EXPECT_TRUE(V_AQ.angular().isApprox(expected_V_AQ.angular()));
   EXPECT_TRUE(V_AQ.linear().isApprox(expected_V_AQ.linear()));
@@ -51,7 +51,7 @@ GTEST_TEST(SpatialAlgebra, SpatialVelocityJacobianShift) {
   Vector3d w_AB(0, 0, 3);
 
   // Spatial velocity of frame B with respect to A and expressed in A.
-  SpatialVector<double> V_AB(w_AB, v_AB);
+  GeneralSpatialVector<double> V_AB(w_AB, v_AB);
 
   const int ncols = 3;
   SpatialVelocityJacobian<double, ncols> J_AB;
@@ -66,9 +66,9 @@ GTEST_TEST(SpatialAlgebra, SpatialVelocityJacobianShift) {
 
   SpatialVelocityJacobian<double, ncols> J_AQ = phi_BQ_A.transpose() * J_AB;
   SpatialVelocityJacobian<double, ncols> expected_J_AQ;
-  expected_J_AQ.col(0) =      SpatialVector<double>(w_AB, {7, 8, 0});
-  expected_J_AQ.col(1) = 2. * SpatialVector<double>(w_AB, {7, 8, 0});
-  expected_J_AQ.col(2) = 3. * SpatialVector<double>(w_AB, {7, 8, 0});
+  expected_J_AQ.col(0) =      GeneralSpatialVector<double>(w_AB, {7, 8, 0});
+  expected_J_AQ.col(1) = 2. * GeneralSpatialVector<double>(w_AB, {7, 8, 0});
+  expected_J_AQ.col(2) = 3. * GeneralSpatialVector<double>(w_AB, {7, 8, 0});
 
   EXPECT_TRUE(J_AQ.col(0).angular().isApprox(expected_J_AQ.col(0).angular()));
   EXPECT_TRUE(J_AQ.col(1).angular().isApprox(expected_J_AQ.col(1).angular()));
@@ -89,7 +89,7 @@ GTEST_TEST(SpatialAlgebra, ReExpress) {
   Vector3d w_XY_B(0, 0, 3);
 
   // Spatial velocity of frame Y with measured in X and expressed in B.
-  SpatialVector<double> V_AB(w_XY_B, v_XY_B);
+  GeneralSpatialVector<double> V_AB(w_XY_B, v_XY_B);
 
   // Rotation of -90 degrees along y-axis leads to:
   // xhat_B =  zhat_A
@@ -109,7 +109,7 @@ GTEST_TEST(SpatialAlgebra, ReExpress) {
   SpatialVelocityJacobian<double, ncols> J_XY_A = R_AB * J_XY_B;
 
   // Expected result.
-  SpatialVector<double> V_expected(R_AB * w_XY_B, R_AB * v_XY_B);
+  GeneralSpatialVector<double> V_expected(R_AB * w_XY_B, R_AB * v_XY_B);
   SpatialVelocityJacobian<double, ncols> J_expected;
   J_expected.col(0) =      V_expected;
   J_expected.col(1) = 2. * V_expected;
@@ -163,7 +163,7 @@ GTEST_TEST(SpatialAlgebra, SpatialVelocityJacobianTranspose) {
   Vector3d w_AB(0, 0, 3);
 
   // Spatial velocity of frame B with respect to A and expressed in A.
-  SpatialVector<double> V_AB(w_AB, v_AB);
+  GeneralSpatialVector<double> V_AB(w_AB, v_AB);
 
   const int ncols = 3;
   SpatialVelocityJacobian<double, ncols> J_AB;
@@ -190,7 +190,7 @@ GTEST_TEST(SpatialAlgebra, JacobianTransposeTimeJacobian) {
   Vector3d w_AB(0, 0, 3);
 
   // Spatial velocity of frame B with respect to A and expressed in A.
-  SpatialVector<double> V_AB(w_AB, v_AB);
+  GeneralSpatialVector<double> V_AB(w_AB, v_AB);
 
   const int ncols = 3;
   SpatialVelocityJacobianUpTo6<double> J_AB(ncols);

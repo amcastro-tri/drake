@@ -12,7 +12,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/body.h"
 #include "drake/multibody/multibody_tree/body_node.h"
-#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 #include "drake/multibody/multibody_tree/mobilizer.h"
 #include "drake/multibody/multibody_tree/multibody_tree_cache.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
@@ -165,8 +165,8 @@ class MultibodyTree {
       const MultibodyTreeContext<T>& context,
       const Eigen::Ref<const VectorX<T>>& vdot,
       const Eigen::Ref<const VectorX<T>>& external_generalized_forces,
-      const std::vector<SpatialVector<T>>& external_body_forces,
-      std::vector<SpatialVector<T>>* body_spatial_accelerations,
+      const std::vector<GeneralSpatialVector<T>>& external_body_forces,
+      std::vector<GeneralSpatialVector<T>>* body_spatial_accelerations,
       Eigen::Ref<VectorX<T>> generalized_forces) const;
 
 #if 0

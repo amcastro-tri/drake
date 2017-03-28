@@ -6,7 +6,7 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 #include "drake/multibody/multibody_tree/rotational_inertia.h"
 
 namespace drake {

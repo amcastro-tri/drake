@@ -448,8 +448,8 @@ void MultibodyTree<T>::InverseDynamics(
     const MultibodyTreeContext<T>& context,
     const Eigen::Ref<const VectorX<T>>& vdot,
     const Eigen::Ref<const VectorX<T>>& external_generalized_forces,
-    const std::vector<SpatialVector<T>>& external_body_forces,
-    std::vector<SpatialVector<T>>* body_spatial_accelerations,
+    const std::vector<GeneralSpatialVector<T>>& external_body_forces,
+    std::vector<GeneralSpatialVector<T>>* body_spatial_accelerations,
     Eigen::Ref<VectorX<T>> generalized_forces) const {
 
   DRAKE_ASSERT(body_spatial_accelerations != nullptr);
@@ -524,7 +524,7 @@ void MultibodyTree<T>::CalcMassMatrix(
   const PositionKinematicsCache<T>& pc = context.get_position_kinematics();
   const CompositeBodyInertiasCache<T>& cbi = context.get_cbi_cache();
 
-  // Matrix where each column contains a SpatialVector. The maximum number of
+  // Matrix where each column contains a GeneralSpatialVector. The maximum number of
   // columns is six.
   SpatialVelocityJacobianUpTo6<T> F;
 

@@ -258,14 +258,14 @@ GTEST_TEST(SpatialInertia, Shift) {
 }
 
 // This tests the implementation of two product operators:
-// 1. SpatialVector operator*(const SpatialVector& V) const;
+// 1. GeneralSpatialVector operator*(const GeneralSpatialVector& V) const;
 // 2. SpatialVelocityJacobian operator*(const SpatialVelocityJacobian& J) const;
 //
-// The first operator allows to multiply a SpatialInertia with a SpatialVector
+// The first operator allows to multiply a SpatialInertia with a GeneralSpatialVector
 // from the right.
 // The second operator allows to multiply a SpatialInertia with a
 // SpatialVelocityJacobian. A SpatialVelocityJacobian can be viewed as a matrix
-// where each column is a SpatialVector.
+// where each column is a GeneralSpatialVector.
 GTEST_TEST(SpatialInertia, ProductWithSpatialVectors) {
   const double mass = 2.5;
   const double radius = 0.1;
@@ -289,12 +289,12 @@ GTEST_TEST(SpatialInertia, ProductWithSpatialVectors) {
   const Vector3d w_WB(1, 2, 3);
 
   // Spatial velocity of its top end frame.
-  SpatialVector<double> V_WB(w_WB, v_WB);
+  GeneralSpatialVector<double> V_WB(w_WB, v_WB);
 
-  // Product of a SpatialInertia times a SpatialVector
-  SpatialVector<double> F_WB = M_Bc_W * V_WB;
+  // Product of a SpatialInertia times a GeneralSpatialVector
+  GeneralSpatialVector<double> F_WB = M_Bc_W * V_WB;
 
-  SpatialVector<double> F_expected(
+  GeneralSpatialVector<double> F_expected(
       Vector3d(5.0 / 24.0, 5.0 / 12.0, 0.0375),
       Vector3d(-2.5, 5.0, 20.0));
   EXPECT_TRUE(F_WB.IsApprox(F_expected, Eigen::NumTraits<double>::epsilon()));
@@ -338,10 +338,10 @@ GTEST_TEST(SpatialInertia, ComputeKineticEnergy) {
   const Vector3d w_WBc = -w0 * Vector3d::UnitY();
 
   // Spatial velocity of its top end frame.
-  SpatialVector<double> V_WE(w_WBc, Vector3d::Zero());
+  GeneralSpatialVector<double> V_WE(w_WBc, Vector3d::Zero());
 
   // Spatial velocity of its center of mass.
-  SpatialVector<double> V_WB =
+  GeneralSpatialVector<double> V_WB =
       /* phi_BE */
       ShiftOperator<double>(M_Eo_W.get_com()).transpose() * V_WE;
 

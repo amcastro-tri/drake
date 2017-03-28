@@ -6,7 +6,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/body_node.h"
 #include "drake/multibody/multibody_tree/mobilizer.h"
-#include "drake/multibody/multibody_tree/math/spatial_algebra.h"
+#include "drake/multibody/multibody_tree/math/spatial_algebra_old.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 #include "drake/multibody/multibody_tree/multibody_tree.h"
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
@@ -51,7 +51,7 @@ class BodyNodeImpl : public BodyNode<T> {
       const PositionKinematicsCache<T>& pc,
       const VelocityKinematicsCache<T>& vc,
       const Eigen::Ref<const VectorX<T>>& vdot,
-      std::vector<SpatialVector<T>>* A_WB_pool) const final;
+      std::vector<GeneralSpatialVector<T>>* A_WB_pool) const final;
 
   /// Helper methods access the context.
   const Vector<T, nv>& get_mobilizer_velocities(
@@ -116,24 +116,24 @@ class BodyNodeImpl : public BodyNode<T> {
         vc.get_qdot_pool().data() + this->get_rigid_positions_start());
   }
 
-  const SpatialVector<T>& get_V_PB_W(const VelocityKinematicsCache<T> vc) const {
+  const GeneralSpatialVector<T>& get_V_PB_W(const VelocityKinematicsCache<T> vc) const {
     return vc.get_V_PB_W(this->get_id());
   }
 
-  SpatialVector<T>& get_mutable_V_PB_W(VelocityKinematicsCache<T>* vc) const {
+  GeneralSpatialVector<T>& get_mutable_V_PB_W(VelocityKinematicsCache<T>* vc) const {
     return vc->get_mutable_V_PB_W(this->get_id());
   }
 
-  const SpatialVector<T>& get_V_WB(const VelocityKinematicsCache<T>& vc) const {
+  const GeneralSpatialVector<T>& get_V_WB(const VelocityKinematicsCache<T>& vc) const {
     return vc.get_V_WB(this->get_id());
   }
 
-  SpatialVector<T>& get_mutable_V_WB(VelocityKinematicsCache<T>* vc) const {
+  GeneralSpatialVector<T>& get_mutable_V_WB(VelocityKinematicsCache<T>* vc) const {
     return vc->get_mutable_V_WB(this->get_id());
   }
 
   /// @returns the spatial velocity `V_WP` of the body `P` in the parent node.
-  const SpatialVector<T>& get_V_WP(const VelocityKinematicsCache<T>& vc) const {
+  const GeneralSpatialVector<T>& get_V_WP(const VelocityKinematicsCache<T>& vc) const {
     return vc.get_V_WB(this->topology_.parent_body_node);
   }
 

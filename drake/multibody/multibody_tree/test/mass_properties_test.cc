@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <iostream>
 #include <sstream>
-#include <drake/multibody/multibody_tree/math/spatial_algebra.h>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
 #define PRINT_VARn(x) std::cout <<  #x ":\n" << x << std::endl;
 

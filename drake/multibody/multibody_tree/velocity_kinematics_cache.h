@@ -81,7 +81,7 @@ class VelocityKinematicsCache {
     Hdot_PB_W_pool_.resize(num_rigid_velocities);
 
     V_PB_W_pool_.resize(num_nodes_);
-    V_PB_W_pool_[kWorldBodyId].SetToNaN();  // It should not be used.
+    V_PB_W_pool_[kWorldBodyId].SetNaN();  // It should not be used.
 
     V_WB_pool_.resize(num_nodes_);
     V_PB_W_pool_[kWorldBodyId].SetZero();  // World's velocity is always zero.

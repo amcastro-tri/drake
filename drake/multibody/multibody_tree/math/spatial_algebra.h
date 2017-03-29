@@ -11,6 +11,7 @@
 /// section @ref multibody_spatial_vectors.
 
 #include "drake/common/eigen_types.h"
+#include "drake/multibody/multibody_tree/math/general_spatial_vector.h"
 #include "drake/multibody/multibody_tree/math/spatial_force.h"
 #include "drake/multibody/multibody_tree/math/spatial_velocity.h"
 

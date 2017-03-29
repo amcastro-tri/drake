@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drake/common/drake_assert.h"
+#include "drake/common/drake_copyable.h"
 
 namespace drake {
 namespace multibody {
@@ -84,7 +85,7 @@ class MultibodyTreeElement<ElementType<T>, ElementIndexType> {
   }
 
   /// Returns the unique index in its parent MultibodyTree to this element.
-  ElementIndexType get_index() const { return index_;}
+  virtual ElementIndexType get_index() const { return index_;}
 
   /// Checks whether this MultibodyTreeElement has been registered into a
   /// MultibodyTree. If not, it throws an exception of type std::logic_error.
@@ -129,7 +130,7 @@ class MultibodyTreeElement<ElementType<T>, ElementIndexType> {
   // Only derived sub-classes can call these set methods from within their
   // Create() factories.
   void set_parent_tree(const MultibodyTree<T>* tree) { parent_tree_ = tree; }
-  void set_index(ElementIndexType index) { index_ = index; }
+  virtual void set_index(ElementIndexType index) { index_ = index; }
 
  private:
   const MultibodyTree<T>* parent_tree_{nullptr};

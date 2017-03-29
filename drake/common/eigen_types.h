@@ -13,6 +13,8 @@
 
 #include "drake/common/constants.h"
 
+#include <iostream>
+
 namespace drake {
 
 /// A column vector of size 1 (that is, a scalar), templated on scalar type.
@@ -42,6 +44,18 @@ using Vector6 = Eigen::Matrix<Scalar, 6, 1>;
 template <typename Scalar>
 using VectorX = Eigen::Matrix<Scalar, Eigen::Dynamic, 1>;
 
+/// A column vector fixed-size, templated on scalar type.
+template <typename Scalar , int n>
+using Vector = Eigen::Matrix<Scalar, n, 1>;
+
+/// A row vector of size 2, templated on scalar type.
+template <typename Scalar>
+using RowVector2 = Eigen::Matrix<Scalar, 1, 2>;
+
+/// A row vector of size 3, templated on scalar type.
+template <typename Scalar>
+using RowVector3 = Eigen::Matrix<Scalar, 1, 3>;
+
 /// A matrix of 2 rows and 2 columns, templated on scalar type.
 template <typename Scalar>
 using Matrix2 = Eigen::Matrix<Scalar, 2, 2>;
@@ -50,9 +64,18 @@ using Matrix2 = Eigen::Matrix<Scalar, 2, 2>;
 template <typename Scalar>
 using Matrix3 = Eigen::Matrix<Scalar, 3, 3>;
 
+/// A matrix of 4 rows and 4 columns, templated on scalar type.
+template <typename Scalar>
+using Matrix4 = Eigen::Matrix<Scalar, 4, 4>;
+
 /// A matrix of 6 rows and 6 columns, templated on scalar type.
 template <typename Scalar>
 using Matrix6 = Eigen::Matrix<Scalar, 6, 6>;
+
+/// A matrix of dynamic size, up to a maximum size of 6 rows and 6 columns.
+template <typename Scalar>
+using MatrixUpTo6 =
+Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, 0, 6, 6>;
 
 /// A matrix of 2 rows, dynamic columns, templated on scalar type.
 template <typename Scalar>

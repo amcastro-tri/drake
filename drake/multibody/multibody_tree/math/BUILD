@@ -11,6 +11,30 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
+# TODO(amcastro-tri): GET RID OF THIS OLD LIBRARY!
+drake_cc_library(
+    name = "spatial_algebra_old",
+    srcs = [],
+    hdrs = [
+        "small_vectors.h",
+        "spatial_algebra_old.h",
+    ],
+    deps = [
+        ":general_spatial_vector",
+        "//drake/common",
+    ],
+)
+
+drake_cc_library(
+    name = "general_spatial_vector",
+    srcs = [],
+    hdrs = ["general_spatial_vector.h"],
+    deps = [
+        ":spatial_vector",
+        "//drake/common",
+    ],
+)
+
 drake_cc_library(
     name = "spatial_vector",
     srcs = [],
@@ -45,6 +69,7 @@ drake_cc_library(
     srcs = [],
     hdrs = ["spatial_algebra.h"],
     deps = [
+        ":general_spatial_vector",
         ":spatial_force",
         ":spatial_vector",
         ":spatial_velocity",
@@ -58,5 +83,15 @@ drake_cc_googletest(
     deps = [
         ":spatial_algebra",
         "//drake/common:autodiff",
+    ],
+)
+
+drake_cc_googletest(
+    name = "spatial_algebra_old_tests",
+    srcs = ["test/spatial_algebra_old_tests.cc"],
+    deps = [
+        ":spatial_algebra_old",
+        "//drake/common:autodiff",
+        "//drake/common:nice_type_name",
     ],
 )

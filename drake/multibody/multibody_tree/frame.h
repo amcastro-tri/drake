@@ -26,7 +26,7 @@ class Frame : public MultibodyTreeElement<Frame<T>, FrameIndex> {
 template <typename T>
 class MaterialFrame : public Frame<T> {
  public:
-  BodyIndex get_body_id() const { return topology_.body_id;}
+  BodyIndex get_body_index() const { return topology_.body_id;}
 
   const MaterialFrameTopology get_topology() const { return topology_;}
 
@@ -62,13 +62,18 @@ class MaterialFrame : public Frame<T> {
   /// @param[in] Local frame id in the body referenced by @p body_id.
   MaterialFrame(const Body<T>& body);
 
+  MaterialFrame(BodyIndex body) : topology_{FrameIndex(0), BodyIndex(0)} {
+    DRAKE_ASSERT(body.is_valid());
+    topology_.body_id = body;
+  }
+ public:
   void set_index(FrameIndex id) override {
     MultibodyTreeElement<Frame<T>, FrameIndex>::set_index(id);
     topology_.id = id;
   }
 
  private:
-  MaterialFrameTopology topology_;
+  MaterialFrameTopology topology_{FrameIndex(0), BodyIndex(0)};
 };
 
 template <typename T>
@@ -88,6 +93,8 @@ class BodyFrame : public MaterialFrame<T> {
       const Isometry3<T>& X_MF) const final {
     return X_MF;
   }
+
+  BodyFrame(BodyIndex body) : MaterialFrame<T>(body) {}
 
  private:
   BodyFrame(const Body<T>& body);

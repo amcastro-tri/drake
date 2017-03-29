@@ -21,10 +21,9 @@ RigidBody<T>& RigidBody<T>::Create(MultibodyTree<T>* tree,
   // and an exception would call the destructor.
   auto body = tree->AddBody(
       std::unique_ptr<RigidBody<T>>(new RigidBody<T>(mass_properties)));
-
-  // Create a BodyFrame associated with this body.
-  BodyFrame<T>& body_frame = BodyFrame<T>::Create(tree, *body);
-  body->set_body_frame(body_frame.get_index());
+  // Create and add a BodyFrame associated with this rigid body.
+  FrameIndex frame_index = body->CreateBodyFrame(tree).get_index();
+  body->set_body_frame_index(frame_index);
 
   return *body;
 }
@@ -32,6 +31,7 @@ RigidBody<T>& RigidBody<T>::Create(MultibodyTree<T>* tree,
 
 template <typename T>
 RigidBody<T>::RigidBody(const MassProperties<double>& mass_properties) :
+    Body<T>::template Body<T>(),
     default_mass_properties_(mass_properties) {}
 
 #if 0

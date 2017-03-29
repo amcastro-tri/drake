@@ -56,8 +56,8 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
   }
 
   const Body<T>& get_body() const {
-    DRAKE_ASSERT(get_body_id().is_valid());
-    return this->get_parent_tree().get_body(get_body_id());
+    DRAKE_ASSERT(get_body_index().is_valid());
+    return this->get_parent_tree().get_body(get_body_index());
   }
 
   const Body<T>& get_parent_body() const {
@@ -72,7 +72,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
 
   MobilizerIndex get_mobilizer_id() const { return topology_.mobilizer;}
 
-  BodyIndex get_body_id() const { return topology_.body;}
+  BodyIndex get_body_index() const { return topology_.body;}
 
   BodyIndex get_parent_body_id() const { return topology_.parent_body;}
 
@@ -269,9 +269,9 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
 
     // Inboard/Outboard frames of this node's mobilizer.
     const MaterialFrame<T>& FrameF = get_mobilizer().get_inboard_frame();
-    DRAKE_ASSERT(FrameF.get_body_id() == BodyP.get_index());
+    DRAKE_ASSERT(FrameF.get_body_index() == BodyP.get_index());
     const MaterialFrame<T>& FrameM = get_mobilizer().get_outboard_frame();
-    DRAKE_ASSERT(FrameM.get_body_id() == BodyB.get_index());
+    DRAKE_ASSERT(FrameM.get_body_index() == BodyB.get_index());
 
     // Input (const):
     // - X_PF(qf_P)

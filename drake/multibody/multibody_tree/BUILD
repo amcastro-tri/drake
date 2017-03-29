@@ -84,17 +84,6 @@ drake_cc_library(
 )
 
 drake_cc_library(
-    name = "spatial_inertia_old",
-    srcs = [],
-    hdrs = ["spatial_inertia_old.h"],
-    deps = [
-        ":unit_inertia",
-        "//drake/math:gradient",
-        "//drake/multibody/multibody_tree/math:spatial_algebra_old",
-    ],
-)
-
-drake_cc_library(
     name = "unit_inertia",
     srcs = [],
     hdrs = ["unit_inertia.h"],

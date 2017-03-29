@@ -133,17 +133,36 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
 
  protected:
   // Default constructor. Only sub-classes can use it.
-  Body() = default;
+  Body() {};
 
-  void set_body_frame(FrameIndex body_frame_id) {
+  // Only sub-classes' Create() methods can set the body frame index.
+  void set_body_frame_index(FrameIndex body_frame_id) {
     // Asserts that the first frame added is the body frame.
     DRAKE_ASSERT(frames_.size() == 0);
     frames_.push_back(body_frame_id);
     body_frame_id_ = body_frame_id;
   }
 
+  // This method is called within the Create() methods of a sub-class inheriting
+  // from Body to create the BodyFrame associated with this body.
+  // Since Body<T> is a friend of BodyFrame<T>, it has access to its private
+  // constructor.
+  // Even though this method is called within a body which already has a valid
+  // parent multibody tree, its parent tree is passed as an argument in order to
+  // have mutable access to it and add a new body frame for this body.
+  const BodyFrame<T>& CreateBodyFrame(MultibodyTree<T>* tree) const {
+    this->HasParentTreeOrThrow();
+    // Notice that here we cannot use std::make_unique since constructors are
+    // made private to avoid users creating bodies by other means other than
+    // calling Create().
+    // However we can still create a unique_ptr as below where ownership is
+    // clear
+    return *tree->AddBodyFrame(
+        std::unique_ptr<BodyFrame<T>>(new BodyFrame<T>(this->get_index())));
+  }
+
  private:
-  BodyTopology topology_;
+  BodyTopology topology_{BodyIndex(0), FrameIndex(0)};
 
   FrameIndex body_frame_id_;
   std::vector<FrameIndex> frames_;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drake/common/drake_assert.h"
+#include "drake/common/drake_copyable.h"
 #include "drake/multibody/multibody_tree/multibody_indexes.h"
 
 #include <algorithm>
@@ -10,6 +11,13 @@ namespace drake {
 namespace multibody {
 
 struct BodyTopology {
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(BodyTopology);
+
+  // Constructs a body topology struct with unique index `body_index` and a
+  // body frame with unique index `frame_index`.
+  BodyTopology(BodyIndex body_index, FrameIndex frame_index) :
+      id(body_index), body_frame(frame_index) {}
+
   BodyIndex id{BodyIndex::Invalid()};  // Unique id in the MultibodyTree.
   int level{-1};  // Depth level in the MultibodyTree, level = 0 for the world.
 
@@ -21,6 +29,7 @@ struct BodyTopology {
   MobilizerIndex inboard_mobilizer{MobilizerIndex::Invalid()};
   std::vector<MobilizerIndex> outboard_mobilizer;
 
+  FrameIndex body_frame;
   std::vector<FrameIndex> material_frames;
 
   // The index of the BodyNode associated with this body in the MultibodyTree.
@@ -120,6 +129,13 @@ struct BodyNodeTopology {
 };
 
 struct MaterialFrameTopology {
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(MaterialFrameTopology);
+
+  /// Constructs a frame topology for a frame with unique index `frame_index`
+  /// associated with a body with index `body_index`.
+  MaterialFrameTopology(FrameIndex frame_index, BodyIndex body_index) :
+      id(frame_index), body_id(body_index) {}
+
   // Unique identifier in the MultibodyTree.
   FrameIndex id{FrameIndex::Invalid()};
   // Unique identifier of the body this material frame attaches to.
@@ -136,6 +152,11 @@ struct MaterialFrameTopology {
 };
 
 struct MultibodyTreeTopology {
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(MultibodyTreeTopology);
+
+  // Default constructor creates an empty, invalid, topology.
+  MultibodyTreeTopology() {}
+
   std::vector<BodyTopology> bodies_;
   std::vector<MobilizerTopology> mobilizers_;
   std::vector<BodyNodeTopology> body_nodes;
@@ -156,10 +177,22 @@ struct MultibodyTreeTopology {
 
   BodyIndex add_body() {
     invalidate();
-    BodyTopology body;
-    body.id = BodyIndex(get_num_bodies());
+    BodyIndex body_index = BodyIndex(get_num_bodies());
+    FrameIndex body_frame = add_physical_frame(body_index);
+    BodyTopology body(body_index, body_frame);
     bodies_.push_back(body);
     return body.id;
+  }
+
+  // Creates and adds a PhysicalFrameTopology to this MultibodyTreeTopology.
+  // All physical frames are associated with a body here identified by their
+  // unique index, body_index.
+  FrameIndex add_physical_frame(BodyIndex body_index) {
+    invalidate();
+    FrameIndex frame_index(get_num_material_frames());
+    MaterialFrameTopology frame(frame_index, body_index);
+    material_frames.push_back(frame);
+    return frame_index;
   }
 
   FrameIndex add_material_frame(const MaterialFrameTopology& frame) {

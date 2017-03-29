@@ -89,11 +89,8 @@ class MultibodyTree {
 
     // Users can add new multibody elements, however the topology gets
     // invalidated.
-    invalidate_topology();
+    BodyIndex index = topology_.add_body();
 
-    // TODO(amcastro-tri): This index will be returned by the
-    // MultibodyTreeTopology class in a future PR.
-    BodyIndex index(owned_bodies_.size());
     // MultibodyTree has access to these methods since it is a friend of
     // MultibodyTreeElement. Users of Body<T>, however, do not have access to
     // these methods.
@@ -111,6 +108,33 @@ class MultibodyTree {
   /// Returns a constant reference to the *world* body.
   const Body<T>& get_world_body() const {
     return *owned_bodies_[world_index()];
+  }
+
+  /// This method is **only** called from within private method
+  /// Body::CreateBodyFrame() to create the associated body frame for a body.
+  ///
+  /// @pre AddBody() was already called from within a body create method to
+  /// create the body associated with this frame. Therefore there is a valid
+  /// PhysicalFrameTopology for this frame.
+  BodyFrame<T> *AddBodyFrame(std::unique_ptr<BodyFrame<T>> body_frame) {
+    if (body_frame == nullptr) {
+      throw std::logic_error("Input body_frame is an invalid nullptr.");
+    }
+
+    // AddBody() was called before this method which already created valid
+    // topologies for the body and its associated body frame.
+    BodyIndex body_index = body_frame->get_body_index();
+    DRAKE_DEMAND(body_index < get_num_bodies());
+    FrameIndex frame_index = topology_.bodies_[body_index].body_frame;
+
+    // MultibodyTree has access to these methods since it is a friend of
+    // MultibodyTreeElement. Users of BodyFrame<T>, however, do not have access
+    // to these methods.
+    body_frame->set_parent_tree(this);
+    body_frame->set_index(frame_index);
+    BodyFrame<T> *raw_body_ptr = body_frame.get();
+    material_frames_.push_back(std::move(body_frame));
+    return raw_body_ptr;
   }
 
   /// Returns a constant reference to the body with unique index `body_index`.

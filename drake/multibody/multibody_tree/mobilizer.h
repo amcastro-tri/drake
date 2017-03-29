@@ -29,8 +29,8 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
     DRAKE_DEMAND(inboard_frame.get_index() != outboard_frame.get_index());
     topology_.inboard_frame = inboard_frame.get_index();
     topology_.outboard_frame = outboard_frame.get_index();
-    topology_.inboard_body = inboard_frame.get_body_id();
-    topology_.outboard_body = outboard_frame.get_body_id();
+    topology_.inboard_body = inboard_frame.get_body_index();
+    topology_.outboard_body = outboard_frame.get_body_index();
   }
 
   MobilizerIndex get_index() const final { return topology_.id;}

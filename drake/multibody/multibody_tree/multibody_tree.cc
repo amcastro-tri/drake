@@ -59,7 +59,8 @@ void MultibodyTree<T>::CompileTopology() {
   mobilizer_topologies.resize(get_num_mobilizers());
 
   // Resize body topologies, assign id.
-  body_topologies.resize(get_num_bodies());
+  //body_topologies.resize(get_num_bodies());
+  body_topologies.reserve(get_num_bodies());
   for (BodyIndex ibody(0); ibody < get_num_bodies(); ++ibody) {
     body_topologies[ibody].id = ibody;
   }

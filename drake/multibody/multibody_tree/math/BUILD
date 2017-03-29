@@ -69,6 +69,7 @@ drake_cc_library(
     srcs = [],
     hdrs = ["spatial_algebra.h"],
     deps = [
+        ":general_spatial_vector",
         ":spatial_force",
         ":spatial_vector",
         ":spatial_velocity",

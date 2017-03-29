@@ -12,15 +12,15 @@ namespace multibody {
 
 template <typename T>
 RigidBody<T>& RigidBody<T>::Create(MultibodyTree<T>* tree,
-                                   const MassProperties<T>& mass_properties) {
+                                   const MassProperties<double>& mass_properties) {
+
   // Notice that here we cannot use std::make_unique since constructors are made
   // private to avoid users creating bodies by other means other than calling
   // Create().
-  RigidBody<T>* body = new RigidBody<T>(mass_properties);
-  // tree takes ownership.
-  BodyIndex body_id = tree->AddBody(std::unique_ptr<Body<T>>(body));
-  body->set_parent_tree(tree);
-  body->set_index(body_id);
+  // However we can still create a unique_ptr as below where ownership is clear
+  // and an exception would call the destructor.
+  auto body = tree->AddBody(
+      std::unique_ptr<RigidBody<T>>(new RigidBody<T>(mass_properties)));
 
   // Create a BodyFrame associated with this body.
   BodyFrame<T>& body_frame = BodyFrame<T>::Create(tree, *body);
@@ -45,22 +45,9 @@ RigidBodyFrame<T>& RigidBody<T>::RigidlyAttachFrame(const Isometry3<T>& X_BF) {
 }
 #endif
 
-template <typename T>
-const RigidBody<T>& RigidBody<T>::Create(MultibodyTree<T>* tree) {
-  // Notice that here we cannot use std::make_unique since constructors are made
-  // private to avoid users creating bodies by other means other than calling
-  // Create().
-  // However we can still create a unique_ptr as below where ownership is clear
-  // and an exception would call the destructor.
-  return *tree->AddBody(std::unique_ptr<RigidBody<T>>(new RigidBody<T>()));
-}
-
-template <typename T>
-RigidBody<T>::RigidBody() {}
-
 // Explicitly instantiates on the most common scalar types.
 template class RigidBody<double>;
-template class RigidBody<AutoDiffXd>;
+//template class RigidBody<AutoDiffXd>;
 
 }  // namespace multibody
 }  // namespace drake

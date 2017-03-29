@@ -59,5 +59,12 @@ DrakeMultibody_DEFINE_INDEX_TYPE(MobilizerIndex);
 /// identifier and it is always zero.
 static const BodyIndex kWorldBodyId(0);
 
+/// For every MultibodyTree the **world** body _always_ has this unique index
+/// and it is always zero.
+// Note:
+//   static global variables are strongly discouraged by the C++ style guide:
+// https://google.github.io/styleguide/cppguide.html#Static_and_Global_Variables
+inline BodyIndex world_index() { return BodyIndex(0); }
+
 }  // namespace multibody
 }  // namespace drake

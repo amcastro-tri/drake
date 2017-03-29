@@ -111,7 +111,7 @@ class RigidBody : public Body<T> {
   /// @param[in] mass_properties Default mass properties for this rigid body.
   /// @returns A reference to the newly created rigid body.
   static RigidBody<T>& Create(MultibodyTree<T>* tree,
-                              const MassProperties<T>& mass_properties);
+                              const MassProperties<double>& mass_properties);
 
   /// Returns the default center of mass of this body measured and expressed in
   /// its implicity body frame `B`. The returned center of mass is independent
@@ -142,12 +142,6 @@ class RigidBody : public Body<T> {
  private:
   // Do not allow users to create a rigid body using its public constructors
   // but force them to use the factory method Create().
-  // TODO(amcastro-tri): In a future PR this factory will take a MassProperties
-  // object to:
-  //   1. Force users to provide all the necessary information at creation.
-  //   2. Perform all the necessary checks to ensure the supplied mass
-  //      properties are physically valid.
-  RigidBody();
 
   /// Creates a new body with the provided mass properties. This body must
   /// immediately be added to a MultibodyTree.

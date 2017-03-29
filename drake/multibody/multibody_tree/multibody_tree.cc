@@ -1,5 +1,11 @@
 #include "drake/multibody/multibody_tree/multibody_tree.h"
 
+#include <queue>
+#include <stdexcept>
+#include <utility>
+
+#include "drake/common/drake_assert.h"
+#include "drake/common/eigen_autodiff_types.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/body_node_impl.h"
 #include "drake/multibody/multibody_tree/body_node_welded.h"
@@ -7,8 +13,6 @@
 #include "drake/multibody/multibody_tree/mass_properties.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
 #include "drake/multibody/multibody_tree/rigid_body.h"
-
-#include <queue>
 
 #include <iostream>
 #define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
@@ -24,14 +28,6 @@ template <typename T>
 MultibodyTree<T>::MultibodyTree() {
   // The "world" body has infinite mass.
   RigidBody<T>::Create(this, MassProperties<double>::InfiniteMass());
-}
-
-template <typename T>
-BodyIndex MultibodyTree<T>::AddBody(std::unique_ptr<Body<T>> body) {
-  DRAKE_DEMAND(body != nullptr);
-  BodyIndex id = topology_.add_body();
-  bodies_.push_back(std::move(body));
-  return id;
 }
 
 template <typename T>
@@ -269,7 +265,7 @@ void MultibodyTree<T>::CompileTopology() {
   // Updates bodies' topology.
   for (BodyIndex body_id(0);
        body_id < get_num_bodies(); ++body_id) {
-    bodies_[body_id]->SetTopology(body_topologies[body_id]);
+    owned_bodies_[body_id]->SetTopology(body_topologies[body_id]);
   }
 
   // Updates frames' topology.
@@ -289,13 +285,35 @@ void MultibodyTree<T>::CompileTopology() {
 
 template <typename T>
 void MultibodyTree<T>::Compile() {
+  // If the topology is valid it means that this MultibodyTree was already
+  // compiled. Since this is an expensive operation, throw an exception to alert
+  // users.
+  if (topology_is_valid()) {
+    throw std::logic_error(
+        "Attempting to call MultibodyTree::Compile() on an already compiled "
+            "MultibodyTree.");
+  }
+
+  // TODO(amcastro-tri): This is a brief list of operations to be added in
+  // subsequent PR's:
+  //   - Compile non-T dependent topological information.
+  //   - Compute degrees of freedom, array sizes and any other information to
+  //     allocate a context and request the required cache entries.
+  //   - Setup computational structures (BodyNode based).
+
   // Computes MultibodyTree<T>::topology_
   CompileTopology();
+  validate_topology();
+
+  // Give bodies the chance to perform any compile-time setup.
+  for (const auto& body : owned_bodies_) {
+    body->Compile();
+  }
 
   // Creates BodyNode's.
   auto& body_node_topologies = topology_.body_nodes;
   for (const auto& node_topology: body_node_topologies) {
-    const Body<T>* body = bodies_[node_topology.body].get();
+    const Body<T>* body = owned_bodies_[node_topology.body].get();
     const Mobilizer<T>* mobilizer = nullptr;
     std::unique_ptr<BodyNode<T>> body_node;
     // The world body node has not mobilizer.
@@ -317,7 +335,7 @@ template <typename T>
 void MultibodyTree<T>::PrintTopology() const {
 
   std::cout << "Bodies: " << std::endl;
-  for (const auto& body: bodies_) {
+  for (const auto& body: owned_bodies_) {
     body->PrintTopology();
   }
   std::cout << std::endl;
@@ -355,7 +373,7 @@ void MultibodyTree<T>::PrintTopology() const {
 template <typename T>
 Body<T>& MultibodyTree<T>::get_mutable_body(BodyIndex body_id) const {
   DRAKE_ASSERT(body_id.is_valid() && body_id < get_num_bodies());
-  return *bodies_[body_id];
+  return *owned_bodies_[body_id];
 }
 
 
@@ -384,7 +402,7 @@ void MultibodyTree<T>::UpdatePositionKinematicsCache(
   // TODO(amcastro-tri): have a list of SoftBody's here since only their
   // kinematics changes with time.
   // TODO: make this name more specific.
-  for (const auto& body: bodies_)
+  for (const auto& body: owned_bodies_)
     body->UpdatePositionKinematicsCache(context);
 
   // Loop over all mobilizers to update their position dependent kinematics.
@@ -602,7 +620,10 @@ void MultibodyTree<T>::CalcMassMatrix(
 }
 #endif
 
+
+// Explicitly instantiates on the most common scalar types.
 template class MultibodyTree<double>;
+//template class MultibodyTree<AutoDiffXd>;
 
 }  // namespace multibody
 }  // namespace drake

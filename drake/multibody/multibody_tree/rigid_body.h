@@ -25,9 +25,9 @@ class RigidBody : public Body<T> {
   /// @param[in] X_BF The pose of the frame `F` in the frame of the body `B`.
   //RigidBodyFrame<T>& RigidlyAttachFrame(const Isometry3<T>& X_BF);
 
-  int get_num_positions() const final { return 0; }
+  int get_num_flexible_positions() const final { return 0; }
 
-  int get_num_velocities() const final { return 0; }
+  int get_num_flexible_velocities() const final { return 0; }
 
   // No-op for rigid bodies since all frames attached to them are rigidly
   // attached. The poses X_BF of frames F attached to body a body frame B are

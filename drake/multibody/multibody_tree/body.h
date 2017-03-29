@@ -5,9 +5,9 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/multibody_tree/multibody_indexes.h"
-#include "drake/multibody/multibody_tree/multibody_tree_element.h"
+#include "drake/common/drake_copyable.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
+#include "drake/multibody/multibody_tree/multibody_tree_element.h"
 
 namespace drake {
 namespace multibody {
@@ -16,34 +16,48 @@ namespace multibody {
 template<typename T> class MultibodyTree;
 template<typename T> class BodyFrame;
 
+/// This class provides the general abstraction of a body with an API that
+/// makes no assumption about whether a body is rigid or deformable and neither
+/// does it make any assumptions about the underlying physical model or
+/// approximation.
+/// As an element or component of a MultibodyTree, a body is a
+/// MultibodyTreeElement, and therefore it has a unique index of type BodyIndex
+/// within the multibody tree it belongs to.
+///
+/// @tparam T The scalar type. Must be a valid Eigen scalar.
 template <typename T>
 class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
  public:
-  virtual int get_num_positions() const = 0;
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(Body)
 
-  virtual int get_num_velocities() const = 0;
+  /// Returns the number of generalized positions describing flexible
+  /// deformations for this body. A rigid body will therefore return zero.
+  virtual int get_num_flexible_positions() const = 0;
 
-  FrameIndex get_body_frame_id() const { return body_frame_id_;}
+  /// Returns the number of generalized velocities describing flexible
+  /// deformations for this body. A rigid body will therefore return zero.
+  virtual int get_num_flexible_velocities() const = 0;
+
+  FrameIndex get_body_frame_id() const { return body_frame_id_; }
 
   virtual void UpdatePositionKinematicsCache(
-      const MultibodyTreeContext<T>& context) = 0;
+      const MultibodyTreeContext<T> &context) = 0;
 
   /// @returns The number of material frames attached to this body.
-  int get_num_frames() const { return static_cast<int>(frames_.size());}
+  int get_num_frames() const { return static_cast<int>(frames_.size()); }
 
-  const BodyTopology& get_topology() const { return topology_;}
+  const BodyTopology &get_topology() const { return topology_; }
 
   /// Sets the topological information for this mobilizer. Topological
   /// information includes connectivity such as inboard and outboard frames and
   /// bodies as well as degrees of freedom indexing information.
   /// This is an implementation detail. User code should never call it.
-  void SetTopology(const BodyTopology& topology) {
+  void SetTopology(const BodyTopology &topology) {
     topology_ = topology;
   }
 
-  const Isometry3<T>& get_pose_in_world(
-      const MultibodyTreeContext<T>& context) const
-  {
+  const Isometry3<T> &get_pose_in_world(
+      const MultibodyTreeContext<T> &context) const {
     // TODO(amcastro-tri): Check cache validity
     return context.get_position_kinematics().get_X_WB(topology_.body_node);
   }
@@ -51,22 +65,19 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
   /// Returns from the current state in the @p context the position of the
   /// center of mass for this body measured and expressed in the
   /// world frame `W`.
-  const Vector3<T>& get_com_W(
-      const MultibodyTreeContext<T>& context) const
-  {
+  const Vector3<T> &get_com_W(
+      const MultibodyTreeContext<T> &context) const {
     // TODO(amcastro-tri): Check cache validity
     return context.get_position_kinematics().get_com_W(topology_.id);
   }
 
-  const SpatialInertia<T>& get_M_Bo_W(
-      const MultibodyTreeContext<T>& context) const
-  {
+  const SpatialInertia<T> &get_M_Bo_W(
+      const MultibodyTreeContext<T> &context) const {
     return context.get_position_kinematics().get_M_Bo_W(topology_.id);
   }
 
-  const GeneralSpatialVector<T>& get_spatial_velocity_in_world(
-      const MultibodyTreeContext<T>& context) const
-  {
+  const GeneralSpatialVector<T> &get_spatial_velocity_in_world(
+      const MultibodyTreeContext<T> &context) const {
     // TODO(amcastro-tri): Check cache validity
     return context.get_velocity_kinematics().get_V_WB(topology_.body_node);
   }
@@ -77,7 +88,7 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
   /// @returns com_B The center of mass of this body measured and expressed in
   ///                its implicity body frame `B`.
   virtual Vector3<T> CalcCenterOfMassInBodyFrame(
-      const MultibodyTreeContext<T>& context) const = 0;
+      const MultibodyTreeContext<T> &context) const = 0;
 
   /// Computes the UnitInertia of this body as measured and expressed in the
   /// body frame `B`.
@@ -85,11 +96,11 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
   /// @returns G_Bo_B UnitInertia of this body computed about the origin `Bo`
   ///                 of its frame `B`, expressed in `B`.
   virtual UnitInertia<T> CalcUnitInertiaInBodyFrame(
-      const MultibodyTreeContext<T>& context) const = 0;
+      const MultibodyTreeContext<T> &context) const = 0;
 
   /// Computes the mass of the body for the current configuration of the
   /// @p context.
-  virtual T CalcMass(const MultibodyTreeContext<T>& context) const = 0;
+  virtual T CalcMass(const MultibodyTreeContext<T> &context) const = 0;
 
   void PrintTopology() const {
     std::cout << "Body id: " << topology_.id << std::endl;
@@ -118,13 +129,17 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
     std::cout << "Body node: " << topology_.body_node << std::endl;
   }
 
+  virtual void Compile() {}
+
  protected:
-  void set_body_frame(FrameIndex body_frame_id)
-  {
+  // Default constructor. Only sub-classes can use it.
+  Body() = default;
+
+  void set_body_frame(FrameIndex body_frame_id) {
     // Asserts that the first frame added is the body frame.
     DRAKE_ASSERT(frames_.size() == 0);
     frames_.push_back(body_frame_id);
-    body_frame_id_ =  body_frame_id;
+    body_frame_id_ = body_frame_id;
   }
 
  private:
@@ -155,6 +170,9 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
   // from within Body. However, even if public, its only useful to its friend
   // methods and therefore it's safe to have it here.
   //class PrivateAccessAttorney;
+
+  /// At MultibodyTree::Compile() time, each body will retrieve its topology
+  /// from the parent MultibodyTree.  
 };
 
 }  // namespace multibody

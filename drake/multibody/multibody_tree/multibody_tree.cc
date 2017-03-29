@@ -180,8 +180,8 @@ void MultibodyTree<T>::CompileTopology() {
         const Mobilizer<T> &mobilizer = get_mobilizer(mobilizer_id);
         num_rigid_positions = mobilizer.get_num_positions();
         num_rigid_velocities = mobilizer.get_num_velocities();
-        num_flexible_positions = body.get_num_positions();
-        num_flexible_velocities = body.get_num_velocities();
+        num_flexible_positions = body.get_num_flexible_positions();
+        num_flexible_velocities = body.get_num_flexible_velocities();
       }
 
       body_node_topologies[body_node_id].SetArrayIndexes(

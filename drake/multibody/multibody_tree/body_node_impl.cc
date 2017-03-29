@@ -122,7 +122,7 @@ BodyNodeImpl<T, nq, nv>& BodyNodeImpl<T, nq, nv>::Create(
 
   // Create a BodyFrame associated with this body.
   BodyFrame<T>& body_frame = BodyFrame<T>::Create(tree, *body);
-  body->set_body_frame(body_frame.get_id());
+  body->set_body_frame(body_frame.get_index());
 
   return *body;
 }
@@ -134,7 +134,7 @@ void BodyNodeImpl<T, nq, nv>::CalcBodySpatialAcceleration_BaseToTip(
     const VelocityKinematicsCache<T>& vc,
     const Eigen::Ref<const VectorX<T>>& vdot_pool,
     std::vector<GeneralSpatialVector<T>>* A_WB_pool) const {
-  GeneralSpatialVector<T>& A_WB = (*A_WB_pool)[this->get_id()];
+  GeneralSpatialVector<T>& A_WB = (*A_WB_pool)[this->get_index()];
   const Vector<T, nv>& vmdot = get_mobilizer_velocities_from_pool(vdot_pool);
   (void) A_WB;
   (void) vmdot;

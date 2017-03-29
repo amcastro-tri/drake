@@ -274,7 +274,7 @@ void MultibodyTree<T>::CompileTopology() {
 
   // Updates frames' topology.
   for (const auto& frame: material_frames_) {
-    frame->SetTopology(topology_.material_frames[frame->get_id()]);
+    frame->SetTopology(topology_.material_frames[frame->get_index()]);
   }
 
   // Updates mobilizers' topology.

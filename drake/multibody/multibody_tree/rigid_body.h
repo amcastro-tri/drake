@@ -90,6 +90,8 @@ class RigidBody : public Body<T> {
     return default_mass_properties_.get_mass();
   }
 
+  void Compile() final {};
+
  private:
   MassProperties<double> default_mass_properties_;
 

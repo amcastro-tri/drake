@@ -18,12 +18,14 @@ class RevoluteMobilizer : public MobilizerImpl<T, 1, 1> {
   using MobilizerBase::nq;
   using MobilizerBase::nv;
   using typename MobilizerBase::HMatrix;
-  using MobilizerBase::get_id;
+  using MobilizerBase::get_index;
  public:
   static RevoluteMobilizer<T>& Create(
       MultibodyTree<T>* tree,
       const MaterialFrame<T>& inboard_frame,
       const MaterialFrame<T>& outboard_frame, const Vector3<double> axis_F);
+
+  void Compile() final {};
 
   /// Sets the state represented in @p context so that the generalized
   /// coordinate representing the rotation angle equals @p angle.

@@ -24,16 +24,16 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
   Mobilizer(const MaterialFrame<T>& inboard_frame,
             const MaterialFrame<T>& outboard_frame) {
     // Bodies must have already been added to a multibody tree.
-    DRAKE_DEMAND(inboard_frame.get_id().is_valid());
-    DRAKE_DEMAND(outboard_frame.get_id().is_valid());
-    DRAKE_DEMAND(inboard_frame.get_id() != outboard_frame.get_id());
-    topology_.inboard_frame = inboard_frame.get_id();
-    topology_.outboard_frame = outboard_frame.get_id();
+    DRAKE_DEMAND(inboard_frame.get_index().is_valid());
+    DRAKE_DEMAND(outboard_frame.get_index().is_valid());
+    DRAKE_DEMAND(inboard_frame.get_index() != outboard_frame.get_index());
+    topology_.inboard_frame = inboard_frame.get_index();
+    topology_.outboard_frame = outboard_frame.get_index();
     topology_.inboard_body = inboard_frame.get_body_id();
     topology_.outboard_body = outboard_frame.get_body_id();
   }
 
-  MobilizerIndex get_id() const final { return topology_.id;}
+  MobilizerIndex get_index() const final { return topology_.id;}
 
   virtual int get_num_positions() const = 0;
 
@@ -109,8 +109,8 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
   int get_positions_start() const { return topology_.positions_start; }
   int get_velocities_start() const { return topology_.velocities_start; }
 
-  void set_id(MobilizerIndex id) override {
-    MultibodyTreeElement<Mobilizer<T>, MobilizerIndex>::set_id(id);
+  void set_index(MobilizerIndex id) override {
+    MultibodyTreeElement<Mobilizer<T>, MobilizerIndex>::set_index(id);
     topology_.id = id;
   }
 };

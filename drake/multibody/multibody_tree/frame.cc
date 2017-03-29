@@ -14,8 +14,8 @@ namespace multibody {
 
 template <typename T>
 MaterialFrame<T>::MaterialFrame(const Body<T>& body) {
-  DRAKE_ASSERT(body.get_id().is_valid());
-  topology_.body_id = body.get_id();
+  DRAKE_ASSERT(body.get_index().is_valid());
+  topology_.body_id = body.get_index();
 }
 
 template <typename T>
@@ -29,7 +29,7 @@ BodyFrame<T>& BodyFrame<T>::Create(MultibodyTree<T>* tree, const Body<T>& body)
   FrameIndex frame_id =
       tree->AddMaterialFrame(std::unique_ptr<MaterialFrame<T>>(frame));
   frame->set_parent_tree(tree);
-  frame->set_id(frame_id);
+  frame->set_index(frame_id);
   return *frame;
 }
 
@@ -48,7 +48,7 @@ RigidBodyFrame<T>& RigidBodyFrame<T>::Create(
   FrameIndex frame_id =
       tree->AddMaterialFrame(std::unique_ptr<MaterialFrame<T>>(frame));
   frame->set_parent_tree(tree);
-  frame->set_id(frame_id);
+  frame->set_index(frame_id);
   return *frame;
 }
 
@@ -69,7 +69,7 @@ template <typename T>
 FixedOffsetFrame<T>::FixedOffsetFrame(
     const MaterialFrame<T>& M, const Isometry3<T>& X_MF) :
     MaterialFrame<T>(M.get_body_id()), X_MF_(X_MF),
-    material_frame_id_(M.get_id()) {}
+    material_frame_id_(M.get_index()) {}
 #endif
 
 // Explicitly instantiates on the most common scalar types.

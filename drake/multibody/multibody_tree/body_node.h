@@ -30,10 +30,10 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
            const Body<T>* body, const Mobilizer<T>* mobilizer) :
       topology_(topology), body_(body), mobilizer_(mobilizer) {
     DRAKE_ASSERT(body != nullptr);
-    DRAKE_ASSERT(!(mobilizer == nullptr && body->get_id() != kWorldBodyId));
+    DRAKE_ASSERT(!(mobilizer == nullptr && body->get_index() != kWorldBodyId));
   }
 
-  BodyNodeIndex get_id() const final { return topology_.id;}
+  BodyNodeIndex get_index() const final { return topology_.id;}
 
   int get_rigid_positions_start() const
   {
@@ -269,9 +269,9 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
 
     // Inboard/Outboard frames of this node's mobilizer.
     const MaterialFrame<T>& FrameF = get_mobilizer().get_inboard_frame();
-    DRAKE_ASSERT(FrameF.get_body_id() == BodyP.get_id());
+    DRAKE_ASSERT(FrameF.get_body_id() == BodyP.get_index());
     const MaterialFrame<T>& FrameM = get_mobilizer().get_outboard_frame();
-    DRAKE_ASSERT(FrameM.get_body_id() == BodyB.get_id());
+    DRAKE_ASSERT(FrameM.get_body_id() == BodyB.get_index());
 
     // Input (const):
     // - X_PF(qf_P)

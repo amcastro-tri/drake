@@ -19,11 +19,11 @@ RigidBody<T>& RigidBody<T>::Create(MultibodyTree<T>* tree,
   // tree takes ownership.
   BodyIndex body_id = tree->AddBody(std::unique_ptr<Body<T>>(body));
   body->set_parent_tree(tree);
-  body->set_id(body_id);
+  body->set_index(body_id);
 
   // Create a BodyFrame associated with this body.
   BodyFrame<T>& body_frame = BodyFrame<T>::Create(tree, *body);
-  body->set_body_frame(body_frame.get_id());
+  body->set_body_frame(body_frame.get_index());
 
   return *body;
 }

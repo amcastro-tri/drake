@@ -18,7 +18,10 @@ template <class T> class MultibodyTree;
 template <class T> class RigidBody;
 
 template <typename T>
-class Frame : public MultibodyTreeElement<Frame<T>, FrameIndex> {};
+class Frame : public MultibodyTreeElement<Frame<T>, FrameIndex> {
+ public:
+  void Compile() final {};
+};
 
 template <typename T>
 class MaterialFrame : public Frame<T> {
@@ -59,8 +62,8 @@ class MaterialFrame : public Frame<T> {
   /// @param[in] Local frame id in the body referenced by @p body_id.
   MaterialFrame(const Body<T>& body);
 
-  void set_id(FrameIndex id) override {
-    MultibodyTreeElement<Frame<T>, FrameIndex>::set_id(id);
+  void set_index(FrameIndex id) override {
+    MultibodyTreeElement<Frame<T>, FrameIndex>::set_index(id);
     topology_.id = id;
   }
 
@@ -146,7 +149,7 @@ class FixedOffsetFrame : public MaterialFrame<T> {
 template <typename T>
 class SoftBodyFrame : public MaterialFrame<T> {
  public:
-  SoftBodyFrame(const SoftBody<T>& body) : MaterialFrame(body.get_id()) {}
+  SoftBodyFrame(const SoftBody<T>& body) : MaterialFrame(body.get_index()) {}
 
   /// @returns the local identifier of this frame in the parent SoftBody.
   int get_local_id() const { return local_id_;}

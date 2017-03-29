@@ -23,7 +23,7 @@ RevoluteMobilizer<T>& RevoluteMobilizer<T>::Create(
   MobilizerIndex mobilizer_id =
       tree->AddMobilizer(std::unique_ptr<Mobilizer<T>>(mobilizer));
   mobilizer->set_parent_tree(tree);
-  mobilizer->set_id(mobilizer_id);
+  mobilizer->set_index(mobilizer_id);
 
   return *mobilizer;
 }

@@ -40,6 +40,8 @@ class BodyNodeImpl : public BodyNode<T> {
     this->set_parent_tree(tree);
   }
 
+  void Compile() final {};
+
   void UpdateAcrossBodiesSpatialVelocityJacobian(
       const MultibodyTreeContext<T>& context) const final;
 
@@ -117,19 +119,19 @@ class BodyNodeImpl : public BodyNode<T> {
   }
 
   const GeneralSpatialVector<T>& get_V_PB_W(const VelocityKinematicsCache<T> vc) const {
-    return vc.get_V_PB_W(this->get_id());
+    return vc.get_V_PB_W(this->get_index());
   }
 
   GeneralSpatialVector<T>& get_mutable_V_PB_W(VelocityKinematicsCache<T>* vc) const {
-    return vc->get_mutable_V_PB_W(this->get_id());
+    return vc->get_mutable_V_PB_W(this->get_index());
   }
 
   const GeneralSpatialVector<T>& get_V_WB(const VelocityKinematicsCache<T>& vc) const {
-    return vc.get_V_WB(this->get_id());
+    return vc.get_V_WB(this->get_index());
   }
 
   GeneralSpatialVector<T>& get_mutable_V_WB(VelocityKinematicsCache<T>* vc) const {
-    return vc->get_mutable_V_WB(this->get_id());
+    return vc->get_mutable_V_WB(this->get_index());
   }
 
   /// @returns the spatial velocity `V_WP` of the body `P` in the parent node.

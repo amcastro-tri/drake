@@ -43,6 +43,8 @@ class BodyNodeWelded : public BodyNode<T> {
       const VelocityKinematicsCache<T>& vc,
       const Eigen::Ref<const VectorX<T>>& vdot,
       std::vector<GeneralSpatialVector<T>>* A_WB_pool) const final {};
+
+  void Compile() final {};
 };
 
 }  // namespace multibody

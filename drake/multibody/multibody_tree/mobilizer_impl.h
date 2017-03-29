@@ -20,7 +20,7 @@ namespace multibody {
 template <typename T, int  num_positions, int num_velocities>
 class MobilizerImpl : public Mobilizer<T> {
  public:
-  using Mobilizer<T>::get_id;
+  using Mobilizer<T>::get_index;
 
   // static constexpr int i = 42; discouraged.
   // See answer in: http://stackoverflow.com/questions/37259807/static-constexpr-int-vs-old-fashioned-enum-when-and-why

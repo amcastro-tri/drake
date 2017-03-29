@@ -55,6 +55,7 @@ drake_cc_library(
     deps = [
         ":multibody_tree_indexes",
         ":spatial_inertia",
+        "//drake/common",
         "//drake/common:autodiff",
     ],
 )

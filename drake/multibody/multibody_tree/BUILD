@@ -15,8 +15,10 @@ package(
 drake_cc_library(
     name = "multibody_tree_indexes",
     srcs = [],
-    hdrs = ["multibody_indexes.h"],
-    deps = [],
+    hdrs = ["multibody_tree_indexes.h"],
+    deps = [
+        "//drake/common:type_safe_index",
+    ],
 )
 
 drake_cc_library(
@@ -103,6 +105,32 @@ drake_cc_library(
 # === test/ ===
 
 drake_cc_googletest(
+    name = "double_pendulum",
+    deps = [
+        ":multibody_tree",
+    ],
+)
+
+drake_cc_googletest(
+    name = "mass_properties_test",
+    deps = [
+        ":spatial_inertia",
+    ],
+)
+
+drake_cc_googletest(
+    name = "multibody_tree_indexes_tests",
+    deps = [
+        ":multibody_tree_indexes",
+    ],
+)
+
+drake_cc_googletest(
+    name = "multibody_tree_topology_test",
+    deps = [":multibody_tree"],
+)
+
+drake_cc_googletest(
     name = "rotational_inertia_tests",
     deps = [
         ":rotational_inertia",
@@ -121,25 +149,6 @@ drake_cc_googletest(
     name = "unit_inertia_tests",
     deps = [
         ":unit_inertia",
-    ],
-)
-
-drake_cc_googletest(
-    name = "multibody_tree_topology_test",
-    deps = [":multibody_tree"],
-)
-
-drake_cc_googletest(
-    name = "mass_properties_test",
-    deps = [
-        ":spatial_inertia",
-    ],
-)
-
-drake_cc_googletest(
-    name = "double_pendulum",
-    deps = [
-        ":multibody_tree",
     ],
 )
 

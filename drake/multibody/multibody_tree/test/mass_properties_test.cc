@@ -191,9 +191,10 @@ GTEST_TEST(SpatialInertia, PlusEqualOperator) {
 GTEST_TEST(SpatialInertia, ReExpress) {
   // Spatial inertia for a cube of unit mass computed about its center of mass
   // and expressed in its principal axes frame.
-  const double Lx = 0.2, Ly = 1.0, Lz = 0.5;  // Box's lengths.
-  SpatialInertia<double> M_Bo_B(
-      1.0, Vector3d::UnitX(), UnitInertia<double>::SolidBox(Lx, Ly, Lz));
+  const double Lx = 0.2, Ly = 1.0, Lz = 0.5;  // Cube's lengths.
+  const double mass = 1.3;  // Cube's mass
+  SpatialInertia<double> M_Bo_B(  // First computed about its centroid.
+      mass, Vector3d::Zero(), UnitInertia<double>::SolidBox(Lx, Ly, Lz));
 
   // Replace this pring by the respective getters and check values.
   PRINT_VARn(M_Bo_B);
@@ -246,8 +247,10 @@ GTEST_TEST(SpatialInertia, Shift) {
   EXPECT_TRUE(M_Xo_W.IsPhysicallyValid());
 
   // Expected moment of inertia for a rod when computed about one of its ends.
-  const double I_end = mass * length / 3.0;
-  const auto& I_Xo_W = M_Xo_W.CalcRotationalInertia();
+  const double I_end =
+      mass * (3 * radius * radius + length * length) / 12  /*About centroid.*/
+          + mass * length * length / 4;  /*Parallel axis theorem shift.*/
+  const auto I_Xo_W = M_Xo_W.CalcRotationalInertia();
   EXPECT_NEAR(I_Xo_W(0,0), I_end, Eigen::NumTraits<double>::epsilon());
   EXPECT_NEAR(I_Xo_W(2,2), I_end, Eigen::NumTraits<double>::epsilon());
 }
@@ -263,7 +266,7 @@ GTEST_TEST(SpatialInertia, Shift) {
 // where each column is a GeneralSpatialVector.
 GTEST_TEST(SpatialInertia, ProductWithSpatialVectors) {
   const double mass = 2.5;
-  const double radius = 0.1;
+  const double radius = 0;
   const double length = 1.0;
 
   // Spatial inertia of a rod along the z-axis computed about center of mass.
@@ -289,10 +292,14 @@ GTEST_TEST(SpatialInertia, ProductWithSpatialVectors) {
   // Product of a SpatialInertia times a GeneralSpatialVector
   GeneralSpatialVector<double> F_WB = M_Bc_W * V_WB;
 
+  PRINT_VARn(M_Bc_W.CopyToFullMatrix6());
+
   GeneralSpatialVector<double> F_expected(
-      Vector3d(5.0 / 24.0, 5.0 / 12.0, 0.0375),
+      Vector3d(5.0 / 24.0, 5.0 / 12.0, 0.0),
       Vector3d(-2.5, 5.0, 20.0));
   EXPECT_TRUE(F_WB.IsApprox(F_expected, Eigen::NumTraits<double>::epsilon()));
+  PRINT_VAR(F_expected);
+  PRINT_VAR(F_WB);
 
   // Jacobian with three columns but a maximum up to six columns.
   SpatialVelocityJacobianUpTo6<double> H(3);
@@ -314,7 +321,7 @@ GTEST_TEST(SpatialInertia, ProductWithSpatialVectors) {
 
 GTEST_TEST(SpatialInertia, ComputeKineticEnergy) {
   const double mass = 2.5;
-  const double radius = 0.1;
+  const double radius = 0.0;
   const double length = 1.0;
 
   // Spatial inertia of a rod along the z-axis computed about center of mass.

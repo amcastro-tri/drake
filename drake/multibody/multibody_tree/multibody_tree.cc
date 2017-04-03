@@ -31,18 +31,24 @@ MultibodyTree<T>::MultibodyTree() {
 }
 
 template <typename T>
-FrameIndex MultibodyTree<T>::AddMaterialFrame(std::unique_ptr<MaterialFrame<T>> frame) {
+MaterialFrame<T>* MultibodyTree<T>::AddMaterialFrame(std::unique_ptr<MaterialFrame<T>> frame) {
   DRAKE_DEMAND(frame != nullptr);
-  FrameIndex id = topology_.add_material_frame(frame->get_topology());
+  FrameIndex id = topology_.add_physical_frame(frame->get_body().get_index());
+  frame->set_parent_tree(this);
+  frame->set_index(id);
+  MaterialFrame<T>* frame_raw_ptr = frame.get();
   material_frames_.push_back(std::move(frame));
-  return id;
+  return frame_raw_ptr;
 }
 
 template <typename T>
 MobilizerIndex MultibodyTree<T>::AddMobilizer(
     std::unique_ptr<Mobilizer<T>> mobilizer) {
   DRAKE_DEMAND(mobilizer != nullptr);
-  MobilizerIndex id = topology_.add_mobilizer(mobilizer->get_topology());
+  MobilizerIndex id = topology_.add_mobilizer(
+      mobilizer->get_inboard_frame().get_index(),
+      mobilizer->get_outboard_frame().get_index());
+  //MobilizerIndex id = topology_.add_mobilizer(mobilizer->get_topology());
   mobilizers_.push_back(std::move(mobilizer));
   return id;
 }
@@ -56,7 +62,7 @@ void MultibodyTree<T>::CompileTopology() {
   auto& body_node_topologies = topology_.body_nodes;
   auto& frame_topologies = topology_.material_frames;
 
-  mobilizer_topologies.resize(get_num_mobilizers());
+  mobilizer_topologies.reserve(get_num_mobilizers());
 
   // Resize body topologies, assign id.
   //body_topologies.resize(get_num_bodies());
@@ -68,9 +74,14 @@ void MultibodyTree<T>::CompileTopology() {
   // Create parent/child connections.
   for (MobilizerIndex mobilizer_id(0);
        mobilizer_id < get_num_mobilizers(); ++mobilizer_id) {
-    const Mobilizer<T>& mobilizer = get_mobilizer(mobilizer_id);
-    BodyIndex inbody = mobilizer.get_inboard_body_id();
-    BodyIndex outbody = mobilizer.get_outboard_body_id();
+    //const Mobilizer<T>& mobilizer = get_mobilizer(mobilizer_id);
+    //BodyIndex inbody = mobilizer.get_inboard_body_id();
+    //BodyIndex outbody = mobilizer.get_outboard_body_id();
+
+    FrameIndex inframe = mobilizer_topologies[mobilizer_id].inboard_frame;
+    FrameIndex outframe = mobilizer_topologies[mobilizer_id].outboard_frame;
+    BodyIndex inbody = frame_topologies[inframe].body_id;
+    BodyIndex outbody = frame_topologies[outframe].body_id;
 
     // Sets mobilizer connectivities.
     mobilizer_topologies[mobilizer_id].inboard_body = inbody;
@@ -270,9 +281,9 @@ void MultibodyTree<T>::CompileTopology() {
   }
 
   // Updates frames' topology.
-  for (const auto& frame: material_frames_) {
-    frame->SetTopology(topology_.material_frames[frame->get_index()]);
-  }
+  //for (const auto& frame: material_frames_) {
+  //  frame->SetTopology(topology_.material_frames[frame->get_index()]);
+  //}
 
   // Updates mobilizers' topology.
   for (MobilizerIndex mobilizer_id(0);
@@ -340,12 +351,13 @@ void MultibodyTree<T>::PrintTopology() const {
     body->PrintTopology();
   }
   std::cout << std::endl;
-
+#if 0
   std::cout << "Frames: " << std::endl;
   for (const auto& frame: material_frames_) {
     frame->PrintTopology();
   }
   std::cout << std::endl;
+#endif
 
   std::cout << "Mobilizers: " << std::endl;
   for (const auto& mobilizer: mobilizers_) {

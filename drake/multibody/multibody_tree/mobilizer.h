@@ -22,15 +22,11 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
  public:
   /// Mobilizer constructor.
   Mobilizer(const MaterialFrame<T>& inboard_frame,
-            const MaterialFrame<T>& outboard_frame) {
+            const MaterialFrame<T>& outboard_frame) :
+      inboard_frame_(inboard_frame), outboard_frame_(outboard_frame) {
     // Bodies must have already been added to a multibody tree.
     DRAKE_DEMAND(inboard_frame.get_index().is_valid());
     DRAKE_DEMAND(outboard_frame.get_index().is_valid());
-    DRAKE_DEMAND(inboard_frame.get_index() != outboard_frame.get_index());
-    topology_.inboard_frame = inboard_frame.get_index();
-    topology_.outboard_frame = outboard_frame.get_index();
-    topology_.inboard_body = inboard_frame.get_body_index();
-    topology_.outboard_body = outboard_frame.get_body_index();
   }
 
   MobilizerIndex get_index() const final { return topology_.id;}
@@ -39,21 +35,21 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
 
   virtual int get_num_velocities() const = 0;
 
-  BodyIndex get_inboard_body_id() const { return topology_.inboard_body; }
+  BodyIndex get_inboard_body_id() const { return inboard_frame_.get_body().get_index(); }
 
-  BodyIndex get_outboard_body_id() const { return topology_.outboard_body; }
+  BodyIndex get_outboard_body_id() const { return outboard_frame_.get_body().get_index(); }
 
-  BodyIndex get_inboard_frame_id() const { return topology_.inboard_frame; }
+  FrameIndex get_inboard_frame_id() const { return inboard_frame_.get_index(); }
 
-  BodyIndex get_outboard_frame_id() const { return topology_.outboard_frame; }
+  FrameIndex get_outboard_frame_id() const { return outboard_frame_.get_index(); }
 
 
   const MaterialFrame<T>& get_inboard_frame() const {
-    return this->get_parent_tree().get_material_frame(topology_.inboard_frame);
+    return inboard_frame_;
   }
 
   const MaterialFrame<T>& get_outboard_frame() const {
-    return this->get_parent_tree().get_material_frame(topology_.outboard_frame);
+    return outboard_frame_;
   }
 
   virtual void UpdatePositionKinematicsCache(
@@ -104,7 +100,9 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
   }
 
  protected:
-  MobilizerTopology topology_;
+  const MaterialFrame<T>& inboard_frame_;
+  const MaterialFrame<T>& outboard_frame_;
+  MobilizerTopology topology_{MobilizerIndex(0), FrameIndex(0), FrameIndex(0)};
 
   int get_positions_start() const { return topology_.positions_start; }
   int get_velocities_start() const { return topology_.velocities_start; }

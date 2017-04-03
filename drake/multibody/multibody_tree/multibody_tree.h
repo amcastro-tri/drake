@@ -90,12 +90,14 @@ class MultibodyTree {
     // Users can add new multibody elements, however the topology gets
     // invalidated.
     BodyIndex index = topology_.add_body();
+    FrameIndex frame_index = topology_.bodies_[index].body_frame;
 
     // MultibodyTree has access to these methods since it is a friend of
     // MultibodyTreeElement. Users of Body<T>, however, do not have access to
     // these methods.
     body->set_parent_tree(this);
     body->set_index(index);
+    body->set_frame_index(frame_index);
     BodyType* raw_body_ptr = body.get();
     owned_bodies_.push_back(std::move(body));
     return raw_body_ptr;
@@ -110,6 +112,7 @@ class MultibodyTree {
     return *owned_bodies_[world_index()];
   }
 
+#if 0
   /// This method is **only** called from within private method
   /// Body::CreateBodyFrame() to create the associated body frame for a body.
   ///
@@ -136,6 +139,7 @@ class MultibodyTree {
     material_frames_.push_back(std::move(body_frame));
     return raw_body_ptr;
   }
+#endif
 
   /// Returns a constant reference to the body with unique index `body_index`.
   /// This method aborts in Debug builds when `body_index` does not correspond
@@ -179,7 +183,7 @@ class MultibodyTree {
   ///         already compiled %MultibodyTree.
   void Compile();
 
-  FrameIndex AddMaterialFrame(std::unique_ptr<MaterialFrame<T>> frame);
+  MaterialFrame<T>* AddMaterialFrame(std::unique_ptr<MaterialFrame<T>> frame);
 
   MobilizerIndex AddMobilizer(std::unique_ptr<Mobilizer<T>> mobilizer);
 
@@ -194,8 +198,7 @@ class MultibodyTree {
   int get_num_levels() const { return static_cast<int>(body_levels_.size()); }
 
   const BodyFrame<T>& get_world_frame() const {
-    return *static_cast<const BodyFrame<T>*>(
-        material_frames_[owned_bodies_[0]->get_body_frame_id()].get());
+    return owned_bodies_[world_index()]->get_body_frame();
   }
   
   const Mobilizer<T>& get_mobilizer(MobilizerIndex mobilizer_id) const {

@@ -38,7 +38,7 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
   /// deformations for this body. A rigid body will therefore return zero.
   virtual int get_num_flexible_velocities() const = 0;
 
-  FrameIndex get_body_frame_id() const { return body_frame_id_; }
+  const BodyFrame<T>& get_body_frame() const { return body_frame_; }
 
   virtual void UpdatePositionKinematicsCache(
       const MultibodyTreeContext<T> &context) = 0;
@@ -131,18 +131,21 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
 
   virtual void Compile() {}
 
+  void set_frame_index(FrameIndex index) { body_frame_.set_index(index); }
+
  protected:
   // Default constructor. Only sub-classes can use it.
-  Body() {};
+  Body() : body_frame_(*this) {};
 
   // Only sub-classes' Create() methods can set the body frame index.
-  void set_body_frame_index(FrameIndex body_frame_id) {
-    // Asserts that the first frame added is the body frame.
-    DRAKE_ASSERT(frames_.size() == 0);
-    frames_.push_back(body_frame_id);
-    body_frame_id_ = body_frame_id;
-  }
+  //void set_body_frame_index(FrameIndex body_frame_id) {
+  //  // Asserts that the first frame added is the body frame.
+  //  DRAKE_ASSERT(frames_.size() == 0);
+  //  frames_.push_back(body_frame_id);
+  //  body_frame_id_ = body_frame_id;
+  //}
 
+#if 0
   // This method is called within the Create() methods of a sub-class inheriting
   // from Body to create the BodyFrame associated with this body.
   // Since Body<T> is a friend of BodyFrame<T>, it has access to its private
@@ -160,11 +163,12 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
     return *tree->AddBodyFrame(
         std::unique_ptr<BodyFrame<T>>(new BodyFrame<T>(this->get_index())));
   }
+#endif
 
  private:
   BodyTopology topology_{BodyIndex(0), FrameIndex(0)};
 
-  FrameIndex body_frame_id_;
+  BodyFrame<T> body_frame_;
   std::vector<FrameIndex> frames_;
 
   /// Computes the rigid body inertia matrix for a given, fixed, value of the

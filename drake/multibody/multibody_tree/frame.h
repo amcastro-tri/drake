@@ -26,9 +26,11 @@ class Frame : public MultibodyTreeElement<Frame<T>, FrameIndex> {
 template <typename T>
 class MaterialFrame : public Frame<T> {
  public:
-  BodyIndex get_body_index() const { return topology_.body_id;}
+ // BodyIndex get_body_index() const { return topology_.body_id;}
 
-  const MaterialFrameTopology get_topology() const { return topology_;}
+  //const MaterialFrameTopology get_topology() const { return topology_;}
+
+  const Body<T>& get_body() const { return body_; }
 
   /// Given the pose `X_MF` of frame `F` measured in this frame `M`, return the
   /// pose of frame `F` measured and expressed in the frame `B` of the body
@@ -40,9 +42,9 @@ class MaterialFrame : public Frame<T> {
 
   /// Sets the topological information for this mobilizer.
   /// This is an implementation detail. User code should never call it.
-  void SetTopology(const MaterialFrameTopology& topology) {
-    topology_ = topology;
-  }
+  //void SetTopology(const MaterialFrameTopology& topology) {
+  //  topology_ = topology;
+ /// }
 
   /// Gives frame the opportunity to set default entries in the context
   /// tipically in the form of cache entries. This allows to precompute cache
@@ -50,6 +52,7 @@ class MaterialFrame : public Frame<T> {
   /// Defaults to a no-op.
   virtual void SetDefaults(MultibodyTreeContext<T>* context) {}
 
+#if 0
   void PrintTopology() const {
     std::cout << "Frame id: " << topology_.id << std::endl;
     std::cout << "Body id: " << topology_.body_id << std::endl;
@@ -57,23 +60,15 @@ class MaterialFrame : public Frame<T> {
     std::cout << "BodyNode id: " << topology_.body_node << std::endl;
     std::cout << "X_BF_index: " << topology_.X_BF_index << std::endl;
   }
+#endif
 
  protected:
   /// @param[in] Local frame id in the body referenced by @p body_id.
-  MaterialFrame(const Body<T>& body);
-
-  MaterialFrame(BodyIndex body) : topology_{FrameIndex(0), BodyIndex(0)} {
-    DRAKE_ASSERT(body.is_valid());
-    topology_.body_id = body;
-  }
- public:
-  void set_index(FrameIndex id) override {
-    MultibodyTreeElement<Frame<T>, FrameIndex>::set_index(id);
-    topology_.id = id;
-  }
+  MaterialFrame(const Body<T>& body) : body_(body) {}
 
  private:
-  MaterialFrameTopology topology_{FrameIndex(0), BodyIndex(0)};
+//  MaterialFrameTopology topology_{FrameIndex(0), BodyIndex(0)};
+  const Body<T>& body_;
 };
 
 template <typename T>
@@ -81,7 +76,7 @@ class BodyFrame : public MaterialFrame<T> {
  public:
   /// Creates a new BodyFrame and adds it to the MultibodyTree @p tree.
   /// The MultibodyTree @param tree takes ownership of the frame.
-  static BodyFrame<T>& Create(MultibodyTree<T>* tree, const Body<T>& body);
+  //static BodyFrame<T>& Create(MultibodyTree<T>* tree, const Body<T>& body);
 
   /// Given the pose `X_MF` of frame `F` measured in this material frame `M`,
   /// return the pose of frame `F` measured and expressed in the frame `B` of
@@ -94,10 +89,9 @@ class BodyFrame : public MaterialFrame<T> {
     return X_MF;
   }
 
-  BodyFrame(BodyIndex body) : MaterialFrame<T>(body) {}
+  BodyFrame(const Body<T>& body) : MaterialFrame<T>(body) {}
 
- private:
-  BodyFrame(const Body<T>& body);
+  void set_index(FrameIndex index) { MaterialFrame<T>::set_index(index); }
 };
 
 /// This class represents a frame `F` with pose `X_BF` measured and expressed in

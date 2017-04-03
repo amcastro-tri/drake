@@ -269,9 +269,9 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
 
     // Inboard/Outboard frames of this node's mobilizer.
     const MaterialFrame<T>& FrameF = get_mobilizer().get_inboard_frame();
-    DRAKE_ASSERT(FrameF.get_body_index() == BodyP.get_index());
+    DRAKE_ASSERT(FrameF.get_body().get_index() == BodyP.get_index());
     const MaterialFrame<T>& FrameM = get_mobilizer().get_outboard_frame();
-    DRAKE_ASSERT(FrameM.get_body_index() == BodyB.get_index());
+    DRAKE_ASSERT(FrameM.get_body().get_index() == BodyB.get_index());
 
     // Input (const):
     // - X_PF(qf_P)

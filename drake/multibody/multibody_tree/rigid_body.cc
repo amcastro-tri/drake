@@ -22,8 +22,8 @@ RigidBody<T>& RigidBody<T>::Create(MultibodyTree<T>* tree,
   auto body = tree->AddBody(
       std::unique_ptr<RigidBody<T>>(new RigidBody<T>(mass_properties)));
   // Create and add a BodyFrame associated with this rigid body.
-  FrameIndex frame_index = body->CreateBodyFrame(tree).get_index();
-  body->set_body_frame_index(frame_index);
+  //FrameIndex frame_index = body->CreateBodyFrame(tree).get_index();
+  //body->set_body_frame_index(frame_index);
 
   return *body;
 }

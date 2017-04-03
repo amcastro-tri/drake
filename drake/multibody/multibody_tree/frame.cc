@@ -12,6 +12,7 @@
 namespace drake {
 namespace multibody {
 
+#if 0
 template <typename T>
 MaterialFrame<T>::MaterialFrame(const Body<T>& body) {
   DRAKE_ASSERT(body.get_index().is_valid());
@@ -36,6 +37,7 @@ BodyFrame<T>& BodyFrame<T>::Create(MultibodyTree<T>* tree, const Body<T>& body)
 template <typename T>
 BodyFrame<T>::BodyFrame(
     const Body<T>& body) : MaterialFrame<T>(body) {}
+#endif
 
 template <typename T>
 RigidBodyFrame<T>& RigidBodyFrame<T>::Create(
@@ -45,10 +47,7 @@ RigidBodyFrame<T>& RigidBodyFrame<T>::Create(
   // private to avoid users creating frames by other means other than calling
   // Create().
   RigidBodyFrame<T>* frame = new RigidBodyFrame<T>(body, X_BM);
-  FrameIndex frame_id =
-      tree->AddMaterialFrame(std::unique_ptr<MaterialFrame<T>>(frame));
-  frame->set_parent_tree(tree);
-  frame->set_index(frame_id);
+  tree->AddMaterialFrame(std::unique_ptr<MaterialFrame<T>>(frame));
   return *frame;
 }
 
@@ -59,9 +58,9 @@ RigidBodyFrame<T>::RigidBodyFrame(
 
 template <typename T>
 void RigidBodyFrame<T>::SetDefaults(MultibodyTreeContext<T>* context) {
-  PositionKinematicsCache<T>* pc = context->get_mutable_position_kinematics();
-  pc->get_mutable_X_BF(this->get_topology().X_BF_index) = X_BM_;
-  pc->get_mutable_X_MB(this->get_topology().body_node) = X_BM_.inverse();
+  //PositionKinematicsCache<T>* pc = context->get_mutable_position_kinematics();
+  //pc->get_mutable_X_BF(this->get_topology().X_BF_index) = X_BM_;
+  //pc->get_mutable_X_MB(this->get_topology().body_node) = X_BM_.inverse();
 }
 
 #if 0

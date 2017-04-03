@@ -16,7 +16,9 @@ struct BodyTopology {
   // Constructs a body topology struct with unique index `body_index` and a
   // body frame with unique index `frame_index`.
   BodyTopology(BodyIndex body_index, FrameIndex frame_index) :
-      id(body_index), body_frame(frame_index) {}
+      id(body_index), body_frame(frame_index) {
+    material_frames.push_back(frame_index);
+  }
 
   BodyIndex id{BodyIndex::Invalid()};  // Unique id in the MultibodyTree.
   int level{-1};  // Depth level in the MultibodyTree, level = 0 for the world.
@@ -52,6 +54,10 @@ struct BodyTopology {
 };
 
 struct MobilizerTopology {
+  MobilizerTopology(
+      MobilizerIndex index, FrameIndex inframe, FrameIndex outframe) :
+  id(index), inboard_frame(inframe), outboard_frame(outframe) {}
+
   MobilizerIndex id{MobilizerIndex::Invalid()};
   FrameIndex inboard_frame{FrameIndex::Invalid()};
   FrameIndex outboard_frame{FrameIndex::Invalid()};
@@ -178,10 +184,18 @@ struct MultibodyTreeTopology {
   BodyIndex add_body() {
     invalidate();
     BodyIndex body_index = BodyIndex(get_num_bodies());
-    FrameIndex body_frame = add_physical_frame(body_index);
+    FrameIndex body_frame = add_body_frame(body_index);
     BodyTopology body(body_index, body_frame);
     bodies_.push_back(body);
     return body.id;
+  }
+
+  FrameIndex add_body_frame(BodyIndex body_index) {
+    invalidate();
+    FrameIndex frame_index(get_num_material_frames());
+    MaterialFrameTopology frame(frame_index, body_index);
+    material_frames.push_back(frame);
+    return frame_index;
   }
 
   // Creates and adds a PhysicalFrameTopology to this MultibodyTreeTopology.
@@ -191,24 +205,12 @@ struct MultibodyTreeTopology {
     invalidate();
     FrameIndex frame_index(get_num_material_frames());
     MaterialFrameTopology frame(frame_index, body_index);
+    bodies_[body_index].material_frames.push_back(frame_index);
     material_frames.push_back(frame);
     return frame_index;
   }
 
-  FrameIndex add_material_frame(const MaterialFrameTopology& frame) {
-    const BodyIndex body_id = frame.body_id;
-    DRAKE_ASSERT(is_valid_body_id(body_id));
-    invalidate();
-    FrameIndex frame_id(get_num_material_frames());
-    BodyTopology& body_topology = bodies_[body_id];
-    int local_id = body_topology.get_num_material_frames();
-    material_frames.push_back(frame);
-    material_frames.back().id = frame_id;
-    material_frames.back().local_id = local_id;
-    body_topology.material_frames.push_back(frame_id);
-    return frame_id;
-  }
-
+#if 0
   /// Adds a MobilizerTopology to the MultibodyTreeTopology.
   /// @p mobilizer is expected to only have valid inboard/outbard frames and
   /// bodies initialized.
@@ -229,6 +231,23 @@ struct MultibodyTreeTopology {
     MobilizerIndex id(get_num_mobilizers());
     mobilizers_.push_back(mobilizer);
     mobilizers_.back().id = id;
+    invalidate();
+    return mobilizer.id;
+  }
+#endif
+
+  /// Adds a MobilizerTopology to the MultibodyTreeTopology.
+  /// @p mobilizer is expected to only have valid inboard/outbard frames and
+  /// bodies initialized.
+  MobilizerIndex add_mobilizer(
+      FrameIndex inboard_frame, FrameIndex outboard_frame) {
+    DRAKE_ASSERT(is_valid_frame_id(inboard_frame));
+    DRAKE_ASSERT(is_valid_frame_id(outboard_frame));
+
+    MobilizerIndex id(get_num_mobilizers());
+    MobilizerTopology mobilizer(id, inboard_frame, outboard_frame);
+
+    mobilizers_.push_back(mobilizer);
     invalidate();
     return mobilizer.id;
   }

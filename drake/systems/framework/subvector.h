@@ -5,9 +5,13 @@
 
 #include <Eigen/Dense>
 
+#include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/drake_throw.h"
 #include "drake/systems/framework/vector_base.h"
+
+#include <iostream>
+#define PRINT_VAR(x) std::cout <<  #x ": " << x << std::endl;
 
 namespace drake {
 namespace systems {
@@ -30,6 +34,8 @@ class Subvector : public VectorBase<T> {
       : vector_(vector),
         first_element_(first_element),
         num_elements_(num_elements) {
+    DRAKE_ASSERT(first_element >= 0);
+    DRAKE_ASSERT(num_elements >= 0);
     if (vector_ == nullptr) {
       throw std::logic_error("Cannot create Subvector of a nullptr vector.");
     }

@@ -25,17 +25,51 @@ drake_cc_library(
     ],
 )
 
-# === test/ ===
+drake_cc_library(
+    name = "mesh",
+    srcs = [],
+    hdrs = [
+        "mesh.h",
+    ],
+    deps = [
+        "//drake/common",
+    ],
+)
 
-#drake_cc_library(
-#    name = "spatial_inertia",
-#    srcs = [],
-#    hdrs = ["spatial_inertia.h"],
-#    deps = [
-#        ":unit_inertia",
-#        "//drake/math:gradient",
-#        "//drake/multibody/multibody_tree/math:spatial_algebra",
+drake_cc_library(
+    name = "mesh_loader",
+    srcs = [],
+    hdrs = [
+        "mesh_loader.h",
+    ],
+    deps = [
+        ":mesh",
+        "//drake/common",
+        "//drake/multibody/shapes",
+    ],
+)
+
+#filegroup(
+#    name = "test_models",
+#    testonly = 1,
+#    srcs = [
+#        "//drake/multibody/shapes/test/tri_cube.obj",
 #    ],
 #)
+
+# === test/ ===
+
+drake_cc_googletest(
+    name = "mesh_test",
+    data = [
+        "//drake/multibody/shapes:test_models",
+    ],
+    deps = [
+        ":mesh",
+        ":mesh_loader",
+        "//drake/common",
+        "//drake/common:drake_path",
+    ],
+)
 
 cpplint()

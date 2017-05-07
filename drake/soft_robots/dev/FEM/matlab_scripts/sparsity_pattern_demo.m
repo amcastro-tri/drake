@@ -3,7 +3,7 @@
 [x y tri] = gen_rectangle_mesh(2, 1, 20, 20);
 
 % Assemble pattern into a sparse matrix.
-S = assemble_sparsity_matrix(tri);
+S = assemble_sparsity_matrix(tri, 1.0);
 
 figure
 

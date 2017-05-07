@@ -1,8 +1,9 @@
-function S = assemble_sparsity_matrix(tri)
-% S = assemble_sparsity_matrix(tri)
-% Given an array of connectivities tri, assemble a sparse matrix so that its 
-% sparsity pattern corresponds to that of a FEM mass matrix.
-% You can view this sparsity pattern with spy(S).
+function S = assemble_sparsity_matrix(tri, v)
+  % S = assemble_sparsity_matrix(tri, v)
+  % Given an array of connectivities tri, assemble a sparse matrix so that its 
+  % sparsity pattern corresponds to that of a FEM mass matrix.
+  % You can view this sparsity pattern with spy(S).
+  % v: What value entry to assemble into the matrix.
 
   nel = size(tri)(1);
   nnodes = max(max(max(tri)));
@@ -22,4 +23,4 @@ function S = assemble_sparsity_matrix(tri)
     end
   end
 
-  S = sparse(ik, jk, ones(size(ik)), nnodes, nnodes);
+  S = sparse(ik, jk, v * ones(size(ik)), nnodes, nnodes);

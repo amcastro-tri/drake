@@ -46,6 +46,8 @@ class TriangleElement : public IsoparametricElement<T> {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(TriangleElement);
 
+  TriangleElement() {}
+
   int get_num_nodes() const override { return num_element_nodes_; }
 
   int get_num_physical_dimensions() const final { return npd;}
@@ -60,8 +62,16 @@ class TriangleElement : public IsoparametricElement<T> {
     // N(a = 0) = t = 1 - r - s
     // N(a = 1) = r
     // N(a = 2) = s
-    Na.template topRows<1>(0).setConstant(1.0) -= (x_ref.row(0) + x_ref.row(1));
-    Na.template bottomRows<2>(1) = x_ref;
+    // The code below fails at runtime. Why?
+    //Na.template topRows<1>(0) = MatrixX<T>::Ones(1, x_ref.cols());
+    //Na.template topRows<1>(0) -= (x_ref.row(0) + x_ref.row(1));
+    //Na.template bottomRows<2>(1) = x_ref;
+
+    for (int ipoint = 0; ipoint < x_ref.cols(); ++ipoint) {
+      Na(0, ipoint) = 1.0 - x_ref(0, ipoint) - x_ref(1, ipoint);
+      Na(1, ipoint) = x_ref(0, ipoint);
+      Na(2, ipoint) = x_ref(1, ipoint);
+    }
   }
 
   /// In general a function of x_ref, but constant for the linear triangle
@@ -70,7 +80,7 @@ class TriangleElement : public IsoparametricElement<T> {
       const Eigen::Ref<const MatrixX<T>>& xa,
       const Eigen::Ref<const MatrixX<T>>& x_ref,
       Eigen::Ref<VectorX<T>> Jnorm) const final {
-    Jnorm(0) = internal::triangle_area<T, npd>::compute(xa);
+    Jnorm.setConstant(internal::triangle_area<T, npd>::compute(xa));
   }
  private:
   static constexpr int num_element_nodes_{3};

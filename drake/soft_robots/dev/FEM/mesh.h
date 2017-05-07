@@ -18,9 +18,32 @@ class Mesh {
 
   int get_num_elements() const { return connectivities_.cols(); }
 
+  int get_num_element_nodes() const { return connectivities_.rows(); }
+
   int get_num_nodes() const { return nodes_.cols(); }
 
   int get_num_physical_dimensions() const { return nodes_.rows(); }
+
+  Eigen::Block<const MatrixX<int>> get_element_connectivities(int element) const
+  {
+    return connectivities_.block(0, element, get_num_element_nodes(), 1);
+  }
+
+  void GetNodes(
+      const Eigen::Ref<const VectorX<int>> &nodes,
+      Eigen::Ref<MatrixX < T>> xa) const {
+    DRAKE_ASSERT(xa.rows() == get_num_physical_dimensions());
+    DRAKE_ASSERT(xa.cols() == nodes.size());
+    for (int i = 0; i < nodes.size(); ++i) {
+      xa.col(i) = nodes_.col(nodes(i));
+    }
+  }
+
+  void GetElementNodes(
+      int element,
+      Eigen::Ref<MatrixX < T>> xa) const {
+    return GetNodes(connectivities_.col(element), xa);
+  }
 
  private:
   // Each column is a node in the mesh.

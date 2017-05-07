@@ -13,6 +13,8 @@ class IsoparametricElement {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(IsoparametricElement);
 
+  IsoparametricElement() {}
+
   virtual ~IsoparametricElement() {}
 
   /// Returns the number of element nodes.
@@ -85,6 +87,10 @@ class IsoparametricElement {
       const Eigen::Ref<const MatrixX<T>>& xa,
       const Eigen::Ref<const MatrixX<T>>& x_ref,
       Eigen::Ref<VectorX<T>> Jnorm) const {
+    DRAKE_ASSERT(xa.rows() == get_num_physical_dimensions());
+    DRAKE_ASSERT(xa.cols() == get_num_nodes());
+    DRAKE_ASSERT(x_ref.rows() == get_num_reference_dimensions());
+    DRAKE_ASSERT(x_ref.cols() == Jnorm.size());
     DoCalcJacobianNorm(xa, x_ref, Jnorm);
   }
 

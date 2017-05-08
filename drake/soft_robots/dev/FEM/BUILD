@@ -6,6 +6,7 @@ load(
     "//tools:drake.bzl",
     "drake_cc_googletest",
     "drake_cc_library",
+    "drake_cc_binary",
 )
 
 package(
@@ -20,6 +21,20 @@ drake_cc_library(
         "triangle_element.h",
     ],
     deps = [
+        "//drake/common",
+        "//drake/common:autodiff",
+    ],
+)
+
+drake_cc_library(
+    name = "fem_solver",
+    srcs = ["fem_solver.cc"],
+    hdrs = [
+        "fem_solver.h",
+    ],
+    deps = [
+        ":fem_elements",
+        ":mesh",
         "//drake/common",
         "//drake/common:autodiff",
     ],
@@ -65,6 +80,44 @@ drake_cc_googletest(
         "//drake/multibody/shapes:test_models",
     ],
     deps = [
+        ":mesh",
+        ":mesh_loader",
+        "//drake/common",
+        "//drake/common:drake_path",
+    ],
+)
+
+drake_cc_googletest(
+    name = "triangle_element_test",
+    deps = [
+        ":fem_elements",
+        "//drake/common",
+    ],
+)
+
+#drake_cc_googletest(
+#    name = "fem_solver_test",
+#    data = [
+#        "//drake/multibody/shapes:test_models",
+#    ],
+#    deps = [
+#        ":fem_solver",
+#        ":mesh",
+#        ":mesh_loader",
+#        "//drake/common",
+#        "//drake/common:drake_path",
+#    ],
+#   )
+
+drake_cc_binary(
+    name = "fem_solver_integral",
+    testonly = 1,
+    srcs = ["test/fem_solver_test.cc"],
+    data = [
+        "//drake/multibody/shapes:test_models",
+    ],
+    deps = [
+        ":fem_solver",
         ":mesh",
         ":mesh_loader",
         "//drake/common",

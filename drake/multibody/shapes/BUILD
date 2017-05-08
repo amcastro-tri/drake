@@ -20,15 +20,15 @@ drake_cc_library(
         "visual_element.h",
     ],
     deps = [
+        "@tinyobjloader//:tinyobjloader",
         "//drake/common",
         "//drake/thirdParty:spruce",
-        "@tinyobjloader//:tinyobjloader",
     ],
 )
 
 filegroup(
     name = "test_models",
-    testonly = 1,
+    testonly = 0,
     srcs = [
         "test/colinear_vertex.obj",
         "test/concave_face_bad.obj",

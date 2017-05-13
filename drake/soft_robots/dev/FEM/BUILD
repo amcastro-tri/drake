@@ -14,6 +14,18 @@ package(
 )
 
 drake_cc_library(
+    name = "shape_functions",
+    srcs = ["triangle_shape_function.cc"],
+    hdrs = [
+        "triangle_shape_function.h",
+    ],
+    deps = [
+        "//drake/common",
+        "//drake/common:autodiff",
+    ],
+)
+
+drake_cc_library(
     name = "fem_elements",
     srcs = ["triangle_element.cc"],
     hdrs = [
@@ -21,6 +33,7 @@ drake_cc_library(
         "triangle_element.h",
     ],
     deps = [
+        ":shape_functions",
         "//drake/common",
         "//drake/common:autodiff",
     ],

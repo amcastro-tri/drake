@@ -21,7 +21,7 @@ class IsoparametricElement {
   virtual int get_num_nodes() const = 0;
 
   /// Returns the number of spatial directions.
-  virtual int get_num_physical_dimensions() const = 0;
+  virtual int get_num_spatial_dimensions() const = 0;
 
   /// Returns the number of reference coordiantes.
   virtual int get_num_reference_dimensions() const = 0;
@@ -39,23 +39,11 @@ class IsoparametricElement {
       const Eigen::Ref<const MatrixX<T>>& xa,
       const Eigen::Ref<const MatrixX<T>>& x_ref,
       Eigen::Ref<MatrixX<T>> x_phys) const {
-#ifdef DRAKE_ASSERT_IS_ARMED
-    if (xa.rows() != get_num_physical_dimensions())
-      throw std::runtime_error(
-          "xa does not have the correct number of physical dimensions");
-    if (xa.cols() != get_num_nodes())
-      throw std::runtime_error(
-          "xa does not have the correct number of element nodes");
-    if (x_ref.rows() != get_num_reference_dimensions())
-      throw std::runtime_error(
-          "x_ref does not have the correct number of reference dimensions");
-    if (x_phys.rows() != get_num_physical_dimensions())
-      throw std::runtime_error(
-          "x_phys does not have the correct number of physical dimensions");
-    if (x_phys.cols() != x_ref.cols())
-      throw std::runtime_error(
-          "x_phys and x_ref must have the same number of columns");
-#endif
+    DRAKE_ASSERT(xa.rows() == get_num_spatial_dimensions());
+    DRAKE_ASSERT(xa.cols() == get_num_nodes());
+    DRAKE_ASSERT(x_ref.rows() == get_num_reference_dimensions());
+    DRAKE_ASSERT(x_phys.rows() == get_num_spatial_dimensions());
+    DRAKE_ASSERT(x_phys.cols() == x_ref.cols());
     DoMapCoordinatesFromReferenceToPhysical(xa, x_ref, x_phys);
   }
 
@@ -69,17 +57,9 @@ class IsoparametricElement {
   void CalcShapeFunctions(
       const Eigen::Ref<const MatrixX<T>>& x_ref,
       Eigen::Ref<MatrixX<T>> Na) const {
-#ifdef DRAKE_ASSERT_IS_ARMED
-    if (x_ref.rows() != get_num_reference_dimensions())
-      throw std::runtime_error(
-          "x_ref does not have the correct number of reference dimensions");
-    if (Na.rows() != get_num_nodes())
-      throw std::runtime_error(
-          "Na does not have the correct number of nodes");
-    if (Na.cols() != x_ref.cols())
-      throw std::runtime_error(
-          "Na and x_ref must have the same number of columns");
-#endif
+    DRAKE_ASSERT(x_ref.rows() == get_num_reference_dimensions());
+    DRAKE_ASSERT(Na.rows() == get_num_nodes());
+    DRAKE_ASSERT(x_ref.cols() == Na.cols());
     DoCalcShapeFunctions(x_ref, Na);
   }
 
@@ -87,7 +67,7 @@ class IsoparametricElement {
       const Eigen::Ref<const MatrixX<T>>& xa,
       const Eigen::Ref<const MatrixX<T>>& x_ref,
       Eigen::Ref<VectorX<T>> Jnorm) const {
-    DRAKE_ASSERT(xa.rows() == get_num_physical_dimensions());
+    DRAKE_ASSERT(xa.rows() == get_num_spatial_dimensions());
     DRAKE_ASSERT(xa.cols() == get_num_nodes());
     DRAKE_ASSERT(x_ref.rows() == get_num_reference_dimensions());
     DRAKE_ASSERT(x_ref.cols() == Jnorm.size());

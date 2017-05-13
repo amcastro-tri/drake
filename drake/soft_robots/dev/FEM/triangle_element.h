@@ -4,6 +4,7 @@
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
 #include "drake/soft_robots/dev/FEM/isoparametric_element.h"
+#include "drake/soft_robots/dev/FEM/triangle_shape_function.h"
 
 namespace drake {
 namespace soft_robots {
@@ -40,38 +41,40 @@ struct triangle_area<T, 3> {
 }  // namespace internal
 
 /// @tparam T Must be a Scalar compatible with Eigen.
-/// @tparam npd The number of physical directions. Either 2 or 3 only.
-template <typename T, int npd>
-class TriangleElement : public IsoparametricElement<T> {
+template <typename T>
+class TriangleElement3D : public IsoparametricElement<T> {
  public:
-  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(TriangleElement);
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(TriangleElement3D);
 
-  TriangleElement() {}
+  TriangleElement3D() {}
 
-  int get_num_nodes() const override { return num_element_nodes_; }
+  int get_num_nodes() const override { return nen_; }
 
-  int get_num_physical_dimensions() const final { return npd;}
+  int get_num_spatial_dimensions() const final { return nsd_;}
 
-  int get_num_reference_dimensions() const final { return 2;}
+  int get_num_reference_dimensions() const final { return nrd_;}
+
+  /// Computes the area vector oriented according to the order of the nodes `xa`
+  /// following to the right-hand rule. The area vector points in the direction
+  /// of the normal and its magnitude is the area of the triangle.
+  /// @param[in] xa Triangle nodes ordered according to the right hand side rule
+  /// around the normal vector.
+  Vector3<T> CalcAreaVector(const Eigen::Ref<const MatrixX<T>>& xa) const {
+    const Vector3<T> u = xa.col(1) - xa.col(0);
+    const Vector3<T> v = xa.col(2) - xa.col(0);
+    return 0.5 * u.cross(v);
+  }
+
+  /// Computes the area of this triangle element. The result is always positive.
+  T CalcArea(const Eigen::Ref<const MatrixX<T>>& xa) const {
+    return CalcAreaVector(xa).norm();
+  }
 
  protected:
   void DoCalcShapeFunctions(
       const Eigen::Ref<const MatrixX<T>>& x_ref,
       Eigen::Ref<MatrixX<T>> Na) const final {
-    // a, as usual, is the element node index.
-    // N(a = 0) = t = 1 - r - s
-    // N(a = 1) = r
-    // N(a = 2) = s
-    // The code below fails at runtime. Why?
-    //Na.template topRows<1>(0) = MatrixX<T>::Ones(1, x_ref.cols());
-    //Na.template topRows<1>(0) -= (x_ref.row(0) + x_ref.row(1));
-    //Na.template bottomRows<2>(1) = x_ref;
-
-    for (int ipoint = 0; ipoint < x_ref.cols(); ++ipoint) {
-      Na(0, ipoint) = 1.0 - x_ref(0, ipoint) - x_ref(1, ipoint);
-      Na(1, ipoint) = x_ref(0, ipoint);
-      Na(2, ipoint) = x_ref(1, ipoint);
-    }
+    shape_function_.EvaluateAt(x_ref, Na);
   }
 
   /// In general a function of x_ref, but constant for the linear triangle
@@ -80,10 +83,16 @@ class TriangleElement : public IsoparametricElement<T> {
       const Eigen::Ref<const MatrixX<T>>& xa,
       const Eigen::Ref<const MatrixX<T>>& x_ref,
       Eigen::Ref<VectorX<T>> Jnorm) const final {
-    Jnorm.setConstant(internal::triangle_area<T, npd>::compute(xa));
+    Jnorm.setConstant(internal::triangle_area<T, nsd_>::compute(xa));
   }
  private:
-  static constexpr int num_element_nodes_{3};
+  // Number of Element nodes.
+  static constexpr int nen_{3};
+  // Number of Spatial Dimensions.
+  static constexpr int nsd_{3};
+  // Number of Reference Dimensions.
+  static constexpr int nrd_{2};
+  TriangleShapeFunction<T> shape_function_;
 };
 
 }  // namespace drake_fem

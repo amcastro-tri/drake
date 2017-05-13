@@ -32,7 +32,7 @@ class FEMSolver {
     //const int num_nodes = reference_mesh_->get_num_nodes();
     const int nen = reference_mesh_->get_num_element_nodes();
     const int npd = reference_mesh_->get_num_physical_dimensions();
-    TriangleElement<T, 3> element;
+    TriangleElement3D<T> element;
 
     // A one-point Gauss quadrature for a triangle.
     const int ngp = 1;
@@ -72,7 +72,7 @@ class FEMSolver {
     //const int num_nodes = reference_mesh_->get_num_nodes();
     const int nen = reference_mesh_->get_num_element_nodes();
     const int npd = reference_mesh_->get_num_physical_dimensions();
-    TriangleElement<T, 3> element;
+    TriangleElement3D<T> element;
 
     // A one-point Gauss quadrature for a triangle.
     const int ngp = 1;

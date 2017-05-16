@@ -61,6 +61,11 @@ py_binary(
 )
 
 exports_files(
+    ["install.py.in"],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(
     ["nlopt-gen-hpp.sh"],
     visibility = ["@nlopt//:__pkg__"],
 )

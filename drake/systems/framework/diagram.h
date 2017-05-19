@@ -282,7 +282,9 @@ class Diagram : public System<T>,
   std::unique_ptr<Context<T>> AllocateContext() const override {
     const int num_systems = num_subsystems();
     // Reserve inputs as specified during Diagram initialization.
-    auto context = std::make_unique<DiagramContext<T>>(num_systems);
+    auto return_value = MakeContext();
+    DiagramContext<T>* context =
+        dynamic_cast<DiagramContext<T>*>(return_value.get());
 
     // Add each constituent system to the Context.
     for (int i = 0; i < num_systems; ++i) {
@@ -307,7 +309,7 @@ class Diagram : public System<T>,
 
     context->MakeState();
     context->MakeParameters();
-    return std::unique_ptr<Context<T>>(context.release());
+    return return_value;
   }
 
   void SetDefaultState(const Context<T>& context,
@@ -637,6 +639,13 @@ class Diagram : public System<T>,
   /// Constructs an uninitialized Diagram. Subclasses that use this constructor
   /// are obligated to call DiagramBuilder::BuildInto(this).
   Diagram() {}
+
+  // Returns an appropriately-sized diagram context.
+  std::unique_ptr<Context<T>> MakeContext() const override {
+    const int num_systems = num_subsystems();
+    // Reserve inputs as specified during Diagram initialization.
+    return std::unique_ptr<Context<T>>(new DiagramContext<T>(num_systems));
+  }
 
   /// Returns a pointer to mutable context if @p target_system is a sub system
   /// of this, nullptr is returned otherwise.
@@ -1284,6 +1293,9 @@ class Diagram : public System<T>,
     system->CalcOutput(*subsystem_context, subsystem_output);
   }
 
+ public:
+  // TODO(SeanCurtis-TRI): This is a horrible hack to facilitate a unit test.
+  // Do this in a more principled way.
   // Returns the index of the given @p sys in the sorted order of this diagram,
   // or aborts if @p sys is not a member of the diagram.
   int GetSystemIndexOrAbort(const System<T>* sys) const {
@@ -1292,6 +1304,7 @@ class Diagram : public System<T>,
     return it->second;
   }
 
+ private:
   // Converts a PortIdentifier to a DiagramContext::PortIdentifier.
   // The DiagramContext::PortIdentifier contains the index of the System in the
   // sorted order of the diagram, instead of an actual pointer to the System.

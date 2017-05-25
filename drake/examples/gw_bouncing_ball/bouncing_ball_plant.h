@@ -105,14 +105,14 @@ class BouncingBallPlant : public systems::LeafSystem<T> {
   int geometry_port_;
   int state_port_;
 
-  const double diameter_{0.1};  // Ball diameter, just for visualization.
-  const double m_{0.1};   // kg
-  const double g_{9.81};  // m/s^2
+  double diameter_{0.1};  // Ball diameter, just for visualization.
+  double m_{0.1};   // kg
+  double g_{9.81};  // m/s^2
   // Stiffness constant [N/m]. Estimated so that under its onw weight the ball
   // penetrates the plane by 1 mm.
-  const double k_{m_* g_ / 0.001};
+  double k_{m_* g_ / 0.001};
   // Hunt-Crossley's dissipation factor.
-  const double d_{0.0};  // [s/m]
+  double d_{0.0};  // [s/m]
 };
 
 }  // namespace bouncing_ball

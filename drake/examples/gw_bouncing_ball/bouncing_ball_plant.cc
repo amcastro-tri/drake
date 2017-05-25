@@ -51,8 +51,9 @@ BouncingBallPlant<T>::BouncingBallPlant(SourceId source_id,
       source_id, GeometryFrame<T>("ball_frame", Isometry3<T>::Identity() /*X_PF = X_WF*/));
   ball_id_ = geometry_system->RegisterGeometry(
       source_id, ball_frame_id_,
-      make_unique<GeometryInstance<T>>(Isometry3<double>::Identity(), /*X_FG*/
-                                       make_unique<Sphere>(diameter_ / 2.0)));
+      make_unique<GeometryInstance<T>>(
+          Isometry3<double>::Identity(), /*X_FG*/
+          make_unique<Sphere>(diameter_ / 2.0)));
 }
 
 template <typename T>

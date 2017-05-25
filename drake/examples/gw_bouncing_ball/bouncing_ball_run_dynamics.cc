@@ -24,6 +24,9 @@ namespace examples {
 namespace bouncing_ball {
 namespace {
 
+using Eigen::Vector2d;
+using Eigen::Vector3d;
+
 using geometry::GeometryInstance;
 using geometry::GeometrySystem;
 using geometry::HalfSpace;
@@ -41,24 +44,29 @@ int do_main() {
   auto geometry_system = builder.AddSystem<GeometrySystem<double>>();
   geometry_system->set_name("geometry_system");
 
-  SourceId ball_source_id = geometry_system->RegisterSource("ball1");
-  auto bouncing_ball = builder.AddSystem<BouncingBallPlant>(
-      ball_source_id, geometry_system, Vector2<double>(0.25, 0.25));
-  bouncing_ball->set_name("BouncingBall1");
+  SourceId ball1_source_id = geometry_system->RegisterSource("ball1");
+  auto bouncing_ball1 =
+      builder.AddSystem<BouncingBallPlant>(
+          ball1_source_id, geometry_system,
+          Vector2d(0.25, 0.25) /* Initial position*/ );
+  bouncing_ball1->set_name("BouncingBall1");
 
-  SourceId ball_source_id2 = geometry_system->RegisterSource("ball2");
+  SourceId ball2_source_id = geometry_system->RegisterSource("ball2");
   auto bouncing_ball2 = builder.AddSystem<BouncingBallPlant>(
-      ball_source_id2, geometry_system, Vector2<double>(-0.25, -0.25));
-  bouncing_ball->set_name("BouncingBall2");
+      ball2_source_id, geometry_system, Vector2d(-0.25, -0.25));
+  bouncing_ball1->set_name("BouncingBall2");
 
-  SourceId global_source = geometry_system->RegisterSource("anchored");
-  Vector3<double> normal_G(0, 0, 1);
-  Vector3<double> point_G(0, 0, 0);
+  SourceId global_source_id = geometry_system->RegisterSource("anchored");
+  Vector3d normal_G(0, 0, 1);
+  Vector3d point_G(0, 0, 0);
+  // Notice that anchored geometry does not have a SourceId
   geometry_system->RegisterAnchoredGeometry(
-      global_source,
+      global_source_id,
       make_unique<GeometryInstance<double>>(
-          Isometry3<double>::Identity(), /* X_WG: pose of the GeometryInstance in its parent frame, in this case the world.*/
-              make_unique<HalfSpace>(normal_G, point_G)));
+          /* X_WG: pose of the GeometryInstance in the world frame. */
+          Isometry3<double>::Identity(),
+          /* Geometry's parameters are expressed in the geometry's frame, G */
+          make_unique<HalfSpace>(normal_G, point_G)));
 
   DrakeLcm lcm;
   PoseBundleToDrawMessage* converter =
@@ -69,10 +77,10 @@ int do_main() {
   std::make_unique<Serializer<drake::lcmt_viewer_draw>>(), &lcm);
   publisher->set_publish_period(1/60.0);
 
-  builder.Connect(bouncing_ball->get_geometry_output_port(),
-                  geometry_system->get_port_for_source_id(ball_source_id));
+  builder.Connect(bouncing_ball1->get_geometry_output_port(),
+                  geometry_system->get_port_for_source_id(ball1_source_id));
   builder.Connect(bouncing_ball2->get_geometry_output_port(),
-                  geometry_system->get_port_for_source_id(ball_source_id2));
+                  geometry_system->get_port_for_source_id(ball2_source_id));
   builder.Connect(*geometry_system, *converter);
   builder.Connect(*converter, *publisher);
 
@@ -80,7 +88,7 @@ int do_main() {
   auto x_logger = builder.AddSystem<systems::SignalLogger<double>>(
       BouncingBallVectorIndices::kNumCoordinates);
   x_logger->set_name("x_logger");
-  builder.Connect(bouncing_ball->get_state_output_port(),
+  builder.Connect(bouncing_ball1->get_state_output_port(),
                   x_logger->get_input_port(0));
 
   // Last thing before building the diagram; dispatch the message to load
@@ -97,7 +105,7 @@ int do_main() {
     system->set_z(ball_context, z);
     system->set_zdot(ball_context, zdot);
   };
-  init_ball(bouncing_ball, 0.3, 0.);
+  init_ball(bouncing_ball1, 0.3, 0.);
   init_ball(bouncing_ball2, 0.3, 0.3);
 
   simulator.get_mutable_integrator()->set_maximum_step_size(0.002);
@@ -108,7 +116,7 @@ int do_main() {
 //  const int nsteps = x_logger->sample_times().rows();
 //  MatrixX<double> all_data(nsteps, 2);
 //  all_data << x_logger->sample_times(), x_logger->data();
-//  std::ofstream file("bouncing_ball.dat");
+//  std::ofstream file("bouncing_ball1.dat");
 //  file << all_data;
 //  file.close();
 

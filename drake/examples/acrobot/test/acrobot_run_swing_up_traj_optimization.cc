@@ -24,6 +24,11 @@ using drake::solvers::SolutionResult;
 
 typedef PiecewisePolynomial<double> PiecewisePolynomialType;
 
+#include <fstream>
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a": \n" << a << std::endl;
+
 namespace drake {
 namespace examples {
 namespace acrobot {
@@ -64,6 +69,22 @@ int do_main() {
   const PiecewisePolynomialTrajectory pp_xtraj =
       dircol_traj.ReconstructStateTrajectory();
   auto state_source = builder.AddSystem<systems::TrajectorySource>(pp_xtraj);
+
+  PRINT_VAR(pp_xtraj.get_end_time());
+  VectorX<double> tv = VectorX<double>::LinSpaced(100, 0.0, kTrajectoryTimeUpperBound);
+  PRINT_VAR(pp_xtraj.value(1.0).size());
+  //PRINT_VARn(tv);
+  VectorX<double> x1v = tv.unaryExpr([&](double t) { return pp_xtraj.value(t)(0); });
+  VectorX<double> x2v = tv.unaryExpr([&](double t) { return pp_xtraj.value(t)(1); });
+  VectorX<double> v1v = tv.unaryExpr([&](double t) { return pp_xtraj.value(t)(2); });
+  VectorX<double> v2v = tv.unaryExpr([&](double t) { return pp_xtraj.value(t)(3); });
+
+  MatrixX<double> tt(tv.size(), 5); tt << tv, x1v, x2v, v1v, v2v;
+  //PRINT_VARn(tt);
+
+  std::ofstream file("state.dat");
+  file << tt << std::endl;
+  file.close();
 
   if (pp_xtraj.get_end_time() - pp_xtraj.get_start_time() >
             kTrajectoryTimeUpperBound) {

@@ -77,8 +77,8 @@ int do_main(int argc, char* argv[]) {
 
   // Geometric parameters:
   const double length = 1.0;  // [m]
-  const double radius1 = 0.05;
-  const double radius2 = 0.02;
+  const double radius1 = 0.005;
+  const double radius2 = 0.005;
 
   // Material parameters (aluminum):
   const double rho = 2700;  // [Kgr/m^3]

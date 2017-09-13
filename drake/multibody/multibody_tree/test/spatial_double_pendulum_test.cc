@@ -533,11 +533,23 @@ class PendulumKinematicTests : public PendulumTests {
 
     PRINT_VARn(H);
 
+    // Verify that full matrix is symmetric.
+    EXPECT_TRUE((H - H.transpose()).norm()
+                    < 5 * std::numeric_limits<double>::epsilon());
+
+    // Extract the two dimensional portion of H comparable to our 2D benchmark.
+    Matrix2d H2D;
+    H2D(0, 0) = H(0, 0);
+    H2D(0, 1) = H(0, 1 + plane_axis_);
+    H2D(1, 0) = H(1 + plane_axis_, 0);
+    H2D(1, 1) = H(1 + plane_axis_, 1 + plane_axis_);
+
     Matrix2d H_expected = acrobot_benchmark_->CalcMassMatrix(elbow_angle);
 
     PRINT_VARn(H_expected);
+    PRINT_VARn(H2D);
 
-    //EXPECT_TRUE(H.isApprox(H_expected, 5 * kEpsilon));
+    EXPECT_TRUE(H2D.isApprox(H_expected, 5 * kEpsilon));
   }
 
   /// Verifies the results from MultibodyTree::CalcInverseDynamics() for a
@@ -816,6 +828,13 @@ class PendulumKinematicTests : public PendulumTests {
         elbow_mobilizer_->get_accelerations_from_array(vdot).
             dot(Vector3d::Unit(plane_axis_));
 
+    PRINT_VAR(q.transpose());
+    PRINT_VAR(v.transpose());
+    PRINT_VAR(vdot.transpose());
+    PRINT_VAR(elbow_mobilizer_->get_accelerations_from_array(vdot).transpose());
+    PRINT_VAR(plane_axis_);
+    PRINT_VAR(elbow_acceleration);
+
     PositionKinematicsCache<double> pc(model_->get_topology());
     VelocityKinematicsCache<double> vc(model_->get_topology());
 
@@ -863,16 +882,21 @@ class PendulumKinematicTests : public PendulumTests {
         shoulder_angle, elbow_angle, shoulder_angle_rate, elbow_angle_rate);
     const Matrix2d H = acrobot_benchmark_->CalcMassMatrix(elbow_angle);
     const Vector2d vdot2D = Vector2d(shoulder_acceleration, elbow_acceleration);
-    const Vector2d tau2D = H * vdot2D + C_expected;
+    const Vector2d tau_expected = H * vdot2D + C_expected;
 
-    VectorX<double> tau_expected =
-        VectorX<double>::Zero(model_->get_num_velocities());
+    //VectorX<double> tau_expected =
+     //   VectorX<double>::Zero(model_->get_num_velocities());
 
-    shoulder_mobilizer_->
-        get_mutable_generalized_forces_from_array(&tau_expected)[0] = tau2D[0];
-    elbow_mobilizer_->
-        get_mutable_generalized_forces_from_array(&tau_expected) =
-        Vector3d::Unit(plane_axis_) * tau2D[1];
+    //shoulder_mobilizer_->
+    //    get_mutable_generalized_forces_from_array(&tau_expected)[0] = tau2D[0];
+    //elbow_mobilizer_->
+    //    get_mutable_generalized_forces_from_array(&tau_expected) =
+     //   Vector3d::Unit(plane_axis_) * tau2D[1];
+
+    // Extract the of the solution comparable with our 2D benchmark.
+    Vector2d tau2D;
+    tau2D(0) = tau(0);
+    tau2D(1) = tau(1 + plane_axis_);
 
     PRINT_VAR(vdot2D.transpose());
     PRINT_VAR(vdot.transpose());
@@ -881,7 +905,7 @@ class PendulumKinematicTests : public PendulumTests {
     PRINT_VAR(tau_expected.transpose());
     PRINT_VAR(tau.transpose());
 
-    EXPECT_TRUE(CompareMatrices(tau, tau_expected, kTolerance,
+    EXPECT_TRUE(CompareMatrices(tau2D, tau_expected, kTolerance,
                                 MatrixCompareType::relative));
     return tau;
   }
@@ -1154,19 +1178,19 @@ TEST_P(PendulumKinematicTests, CoriolisTerm) {
 
 // Compute the mass matrix using the inverse dynamics method.
 TEST_P(PendulumKinematicTests, MassMatrix) {
-  VerifyMassMatrixViaInverseDynamics(0.0, 0.0);
-  VerifyMassMatrixViaInverseDynamics(0.0, M_PI / 2.0);
-  VerifyMassMatrixViaInverseDynamics(0.0, M_PI / 3.0);
-  VerifyMassMatrixViaInverseDynamics(0.0, M_PI / 4.0);
+  //VerifyMassMatrixViaInverseDynamics(0.0, 0.0);
+  //VerifyMassMatrixViaInverseDynamics(0.0, M_PI / 2.0);
+  //VerifyMassMatrixViaInverseDynamics(0.0, M_PI / 3.0);
+  //VerifyMassMatrixViaInverseDynamics(0.0, M_PI / 4.0);
 
   // For the double pendulum system it turns out that the mass matrix is only a
   // function of the elbow angle, independent of the shoulder angle.
   // Therefore M(q) = H(elbow_angle). We therefore run the same previous tests
   // with different shoulder angles to verify this is true.
-  VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, 0.0);
-  VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, M_PI / 2.0);
-  VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, M_PI / 3.0);
-  VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, M_PI / 4.0);
+  VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, 0.0);  // <=== !!!
+  //VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, M_PI / 2.0);
+  //VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, M_PI / 3.0);
+  //VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, M_PI / 4.0);
 }
 
 const auto AxisTestValues = ::testing::Values(

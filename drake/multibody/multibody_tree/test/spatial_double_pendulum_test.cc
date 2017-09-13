@@ -534,20 +534,29 @@ class PendulumKinematicTests : public PendulumTests {
   /// implementation in drake::multibody::benchmarks::Acrobot.
   void VerifyCoriolisTermViaInverseDynamics(
       double shoulder_angle, double elbow_angle) {
-    Vector2d q(shoulder_angle, elbow_angle);
-    Vector2d v;
-    Vector2d vdot = Vector2d::Zero();
 
-    v = Vector2d::Zero();  // C(q, v) = 0 for v = 0.
+    VectorX<double> q(model_->get_num_positions());
+    shoulder_mobilizer_->get_mutable_positions_from_array(&q)[0] =
+        shoulder_angle;
+    auto q_elbow = elbow_mobilizer_->get_mutable_positions_from_array(&q);
+    q_elbow = Vector3<double>::Unit(plane_axis_) * elbow_angle;
+
+    const int nv = model_->get_num_velocities();
+    VectorXd v(nv);
+    v.setZero();
+    VectorXd vdot = VectorXd::Zero(nv);
+
+    v = VectorXd::Zero(nv);  // C(q, v) = 0 for v = 0.
     VerifyInverseDynamics(q, v, vdot);
 
-    v = Vector2d::UnitX();  // First column of C(q, e_1) times e_1.
-    VerifyInverseDynamics(q, v, vdot);
+    // Verify each column of C(q, v):
+    for (int iv = 0; iv < nv; ++iv) {
+      v = VectorXd::Unit(nv, iv);
+      VerifyInverseDynamics(q, v, vdot);
+    }
 
-    v = Vector2d::UnitY();  // Second column of C(q, e_2) times e_2.
-    VerifyInverseDynamics(q, v, vdot);
-
-    v = Vector2d::Ones();  // Both velocities are non-zero.
+    // All velocities are non-zero:
+    v.setConstant(1.0);
     VerifyInverseDynamics(q, v, vdot);
   }
 
@@ -778,11 +787,17 @@ class PendulumKinematicTests : public PendulumTests {
     const int kEpsilonFactor = 30;
     const double kTolerance = kEpsilonFactor * kEpsilon;
 
-    const double shoulder_angle =  q(0);
-    const double elbow_angle =  q(1);
+    const double shoulder_angle =
+        shoulder_mobilizer_->get_positions_from_array(q)[0];
+    const double elbow_angle =
+        elbow_mobilizer_->get_positions_from_array(q).
+            dot(Vector3d::Unit(plane_axis_));
 
-    const double shoulder_angle_rate = v(0);
-    const double elbow_angle_rate = v(1);
+    const double shoulder_angle_rate =
+        shoulder_mobilizer_->get_velocities_from_array(v)[0];
+    const double elbow_angle_rate =
+        elbow_mobilizer_->get_velocities_from_array(v).
+            dot(Vector3d::Unit(plane_axis_));
 
     PositionKinematicsCache<double> pc(model_->get_topology());
     VelocityKinematicsCache<double> vc(model_->get_topology());
@@ -830,7 +845,16 @@ class PendulumKinematicTests : public PendulumTests {
     const Vector2d C_expected = acrobot_benchmark_->CalcCoriolisVector(
         shoulder_angle, elbow_angle, shoulder_angle_rate, elbow_angle_rate);
     const Matrix2d H = acrobot_benchmark_->CalcMassMatrix(elbow_angle);
-    const Vector2d tau_expected = H * vdot + C_expected;
+    const Vector2d tau2D = H * vdot + C_expected;
+
+    VectorX<double> tau_expected =
+        VectorX<double>::Zero(model_->get_num_velocities());
+
+    shoulder_mobilizer_->
+        get_mutable_generalized_forces_from_array(&tau_expected)[0] = tau2D[0];
+    elbow_mobilizer_->
+        get_mutable_generalized_forces_from_array(&tau_expected) =
+        Vector3d::Unit(plane_axis_) * tau2D[1];
 
     EXPECT_TRUE(CompareMatrices(tau, tau_expected, kTolerance,
                                 MatrixCompareType::relative));
@@ -1081,17 +1105,10 @@ TEST_P(PendulumKinematicTests, CalcVelocityAndAccelerationKinematics) {
   }
 }
 
-const auto AxisTestValues = ::testing::Values(
-    TestAxis::kZAxis,
-    TestAxis::kXAxis);
-INSTANTIATE_TEST_CASE_P(test, PendulumKinematicTests, AxisTestValues);
-
-#if 0
-
 // Compute the bias term containing Coriolis and gyroscopic effects for a
 // number of different pendulum configurations.
 // This is computed using inverse dynamics with vdot = 0.
-TEST_F(PendulumKinematicTests, CoriolisTerm) {
+TEST_P(PendulumKinematicTests, CoriolisTerm) {
   // C(q, v) should be zero when elbow_angle = 0 independent of the shoulder
   // angle.
   VerifyCoriolisTermViaInverseDynamics(0.0, 0.0);
@@ -1110,6 +1127,12 @@ TEST_F(PendulumKinematicTests, CoriolisTerm) {
   VerifyCoriolisTermViaInverseDynamics(M_PI / 3.0, M_PI / 4.0);
 }
 
+const auto AxisTestValues = ::testing::Values(
+    TestAxis::kZAxis,
+    TestAxis::kXAxis);
+INSTANTIATE_TEST_CASE_P(test, PendulumKinematicTests, AxisTestValues);
+
+#if 0
 // Compute the mass matrix using the inverse dynamics method.
 TEST_F(PendulumKinematicTests, MassMatrix) {
   VerifyMassMatrixViaInverseDynamics(0.0, 0.0);

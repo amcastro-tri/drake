@@ -25,8 +25,11 @@ namespace multibody {
 namespace {
 
 #include <iostream>
-#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
-#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+//#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+//#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+
+#define PRINT_VAR(a) (void)a;
+#define PRINT_VARn(a) (void)a;
 
 const double kEpsilon = std::numeric_limits<double>::epsilon();
 
@@ -1178,19 +1181,19 @@ TEST_P(PendulumKinematicTests, CoriolisTerm) {
 
 // Compute the mass matrix using the inverse dynamics method.
 TEST_P(PendulumKinematicTests, MassMatrix) {
-  //VerifyMassMatrixViaInverseDynamics(0.0, 0.0);
-  //VerifyMassMatrixViaInverseDynamics(0.0, M_PI / 2.0);
-  //VerifyMassMatrixViaInverseDynamics(0.0, M_PI / 3.0);
-  //VerifyMassMatrixViaInverseDynamics(0.0, M_PI / 4.0);
+  VerifyMassMatrixViaInverseDynamics(0.0, 0.0);
+  VerifyMassMatrixViaInverseDynamics(0.0, M_PI / 2.0);
+  VerifyMassMatrixViaInverseDynamics(0.0, M_PI / 3.0);
+  VerifyMassMatrixViaInverseDynamics(0.0, M_PI / 4.0);
 
   // For the double pendulum system it turns out that the mass matrix is only a
   // function of the elbow angle, independent of the shoulder angle.
   // Therefore M(q) = H(elbow_angle). We therefore run the same previous tests
   // with different shoulder angles to verify this is true.
   VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, 0.0);  // <=== !!!
-  //VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, M_PI / 2.0);
-  //VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, M_PI / 3.0);
-  //VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, M_PI / 4.0);
+  VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, M_PI / 2.0);
+  VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, M_PI / 3.0);
+  VerifyMassMatrixViaInverseDynamics(M_PI / 3.0, M_PI / 4.0);
 }
 
 const auto AxisTestValues = ::testing::Values(

@@ -25,6 +25,13 @@ template<typename T> class MultibodyTree;
 
 namespace internal {
 
+#include <iostream>
+//#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+//#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+
+#define PRINT_VAR(a) (void)a;
+#define PRINT_VARn(a) (void)a;
+
 /// For internal use only of the MultibodyTree implementation.
 /// This is a base class representing a **node** in the tree structure of a
 /// MultibodyTree. %BodyNode provides implementations for convenience methods to
@@ -760,8 +767,14 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     const Matrix3<T> R_WF = X_WP.linear() * X_PF.linear();
     const SpatialForce<T> F_BMo_F = R_WF.transpose() * F_BMo_W;
 
+    PRINT_VAR(this->get_index());
+    PRINT_VAR(topology_.mobilizer_velocities_start_in_v);
+    PRINT_VAR(topology_.num_mobilizer_velocities);
+
     // Generalized velocities and forces use the same indexing.
     auto tau = get_mutable_generalized_forces_from_array(tau_array);
+
+    DRAKE_DEMAND(tau.size() == this->get_num_mobilizer_velocites());
 
     // Demand that tau_applied is not an entry of tau. It would otherwise get
     // overwritten.
@@ -772,6 +785,9 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // project F_BMo along the directions of motion.
     // Project as: tau = H_FMᵀ(q) * F_BMo_F, Eq. (4).
     get_mobilizer().ProjectSpatialForce(context, F_BMo_F, tau);
+
+    PRINT_VAR(F_BMo_F);
+    PRINT_VAR(tau.transpose());
 
     // Include the contribution of applied generalized forces.
     if (tau_applied.size() != 0) tau -= tau_applied;

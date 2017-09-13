@@ -20,10 +20,6 @@
 #include "drake/systems/framework/context.h"
 #include "drake/multibody/multibody_tree/rpy_mobilizer.h"
 
-#define YAW_ROTATION
-
-#define PLANE_AXIS 2
-
 namespace drake {
 namespace multibody {
 namespace {
@@ -129,10 +125,7 @@ class PendulumTests : public ::testing::TestWithParam<TestAxis> {
 
   // Sets up the MultibodyTree model for a double pendulum. See this unit test's
   // class description for details.
-  void CreatePendulumModel(int kk) {
-    (void) kk;
-    //plane_axis_ = plane_axis;
-
+  void CreatePendulumModel() {
     // Spatial inertia of the upper link about its frame U and expressed in U.
     Vector3d link1_com_U = Vector3d::Zero();  // U is at the link's COM.
     // Inertia for a thin rod with moment of inertia link1_Ic_ about the y axis.
@@ -304,7 +297,7 @@ TEST_P(PendulumTests, CreateModelBasics) {
   // And there is only one frame, the world frame.
   EXPECT_EQ(model_->get_num_frames(), 1);
 
-  CreatePendulumModel(PLANE_AXIS);
+  CreatePendulumModel();
 
   // Verifies the number of multibody elements is correct.
   EXPECT_EQ(model_->get_num_bodies(), 3);
@@ -368,7 +361,7 @@ TEST_P(PendulumTests, CreateModelBasics) {
 // change in the future if we decide to change the "internal detail" on how we
 // assign these indexes.
 TEST_P(PendulumTests, Indexes) {
-  CreatePendulumModel(PLANE_AXIS);
+  CreatePendulumModel();
   EXPECT_EQ(shoulder_inboard_frame_->get_index(), FrameIndex(0));
   EXPECT_EQ(upper_link_->get_body_frame().get_index(), FrameIndex(1));
   EXPECT_EQ(lower_link_->get_body_frame().get_index(), FrameIndex(2));
@@ -380,7 +373,7 @@ TEST_P(PendulumTests, Indexes) {
 // Asserts that the Finalize() stage is successful and that re-finalization is
 // not allowed.
 TEST_P(PendulumTests, Finalize) {
-  CreatePendulumModel(PLANE_AXIS);
+  CreatePendulumModel();
   // Finalize() stage.
   EXPECT_FALSE(model_->topology_is_valid());  // Not valid before Finalize().
   EXPECT_NO_THROW(model_->Finalize());
@@ -406,7 +399,7 @@ TEST_P(PendulumTests, StdReferenceWrapperExperiment) {
   EXPECT_EQ(model_->get_num_bodies(), 1);
   // And there is only one frame, the world frame.
   EXPECT_EQ(model_->get_num_frames(), 1);
-  CreatePendulumModel(PLANE_AXIS);
+  CreatePendulumModel();
 
   // Vector of references.
   vector<std::reference_wrapper<const Body<double>>> bodies;
@@ -426,7 +419,7 @@ TEST_P(PendulumTests, StdReferenceWrapperExperiment) {
 }
 
 TEST_P(PendulumTests, CreateContext) {
-  CreatePendulumModel(PLANE_AXIS);
+  CreatePendulumModel();
 
   // Verifies the number of multibody elements is correct. In this case:
   // - world_
@@ -487,11 +480,9 @@ INSTANTIATE_TEST_CASE_P(test, PendulumTests,
 // benchmarks::Acrobot.
 class PendulumKinematicTests : public PendulumTests {
  public:
-  void SetUpWithAxis(int kk) {
-    //plane_axis_ = elbow_axis;
-
+  void SetUp() {
     PendulumTests::SetUp();
-    CreatePendulumModel(plane_axis_);
+    CreatePendulumModel();
     model_->Finalize();
     context_ = model_->CreateDefaultContext();
     mbt_context_ =
@@ -738,6 +729,24 @@ class PendulumKinematicTests : public PendulumTests {
     DRAKE_ABORT_MSG("Ah!!!");
   }
 
+  void SetElbowAngularAcceleration(
+      Eigen::Ref<VectorX<double>> vdot,
+      double elbow_angular_acceleration) const {
+    if (plane_axis_ == 2) {
+      auto vm = elbow_mobilizer_->get_mutable_accelerations_from_array(&vdot);
+      DRAKE_DEMAND(vm.size() == 3);
+      vm = Vector3<double>(0.0, 0.0, elbow_angular_acceleration);
+      return;
+    }
+    if (plane_axis_ == 0) {
+      auto vm = elbow_mobilizer_->get_mutable_accelerations_from_array(&vdot);
+      DRAKE_DEMAND(vm.size() == 3);
+      vm = Vector3<double>(elbow_angular_acceleration, 0.0, 0.0);
+      return;
+    }
+    DRAKE_ABORT_MSG("Ah!!!");
+  }
+
  protected:
   std::unique_ptr<Context<double>> context_;
   MultibodyTreeContext<double>* mbt_context_;
@@ -833,8 +842,6 @@ class PendulumKinematicTests : public PendulumTests {
 // comparing the computed results the reference solution provided by
 // benchmarks::Acrobot.
 TEST_P(PendulumKinematicTests, CalcPositionKinematics) {
-  SetUpWithAxis(2);
-
   // This is the minimum factor of the machine precision within which these
   // tests pass.
   const int kEpsilonFactor = 10;
@@ -935,13 +942,7 @@ TEST_P(PendulumKinematicTests, CalcPositionKinematics) {
   }
 }
 
-const auto AxisTestValues = ::testing::Values(
-    TestAxis::kZAxis,
-    TestAxis::kXAxis);
-INSTANTIATE_TEST_CASE_P(test, PendulumKinematicTests, AxisTestValues);
-
-#if 0
-TEST_F(PendulumKinematicTests, CalcVelocityAndAccelerationKinematics) {
+TEST_P(PendulumKinematicTests, CalcVelocityAndAccelerationKinematics) {
   // This is the minimum factor of the machine precision within which these
   // tests pass. There is an additional factor of two (2) to be on the safe side
   // on other architectures (particularly in Macs).
@@ -962,7 +963,7 @@ TEST_F(PendulumKinematicTests, CalcVelocityAndAccelerationKinematics) {
       // ======================================================================
       // Compute position kinematics.
       shoulder_mobilizer_->set_angle(context_.get(), shoulder_angle);
-      elbow_mobilizer_->set_angle(context_.get(), elbow_angle);
+      SetElbowAngle(elbow_angle);
       model_->CalcPositionKinematicsCache(*context_, &pc);
 
       // Obtain the lower link center of mass to later shift its computed
@@ -985,10 +986,8 @@ TEST_F(PendulumKinematicTests, CalcVelocityAndAccelerationKinematics) {
 
       // Set the elbow's angular velocity.
       const double elbow_angle_rate = -0.5;
-      elbow_mobilizer_->set_angular_rate(context_.get(),
-                                         elbow_angle_rate);
-      EXPECT_EQ(elbow_mobilizer_->get_angular_rate(*context_),
-                elbow_angle_rate);
+      SetElbowAngularVelocity(elbow_angle_rate);
+      EXPECT_EQ(GetElbowAngularVelocity(), elbow_angle_rate);
       model_->CalcVelocityKinematicsCache(*context_, pc, &vc);
 
       // Retrieve body spatial velocities from velocity kinematics cache.
@@ -1014,9 +1013,9 @@ TEST_F(PendulumKinematicTests, CalcVelocityAndAccelerationKinematics) {
       // ======================================================================
       // Compute acceleration kinematics
       // Test a number of acceleration configurations.
-      // For zero vdot:
-      VectorX<double> vdot(2);  // Vector of generalized accelerations.
-      vdot = VectorX<double>::Zero(2);
+      // For zero vdot (vector of generalized accelerations):
+      VectorX<double> vdot(model_->get_num_velocities());
+      vdot.setZero();
 
       model_->CalcAccelerationKinematicsCache(*context_, pc, vc, vdot, &ac);
 
@@ -1044,17 +1043,20 @@ TEST_F(PendulumKinematicTests, CalcVelocityAndAccelerationKinematics) {
       EXPECT_TRUE(A_WLcm.IsApprox(A_WLcm_expected, kTolerance));
 
       // For a non-zero vdot [rad/sec^2]:
+      const double shoulder_vdot = -1.0;
+      const double elbow_vdot = 2.0;
       shoulder_mobilizer_->get_mutable_accelerations_from_array(
-          &vdot)(0) = -1.0;
-      elbow_mobilizer_->get_mutable_accelerations_from_array(&vdot)(0) = 2.0;
+          &vdot)(0) = shoulder_vdot;
+      SetElbowAngularAcceleration(vdot, elbow_vdot);
+      //elbow_mobilizer_->get_mutable_accelerations_from_array(&vdot)(0) = 2.0;
       EXPECT_EQ(
           shoulder_mobilizer_->get_accelerations_from_array(vdot).size(), 1);
       EXPECT_EQ(
           shoulder_mobilizer_->get_accelerations_from_array(vdot)(0), -1.0);
-      EXPECT_EQ(
-          elbow_mobilizer_->get_accelerations_from_array(vdot).size(), 1);
-      EXPECT_EQ(
-          elbow_mobilizer_->get_accelerations_from_array(vdot)(0), 2.0);
+      //EXPECT_EQ(
+      //    elbow_mobilizer_->get_accelerations_from_array(vdot).size(), 1);
+      //EXPECT_EQ(
+      //    elbow_mobilizer_->get_accelerations_from_array(vdot)(0), 2.0);
 
       model_->CalcAccelerationKinematicsCache(*context_, pc, vc, vdot, &ac);
 
@@ -1065,19 +1067,26 @@ TEST_F(PendulumKinematicTests, CalcVelocityAndAccelerationKinematics) {
 
       A_WUcm_expected = SpatialAcceleration<double>(
           acrobot_benchmark_->CalcLink1SpatialAccelerationInWorldFrame(
-              shoulder_angle, shoulder_angle_rate, vdot(0)));
+              shoulder_angle, shoulder_angle_rate, shoulder_vdot));
 
       A_WLcm_expected = SpatialAcceleration<double>(
           acrobot_benchmark_->CalcLink2SpatialAccelerationInWorldFrame(
               shoulder_angle, elbow_angle,
               shoulder_angle_rate, elbow_angle_rate,
-              vdot(0), vdot(1)));
+              shoulder_vdot, elbow_vdot));
 
       EXPECT_TRUE(A_WUcm.IsApprox(A_WUcm_expected, kTolerance));
       EXPECT_TRUE(A_WLcm.IsApprox(A_WLcm_expected, kTolerance));
     }
   }
 }
+
+const auto AxisTestValues = ::testing::Values(
+    TestAxis::kZAxis,
+    TestAxis::kXAxis);
+INSTANTIATE_TEST_CASE_P(test, PendulumKinematicTests, AxisTestValues);
+
+#if 0
 
 // Compute the bias term containing Coriolis and gyroscopic effects for a
 // number of different pendulum configurations.

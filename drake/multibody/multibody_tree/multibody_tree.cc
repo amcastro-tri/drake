@@ -450,6 +450,34 @@ void MultibodyTree<T>::CalcBiasTerm(
 }
 
 template <typename T>
+void MultibodyTree<T>::CalcNodePointsPositions(
+    const systems::Context<T>& context,
+    const Frame<T>& F_frame, const Frame<T>& M_frame,
+    const std::vector<Vector3<T>>& p_FQ, std::vector<Vector3<T>>* p_MQ) const {
+  DRAKE_DEMAND(p_MQ != nullptr);
+  DRAKE_DEMAND(p_MQ->size() == p_FQ.size());
+  // Since the implementation of this method does not call Eval() methods on any
+  // of this tree's components (like bodies, mobilizers, etc.), we make the
+  // evaluation of position kinematics explicit (which would incur in a no-op
+  // if the respective cache entry is valid).
+  EvalPositionKinematics(context);
+
+  // Note: if instead we called Frame::EvalPoseInWorld(), the call to
+  // EvalPositionKinematics() above would not be needed.
+  const Isometry3<T> X_WF = F_frame.CalcPoseInWorld(context);
+  const Isometry3<T> X_WM = M_frame.CalcPoseInWorld(context);
+
+  const Isometry3<T> X_MF = X_WM.inverse() * X_WF;
+
+  // We assume the date on the input std::vector's is contiguous and make
+  // reference to it with Eigen maps.
+  const int num_points = p_FQ.size();
+  Eigen::Map<const Matrix3X<T>> p_FQ_map(p_FQ[0].data(), 3, num_points);
+  Eigen::Map<Matrix3X<T>> p_MQ_map(p_MQ->at(0).data(), 3, num_points);
+  p_MQ_map = X_MF * p_FQ_map;
+}
+
+template <typename T>
 void MultibodyTree<T>::DoCalcBiasTerm(
     const systems::Context<T>& context,
     const PositionKinematicsCache<T>& pc,
@@ -518,6 +546,30 @@ T MultibodyTree<T>::DoCalcConservativePower(
         force_element->CalcConservativePower(mbt_context, pc, vc);
   }
   return conservative_power;
+}
+
+template <typename T>
+const PositionKinematicsCache<T>& MultibodyTree<T>::EvalPositionKinematics(
+    const systems::Context<T>& context) const {
+  // TODO(amcastro-tri): When caching lands, this method's implementation will
+  // read more like:
+  // return context.Eval<PositionKinematicsCache>(position_kinematics_ticket_);
+  // which would have
+  // CalcPositionKinematics(const Context&, PositionKinematicsCache*) bound to
+  // this ticket entry.
+  // In this current implementation, we ALWAYS recompute the cache entry.
+  const MultibodyTreeContext<T>& mbt_context = get_multibody_context(context);
+
+  // Temporarily take ownership of the position kinematics cache in order to
+  // make changes to it.
+  std::unique_ptr<PositionKinematicsCache<T>> pc =
+      mbt_context.release_position_kinematics_cache();
+  CalcPositionKinematicsCache(context, pc.get());
+  // Hand back ownership to the context.
+  mbt_context.set_position_kinematics_cache(std::move(pc));
+
+  // Now return a valid (const) reference.
+  return mbt_context.get_position_kinematics_cache();
 }
 
 // Explicitly instantiates on the most common scalar types.

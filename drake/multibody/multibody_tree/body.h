@@ -188,6 +188,23 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
   virtual SpatialInertia<T> CalcSpatialInertiaInBodyFrame(
       const MultibodyTreeContext<T>& context) const = 0;
 
+  /// @name (Intermediate) Methods to retrieve cached computations
+  /// These methods serve to retrieve cached computations from the multibody
+  /// context.
+  /// @warning These methods will throw an std::runtime_error if the cache entry
+  /// is not up-to-date with the state of the context.
+  /// @{
+
+  /// Returns the pose `X_WB` of this body B in the world frame W.
+  const Isometry3<T>& get_pose_in_world(
+      const systems::Context<T>& context) const {
+    const MultibodyTreeContext<T>& mbt_context =
+        this->get_parent_tree().get_multibody_context(context);
+    return mbt_context.get_position_kinematics_cache().
+        get_X_WB(this->get_node_index());
+  }
+  /// @}
+
   /// NVI (Non-Virtual Interface) to DoCloneToScalar() templated on the scalar
   /// type of the new clone to be created. This method is mostly intended to be
   /// called by MultibodyTree::CloneToScalar(). Most users should not call this

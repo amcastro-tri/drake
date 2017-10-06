@@ -66,6 +66,8 @@ class MultibodyTreeContext: public systems::LeafContext<T> {
     // TODO(amcastro-tri): Create cache entries.
     // For instance, for PositionKinematicsCache so that it doesn't get
     // re-allocated and re-computed every time is needed.
+    position_kinematics_cache_ =
+        std::make_unique<PositionKinematicsCache<T>>(topology);
   }
 
   /// Returns the size of the generalized positions vector.
@@ -178,8 +180,48 @@ class MultibodyTreeContext: public systems::LeafContext<T> {
     return xc.nestedExpression().segment(start, count);
   }
 
+  /// @name (Advanced) Methods to work with cache entries
+  /// These methods are meant to be used ONLY by MultibodyTree Eval() methods
+  /// and will get deprecated when caching lands in Drake.
+  /// This API however does enforce correctness.
+  /// @{
+
+  /// Returns the already up-to-date position kinematics cache.
+  /// This method aborts if the position kinematics is out of date.
+  /// @throws std::runtime_error if `this` context does not own a kinematics
+  /// cache entry. This can only happen when in the middle of a MultibodyTree
+  /// computation that called release_position_kinematics_cache() to obtain
+  /// a mutable position kinematics cache entry.
+  /// @throws std::runtime_error if the position kinematics cache entry is not
+  /// up-to-date with the state in the context.
+  // TODO(amcastro-tri): the @throws above asserting we'll get an exception when
+  // the cache is not up-to-date is a lie. Make it true when caching lands.
+  const PositionKinematicsCache<T>& get_position_kinematics_cache() const {
+    if (position_kinematics_cache_ == nullptr) {
+      throw std::runtime_error(
+          "Currently this MultibodyTreeContext does not own a"
+          "PositionKinematicsCache. Are you in the middle of a computation for "
+          "which the PositionKinematicsCache was released?");
+    }
+    return *position_kinematics_cache_;
+  }
+
+  std::unique_ptr<PositionKinematicsCache<T>>
+  release_position_kinematics_cache() const {
+    return std::move(position_kinematics_cache_);
+  }
+
+  void set_position_kinematics_cache(
+      std::unique_ptr<PositionKinematicsCache<T>> pc) const {
+    position_kinematics_cache_ = std::move(pc);
+  }
+
+  /// @}
+
  private:
   const MultibodyTreeTopology topology_;
+  mutable
+  std::unique_ptr<PositionKinematicsCache<T>> position_kinematics_cache_;
 };
 
 }  // namespace multibody

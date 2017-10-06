@@ -70,6 +70,17 @@ class Frame : public FrameBase<T> {
     return CalcPoseInBodyFrame(context) * X_FQ;
   }
 
+
+  /// @throws std::runtime_error if body poses in the model this frame belongs
+  /// to were not already cached in the context.
+  Isometry3<T> CalcPoseInWorld(
+      const systems::Context<T>& context) const {
+    const Body<T>& B = this->get_body();  // The body this frame F moves with.
+    const Isometry3<T>& X_WB = B.get_pose_in_world(context);
+    const Isometry3<T> X_BF = this->CalcPoseInBodyFrame(context);
+    return X_WB * X_BF;
+  }
+
   /// NVI to DoCloneToScalar() templated on the scalar type of the new clone to
   /// be created. This method is mostly intended to be called by
   /// MultibodyTree::CloneToScalar(). Most users should not call this clone

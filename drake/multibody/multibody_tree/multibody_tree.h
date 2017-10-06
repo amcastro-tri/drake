@@ -653,6 +653,14 @@ class MultibodyTree {
   /// Mobilizer::set_zero_configuration().
   void SetDefaultContext(systems::Context<T>* context) const;
 
+  const MultibodyTreeContext<T>& get_multibody_context(
+      const systems::Context<T>& context) const {
+    const MultibodyTreeContext<T>& mbt_context =
+        dynamic_cast<const MultibodyTreeContext<T>&>(context);
+    // TODO: Add DRAKE_ASSERT_VOID(VerifyContext) using topology.
+    return mbt_context;
+  }
+
   /// Computes into the position kinematics `pc` all the kinematic quantities
   /// that depend on the generalized positions only. These include:
   /// - For each body B, the pose `X_BF` of each of the frames F attached to
@@ -998,6 +1006,22 @@ class MultibodyTree {
   void CalcBiasTerm(
       const systems::Context<T>& context, EigenPtr<VectorX<T>> Cv) const;
 
+  /// Mathematically this method computes, for each point `Qi` in array
+  /// `p_FQ`: <pre>
+  ///   p_MQi_M = X_MF * p_FQi
+  /// </pre>
+  ///
+  /// @param[in] p_FQ
+  ///   A vector where the i-th entry contains the position `p_FoQi_F` of a
+  ///   point `Qi` from the origin `Fo` of frame F, expressed in frame F.
+  /// @param[out] p_MQ
+  ///   On output, the i-th entry will contain the position of each point `Qi`
+  ///   in `p_FQ` measured in frame M, and expressed in frame M.
+  void CalcNodePointsPositions(
+      const systems::Context<T>& context,
+      const Frame<T>& F_frame, const Frame<T>& M_frame,
+      const std::vector<Vector3<T>>& p_FQ, std::vector<Vector3<T>>* p_MQ) const;
+
   /// @name Methods to retrieve multibody element variants
   ///
   /// Given two variants of the same %MultibodyTree, these methods map an
@@ -1164,6 +1188,11 @@ class MultibodyTree {
     return tree_clone;
   }
 
+  /// @name (Advanced) Eval() methods.
+  /// @{
+  const PositionKinematicsCache<T>& EvalPositionKinematics(
+      const systems::Context<T>& context) const;
+  /// @}
  private:
   // Make MultibodyTree templated on every other scalar type a friend of
   // MultibodyTree<T> so that CloneToScalar<ToAnyOtherScalar>() can access

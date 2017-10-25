@@ -6,6 +6,7 @@
 #include "drake/common/autodiff.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/multibody_tree/body.h"
+#include "drake/multibody/multibody_tree/link.h"
 #include "drake/multibody/multibody_tree/multibody_tree.h"
 #include "drake/multibody/multibody_tree/multibody_tree_indexes.h"
 
@@ -14,13 +15,19 @@ namespace multibody {
 
 template <typename T>
 FixedOffsetFrame<T>::FixedOffsetFrame(
+    const Link<T>& B, const Isometry3<double>& X_BF) :
+    Frame<T>(&B, nullptr), parent_frame_(B.get_link_frame()), X_PF_(X_BF) {}
+
+template <typename T>
+FixedOffsetFrame<T>::FixedOffsetFrame(
     const Frame<T>& P, const Isometry3<double>& X_PF) :
-    Frame<T>(P.get_body()), parent_frame_(P), X_PF_(X_PF) {}
+    Frame<T>(P.get_link_pointer(), P.get_body_pointer()),
+    parent_frame_(P), X_PF_(X_PF) {}
 
 template <typename T>
 FixedOffsetFrame<T>::FixedOffsetFrame(
     const Body<T>& B, const Isometry3<double>& X_BF) :
-    Frame<T>(B), parent_frame_(B.get_body_frame()), X_PF_(X_BF) {}
+    Frame<T>(nullptr, &B), parent_frame_(B.get_body_frame()), X_PF_(X_BF) {}
 
 template <typename T>
 template <typename ToScalar>

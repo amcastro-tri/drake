@@ -13,7 +13,7 @@ namespace multibody {
 // Forward declarations.
 template <class T> class BodyFrame;
 template <class T> class MultibodyTree;
-template <class T> class RigidBody;
+template <class T> class Link;
 
 /// %FixedOffsetFrame represents a material frame F whose pose is fixed with
 /// respect to a _parent_ material frame P. The pose offset is given by a
@@ -45,6 +45,10 @@ class FixedOffsetFrame final : public Frame<T> {
   ///   value (as an Isometry3<double>) is provided.
   FixedOffsetFrame(const Frame<T>& P, const Isometry3<double>& X_PF);
 
+  FixedOffsetFrame(const Link<T>& linkB, const Isometry3<double>& X_BF);
+
+  /// @name Advanced use methods
+  /// @{
   /// Creates a material Frame F whose pose is fixed with respect to the
   /// BodyFrame B of the given Body, which serves as F's parent frame.
   /// The pose is given by a spatial transform `X_BF`; see class documentation
@@ -59,6 +63,7 @@ class FixedOffsetFrame final : public Frame<T> {
     // X_BF = X_BP * X_PF
     return parent_frame_.CalcOffsetPoseInBody(context, X_PF_.cast<T>());
   }
+  /// }@
 
  protected:
   /// @name Methods to make a clone templated on different scalar types.

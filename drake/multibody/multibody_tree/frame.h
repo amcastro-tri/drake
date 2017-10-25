@@ -13,6 +13,7 @@ namespace multibody {
 
 // Forward declarations.
 template<typename T> class Body;
+template<typename T> class Link;
 
 /// %Frame is an abstract class representing a _material frame_ (also called a
 /// _physical frame_), meaning that it is associated with a material point of a
@@ -42,9 +43,13 @@ class Frame : public FrameBase<T> {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(Frame)
 
+  /// @name Advanced level methods.
+  /// @{
+
   /// Returns a const reference to the body associated to this %Frame.
   const Body<T>& get_body() const {
-    return body_;
+    DRAKE_DEMAND(body_ != nullptr);
+    return *body_;
   }
 
   /// Returns the pose `X_BF` of `this` frame F in the body frame B associated
@@ -69,6 +74,7 @@ class Frame : public FrameBase<T> {
       const Isometry3<T>& X_FQ) const {
     return CalcPoseInBodyFrame(context) * X_FQ;
   }
+  /// @}
 
   /// NVI to DoCloneToScalar() templated on the scalar type of the new clone to
   /// be created. This method is mostly intended to be called by
@@ -82,10 +88,35 @@ class Frame : public FrameBase<T> {
     return DoCloneToScalar(tree_clone);
   }
 
+  // Hide the following section for internal methods from Doxygen.
+  // These methods are intended for internal use only.
+#ifndef DRAKE_DOXYGEN_CXX
+  //Returns a const pointer to the Body associated to this %Frame.
+  // The pointer can be nullptr if the frame is associated to a Link before
+  // MultibodyTree::Finalize(). For this case, the returned pointer is
+  // guaranteed to be valid **after** MultibodyTree::Finalize().
+  const Body<T>* get_body_pointer() const {
+    return body_;
+  }
+
+  // Returns a const pointer to the link associated to this %Frame.
+  // The returned pointer can be nullptr for frames not associated with any
+  // link.
+  const Link<T>* get_link_pointer() const {
+    return link_;
+  }
+#endif
+
  protected:
   /// Only derived classes can use this constructor. It creates a %Frame
-  /// object attached to `body`.
-  explicit Frame(const Body<T>& body) : body_(body) {}
+  /// object attached to either a `link` or `body`.
+  /// Creates a frame associated with a given link and body. Either, link or
+  /// body, can be nullptr.
+  Frame(const Link<T>* link, const Body<T>* body) : link_(link), body_(body) {
+    // Right now we do not allow both being non-nullptr.
+    DRAKE_DEMAND((link != nullptr && body == nullptr) ^
+                 (body != nullptr && link == nullptr));
+  }
 
   /// @name Methods to make a clone templated on different scalar types.
   ///
@@ -115,8 +146,14 @@ class Frame : public FrameBase<T> {
     DRAKE_ASSERT(topology_.index == this->get_index());
   }
 
-  // The body associated with this frame.
-  const Body<T>& body_;
+  // The link associated with this frame. It can be nullptr for frames directly
+  // attached to a Body object.
+  const Link<T>* link_{nullptr};
+
+  // The body associated with this frame. It can be nullptr BEFORE finalize if
+  // this frame is attached to a Link. However it MUST be non nullptr AFTER
+  // finalze.
+  const Body<T>* body_{nullptr};
 
   // The internal bookkeeping topology struct used by MultibodyTree.
   FrameTopology topology_;

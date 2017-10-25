@@ -19,6 +19,28 @@ using internal::BodyNodeWelded;
 
 namespace internal {
 template <typename T>
+class LinkImplementationBuilder {
+ public:
+  LinkImplementationBuilder() = delete;
+  static void Build(Link<T>* link, MultibodyTree<T>* tree) {
+    std::unique_ptr<LinkBluePrint> blue_print =
+        link->MakeImplementationBlueprint();
+    auto implementation = std::make_unique<LinkImplementation>(*blue_print);
+    DRAKE_DEMAND(implementation->get_num_bodies() != 0);
+    for (auto& body : blue_print->bodies_) {
+      Body<T>* body_raw_ptr = body.get();
+      tree->AddBody(std::move(body));
+      // At this point body should have a link, body index and frame index.
+    }
+    // TODO(amcastro-tri): add force elements, bodies, constraints, etc.
+    link->OwnImplementation(std::move(implementation));
+  }
+ private:
+  typedef typename Link<T>::BluePrint LinkBluePrint;
+  typedef typename Link<T>::LinkImplementation LinkImplementation;
+};
+
+template <typename T>
 class JointImplementationBuilder {
  public:
   JointImplementationBuilder() = delete;
@@ -103,6 +125,24 @@ void MultibodyTree<T>::FinalizeInternals() {
 
 template <typename T>
 void MultibodyTree<T>::Finalize() {
+#if 0
+  // Create Link objects's implementation.
+  for (auto& link : owned_links_) {
+    internal::LinkImplementationBuilder<T>::Build(link.get(), this);
+    BodyFrame<T>& body_frame =
+        internal::BodyAttorney<T>::get_mutable_body_frame(body_raw_ptr);
+    body_raw_ptr->get_body_frame().set_link(link);
+  }
+
+  for (auto& frame : owned_frames_) {
+    FrameIndex frame_index = frame.get_index();
+    if (frame.has_link() && !frame.has_body()) {
+      // Added to a link. Body still needs to be assigned.
+
+    }
+  }
+#endif
+
   // Create Joint objects's implementation. Joints are implemented using a
   // combination of MultibodyTree's building blocks such as Body, Mobilizer,
   // ForceElement and Constraint. For a same physical Joint, several

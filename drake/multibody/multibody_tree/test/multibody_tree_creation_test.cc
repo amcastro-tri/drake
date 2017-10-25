@@ -15,6 +15,9 @@
 #include "drake/multibody/multibody_tree/rigid_body.h"
 #include "drake/multibody/multibody_tree/uniform_gravity_field_element.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 namespace drake {
 namespace multibody {
 
@@ -121,6 +124,110 @@ GTEST_TEST(MultibodyTree, BasicAPIToAddBodiesAndMobilizers) {
 
   // Verifies that after compilation no more bodies can be added.
   EXPECT_THROW(model->AddBody<RigidBody>(M_Bo_B), std::logic_error);
+}
+
+// Tests the basic MultibodyTree API to add links and joints.
+// Tests we cannot create graph loops.
+GTEST_TEST(MultibodyTree, BasicAPIToAddLinksAndJoints) {
+  auto model = std::make_unique<MultibodyTree<double>>();
+
+  // There are no links in the model.
+  EXPECT_EQ(model->get_num_links(), 0);
+
+  // Creates a NaN SpatialInertia to instantiate the RigidBody links of the
+  // pendulum. Using a NaN spatial inertia is ok so far since we are still
+  // not performing any numerical computations. This is only to test API.
+  // M_Bo_B is the spatial inertia about the body frame's origin Bo and
+  // expressed in the body frame B.
+  SpatialInertia<double> M_Bo_B;
+
+  // Adds a new link to the world.
+  const Link<double>& pendulum = model->AddLink("pendulum", M_Bo_B);
+  (void) pendulum;
+
+  EXPECT_EQ(model->get_num_links(), 1);
+  EXPECT_EQ(model->get_num_joints(), 0);
+
+  EXPECT_TRUE(pendulum.get_index() == LinkIndex(0));
+  EXPECT_TRUE(pendulum.get_link_frame().get_index().is_valid());
+
+#if 0
+  // Adds a revolute joint.
+  EXPECT_NO_THROW((model->AddJoint<RevoluteJoint>(
+      "pin",
+      model->get_world_link(), {},
+      pendulum, {},
+      Vector3d::UnitZ())));
+
+  // TODO: Should we add topology for Joint's and Link's???
+  // We cannot add another joint between the same two frames.
+  EXPECT_THROW((model->AddJoint<RevoluteJoint>(
+      "pin2",
+      model->get_world_link(), {},
+      pendulum, {},
+      Vector3d::UnitZ())));
+    // Even if connected in the opposite order.
+  EXPECT_THROW((model->AddMobilizer<RevoluteMobilizer>(
+      pendulum.get_body_frame(), world_body.get_body_frame(),
+      Vector3d::UnitZ())), std::runtime_error);
+  // Verify we cannot add a mobilizer between a frame and itself.
+  EXPECT_THROW((model->AddMobilizer<RevoluteMobilizer>(
+      pendulum.get_body_frame(), pendulum.get_body_frame(),
+      Vector3d::UnitZ())), std::runtime_error);
+
+
+  // Adds a second pendulum.
+  const Link<double>& pendulum2 = model->AddLink("pendulum2", M_Bo_B);
+  model->AddJoint<RevoluteJoint>(
+      "pin2",
+      model->get_world_link(), {},
+      pendulum, {},
+      Vector3d::UnitZ());
+(void)pendulum2;
+
+  EXPECT_EQ(model->get_num_links(), 3);
+  EXPECT_EQ(model->get_num_joints(), 2);
+#endif
+
+#if 0
+
+  // Attempts to create a loop. Verify we gen an exception.
+  EXPECT_THROW((model->AddMobilizer<RevoluteMobilizer>(
+      pendulum.get_body_frame(), pendulum2.get_body_frame(),
+      Vector3d::UnitZ())), std::runtime_error);
+
+  // Expect the number of bodies and mobilizers not to change after the above
+  // (failed) call.
+  EXPECT_EQ(model->get_num_bodies(), 3);
+  EXPECT_EQ(model->get_num_mobilizers(), 2);
+
+  // Topology is invalid before MultibodyTree::Finalize().
+  EXPECT_FALSE(model->topology_is_valid());
+  // Verifies that the topology of this model gets validated at finalize stage.
+  EXPECT_NO_THROW(model->Finalize());
+  EXPECT_TRUE(model->topology_is_valid());
+
+  // Body identifiers are unique and are assigned by MultibodyTree in increasing
+  // order starting with index = 0 (world_index()) for the "world" body.
+  EXPECT_EQ(world_body.get_index(), world_index());
+  EXPECT_EQ(pendulum.get_index(), BodyIndex(1));
+  EXPECT_EQ(pendulum2.get_index(), BodyIndex(2));
+
+  // Tests API to access bodies.
+  EXPECT_EQ(model->get_body(BodyIndex(1)).get_index(), pendulum.get_index());
+  EXPECT_EQ(model->get_body(BodyIndex(2)).get_index(), pendulum2.get_index());
+
+  // Rigid bodies have no generalized coordinates.
+  EXPECT_EQ(pendulum.get_num_flexible_positions(), 0);
+  EXPECT_EQ(pendulum.get_num_flexible_velocities(), 0);
+
+  // Verifies that an exception is throw if a call to Finalize() is attempted to
+  // an already finalized MultibodyTree.
+  EXPECT_THROW(model->Finalize(), std::logic_error);
+
+  // Verifies that after compilation no more bodies can be added.
+  EXPECT_THROW(model->AddBody<RigidBody>(M_Bo_B), std::logic_error);
+#endif
 }
 
 // Tests the correctness of MultibodyTreeElement checks to verify one or more
@@ -474,12 +581,16 @@ TEST_F(TreeTopologyTests, SizesAndIndexing) {
 TEST_F(TreeTopologyTests, Clone) {
   model_->Finalize();
   EXPECT_EQ(model_->get_num_bodies(), 8);
+  // 8 BodyFrame objects plus an outboard frame for the only Joint in the model.
+  EXPECT_EQ(model_->get_num_frames(), 9);
   EXPECT_EQ(model_->get_num_mobilizers(), 7);
   EXPECT_EQ(model_->get_num_force_elements(), 1);
   const MultibodyTreeTopology& topology = model_->get_topology();
+  VerifyTopology(topology);
 
   auto cloned_model = model_->Clone();
   EXPECT_EQ(cloned_model->get_num_bodies(), 8);
+  EXPECT_EQ(cloned_model->get_num_frames(), 9);
   EXPECT_EQ(cloned_model->get_num_mobilizers(), 7);
   EXPECT_EQ(cloned_model->get_num_force_elements(), 1);
   const MultibodyTreeTopology& clone_topology = cloned_model->get_topology();

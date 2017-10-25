@@ -90,7 +90,7 @@ class BodyFrame final : public Frame<T> {
 
   // Only Body objects can create BodyFrame objects since Body is a friend of
   // BodyFrame.
-  explicit BodyFrame(const Body<T>& body) : Frame<T>(body) {}
+  explicit BodyFrame(const Body<T>& body) : Frame<T>(nullptr, &body) {}
 
   // Helper method to make a clone templated on any other scalar type.
   // This method holds the common implementation for the different overrides to
@@ -146,8 +146,25 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(Body)
 
-  /// Creates a %Body with a BodyFrame associated with it.
-  Body() : body_frame_(*this) {}
+  /// Creates a %Body with an associated BodyFrame.
+  Body() : body_frame_(*this)  {}
+
+  /// Creates a %Body associated to a given link and a BodyFrame associated
+  /// with it.
+  explicit Body(const Link<T>& link) : body_frame_(*this), link_(&link) {}
+
+  /// Sets a link associated with this body. Typically for bodies that
+  /// correspond to a ghost body in a link.
+  void set_link(const Link<T>* link) {
+    link_ = link;
+  }
+
+  /// Returns the Link object associated with this body. This corresponds to the
+  /// case when `this` body is a ghost portion of a physical Link object.
+  /// nullptr is returned if `this` body is not associated with a Link object,
+  /// as it could be the case for a massless body used to build a connection
+  /// between mobilizers
+  const Link<T>* get_link() const { return link_; }
 
   /// Returns the number of generalized positions q describing flexible
   /// deformations for this body. A rigid body will therefore return zero.
@@ -246,6 +263,9 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
 
   // Body frame associated with this body.
   BodyFrame<T> body_frame_;
+
+  // Link associated with this body, if any.
+  const Link<T>* link_{nullptr};
 
   // The internal bookkeeping topology struct used by MultibodyTree.
   BodyTopology topology_;

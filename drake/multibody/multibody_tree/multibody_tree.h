@@ -16,6 +16,7 @@
 #include "drake/multibody/multibody_tree/force_element.h"
 #include "drake/multibody/multibody_tree/frame.h"
 #include "drake/multibody/multibody_tree/joints/joint.h"
+#include "drake/multibody/multibody_tree/link.h"
 #include "drake/multibody/multibody_tree/mobilizer.h"
 #include "drake/multibody/multibody_tree/multibody_tree_context.h"
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
@@ -503,6 +504,60 @@ class MultibodyTree {
             *frame_on_parent, *frame_on_child,
             std::forward<Args>(args)...));
   }
+
+  const Link<T>& AddLink(const std::string& name,
+                         const SpatialInertia<double>& default_inertia) {
+    if (topology_is_valid()) {
+      throw std::logic_error("This MultibodyTree is finalized already. "
+                             "Therefore adding more links is not allowed. "
+                             "See documentation for Finalize() for details.");
+    }
+
+    LinkIndex link_index;
+    FrameIndex link_frame_index;
+    std::tie(link_index, link_frame_index) = topology_.add_link();
+
+    auto link = std::make_unique<Link<T>>(name, default_inertia);
+    link->set_parent_tree(this, link_index);
+
+    LinkFrame<T>& link_frame = link->get_mutable_link_frame();
+    link_frame.set_parent_tree(this, link_frame_index);
+    frames_.push_back(&link_frame);
+
+    Link<T>* raw_link_ptr = link.get();
+    owned_links_.push_back(std::move(link));
+    return *raw_link_ptr;
+  }
+
+  template<template<typename> class JointType, typename... Args>
+  const JointType<T>& AddJoint(
+      const std::string& name,
+      const Link<T>& parent, const optional<Isometry3<double>>& X_PF,
+      const Link<T>& child, const optional<Isometry3<double>>& X_BM,
+      Args&&... args) {
+    static_assert(std::is_base_of<Joint<T>, JointType<T>>::value,
+                  "JointType<T> must be a sub-class of Joint<T>.");
+
+    const Frame<T>* frame_on_parent;
+    if (X_PF) {
+      frame_on_parent = &this->AddFrame<FixedOffsetFrame>(parent, *X_PF);
+    } else {
+      frame_on_parent = &parent.get_link_frame();
+    }
+
+    const Frame<T>* frame_on_child;
+    if (X_BM) {
+      frame_on_child = &this->AddFrame<FixedOffsetFrame>(child, *X_BM);
+    } else {
+      frame_on_child = &child.get_link_frame();
+    }
+
+    return AddJoint(
+        std::make_unique<JointType<T>>(
+            name,
+            *frame_on_parent, *frame_on_child,
+            std::forward<Args>(args)...));
+  }
   /// @}
   // Closes Doxygen section.
 
@@ -520,6 +575,10 @@ class MultibodyTree {
 
   /// Returns the number of joints added with AddJoint() to the %MultibodyTree.
   int get_num_joints() const { return static_cast<int>(owned_joints_.size()); }
+
+  /// Returns the number of links added with AddLink() to the %MultibodyTree.
+  /// Initially `this` model will have zero links.
+  int get_num_links() const { return static_cast<int>(owned_links_.size()); }
 
   /// Returns the number of mobilizers in the %MultibodyTree. Since the world
   /// has no Mobilizer, the number of mobilizers equals the number of bodies
@@ -560,6 +619,14 @@ class MultibodyTree {
   /// could only be considered in the model using constraints.
   int get_tree_height() const {
     return topology_.get_tree_height();
+  }
+
+  /// Returns a constant reference to the *world* link.
+  const Link<T>& get_world_link() const {
+    // world_body_ is set in the constructor. So this assert is here only to
+    // verify future constructors do not mess that up.
+    DRAKE_ASSERT(world_link_ != nullptr);
+    return *world_link_;
   }
 
   /// Returns a constant reference to the *world* body.
@@ -1063,6 +1130,14 @@ class MultibodyTree {
       const MultibodyElement<Scalar>& element) const {
     return get_joint_variant(element);
   }
+
+  /// SFINAE overload for Link<T> elements.
+  template <typename Scalar>
+  const Link<T>& get_variant(const Link<Scalar>& link) const {
+    LinkIndex link_index = link.get_index();
+    DRAKE_DEMAND(link_index < get_num_links());
+    return *owned_links_[link_index].get();
+  }
   /// @}
 
   /// Creates a deep copy of `this` %MultibodyTree templated on the same
@@ -1397,6 +1472,7 @@ class MultibodyTree {
   // a method that verifies the state of the topology with a signature similar
   // to RoadGeometry::CheckInvariants().
 
+  const Link<T>* world_link_{nullptr};
   const RigidBody<T>* world_body_{nullptr};
   std::vector<std::unique_ptr<Body<T>>> owned_bodies_;
   std::vector<std::unique_ptr<Frame<T>>> owned_frames_;
@@ -1404,6 +1480,7 @@ class MultibodyTree {
   std::vector<std::unique_ptr<ForceElement<T>>> owned_force_elements_;
   std::vector<std::unique_ptr<internal::BodyNode<T>>> body_nodes_;
 
+  std::vector<std::unique_ptr<Link<T>>> owned_links_;
   std::vector<std::unique_ptr<Joint<T>>> owned_joints_;
 
   // List of all frames in the system ordered by their FrameIndex.

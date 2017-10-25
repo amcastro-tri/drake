@@ -34,6 +34,33 @@
 namespace drake {
 namespace multibody {
 
+/// Data structure to store the topological information associated with a Link.
+struct LinkTopology {
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(LinkTopology);
+
+  /// Default construction to invalid configuration.
+  LinkTopology() {}
+
+  /// Constructs a link topology struct with index `link_index` and a link frame
+  /// with index `frame_index`.
+  LinkTopology(LinkIndex link_index, FrameIndex frame_index) :
+      index(link_index), link_frame(frame_index) {}
+
+  /// Returns `true` if all members of `this` topology are exactly equal to the
+  /// members of `other`.
+  bool operator==(const LinkTopology& other) const {
+    if (index != other.index) return false;
+    if (link_frame != other.link_frame) return false;
+    return true;
+  }
+
+  /// Unique index in the MultibodyTree.
+  LinkIndex index;
+
+  /// Unique index to the frame associated with this link.
+  FrameIndex link_frame;
+};
+
 /// Data structure to store the topological information associated with a Body.
 struct BodyTopology {
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(BodyTopology);
@@ -105,7 +132,15 @@ struct FrameTopology {
   FrameTopology() {}
 
   /// Constructs a frame topology for a frame with index `frame_index`
+  /// associated with a link with index `link_index`.
+  /// @note A BodyIndex will get associated with this frame at Finalize().
+  FrameTopology(FrameIndex frame_index, LinkIndex link_index) :
+      index(frame_index), link(link_index) {}
+
+  /// Constructs a frame topology for a frame with index `frame_index`
   /// associated with a body with index `body_index`.
+  /// @note This constructor is used to add bodies not associated with any Link.
+  /// Therefore member `link` will remain invalid even after Finalize().
   FrameTopology(FrameIndex frame_index, BodyIndex body_index) :
       index(frame_index), body(body_index) {}
 
@@ -118,10 +153,16 @@ struct FrameTopology {
   }
 
   /// Unique index in the MultibodyTree.
-  FrameIndex index{0};
+  FrameIndex index;
+
+  /// Unique index of the link this frame attaches to.
+  /// This index can be invalid when frames are directly attached to a Body but
+  /// not onto a Link.
+  LinkIndex link;
 
   /// Unique index of the body this physical frame attaches to.
-  BodyIndex body{0};
+  /// This index MUST at least be valid after Finalize().
+  BodyIndex body;
 };
 
 /// Data structure to store the topological information associated with a
@@ -398,6 +439,14 @@ class MultibodyTreeTopology {
     return true;
   }
 
+  /// Returns the number of links in the multibody tree. This includes the
+  /// "world" link and therefore the minimum number of links after
+  /// MultibodyTree::Finalize() will always be one, not zero.
+  // TODO(amcastro-tri): For links it might make sense to not include the world
+  // link and to provide a WorldFrame for when needing to attach stuff to the
+  // world.
+  int get_num_links() const { return static_cast<int>(links_.size()); }
+
   /// Returns the number of bodies in the multibody tree. This includes the
   /// "world" body and therefore the minimum number of bodies after
   /// MultibodyTree::Finalize() will always be one, not zero.
@@ -479,6 +528,18 @@ class MultibodyTreeTopology {
     return std::make_pair(body_index, body_frame_index);
   }
 
+  std::pair<LinkIndex, FrameIndex> add_link() {
+    if (is_valid()) {
+      throw std::logic_error("This MultilinkTreeTopology is finalized already. "
+                             "Therefore adding more links is not allowed. "
+                             "See documentation for Finalize() for details.");
+    }
+    LinkIndex link_index = LinkIndex(get_num_links());
+    FrameIndex link_frame_index = add_frame(link_index);
+    links_.emplace_back(link_index, link_frame_index);
+    return std::make_pair(link_index, link_frame_index);
+  }
+
   /// Creates and adds a new FrameTopology, associated with the given
   /// body_index, to this MultibodyTreeTopology.
   ///
@@ -494,6 +555,24 @@ class MultibodyTreeTopology {
     }
     FrameIndex frame_index(get_num_frames());
     frames_.emplace_back(frame_index, body_index);
+    return frame_index;
+  }
+
+  /// Creates and adds a new FrameTopology, associated with the given
+  /// link_index, to this MultibodyTreeTopology.
+  ///
+  /// @throws std::logic_error if Finalize() was already called on `this`
+  /// topology.
+  ///
+  /// @returns The FrameIndex assigned to the new FrameTopology.
+  FrameIndex add_frame(LinkIndex link_index) {
+    if (is_valid()) {
+      throw std::logic_error("This MultibodyTreeTopology is finalized already. "
+                             "Therefore adding more frames is not allowed. "
+                             "See documentation for Finalize() for details.");
+    }
+    FrameIndex frame_index(get_num_frames());
+    frames_.emplace_back(frame_index, link_index);
     return frame_index;
   }
 
@@ -784,6 +863,7 @@ class MultibodyTreeTopology {
 
   // Topological elements:
   std::vector<FrameTopology> frames_;
+  std::vector<LinkTopology> links_;
   std::vector<BodyTopology> bodies_;
   std::vector<MobilizerTopology> mobilizers_;
   std::vector<ForceElementTopology> force_elements_;

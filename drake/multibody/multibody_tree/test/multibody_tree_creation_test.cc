@@ -83,7 +83,7 @@ GTEST_TEST(MultibodyTree, BasicAPIToAddBodiesAndMobilizers) {
   // Adds a second pendulum.
   const RigidBody<double>& pendulum2 = model->AddBody<RigidBody>(M_Bo_B);
   model->AddMobilizer<RevoluteMobilizer>(
-      model->get_world_frame(), pendulum2.get_body_frame(), Vector3d::UnitZ());
+      model->get_world_body_frame(), pendulum2.get_body_frame(), Vector3d::UnitZ());
 
   EXPECT_EQ(model->get_num_bodies(), 3);
   EXPECT_EQ(model->get_num_mobilizers(), 2);
@@ -146,19 +146,26 @@ GTEST_TEST(MultibodyTree, BasicAPIToAddLinksAndJoints) {
   (void) pendulum;
 
   EXPECT_EQ(model->get_num_links(), 1);
+  // The world frame, the world body frame, plus the link frame.
+  EXPECT_EQ(model->get_num_frames(), 3);
   EXPECT_EQ(model->get_num_joints(), 0);
 
   EXPECT_TRUE(pendulum.get_index() == LinkIndex(0));
   EXPECT_TRUE(pendulum.get_link_frame().get_index().is_valid());
 
-#if 0
   // Adds a revolute joint.
   EXPECT_NO_THROW((model->AddJoint<RevoluteJoint>(
       "pin",
-      model->get_world_link(), {},
+      model->get_world_frame(),
       pendulum, {},
       Vector3d::UnitZ())));
 
+  EXPECT_EQ(model->get_num_joints(), 1);
+  EXPECT_EQ(model->get_num_frames(), 3);  // No new frames created.
+
+  EXPECT_NO_THROW((model->Finalize()));
+
+#if 0
   // TODO: Should we add topology for Joint's and Link's???
   // We cannot add another joint between the same two frames.
   EXPECT_THROW((model->AddJoint<RevoluteJoint>(
@@ -581,8 +588,9 @@ TEST_F(TreeTopologyTests, SizesAndIndexing) {
 TEST_F(TreeTopologyTests, Clone) {
   model_->Finalize();
   EXPECT_EQ(model_->get_num_bodies(), 8);
-  // 8 BodyFrame objects plus an outboard frame for the only Joint in the model.
-  EXPECT_EQ(model_->get_num_frames(), 9);
+  // 8 BodyFrame objects plus an outboard frame for the only Joint in the model,
+  // plus the world frame.
+  EXPECT_EQ(model_->get_num_frames(), 10);
   EXPECT_EQ(model_->get_num_mobilizers(), 7);
   EXPECT_EQ(model_->get_num_force_elements(), 1);
   const MultibodyTreeTopology& topology = model_->get_topology();
@@ -590,7 +598,7 @@ TEST_F(TreeTopologyTests, Clone) {
 
   auto cloned_model = model_->Clone();
   EXPECT_EQ(cloned_model->get_num_bodies(), 8);
-  EXPECT_EQ(cloned_model->get_num_frames(), 9);
+  EXPECT_EQ(cloned_model->get_num_frames(), 10);
   EXPECT_EQ(cloned_model->get_num_mobilizers(), 7);
   EXPECT_EQ(cloned_model->get_num_force_elements(), 1);
   const MultibodyTreeTopology& clone_topology = cloned_model->get_topology();

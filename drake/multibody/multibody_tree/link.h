@@ -61,6 +61,12 @@ class LinkFrame final : public Frame<T> {
   // These methods are intended for internal use only.
 #ifndef DRAKE_DOXYGEN_CXX
   // (Internal) Get the underlying implementation (a BodyFrame) for this frame.
+  void set_implementation(const BodyFrame<T>* implementation) {
+    DRAKE_DEMAND(implementation != nullptr);
+    implementation_ = implementation;
+  }
+
+  // (Internal) Get the underlying implementation (a BodyFrame) for this frame.
   const BodyFrame<T>& get_implementation() const {
     DRAKE_DEMAND(implementation_ != nullptr);
     return *implementation_;

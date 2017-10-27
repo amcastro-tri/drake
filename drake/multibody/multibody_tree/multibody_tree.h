@@ -22,6 +22,7 @@
 #include "drake/multibody/multibody_tree/multibody_tree_topology.h"
 #include "drake/multibody/multibody_tree/position_kinematics_cache.h"
 #include "drake/multibody/multibody_tree/velocity_kinematics_cache.h"
+#include "drake/multibody/multibody_tree/world_frame.h"
 #include "drake/systems/framework/context.h"
 
 namespace drake {
@@ -529,6 +530,31 @@ class MultibodyTree {
     return *raw_link_ptr;
   }
 
+  /// Adds a joint with type `JointType` between a frame `parent` and a
+  /// link `child`.
+  template<template<typename> class JointType, typename... Args>
+  const JointType<T>& AddJoint(
+      const std::string& name,
+      const Frame<T>& parent,
+      const Link<T>& child, const optional<Isometry3<double>>& X_BM,
+      Args&&... args) {
+    static_assert(std::is_base_of<Joint<T>, JointType<T>>::value,
+                  "JointType<T> must be a sub-class of Joint<T>.");
+
+    const Frame<T>* frame_on_child;
+    if (X_BM) {
+      frame_on_child = &this->AddFrame<FixedOffsetFrame>(child, *X_BM);
+    } else {
+      frame_on_child = &child.get_link_frame();
+    }
+
+    return AddJoint(
+        std::make_unique<JointType<T>>(
+            name,
+            parent, *frame_on_child,
+            std::forward<Args>(args)...));
+  }
+
   template<template<typename> class JointType, typename... Args>
   const JointType<T>& AddJoint(
       const std::string& name,
@@ -621,12 +647,8 @@ class MultibodyTree {
     return topology_.get_tree_height();
   }
 
-  /// Returns a constant reference to the *world* link.
-  const Link<T>& get_world_link() const {
-    // world_body_ is set in the constructor. So this assert is here only to
-    // verify future constructors do not mess that up.
-    DRAKE_ASSERT(world_link_ != nullptr);
-    return *world_link_;
+  const WorldFrame<T>& get_world_frame() const {
+    return *world_frame_;
   }
 
   /// Returns a constant reference to the *world* body.
@@ -638,7 +660,7 @@ class MultibodyTree {
   }
 
   /// Returns a constant reference to the *world* frame.
-  const BodyFrame<T>& get_world_frame() const {
+  const BodyFrame<T>& get_world_body_frame() const {
     return owned_bodies_[world_index()]->get_body_frame();
   }
 
@@ -1472,7 +1494,7 @@ class MultibodyTree {
   // a method that verifies the state of the topology with a signature similar
   // to RoadGeometry::CheckInvariants().
 
-  const Link<T>* world_link_{nullptr};
+  const WorldFrame<T>* world_frame_{nullptr};
   const RigidBody<T>* world_body_{nullptr};
   std::vector<std::unique_ptr<Body<T>>> owned_bodies_;
   std::vector<std::unique_ptr<Frame<T>>> owned_frames_;

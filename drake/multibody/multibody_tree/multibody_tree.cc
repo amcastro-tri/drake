@@ -29,10 +29,14 @@ class LinkImplementationBuilder {
     DRAKE_DEMAND(implementation->get_num_bodies() != 0);
     for (auto& body : blue_print->bodies_) {
       Body<T>* body_raw_ptr = body.get();
+      // This assigns a BodyIndex and a BodyFrame to the body's frame.
       tree->AddBody(std::move(body));
-      // At this point body should have a link, body index and frame index.
+      body_raw_ptr->set_link(link);
+
+      LinkFrame& link_frame = link->get_mutable_link_frame();
+      DRAKE_DEMAND(link_frame.get_index().is_valid());
+      link_frame.set_implementation(&body_raw_ptr->get_body_frame());
     }
-    // TODO(amcastro-tri): add force elements, bodies, constraints, etc.
     link->OwnImplementation(std::move(implementation));
   }
  private:
@@ -65,6 +69,7 @@ template <typename T>
 MultibodyTree<T>::MultibodyTree() {
   // Adds a "world" body to MultibodyTree having a NaN SpatialInertia.
   world_body_ = &AddBody<RigidBody>(SpatialInertia<double>());
+  world_frame_ = &AddFrame<WorldFrame>(world_body_->get_body_frame());
 }
 
 template <typename T>
@@ -125,8 +130,8 @@ void MultibodyTree<T>::FinalizeInternals() {
 
 template <typename T>
 void MultibodyTree<T>::Finalize() {
-#if 0
   // Create Link objects's implementation.
+  // TODO(amcastro-tri): allow more than one body per link.
   for (auto& link : owned_links_) {
     internal::LinkImplementationBuilder<T>::Build(link.get(), this);
     BodyFrame<T>& body_frame =
@@ -134,6 +139,7 @@ void MultibodyTree<T>::Finalize() {
     body_raw_ptr->get_body_frame().set_link(link);
   }
 
+#if 0
   for (auto& frame : owned_frames_) {
     FrameIndex frame_index = frame.get_index();
     if (frame.has_link() && !frame.has_body()) {

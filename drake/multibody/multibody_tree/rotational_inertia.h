@@ -841,13 +841,7 @@ class RotationalInertia {
   // @note Trace() / 2 is a rotational inertia's maximum possible element,
   // e.g., consider: epsilon = 1E-9 * Trace()  (where 1E-9 is a heuristic).
   bool IsApproxMomentsAndProducts(const RotationalInertia& other,
-                                  const T& epsilon) const {
-    const Vector3<T> moment_difference = get_moments() - other.get_moments();
-    const Vector3<T> product_difference = get_products() - other.get_products();
-    const T moment_max = moment_difference.template lpNorm<Eigen::Infinity>();
-    const T product_max = product_difference.template lpNorm<Eigen::Infinity>();
-    return moment_max <= epsilon && product_max <= epsilon;
-  }
+                                  const T& epsilon) const;
 
   // Tests whether each moment of inertia is non-negative (to within `epsilon`)
   // and tests whether moments of inertia satisfy triangle-inequality.  The
@@ -868,14 +862,7 @@ class RotationalInertia {
   //       0 <= Imin <= tr/3,   tr/3 <= Imed <= tr/2,   tr/3 <= Imax <= tr/2.
   //       If Imin == 0, then Imed == Imax == tr / 2.
   static bool AreMomentsOfInertiaNearPositiveAndSatisfyTriangleInequality(
-      const T& Ixx, const T& Iyy, const T& Izz, const T& epsilon) {
-    const bool are_moments_near_positive = AreMomentsOfInertiaNearPositive(
-        Ixx, Iyy, Izz, epsilon);
-    const bool is_triangle_inequality_satisified = Ixx + Iyy + epsilon >= Izz &&
-                                                   Ixx + Iyy + epsilon >= Iyy &&
-                                                   Iyy + Izz + epsilon >= Ixx;
-    return are_moments_near_positive && is_triangle_inequality_satisified;
-  }
+      const T& Ixx, const T& Iyy, const T& Izz, const T& epsilon);
 
   // Tests whether each moment of inertia is non-negative (to within epsilon).
   // This test allows for small (equal to -epsilon) negative moments of inertia
@@ -886,9 +873,7 @@ class RotationalInertia {
   //        largest possible element in a valid rotational inertia.
   //        Heuristically, `epsilon` is a small multiplier of Trace() / 2.
   static bool AreMomentsOfInertiaNearPositive(
-      const T& Ixx, const T& Iyy, const T& Izz, const T& epsilon) {
-    return Ixx + epsilon >= 0  &&  Iyy + epsilon >= 0  &&  Izz + epsilon >= 0;
-  }
+      const T& Ixx, const T& Iyy, const T& Izz, const T& epsilon);
 
   // Throws an exception if a rotational inertia is not physically valid.
   void ThrowIfNotPhysicallyValid() {

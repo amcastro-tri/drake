@@ -312,10 +312,22 @@ void PendulumPlant<T>::DoCalcTimeDerivatives(
 }
 
 template<typename T>
+const T& PendulumPlant<T>::get_angle(const Context<T>& context) const {
+  return joint_->get_angle(context);
+}
+
+template<typename T>
 void PendulumPlant<T>::SetAngle(
     Context<T>* context, const T& angle) const {
   DRAKE_DEMAND(context != nullptr);
   joint_->set_angle(context, angle);
+}
+
+template<typename T>
+void PendulumPlant<T>::set_angular_velocity(
+    Context<T>* context, const T& theta_dot) const {
+  DRAKE_DEMAND(context != nullptr);
+  joint_->set_angular_rate(context, theta_dot);
 }
 
 }  // namespace pendulum

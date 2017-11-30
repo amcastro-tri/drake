@@ -72,15 +72,15 @@ class PendulumPlant final : public systems::LeafSystem<T> {
   /// of the commanded torque.
   /// It aborts if the connected output port to this input is not of type
   /// PendulumInput.
-  const T& get_tau(const systems::Context<T>& context) const {
-    const PendulumInput<T>* input =
-        this->template EvalVectorInput<PendulumInput>(
-            context, applied_torque_input_);
-    if (input == nullptr) {
-      DRAKE_ABORT_MSG("Input port to this plant must be connected to an output"
-                          "of type PendulumInput<T>");
-    }
-    return input->tau();
+  T get_tau(const systems::Context<T>& context) const {
+    // Note: here we could use EvalVectorInput<PendulumInput>() to get a vector
+    // of the specific type PendulumInput. However, most controllers connected
+    // to this input will most likely output a simple BasicVector. Therefore we
+    // just use EvalEigenVectorInput() instead.
+    auto input_vector =
+        this->EvalEigenVectorInput(context, applied_torque_input_);
+    DRAKE_DEMAND(input_vector.size() == 1);
+    return input_vector(0);
   }
 
   /// Returns the unique id identifying this plant as a source for a
@@ -108,9 +108,13 @@ class PendulumPlant final : public systems::LeafSystem<T> {
 
   const systems::OutputPort<T>& get_state_output_port() const;
 
+  const T& get_angle(const systems::Context<T>& context) const;
+
   /// Sets the state for this system in `context` to be that of `this` pendulum
   /// at a given `angle`, in radians. Mainly used to set initial conditions.
   void SetAngle(systems::Context<T>*, const T& angle) const;
+
+  void set_angular_velocity(systems::Context<T>*, const T& theta_dot) const;
 
   /// Computes the period for the small oscillations of a simple pendulum.
   /// The solution assumes no damping. Useful to compute a reference time scale.

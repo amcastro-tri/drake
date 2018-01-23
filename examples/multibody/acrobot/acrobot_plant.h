@@ -71,7 +71,7 @@ class AcrobotPlant final : public systems::LeafSystem<T> {
   /// constructor.
   /// This constructor registers `this` plant as a source for `geometry_system`
   /// as well as the frames and geometry used for visualization.
-  AcrobotPlant(geometry::GeometrySystem<double>* geometry_system);
+  explicit AcrobotPlant(geometry::GeometrySystem<double>* geometry_system);
 
   /// Scalar-converting copy constructor.
   template <typename U>
@@ -198,7 +198,7 @@ class AcrobotPlant final : public systems::LeafSystem<T> {
   double m1_{nan()}, m2_{nan()},  // In kilograms.
       l1_{nan()}, l2_{nan()},     // In meters.
       lc1_{nan()}, lc2_{nan()},   // In meters.
-      Ic1_{nan()}, Ic2_{nan()},   // In Kgr⋅m².
+      Ic1_{nan()}, Ic2_{nan()},   // In kg⋅m².
       b1_{nan()}, b2_{nan()},     // In N⋅m⋅s.
       g_{nan()};                  // In m/s².
 

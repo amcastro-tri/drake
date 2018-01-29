@@ -19,6 +19,55 @@ namespace drake {
 namespace multibody {
 namespace multibody_plant {
 
+/// %MultibodyPlant provides a Drake system framework representation (see
+/// System) for a physical system consisting of a collection of interconnected
+/// bodies.
+/// %MultibodyPlant provides the user facing API's for adding bodies, joints,
+/// force elements and constraints. It also provides the interface to register
+/// geometry with a given GeometrySystem.
+/// As a Drake System, it also provides the interfaces create and
+/// manipulate its Context as well as to perform Context dependent computational
+/// queries.
+///
+/// @section equations_of_motion System Dynamics
+///
+/// @cond
+/// TODO(amcastro-tri): Update this documentation to include:
+///   - Input actuation and ports and connection to the B matrix.
+///   - Externally applied forces and ports to apply them.
+///   - Bilateral constraints.
+///   - Unilateral constraints and contact.
+/// @endcond
+///
+/// The state of a %MultibodyPlant `x = [q; v]` is given by its generalized
+/// positions vector `q ∈ ℝⁿᵖ` and by its generalized velocities vector
+/// `v ∈ ℝⁿᵛ` where `np` is the number of generalized positions (see
+/// num_positions()) and `nv` is the number of generalized velocities (see
+/// num_velocities()). As a Drake System, %MultibodyPlant implements the
+/// governing equations for the multibody dynamical system in the form
+/// `ẋ = f(t, x, u)` with t being the time and u the input vector of actuation
+/// forces. For mechanical systems as modeled by %MultibodyPlant these equations
+/// are given by: <pre>
+///   q̇ = N(q)v
+///   M(q)v̇ + C(q, v)v = tau                                                (1)
+/// </pre>
+/// where `M(q)` is the mass matrix of the multibody system, `C(q, v)v`
+/// corresponds to the bias term containing Coriolis and gyroscopic effects and
+/// `N(q)` is the kinematic coupling matrix describing the relationship between
+/// the rate of change of the generalized coordinates and the generalized
+/// velocities, [Seth 2010]. N(q) is an `np x nv` matrix.
+/// The vector `tau ∈ ℝⁿᵛ` on the right hand side of Eq. (1) corresponds to
+/// generalized forces applied on the system. These can include externally
+/// applied body forces, constraint forces and contact forces.
+///
+/// @tparam T The scalar type. Must be a valid Eigen scalar.
+///
+/// Instantiated templates for the following kinds of T's are provided:
+/// - double
+/// - AutoDiffXd
+///
+/// They are already available to link against in the containing library.
+/// No other values for T are currently supported.
 template<typename T>
 class MultibodyPlant final : public systems::LeafSystem<T> {
  public:

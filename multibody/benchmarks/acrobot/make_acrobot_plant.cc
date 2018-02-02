@@ -38,20 +38,22 @@ MakeAcrobotPlant(
 
   // Define each link's spatial inertia about their respective COM.
   UnitInertia<double> G1_Bcm =
-      UnitInertia<double>::StraightLine(params.Ic1(), Vector3d::UnitY());
+      UnitInertia<double>::StraightLine(params.Ic1(), Vector3d::UnitZ());
   SpatialInertia<double> M1_L1o =
       SpatialInertia<double>::MakeFromCentralInertia(
           params.m1(), p_L1L1cm, G1_Bcm);
 
   UnitInertia<double> G2_Bcm =
-      UnitInertia<double>::StraightLine(params.Ic2(), Vector3d::UnitY());
+      UnitInertia<double>::StraightLine(params.Ic2(), Vector3d::UnitZ());
   SpatialInertia<double> M2_L2o =
       SpatialInertia<double>::MakeFromCentralInertia(
           params.m2(), p_L2L2cm, G2_Bcm);
 
   // Add a rigid body to model each link.
-  const RigidBody<double>& link1 = plant->AddRigidBody("Link1", M1_L1o);
-  const RigidBody<double>& link2 = plant->AddRigidBody("Link2", M2_L2o);
+  const RigidBody<double>& link1 = plant->AddRigidBody(
+      params.link1_name(), M1_L1o);
+  const RigidBody<double>& link2 = plant->AddRigidBody(
+      params.link2_name(), M2_L2o);
 
   if (geometry_system != nullptr) {
     // A sphere at the world's origin.
@@ -75,7 +77,7 @@ MakeAcrobotPlant(
   }
 
   plant->AddJoint<RevoluteJoint>(
-      "ShoulderJoint",
+      params.shoulder_joint_name(),
       /* Shoulder inboard frame Si IS the the world frame W. */
       plant->get_world_body(), {},
       /* Shoulder outboard frame So IS frame L1. */
@@ -83,7 +85,7 @@ MakeAcrobotPlant(
       Vector3d::UnitY()); /* acrobot oscillates in the x-z plane. */
 
   plant->AddJoint<RevoluteJoint>(
-      "ElbowJoint",
+      params.elbow_joint_name(),
       link1,
       /* Pose of the elbow inboard frame Ei in Link 1's frame. */
       Isometry3d(Translation3d(-params.l1() * Vector3d::UnitZ())),

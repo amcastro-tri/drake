@@ -1,19 +1,22 @@
 #include <pybind11/functional.h>
 #include <pybind11/pybind11.h>
 
+#include "drake/bindings/pydrake/pydrake_pybind.h"
 #include "drake/systems/framework/basic_vector.h"
+#include "drake/systems/framework/vector_system.h"
 #include "drake/systems/primitives/constant_vector_source.h"
 
-namespace py = pybind11;
-
 using std::unique_ptr;
-using drake::VectorX;
-using drake::systems::BasicVector;
-using drake::systems::ConstantVectorSource;
+
+namespace drake {
+
+using systems::BasicVector;
+using systems::ConstantVectorSource;
+
+namespace pydrake {
+namespace {
 
 using T = double;
-
-namespace {
 
 // Informs listener when this class is deleted.
 class DeleteListenerSystem : public ConstantVectorSource<T> {
@@ -46,7 +49,7 @@ class DeleteListenerVector : public BasicVector<T> {
 
 PYBIND11_MODULE(test_util, m) {
   // NOLINTNEXTLINE(build/namespaces): Emulate placement in namespace.
-  using namespace drake::systems;
+  using namespace systems;
 
   // Import dependencies.
   py::module::import("pydrake.systems.framework");
@@ -60,11 +63,73 @@ PYBIND11_MODULE(test_util, m) {
     .def(py::init<std::function<void()>>());
 
   // Call overrides to ensure a custom Python class can override these methods.
-  m.def("call_overrides", [](const LeafSystem<T>* system) {
-    auto context = system->AllocateContext();
-    // Call `Publish` to test `DoPublish`.
-    auto events =
-        LeafEventCollection<PublishEvent<T>>::MakeForcedEventCollection();
-    system->Publish(*context, *events);
+
+  auto clone_vector = [](const VectorBase<T>& vector) {
+    auto copy = std::make_unique<BasicVector<T>>(vector.size());
+    copy->SetFrom(vector);
+    return copy;
+  };
+
+  m.def("call_leaf_system_overrides", [clone_vector](
+      const LeafSystem<T>& system) {
+    py::dict results;
+    auto context = system.AllocateContext();
+    {
+      // Call `Publish` to test `DoPublish`.
+      auto events =
+          LeafEventCollection<PublishEvent<T>>::MakeForcedEventCollection();
+      system.Publish(*context, *events);
+    }
+    {
+      // Call `HasDirectFeedthrough` to test `DoHasDirectFeedthrough`.
+      results["has_direct_feedthrough"] = system.HasDirectFeedthrough(0, 0);
+    }
+    {
+      // Call `CalcDiscreteVariableUpdates` to test
+      // `DoCalcDiscreteVariableUpdates`.
+      auto& state = context->get_mutable_discrete_state();
+      DiscreteValues<T> state_copy(clone_vector(state.get_vector()));
+      system.CalcDiscreteVariableUpdates(*context, &state_copy);
+
+      // From t=0, return next update time for testing discrete time.
+      // If there is an abstract / unrestricted update, this assumes that
+      // `dt_discrete < dt_abstract`.
+      systems::LeafCompositeEventCollection<double> events;
+      results["discrete_next_t"] = system.CalcNextUpdateTime(*context, &events);
+    }
+    return results;
+  });
+
+  m.def("call_vector_system_overrides", [clone_vector](
+      const VectorSystem<T>& system, Context<T>* context,
+      bool is_discrete, double dt) {
+    // While this is not convention, update state first to ensure that our
+    // output incorporates it correctly, for testing purposes.
+    // TODO(eric.cousineau): Add (Continuous|Discrete)State::Clone().
+    if (is_discrete) {
+      auto& state = context->get_mutable_discrete_state();
+      DiscreteValues<T> state_copy(
+          clone_vector(state.get_vector()));
+      system.CalcDiscreteVariableUpdates(
+          *context, &state_copy);
+      state.SetFrom(state_copy);
+    } else {
+      auto& state = context->get_mutable_continuous_state();
+      ContinuousState<T> state_dot(
+          clone_vector(state.get_vector()),
+          state.get_generalized_position().size(),
+          state.get_generalized_velocity().size(),
+          state.get_misc_continuous_state().size());
+      system.CalcTimeDerivatives(*context, &state_dot);
+      state.SetFromVector(
+          state.CopyToVector() + dt * state_dot.CopyToVector());
+    }
+    // Calculate output.
+    auto output = system.AllocateOutput(*context);
+    system.CalcOutput(*context, output.get());
+    return output;
   });
 }
+
+}  // namespace pydrake
+}  // namespace drake

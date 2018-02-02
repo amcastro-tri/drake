@@ -5,7 +5,7 @@ load("//tools/lint:lint.bzl", "add_lint_tests")
 load(
     "//tools/skylark:pybind.bzl",
     "drake_pybind_library",
-    "get_drake_pybind_installs",
+    "get_drake_py_installs",
     "get_pybind_package_info",
 )
 load(
@@ -47,6 +47,7 @@ drake_pybind_library(
     name = "framework_py",
     cc_deps = [
         "//bindings/pydrake/util:drake_optional_pybind",
+        "//bindings/pydrake/util:eigen_pybind",
     ],
     cc_so_name = "framework",
     cc_srcs = ["framework_py.cc"],
@@ -100,18 +101,7 @@ drake_py_library(
     deps = [":module_py"],
 )
 
-drake_py_library(
-    name = "all_py",
-    deps = [
-        ":analysis_py",
-        ":drawing_py",
-        ":framework_py",
-        ":primitives_py",
-        ":sensors_py",
-    ],
-)
-
-PYBIND_LIBRARIES = [
+PY_LIBRARIES_WITH_INSTALL = [
     ":analysis_py",
     ":framework_py",
     ":primitives_py",
@@ -119,22 +109,28 @@ PYBIND_LIBRARIES = [
 ]
 
 PY_LIBRARIES = [
-    ":all_py",
     ":drawing_py",
     ":module_py",
 ]
 
+# Symbol roll-up (for user ease).
+drake_py_library(
+    name = "all_py",
+    srcs = ["all.py"],
+    deps = PY_LIBRARIES_WITH_INSTALL + PY_LIBRARIES,
+)
+
+# Package roll-up (for Bazel dependencies).
 drake_py_library(
     name = "systems",
-    imports = PACKAGE_INFO.py_imports,
-    deps = PYBIND_LIBRARIES + PY_LIBRARIES,
+    deps = [":all_py"],
 )
 
 install(
     name = "install",
-    targets = PY_LIBRARIES,
+    targets = PY_LIBRARIES + [":all_py"],
     py_dest = PACKAGE_INFO.py_dest,
-    deps = get_drake_pybind_installs(PYBIND_LIBRARIES),
+    deps = get_drake_py_installs(PY_LIBRARIES_WITH_INSTALL),
 )
 
 drake_py_test(

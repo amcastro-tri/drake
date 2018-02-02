@@ -1,6 +1,5 @@
 #include "drake/multibody/multibody_tree/multibody_plant/multibody_plant.h"
 
-#include <cmath>
 #include <vector>
 
 #include "drake/common/default_scalars.h"
@@ -269,15 +268,16 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
   const auto x =
       dynamic_cast<const systems::BasicVector<T>&>(
           context.get_continuous_state_vector()).get_value();
-  const int nv = model_->get_num_velocities();
+  const int nv = this->num_velocities();
 
-  // Mass matrix:
+  // Allocate workspace. We might want to cache these to avoid allocations.
+  // Mass matrix.
   MatrixX<T> M(nv, nv);
-  // Forces:
+  // Forces.
   MultibodyForces<T> forces(*model_);
   // Bodies' accelerations, ordered by BodyNodeIndex.
   std::vector<SpatialAcceleration<T>> A_WB_array(model_->get_num_bodies());
-  // Generalized accelerations:
+  // Generalized accelerations.
   VectorX<T> vdot = VectorX<T>::Zero(nv);
 
   // TODO(amcastro-tri): Eval() these from the context.
@@ -287,7 +287,7 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
   model_->CalcVelocityKinematicsCache(context, pc, &vc);
 
   // Compute forces applied through force elements. This effectively resets
-  // the forces to zero and adds in contributions due to force elements:
+  // the forces to zero and adds in contributions due to force elements.
   model_->CalcForceElementsContribution(context, pc, vc, &forces);
 
   // TODO(amcastro-tri): Add in input forces when #7797 lands.
@@ -296,10 +296,11 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
   model_->CalcMassMatrixViaInverseDynamics(context, &M);
 
   // WARNING: to reduce memory foot-print, we use the input applied arrays also
-  // as output arrays. This means that both Fapplied_Bo_W_array and tau_applied
-  // get overwritten on output. This is not important in this case since we
-  // don't need their values anymore. Please see the documentation for
-  // CalcInverseDynamics() for details.
+  // as output arrays. This means that both the array of applied body forces and
+  // the array of applied generalized forces get overwritten on output. This is
+  // not important in this case since we don't need their values anymore.
+  // Please see the documentation for CalcInverseDynamics() for details.
+
   // With vdot = 0, this computes:
   //   tau = C(q, v)v - tau_app - ∑ J_WBᵀ(q) Fapp_Bo_W.
   std::vector<SpatialForce<T>>& F_BBo_W_array = forces.mutable_body_forces();
@@ -314,9 +315,10 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
   vdot = M.ldlt().solve(-tau_array);
 
   auto v = x.bottomRows(nv);
-  VectorX<T> xdot(model_->get_num_states());
-  // For this simple model v = qdot.
-  xdot << v, vdot;
+  VectorX<T> xdot(this->num_multibody_states());
+  VectorX<T> qdot(this->num_positions());
+  model_->MapVelocityToQDot(context, v, &qdot);
+  xdot << qdot, vdot;
   derivatives->SetFromVector(xdot);
 }
 

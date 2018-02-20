@@ -1,0 +1,6 @@
+namespace: "drake::examples::acrobot"
+
+element {
+    name: "tau"
+    doc: "tau"
+}

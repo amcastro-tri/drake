@@ -3,16 +3,20 @@ namespace: "drake::examples::acrobot"
 element {
     name: "theta1"
     doc: "theta1"
+    doc_units: "rad"
 }
 element {
     name: "theta2"
     doc: "theta2"
+    doc_units: "rad"
 }
 element {
     name: "theta1dot"
     doc: "theta1dot"
+    doc_units: "rad/s"
 }
 element {
     name: "theta2dot"
     doc: "theta2dot"
+    doc_units: "rad/s"
 }

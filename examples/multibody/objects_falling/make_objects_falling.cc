@@ -44,11 +44,13 @@ MakeObjectsFallingPlant(
   Vector3d ni = n1;
   for (int i = 0; i < nplanes; ++i) {
     Vector3<double> point_W(0, 0, -0.2);
-    plant->RegisterAnchoredGeometry(
+    plant->RegisterCollisionGeometry(
+        plant->get_world_body(),
         HalfSpace::MakePose(ni, point_W), HalfSpace(), geometry_system);
     ni = R * ni;
   }
-  plant->RegisterAnchoredGeometry(
+  plant->RegisterCollisionGeometry(
+      plant->get_world_body(),
       HalfSpace::MakePose(Vector3<double>::UnitZ(), Vector3<double>::Zero()),
       HalfSpace(), geometry_system);
 #if 0
@@ -70,7 +72,7 @@ MakeObjectsFallingPlant(
     std:: string name = "Ball" + std::to_string(i);
     const RigidBody<double> &ball = plant->AddRigidBody(name, M_Bcm);
     // Add sphere geometry for the ball.
-    plant->RegisterGeometry(
+    plant->RegisterCollisionGeometry(
         ball,
         /* Pose X_BG of the geometry frame G in the ball frame B. */
         Isometry3d::Identity(),
@@ -81,13 +83,13 @@ MakeObjectsFallingPlant(
     std:: string name = "Cylinder" + std::to_string(i);
     const RigidBody<double> &ball = plant->AddRigidBody(name, M_Bcm);
     // Add sphere geometry for the ball.
-    plant->RegisterGeometry(
+    plant->RegisterCollisionGeometry(
         ball,
         /* Pose X_BG of the geometry frame G in the ball frame B. */
         Isometry3d::Identity(),
         Cylinder(radius/2, 2 * radius), geometry_system);
   }
-
+  
   // Gravity acting in the -z direction.
   plant->AddForceElement<UniformGravityFieldElement>(gravity);
 

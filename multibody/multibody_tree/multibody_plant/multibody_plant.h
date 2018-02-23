@@ -426,6 +426,11 @@ class MultibodyPlant final : public systems::LeafSystem<T> {
       const Isometry3<double>& X_BG, const geometry::Shape& shape,
       geometry::GeometrySystem<double>* geometry_system);
 
+  void RegisterCollisionGeometry(
+      const Body<T>& body,
+      const Isometry3<double>& X_BG, const geometry::Shape& shape,
+      geometry::GeometrySystem<double>* geometry_system);
+
   bool is_visual_geometry(geometry::GeometryId id) const {
     return geometry_id_to_visual_index_.find(id) !=
         geometry_id_to_visual_index_.end();

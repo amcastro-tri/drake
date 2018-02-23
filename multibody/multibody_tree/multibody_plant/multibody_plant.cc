@@ -82,6 +82,25 @@ void MultibodyPlant<T>::RegisterVisualGeometry(
       static_cast<int>(geometry_id_to_visual_index_.size());
 }
 
+
+template<typename T>
+void MultibodyPlant<T>::RegisterCollisionGeometry(
+    const Body<T>& body,
+    const Isometry3<double>& X_BG, const geometry::Shape& shape,
+    geometry::GeometrySystem<double>* geometry_system) {
+  DRAKE_THROW_UNLESS(!this->is_finalized());
+  GeometryId id;
+  // TODO(amcastro-tri): Consider doing this after finalize so that we can
+  // register anchored geometry on ANY body welded to the world.
+  if (body.get_index() == world_index()) {
+    id = RegisterAnchoredGeometry(X_BG, shape, geometry_system);
+  } else {
+    id = RegisterGeometry(body, X_BG, shape, geometry_system);
+  }
+  geometry_id_to_collision_index_[id] =
+      static_cast<int>(geometry_id_to_collision_index_.size());
+}
+
 template<typename T>
 geometry::GeometryId MultibodyPlant<T>::RegisterGeometry(
     const Body<T>& body,

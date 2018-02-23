@@ -70,8 +70,30 @@ namespace multibody_plant {
 /// - Bodies: AddRigidBody().
 /// - Joints: AddJoint().
 ///
+/// @section mbp_geometry_registration
+/// Registering geometry with a GeometrySystem
+///
+/// %MultibodyPlant users can register geometry with a GeometrySystem for
+/// essentially two purposes; a) visualization and, b) contact modeling.
+///
+/// If any geometry is registered for a given %MultibodyPlant, the plant will
+/// have a valid geometry::SourceId which can then be requested by
+/// get_source_id() in order to connect the plant to the GeometrySystem on which
+/// the geometry registration was performed.
+///
+/// @section Finalize() stage
+///
+/// Once the user is done adding modeling elements and registering geometry, a
+/// a call to Finalize() must be performed. This call will:
+/// - Build the underlying MultibodyTree topology, see MultibodyTree::Finalize()
+///   for details,
+/// - declare the plant's state,
+/// - declare the plant's input and output ports,
+/// - declare input and output ports for communication with a GeometrySystem.
 /// @cond
-/// TODO(amcastro-tri): In subsequent PR add doc on how to register geometry.
+/// TODO(amcastro-tri): Consider making the geometry registration AFTER
+/// Finalize() so that we can tell if there are any bodies welded to the world
+/// to which we could just assign anchored geometry instead of dynamic geometry.
 /// @endcond
 ///
 /// @cond
@@ -386,6 +408,19 @@ class MultibodyPlant final : public systems::LeafSystem<T> {
   // visual properties.
   /// @{
 
+  /// This method registers geometry in a GeometrySystem with a given
+  /// geometry::Shape to be used for visualization of a given `body`.
+  /// @param[in] body
+  ///   The body for which geometry is being registered.
+  /// @param[in] X_BG
+  ///   The fixed pose of the geometry frame G in the body frame B.
+  /// @param[in] shape
+  ///   The geometry::Shape used for visualization. E.g.: geometry::Sphere,
+  ///   geometry::Cylinder.
+  /// @param[out] geometry_system
+  ///   A valid non nullptr to a GeometrySystem on which geometry will get
+  ///   registered.
+  /// @throws if `geometry_system` is the nullptr.
   void RegisterVisualGeometry(
       const Body<T>& body,
       const Isometry3<double>& X_BG, const geometry::Shape& shape,
@@ -449,8 +484,8 @@ class MultibodyPlant final : public systems::LeafSystem<T> {
   const systems::OutputPort<T>& get_geometry_ids_output_port() const;
 
   /// Returns the output port of frames' poses to communicate with a
-  /// GeometrySystem. It throws a std::out_of_range exception if this system was
-  /// not registered with a GeometrySystem.
+  /// GeometrySystem.
+  /// @throws if this system did not register geometry with a GeometrySystem.
   const systems::OutputPort<T>& get_geometry_poses_output_port() const;
 
   /// @}

@@ -25,6 +25,8 @@
 #include "drake/systems/lcm/serializer.h"
 #include "drake/systems/primitives/constant_vector_source.h"
 #include "drake/systems/rendering/pose_bundle_to_draw_message.h"
+#include "drake/systems/primitives/affine_system.h"
+#include "drake/systems/controllers/linear_quadratic_regulator.h"
 
 
 namespace drake {
@@ -36,6 +38,7 @@ using multibody::benchmarks::acrobot::AcrobotParameters;
 using multibody::benchmarks::acrobot::MakeAcrobotPlant;
 using multibody::multibody_plant::MultibodyPlant;
 using multibody::RevoluteJoint;
+using systems::Context;
 using systems::Diagram;
 using systems::DiagramBuilder;
 using systems::ImplicitEulerIntegrator;
@@ -66,7 +69,7 @@ DEFINE_string(integration_scheme, "runge_kutta3",
 DEFINE_double(simulation_time, 10.0,
               "Desired duration of the simulation in seconds.");
 
-
+#if 0
 template <typename T>
 class AcrobotWithNoOutputs : public systems::Diagram<T> {
  public:
@@ -90,6 +93,41 @@ class AcrobotWithNoOutputs : public systems::Diagram<T> {
  private:
   const MultibodyPlant<double>* acrobot_;
 };
+#endif
+
+std::unique_ptr<systems::AffineSystem<double>> BalancingLQRController() {
+  DiagramBuilder<double> builder;
+  const AcrobotParameters acrobot_parameters;
+  const MultibodyPlant<double>& acrobot =
+      *builder.AddSystem(MakeAcrobotPlant(acrobot_parameters));
+  builder.ExportInput(acrobot.get_actuation_input_port());
+  auto acrobot_with_no_outputs = builder.Build();
+
+  auto context = acrobot_with_no_outputs->CreateDefaultContext();
+  Context<double>& acrobot_context = acrobot_with_no_outputs->GetMutableSubsystemContext(acrobot, context.get());
+
+  // Set nominal torque to zero.
+  context->FixInputPort(0, Vector1d::Constant(0.0));
+
+  // Set nominal state to the upright fixed point.
+  const auto& shoulder = acrobot.GetJointByName<RevoluteJoint>("ShoulderJoint");
+  const auto& elbow = acrobot.GetJointByName<RevoluteJoint>("ElbowJoint");
+  shoulder.set_angle(&acrobot_context, M_PI);
+  elbow.set_angle(&acrobot_context, 0.0);
+  shoulder.set_angular_rate(&acrobot_context, 0.0);
+  elbow.set_angular_rate(&acrobot_context, 0.0);
+
+  // Setup LQR Cost matrices (penalize position error 10x more than velocity
+  // to roughly address difference in units, using sqrt(g/l) as the time
+  // constant.
+  Eigen::Matrix4d Q = Eigen::Matrix4d::Identity();
+  Q(0, 0) = 10;
+  Q(1, 1) = 10;
+  Vector1d R = Vector1d::Constant(1);
+
+  return systems::controllers::LinearQuadraticRegulator(
+      *acrobot_with_no_outputs, *context, Q, R);
+}
 
 int do_main(int argc, char* argv[]) {
   systems::DiagramBuilder<double> builder;
@@ -122,7 +160,7 @@ int do_main(int argc, char* argv[]) {
   //    builder.AddSystem<systems::ConstantVectorSource>(applied_torque);
   //torque_source->set_name("Applied Torque");
   //builder.Connect(torque_source->get_output_port(), acrobot.get_input_port());
-
+#if 0
   // A constant source for a zero applied torque at the elbow joint.
   double applied_torque(0.0);
   auto torque_source =
@@ -130,13 +168,12 @@ int do_main(int argc, char* argv[]) {
   torque_source->set_name("Applied Torque");
   builder.Connect(torque_source->get_output_port(),
                   acrobot.get_actuation_input_port());
-
-#if 0
-  auto controller = builder.AddSystem(BalancingLQRController(*acrobot));
-  controller->set_name("controller");
-  builder.Connect(acrobot->get_output_port(0), controller->get_input_port());
-  builder.Connect(controller->get_output_port(), acrobot->get_input_port(0));
 #endif
+
+  auto controller = builder.AddSystem(BalancingLQRController());
+  controller->set_name("controller");
+  builder.Connect(acrobot.get_state_output_port(), controller->get_input_port());
+  builder.Connect(controller->get_output_port(), acrobot.get_actuation_input_port());
 
   // Boilerplate used to connect the plant to a GeometrySystem for
   // visualization.

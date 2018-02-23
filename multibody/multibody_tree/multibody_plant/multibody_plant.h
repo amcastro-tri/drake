@@ -492,6 +492,8 @@ class MultibodyPlant final : public systems::LeafSystem<T> {
 
   /// @}
 
+  const systems::OutputPort<T>& get_state_output_port() const;
+
   /// Returns a constant reference to the input port for external actuation.
   /// This input port is a vector valued port, indexed by JointActuatorIndex.
   const systems::InputPortDescriptor<T>& get_actuation_input_port() const;
@@ -621,6 +623,9 @@ class MultibodyPlant final : public systems::LeafSystem<T> {
   void CalcFramePoseOutput(const systems::Context<T>& context,
                            geometry::FramePoseVector<T>* poses) const;
 
+  void CopyStateToOutput(const systems::Context<T>& context,
+                         systems::BasicVector<T>* state_output_vector) const;
+
   // The entire multibody model.
   std::unique_ptr<drake::multibody::MultibodyTree<T>> model_;
 
@@ -650,6 +655,7 @@ class MultibodyPlant final : public systems::LeafSystem<T> {
 
   // Actuation input port:
   int actuation_port_{-1};
+  int state_output_port_{-1};
 
   // Rigid contact constraint parameters.
   double contact_penalty_stiffness_{0};

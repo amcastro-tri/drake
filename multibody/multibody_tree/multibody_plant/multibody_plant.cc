@@ -414,6 +414,11 @@ void MultibodyPlant<T>::DeclareStateAndPorts() {
       model_->get_num_positions(),
       model_->get_num_velocities(), 0 /* num_z */);
 
+  state_output_port_ =
+      this->DeclareVectorOutputPort(
+          BasicVector<T>(num_multibody_states()),
+          &MultibodyPlant<T>::CopyStateToOutput).get_index();
+
   if (num_actuators() > 0) {
     actuation_port_ =
         this->DeclareVectorInputPort(
@@ -495,6 +500,12 @@ void MultibodyPlant<T>::CalcFramePoseOutput(
 }
 
 template <typename T>
+void MultibodyPlant<T>::CopyStateToOutput(const Context<T>& context,
+                                          BasicVector<T>* state_output_vector) const {
+  state_output_vector->get_mutable_value() = context.get_continuous_state().CopyToVector();
+}
+
+template <typename T>
 const systems::InputPortDescriptor<T>&
 MultibodyPlant<T>::get_actuation_input_port() const {
   return systems::System<T>::get_input_port(actuation_port_);
@@ -520,6 +531,11 @@ const {
   DRAKE_THROW_UNLESS(is_finalized());
   DRAKE_THROW_UNLESS(geometry_source_is_registered());
   return systems::System<T>::get_output_port(geometry_pose_port_);
+}
+
+template <typename T>
+const OutputPort<T>& MultibodyPlant<T>::get_state_output_port() const {
+  return systems::System<T>::get_output_port(state_output_port_);
 }
 
 template<typename T>

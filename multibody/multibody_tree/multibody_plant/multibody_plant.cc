@@ -206,7 +206,9 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
   VectorX<T>& tau_array = forces.mutable_generalized_forces();
 
   // Compute contact forces on each body by penalty method.
-  CalcAndAddContactForcesByPenaltyMethod(context, pc, vc, &F_BBo_W_array);
+  if (get_num_collision_geometries() > 0) {
+    CalcAndAddContactForcesByPenaltyMethod(context, pc, vc, &F_BBo_W_array);
+  }
 
   model_->CalcInverseDynamics(
       context, pc, vc, vdot,

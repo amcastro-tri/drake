@@ -426,15 +426,12 @@ class MultibodyPlant final : public systems::LeafSystem<T> {
       const Isometry3<double>& X_BG, const geometry::Shape& shape,
       geometry::GeometrySystem<double>* geometry_system);
 
-  void RegisterAnchoredVisualGeometry(
-      const Isometry3<double>& X_WG, const geometry::Shape& shape,
-      geometry::GeometrySystem<double>* geometry_system);
-
   bool is_visual_geometry(geometry::GeometryId id) const {
     return geometry_id_to_visual_index_.find(id) !=
         geometry_id_to_visual_index_.end();
   }
 
+  /// Returns the number of geometries registered for visualization.
   int get_num_visual_geometries() const {
     return geometry_id_to_visual_index_.size();
   }

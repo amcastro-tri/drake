@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "drake/common/autodiff.h"
+#include "drake/common/default_scalars.h"
 #include "drake/multibody/multibody_tree/body_node_impl.h"
 
 namespace drake {
@@ -26,6 +26,7 @@ template class MobilizerImpl<T, 7, 6>;
 // Explicitly instantiates on the most common scalar types.
 EXPLICITLY_INSTANTIATE_IMPLS(double);
 EXPLICITLY_INSTANTIATE_IMPLS(AutoDiffXd);
+EXPLICITLY_INSTANTIATE_IMPLS(symbolic::Expression);
 
 }  // namespace multibody
 }  // namespace drake

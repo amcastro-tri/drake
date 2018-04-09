@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "drake/common/autodiff.h"
+#include "drake/common/default_scalars.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/unused.h"
 #include "drake/multibody/multibody_tree/frame.h"
@@ -77,6 +77,9 @@ class BodyFrame final : public Frame<T> {
 
   std::unique_ptr<Frame<AutoDiffXd>> DoCloneToScalar(
       const MultibodyTree<AutoDiffXd>& tree_clone) const override;
+
+  std::unique_ptr<Frame<symbolic::Expression>> DoCloneToScalar(
+      const MultibodyTree<symbolic::Expression>& tree_clone) const override;
 
  private:
   // Body<T> and BodyFrame<T> are natural allies. A BodyFrame object is created
@@ -239,6 +242,9 @@ class Body : public MultibodyTreeElement<Body<T>, BodyIndex> {
   /// Clones this %Body (templated on T) to a body templated on AutoDiffXd.
   virtual std::unique_ptr<Body<AutoDiffXd>> DoCloneToScalar(
       const MultibodyTree<AutoDiffXd>& tree_clone) const = 0;
+
+  virtual std::unique_ptr<Body<symbolic::Expression>> DoCloneToScalar(
+      const MultibodyTree<symbolic::Expression>& tree_clone) const = 0;
 
   /// @}
 

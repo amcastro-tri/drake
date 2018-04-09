@@ -1011,8 +1011,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
 
     // Compute the LDLT factorization of D_B as ldlt_D_B.
     // TODO(bobbyluig): Test performance against inverse().
-    const auto ldlt_D_B =
-        D_B.template selfadjointView<Eigen::Lower>().ldlt();
+    const auto ldlt_D_B = Factorization<T>::run(D_B);
 
     // Ensure that D_B is not singular.
     // Singularity means that a non-physical hinge mapping matrix was used or
@@ -1441,6 +1440,25 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
   void DoSetTopology(const MultibodyTreeTopology& tree_topology) final {
     topology_ = tree_topology.get_body_node(this->index());
   }
+
+  // the partial specialization of Factorization is enabled via a template
+  // parameter
+  template<typename U, class Enable = void>
+  struct Factorization {}; // primary template
+
+  template<typename U>
+  struct Factorization<U, typename std::enable_if<is_numeric<U>::value>::type> {
+    static auto run(const MatrixUpTo6<U>& D) {
+      return D.template selfadjointView<Eigen::Lower>().ldlt();
+    }
+  }; // specialization for numeric point types
+
+  template<typename U>
+  struct Factorization<U, typename std::enable_if<!is_numeric<U>::value>::type> {
+    static auto run(const MatrixUpTo6<U>& D) {
+      return D.template selfadjointView<Eigen::Lower>().llt();
+    }
+  }; // specialization for non-numeric point types
 
   BodyNodeTopology topology_;
 

@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "drake/common/autodiff.h"
+#include "drake/common/default_scalars.h"
 
 namespace drake {
 namespace multibody {
@@ -17,9 +17,8 @@ RigidBody<T>::RigidBody(const std::string& body_name,
     : Body<T>(body_name, M.get_mass()),
       default_spatial_inertia_(M) {}
 
-// Explicitly instantiates on the most common scalar types.
-template class RigidBody<double>;
-template class RigidBody<AutoDiffXd>;
-
 }  // namespace multibody
 }  // namespace drake
+
+DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
+    class drake::multibody::RigidBody)

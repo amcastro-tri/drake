@@ -3,7 +3,7 @@
 #include <memory>
 #include <stdexcept>
 
-#include "drake/common/eigen_autodiff_types.h"
+#include "drake/common/default_scalars.h"
 #include "drake/common/eigen_types.h"
 #include "drake/math/roll_pitch_yaw.h"
 #include "drake/math/rotation_matrix.h"
@@ -291,9 +291,15 @@ SpaceXYZMobilizer<T>::DoCloneToScalar(
   return TemplatedDoCloneToScalar(tree_clone);
 }
 
-// Explicitly instantiates on the most common scalar types.
-template class SpaceXYZMobilizer<double>;
-template class SpaceXYZMobilizer<AutoDiffXd>;
+template <typename T>
+std::unique_ptr<Mobilizer<symbolic::Expression>>
+SpaceXYZMobilizer<T>::DoCloneToScalar(
+    const MultibodyTree<symbolic::Expression>& tree_clone) const {
+  return TemplatedDoCloneToScalar(tree_clone);
+}
 
 }  // namespace multibody
 }  // namespace drake
+
+DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
+    class drake::multibody::SpaceXYZMobilizer)

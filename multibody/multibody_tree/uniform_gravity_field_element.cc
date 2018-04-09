@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "drake/common/autodiff.h"
+#include "drake/common/default_scalars.h"
 #include "drake/multibody/multibody_tree/body.h"
 #include "drake/multibody/multibody_tree/multibody_tree.h"
 
@@ -181,9 +181,16 @@ UniformGravityFieldElement<T>::DoCloneToScalar(
       gravity_vector());
 }
 
-// Explicitly instantiates on the most common scalar types.
-template class UniformGravityFieldElement<double>;
-template class UniformGravityFieldElement<AutoDiffXd>;
+template <typename T>
+std::unique_ptr<ForceElement<symbolic::Expression>>
+UniformGravityFieldElement<T>::DoCloneToScalar(
+    const MultibodyTree<symbolic::Expression>&) const {
+  return std::make_unique<UniformGravityFieldElement<symbolic::Expression>>(
+      gravity_vector());
+}
 
 }  // namespace multibody
 }  // namespace drake
+
+DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
+    class ::drake::multibody::MultibodyTree)

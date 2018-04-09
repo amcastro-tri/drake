@@ -1,6 +1,7 @@
 #include "drake/multibody/multibody_tree/body_node_impl.h"
 
 #include "drake/common/autodiff.h"
+#include "drake/common/default_scalars.h"
 
 namespace drake {
 namespace multibody {
@@ -19,6 +20,7 @@ template class BodyNodeImpl<T, 7, 6>;
 // Explicitly instantiates on the most common scalar types.
 EXPLICITLY_INSTANTIATE_IMPLS(double);
 EXPLICITLY_INSTANTIATE_IMPLS(AutoDiffXd);
+EXPLICITLY_INSTANTIATE_IMPLS(symbolic::Expression);
 
 }  // namespace internal
 }  // namespace multibody

@@ -242,6 +242,11 @@ class RigidBody : public Body<T> {
     return TemplatedDoCloneToScalar(tree_clone);
   }
 
+  std::unique_ptr<Body<symbolic::Expression>> DoCloneToScalar(
+      const MultibodyTree<symbolic::Expression>& tree_clone) const final {
+    return TemplatedDoCloneToScalar(tree_clone);
+  }
+
  private:
   // Helper method to make a clone templated on ToScalar.
   template <typename ToScalar>

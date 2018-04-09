@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "drake/common/autodiff.h"
+#include "drake/common/default_scalars.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/multibody/multibody_tree/multibody_forces.h"
 #include "drake/multibody/multibody_tree/multibody_tree_element.h"
@@ -131,6 +131,9 @@ class JointActuator final
   // `AutoDiffXd`.
   std::unique_ptr<JointActuator<AutoDiffXd>> DoCloneToScalar(
       const MultibodyTree<AutoDiffXd>& tree_clone) const;
+
+  std::unique_ptr<JointActuator<symbolic::Expression>> DoCloneToScalar(
+      const MultibodyTree<symbolic::Expression>& tree_clone) const;
 
   // Implementation for MultibodyTreeElement::DoSetTopology().
   // At MultibodyTree::Finalize() time, each actuator retrieves its topology

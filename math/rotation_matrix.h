@@ -434,6 +434,13 @@ class RotationMatrix {
     return RotationMatrix<S>(M_orthonormalized, true);
   }
 
+  template <typename S = T>
+  static typename std::enable_if<!is_numeric<S>::value, RotationMatrix<S>>::type
+  ProjectToRotationMatrix(const Matrix3<S>& M, T* quality_factor = NULL) {
+    throw std::runtime_error("This method is not supported for scalar types "
+                             "that are not is_numeric<S>.");
+  }
+
   /// Returns an internal tolerance that checks rotation matrix orthonormality.
   /// @returns internal tolerance (small multiplier of double-precision epsilon)
   /// used to check whether or not a rotation matrix is orthonormal.

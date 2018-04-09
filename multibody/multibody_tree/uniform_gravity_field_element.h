@@ -3,7 +3,7 @@
 #include <memory>
 #include <vector>
 
-#include "drake/common/autodiff.h"
+#include "drake/common/default_scalars.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/multibody/multibody_tree/force_element.h"
 
@@ -93,6 +93,9 @@ class UniformGravityFieldElement : public ForceElement<T> {
 
   std::unique_ptr<ForceElement<AutoDiffXd>> DoCloneToScalar(
       const MultibodyTree<AutoDiffXd>& tree_clone) const override;
+
+  std::unique_ptr<ForceElement<symbolic::Expression>> DoCloneToScalar(
+      const MultibodyTree<symbolic::Expression>& tree_clone) const override;
 
  private:
   Vector3<double> g_W_;

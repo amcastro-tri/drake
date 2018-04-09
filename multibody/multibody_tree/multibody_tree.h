@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "drake/common/autodiff.h"
+#include "drake/common/default_scalars.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/drake_optional.h"
 #include "drake/multibody/multibody_tree/acceleration_kinematics_cache.h"
@@ -1651,6 +1651,11 @@ class MultibodyTree {
   /// Creates a deep copy of `this` %MultibodyTree templated on AutoDiffXd.
   std::unique_ptr<MultibodyTree<AutoDiffXd>> ToAutoDiffXd() const {
     return CloneToScalar<AutoDiffXd>();
+  }
+
+  /// Creates a deep copy of `this` %MultibodyTree templated on AutoDiffXd.
+  std::unique_ptr<MultibodyTree<symbolic::Expression>> ToSymbolic() const {
+    return CloneToScalar<symbolic::Expression>();
   }
 
   /// Creates a deep copy of `this` %MultibodyTree templated on the scalar type

@@ -270,7 +270,7 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
       &F_BBo_W_array, /* Notice these arrays gets overwritten on output. */
       &tau_array);
 
-  vdot = M.ldlt().solve(-tau_array);
+  vdot = M.llt().solve(-tau_array);
 
   auto v = x.bottomRows(nv);
   VectorX<T> xdot(this->num_multibody_states());
@@ -656,5 +656,5 @@ void MultibodyPlant<T>::ThrowIfNotFinalized(const char* source_method) const {
 }  // namespace multibody
 }  // namespace drake
 
-DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
+DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
     class drake::multibody::multibody_plant::MultibodyPlant)

@@ -1008,6 +1008,7 @@ class MultibodyPlant : public systems::LeafSystem<T> {
 }  // namespace multibody
 }  // namespace drake
 
+#if 0
 // Disable support for symbolic evaluation.
 // TODO(amcastro-tri): Allow symbolic evaluation once MultibodyTree supports it.
 namespace drake {
@@ -1019,3 +1020,4 @@ struct Traits<drake::multibody::multibody_plant::MultibodyPlant> :
 }  // namespace scalar_conversion
 }  // namespace systems
 }  // namespace drake
+#endif

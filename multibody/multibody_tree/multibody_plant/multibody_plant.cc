@@ -272,7 +272,24 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
 
   //vdot = M.llt().solve(-tau_array);
   //vdot = M.inverse() * (-tau_array);
-  vdot = M.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(-tau_array);
+  //vdot = M.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(-tau_array);
+
+  // For small fixed sizes up to 4x4, the inverse() method uses cofactors. In
+  // the general case, it uses class PartialPivLU.
+  // inverse() works well with symbolic while the pivoting in PartialPivLU does
+  // not (there are if statements with bool conditions).
+  if (nv == 2) {
+    Matrix2<T> M2 = M;
+    vdot = M2.inverse() * (-tau_array);
+  } else if (nv ==3) {
+    Matrix3<T> M3 = M;
+    vdot = M3.inverse() * (-tau_array);
+  } else if (nv == 4) {
+    Matrix4<T> M4 = M;
+    vdot = M4.inverse() * (-tau_array);
+  } else {
+    vdot = M.llt().solve(-tau_array);
+  }
 
   auto v = x.bottomRows(nv);
   VectorX<T> xdot(this->num_multibody_states());

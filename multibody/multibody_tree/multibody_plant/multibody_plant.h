@@ -479,7 +479,7 @@ class MultibodyPlant : public systems::LeafSystem<T> {
   /// @throws if `geometry_system` is the nullptr.
   /// @throws if called more than once.
   geometry::SourceId RegisterAsSourceForGeometrySystem(
-      geometry::GeometrySystem<T>* geometry_system);
+      geometry::GeometrySystem<double>* geometry_system);
 
   /// Registers geometry in a GeometrySystem with a given geometry::Shape to be
   /// used for visualization of a given `body`.
@@ -503,7 +503,7 @@ class MultibodyPlant : public systems::LeafSystem<T> {
   void RegisterVisualGeometry(
       const Body<T>& body,
       const Isometry3<double>& X_BG, const geometry::Shape& shape,
-      geometry::GeometrySystem<T>* geometry_system);
+      geometry::GeometrySystem<double>* geometry_system);
 
   /// Registers geometry in a GeometrySystem with a given geometry::Shape to be
   /// used for the contact modeling of a given `body`.
@@ -529,7 +529,7 @@ class MultibodyPlant : public systems::LeafSystem<T> {
   void RegisterCollisionGeometry(
       const Body<T>& body,
       const Isometry3<double>& X_BG, const geometry::Shape& shape,
-      geometry::GeometrySystem<T>* geometry_system);
+      geometry::GeometrySystem<double>* geometry_system);
 
   /// Returns the number of geometries registered for visualization.
   /// This method can be called at any time during the lifetime of `this` plant,
@@ -859,7 +859,7 @@ class MultibodyPlant : public systems::LeafSystem<T> {
   geometry::GeometryId RegisterGeometry(
       const Body<T>& body,
       const Isometry3<double>& X_BG, const geometry::Shape& shape,
-      geometry::GeometrySystem<T>* geometry_system);
+      geometry::GeometrySystem<double>* geometry_system);
 
   // Helper method to register anchored geometry to the world, either visual or
   // collision. This associates a GeometryId with the world body.
@@ -870,7 +870,7 @@ class MultibodyPlant : public systems::LeafSystem<T> {
   //    passed to RegisterAsSourceForGeometrySystem().
   geometry::GeometryId RegisterAnchoredGeometry(
       const Isometry3<double>& X_WG, const geometry::Shape& shape,
-      geometry::GeometrySystem<T>* geometry_system);
+      geometry::GeometrySystem<double>* geometry_system);
 
   bool body_has_registered_frame(const Body<T>& body) const {
     return body_index_to_frame_id_.find(body.index()) !=
@@ -982,7 +982,7 @@ class MultibodyPlant : public systems::LeafSystem<T> {
   // on which this plants calls RegisterAsSourceForGeometrySystem(). This is
   // ONLY (and it MUST ONLY be used) used to verify that successive registration
   // calls are performed on the same instance of GS.
-  const geometry::GeometrySystem<T>* geometry_system_{nullptr};
+  const geometry::GeometrySystem<double>* geometry_system_{nullptr};
 
   // Input/Output port indexes:
   int actuation_port_{-1};

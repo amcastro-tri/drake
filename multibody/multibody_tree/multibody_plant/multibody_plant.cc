@@ -72,7 +72,7 @@ MultibodyPlant<T>::MultibodyPlant(const MultibodyPlant<U>& other) {
 
 template <typename T>
 geometry::SourceId MultibodyPlant<T>::RegisterAsSourceForGeometrySystem(
-    geometry::GeometrySystem<T>* geometry_system) {
+    geometry::GeometrySystem<double>* geometry_system) {
   DRAKE_THROW_UNLESS(geometry_system != nullptr);
   DRAKE_THROW_UNLESS(!geometry_source_is_registered());
   source_id_ = geometry_system->RegisterSource();
@@ -87,7 +87,7 @@ template<typename T>
 void MultibodyPlant<T>::RegisterVisualGeometry(
     const Body<T>& body,
     const Isometry3<double>& X_BG, const geometry::Shape& shape,
-    geometry::GeometrySystem<T>* geometry_system) {
+    geometry::GeometrySystem<double>* geometry_system) {
   DRAKE_MBP_THROW_IF_FINALIZED();
   DRAKE_THROW_UNLESS(geometry_system != nullptr);
   DRAKE_THROW_UNLESS(geometry_source_is_registered());
@@ -113,7 +113,7 @@ template<typename T>
 void MultibodyPlant<T>::RegisterCollisionGeometry(
     const Body<T>& body,
     const Isometry3<double>& X_BG, const geometry::Shape& shape,
-    geometry::GeometrySystem<T>* geometry_system) {
+    geometry::GeometrySystem<double>* geometry_system) {
   DRAKE_MBP_THROW_IF_FINALIZED();
   DRAKE_THROW_UNLESS(geometry_system != nullptr);
   DRAKE_THROW_UNLESS(geometry_source_is_registered());
@@ -139,7 +139,7 @@ template<typename T>
 geometry::GeometryId MultibodyPlant<T>::RegisterGeometry(
     const Body<T>& body,
     const Isometry3<double>& X_BG, const geometry::Shape& shape,
-    geometry::GeometrySystem<T>* geometry_system) {
+    geometry::GeometrySystem<double>* geometry_system) {
   DRAKE_ASSERT(!is_finalized());
   DRAKE_ASSERT(geometry_source_is_registered());
   DRAKE_ASSERT(geometry_system == geometry_system_);
@@ -165,7 +165,7 @@ geometry::GeometryId MultibodyPlant<T>::RegisterGeometry(
 template<typename T>
 geometry::GeometryId MultibodyPlant<T>::RegisterAnchoredGeometry(
     const Isometry3<double>& X_WG, const geometry::Shape& shape,
-    geometry::GeometrySystem<T>* geometry_system) {
+    geometry::GeometrySystem<double>* geometry_system) {
   DRAKE_ASSERT(!is_finalized());
   DRAKE_ASSERT(geometry_source_is_registered());
   DRAKE_ASSERT(geometry_system == geometry_system_);
@@ -270,7 +270,9 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
       &F_BBo_W_array, /* Notice these arrays gets overwritten on output. */
       &tau_array);
 
-  vdot = M.llt().solve(-tau_array);
+  //vdot = M.llt().solve(-tau_array);
+  //vdot = M.inverse() * (-tau_array);
+  vdot = M.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(-tau_array);
 
   auto v = x.bottomRows(nv);
   VectorX<T> xdot(this->num_multibody_states());

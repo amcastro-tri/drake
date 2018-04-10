@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "drake/common/drake_assert.h"
+#include "drake/common/default_scalars.h"
 #include "drake/geometry/geometry_context.h"
 #include "drake/geometry/geometry_instance.h"
 #include "drake/geometry/geometry_state.h"
@@ -361,12 +362,11 @@ void GeometrySystem<T>::ThrowUnlessRegistered(SourceId source_id,
   }
 }
 
-// Explicitly instantiates on the most common scalar types.
-template class GeometrySystem<double>;
-template class GeometrySystem<AutoDiffXd>;
-
 // Don't leave the macro defined.
 #undef GS_THROW_IF_CONTEXT_ALLOCATED
 
 }  // namespace geometry
 }  // namespace drake
+
+DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
+    class ::drake::geometry::GeometrySystem)

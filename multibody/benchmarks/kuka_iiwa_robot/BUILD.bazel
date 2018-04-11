@@ -47,8 +47,12 @@ drake_cc_library(
     hdrs = [
         "make_kuka_iiwa_plant.h",
     ],
+    data = [
+        "//manipulation/models/iiwa_description:models",
+    ],
     deps = [
         ":make_kuka_iiwa_model",
+        "//common:find_resource",
         "//geometry:geometry_system",
         "//multibody/multibody_tree/multibody_plant",
     ],

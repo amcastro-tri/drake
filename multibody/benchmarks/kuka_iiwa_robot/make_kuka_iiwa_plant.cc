@@ -1,5 +1,6 @@
 #include "drake/multibody/benchmarks/kuka_iiwa_robot/make_kuka_iiwa_plant.h"
 
+#include "drake/common/find_resource.h"
 #include "drake/multibody/benchmarks/kuka_iiwa_robot/make_kuka_iiwa_model.h"
 #include "drake/multibody/multibody_tree/joints/revolute_joint.h"
 #include "drake/multibody/multibody_tree/uniform_gravity_field_element.h"
@@ -15,6 +16,7 @@ using Eigen::Vector3d;
 
 using geometry::Cylinder;
 using geometry::HalfSpace;
+using geometry::Mesh;
 using geometry::FrameId;
 using geometry::GeometrySystem;
 using geometry::Sphere;
@@ -44,25 +46,47 @@ MakeKukaIiwaPlant(bool finalize,
   plant->RegisterAsSourceForGeometrySystem(geometry_system);
 
   // A half-space for the ground geometry.
+  std::string mesh_path;
+  mesh_path = FindResourceOrThrow(
+      "drake/manipulation/models/iiwa_description/meshes/visual/link_0.obj");
   plant->RegisterCollisionGeometry(
-      plant->world_body(),
-      HalfSpace::MakePose(Vector3d::UnitZ(), Vector3d::Zero()), HalfSpace(),
+      plant->world_body(), Isometry3d::Identity(), Mesh(mesh_path),
       geometry_system);
 
+  mesh_path = FindResourceOrThrow(
+      "drake/manipulation/models/iiwa_description/meshes/visual/link_1.obj");
   plant->RegisterVisualGeometry(
-      link1, Isometry3d::Identity(), Sphere(0.1), geometry_system);
+      link1, Isometry3d::Identity(), Mesh(mesh_path), geometry_system);
+
+  mesh_path = FindResourceOrThrow(
+      "drake/manipulation/models/iiwa_description/meshes/visual/link_2.obj");
   plant->RegisterVisualGeometry(
-      link2, Isometry3d::Identity(), Sphere(0.1), geometry_system);
+      link2, Isometry3d::Identity(), Mesh(mesh_path), geometry_system);
+
+  mesh_path = FindResourceOrThrow(
+      "drake/manipulation/models/iiwa_description/meshes/visual/link_3.obj");
   plant->RegisterVisualGeometry(
-      link3, Isometry3d::Identity(), Sphere(0.1), geometry_system);
+      link3, Isometry3d::Identity(), Mesh(mesh_path), geometry_system);
+
+  mesh_path = FindResourceOrThrow(
+      "drake/manipulation/models/iiwa_description/meshes/visual/link_4.obj");
   plant->RegisterVisualGeometry(
-      link4, Isometry3d::Identity(), Sphere(0.1), geometry_system);
+      link4, Isometry3d::Identity(), Mesh(mesh_path), geometry_system);
+
+  mesh_path = FindResourceOrThrow(
+      "drake/manipulation/models/iiwa_description/meshes/visual/link_5.obj");
   plant->RegisterVisualGeometry(
-      link5, Isometry3d::Identity(), Sphere(0.1), geometry_system);
+      link5, Isometry3d::Identity(), Mesh(mesh_path), geometry_system);
+
+  mesh_path = FindResourceOrThrow(
+      "drake/manipulation/models/iiwa_description/meshes/visual/link_6.obj");
   plant->RegisterVisualGeometry(
-      link6, Isometry3d::Identity(), Sphere(0.1), geometry_system);
+      link6, Isometry3d::Identity(), Mesh(mesh_path), geometry_system);
+
+  mesh_path = FindResourceOrThrow(
+      "drake/manipulation/models/iiwa_description/meshes/visual/link_7.obj");
   plant->RegisterVisualGeometry(
-      link7, Isometry3d::Identity(), Sphere(0.1), geometry_system);
+      link7, Isometry3d::Identity(), Mesh(mesh_path), geometry_system);
 
   // We are done creating the plant.
   if (finalize) plant->Finalize();

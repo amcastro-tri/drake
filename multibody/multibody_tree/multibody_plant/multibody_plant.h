@@ -159,6 +159,10 @@ class MultibodyPlant : public systems::LeafSystem<T> {
   /// Therefore, right after creation, num_bodies() returns one.
   MultibodyPlant();
 
+  /// (Advanced) Creates a plant from the provided MultibodyTree `model`.
+  /// The plant is not yet finalized.
+  MultibodyPlant(std::unique_ptr<MultibodyTree<T>> model);
+
   /// Scalar-converting copy constructor.  See @ref system_scalar_conversion.
   template<typename U>
   explicit MultibodyPlant(const MultibodyPlant<U>& other);
@@ -636,7 +640,7 @@ class MultibodyPlant : public systems::LeafSystem<T> {
   /// `this` plant.
   /// @throws if called pre-finalize. See Finalize().
   const MultibodyTree<T>& model() const {
-    DRAKE_MBP_THROW_IF_NOT_FINALIZED();
+    //DRAKE_MBP_THROW_IF_NOT_FINALIZED();
     return *model_;
   }
 

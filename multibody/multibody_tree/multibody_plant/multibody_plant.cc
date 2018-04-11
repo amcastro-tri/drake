@@ -55,6 +55,14 @@ MultibodyPlant<T>::MultibodyPlant() :
 }
 
 template<typename T>
+MultibodyPlant<T>::MultibodyPlant(std::unique_ptr<MultibodyTree<T>> model) :
+    systems::LeafSystem<T>(systems::SystemTypeTag<
+        drake::multibody::multibody_plant::MultibodyPlant>()) {
+  DRAKE_DEMAND(model != nullptr);
+  model_ = std::move(model);
+}
+
+template<typename T>
 template<typename U>
 MultibodyPlant<T>::MultibodyPlant(const MultibodyPlant<U>& other) {
   DRAKE_THROW_UNLESS(other.is_finalized());

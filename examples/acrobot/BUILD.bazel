@@ -29,6 +29,18 @@ drake_cc_vector_gen_library(
 )
 
 drake_cc_library(
+    name = "acrobot_gen_vectors",
+    srcs = [],
+    hdrs = [],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":acrobot_input",
+        ":acrobot_params",
+        ":acrobot_state",
+    ],
+)
+
+drake_cc_library(
     name = "acrobot_lcm",
     srcs = ["acrobot_lcm.cc"],
     hdrs = ["acrobot_lcm.h"],

@@ -9,6 +9,22 @@ load(
 )
 load("//tools/lint:lint.bzl", "add_lint_tests")
 
+drake_cc_library(
+    name = "acrobot_plant",
+    srcs = ["acrobot_plant.cc"],
+    hdrs = ["acrobot_plant.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//common:default_scalars",
+        "//examples/acrobot:acrobot_gen_vectors",
+        "//multibody/benchmarks/acrobot:make_acrobot_plant",
+        "//multibody/multibody_tree/multibody_plant",
+        "//systems/controllers:linear_quadratic_regulator",
+        "//systems/framework",
+        "//systems/sensors:rotary_encoders",
+    ],
+)
+
 drake_cc_binary(
     name = "passive_simulation",
     srcs = ["passive_simulation.cc"],

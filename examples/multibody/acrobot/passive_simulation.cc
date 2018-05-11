@@ -4,12 +4,16 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/text_logging_gflags.h"
+//#include "drake/examples/acrobot/gen/acrobot_input.h"
+//#include "drake/examples/multibody/acrobot/acrobot_plant.h"
 #include "drake/geometry/geometry_visualization.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/lcm/drake_lcm.h"
 #include "drake/lcmt_viewer_draw.hpp"
 #include "drake/multibody/benchmarks/acrobot/make_acrobot_plant.h"
 #include "drake/multibody/multibody_tree/joints/revolute_joint.h"
+#include "drake/multibody/multibody_tree/multibody_plant/multibody_plant.h"
+//#include "drake/multibody/multibody_tree/parsing/multibody_plant_sdf_parser.h"
 #include "drake/systems/analysis/implicit_euler_integrator.h"
 #include "drake/systems/analysis/runge_kutta3_integrator.h"
 #include "drake/systems/analysis/semi_explicit_euler_integrator.h"
@@ -22,12 +26,14 @@
 
 namespace drake {
 
+//using examples::acrobot::AcrobotInput;
 using geometry::SceneGraph;
 using geometry::SourceId;
 using lcm::DrakeLcm;
 using multibody::benchmarks::acrobot::AcrobotParameters;
 using multibody::benchmarks::acrobot::MakeAcrobotPlant;
 using multibody::multibody_plant::MultibodyPlant;
+//using multibody::parsing::AddModelFromSdfFile;
 using multibody::RevoluteJoint;
 using systems::ImplicitEulerIntegrator;
 using systems::lcm::LcmPublisherSystem;

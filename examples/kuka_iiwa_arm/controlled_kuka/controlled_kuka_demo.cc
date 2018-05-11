@@ -15,7 +15,14 @@
 #include "drake/common/find_resource.h"
 #include "drake/common/trajectories/piecewise_polynomial.h"
 #include "drake/examples/kuka_iiwa_arm/iiwa_common.h"
+#include "drake/geometry/geometry_visualization.h"
+#include "drake/geometry/scene_graph.h"
 #include "drake/lcm/drake_lcm.h"
+#include "drake/lcmt_viewer_draw.hpp"
+#include "drake/multibody/multibody_tree/joints/revolute_joint.h"
+#include "drake/multibody/multibody_tree/multibody_plant/multibody_plant.h"
+#include "drake/multibody/multibody_tree/parsing/multibody_plant_sdf_parser.h"
+#include "drake/multibody/multibody_tree/uniform_gravity_field_element.h"
 #include "drake/manipulation/util/sim_diagram_builder.h"
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/ik_options.h"
@@ -24,10 +31,23 @@
 #include "drake/multibody/rigid_body_ik.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/controllers/inverse_dynamics_controller.h"
+#include "drake/systems/lcm/lcm_publisher_system.h"
+#include "drake/systems/lcm/serializer.h"
+#include "drake/systems/rendering/pose_bundle_to_draw_message.h"
 #include "drake/systems/primitives/trajectory_source.h"
 
 DEFINE_double(simulation_sec, 0.1, "Number of seconds to simulate.");
 
+using drake::geometry::SceneGraph;
+using drake::lcm::DrakeLcm;
+using drake::multibody::Body;
+using drake::multibody::multibody_plant::MultibodyPlant;
+using drake::multibody::parsing::AddModelFromSdfFile;
+using drake::multibody::RevoluteJoint;
+using drake::multibody::UniformGravityFieldElement;
+using drake::systems::lcm::LcmPublisherSystem;
+using drake::systems::lcm::Serializer;
+using drake::systems::rendering::PoseBundleToDrawMessage;
 using Eigen::Vector2d;
 using Eigen::Vector3d;
 using Eigen::VectorXd;
@@ -48,6 +68,9 @@ using trajectories::PiecewisePolynomial;
 const char kUrdfPath[] =
     "drake/manipulation/models/iiwa_description/urdf/"
     "iiwa14_polytope_collision.urdf";
+
+const char kSdfPath[] =
+    "drake/manipulation/models/iiwa_description/sdf/iiwa14_no_collision.sdf";
 
 PiecewisePolynomial<double> MakePlan() {
   auto tree = make_unique<RigidBodyTree<double>>();
@@ -150,39 +173,79 @@ PiecewisePolynomial<double> MakePlan() {
 int DoMain() {
   DRAKE_DEMAND(FLAGS_simulation_sec > 0);
 
-  auto tree = std::make_unique<RigidBodyTree<double>>();
-  CreateTreedFromFixedModelAtPose(FindResourceOrThrow(kUrdfPath), tree.get());
+  systems::DiagramBuilder<double> builder;
+
+  SceneGraph<double>& scene_graph = *builder.AddSystem<SceneGraph>();
+  scene_graph.set_name("scene_graph");
+
+  // Make and add the kuka robot model.
+  MultibodyPlant<double>& kuka_plant = *builder.AddSystem<MultibodyPlant>();
+  AddModelFromSdfFile(FindResourceOrThrow(kSdfPath), &kuka_plant, &scene_graph);
+
+  // Add gravity to the model.
+  kuka_plant.AddForceElement<UniformGravityFieldElement>(
+      -9.81 * Vector3<double>::UnitZ());
+
+  // Now the model is complete.
+  kuka_plant.Finalize();
+
+  // Boilerplate used to connect the plant to a SceneGraph for
+  // visualization.
+  DrakeLcm lcm;
+  const PoseBundleToDrawMessage& converter =
+      *builder.template AddSystem<PoseBundleToDrawMessage>();
+  LcmPublisherSystem& publisher =
+      *builder.template AddSystem<LcmPublisherSystem>(
+          "DRAKE_VIEWER_DRAW",
+  std::make_unique<Serializer<drake::lcmt_viewer_draw>>(), &lcm);
+  publisher.set_publish_period(1 / 60.0);
+
+  // Sanity check on the availability of the optional source id before using it.
+  DRAKE_DEMAND(!!kuka_plant.get_source_id());
+
+  builder.Connect(
+      kuka_plant.get_geometry_poses_output_port(),
+      scene_graph.get_source_pose_port(kuka_plant.get_source_id().value()));
+  builder.Connect(scene_graph.get_pose_bundle_output_port(),
+                  converter.get_input_port(0));
+  builder.Connect(converter, publisher);
+
+  // Last thing before building the diagram; dispatch the message to load
+  // geometry.
+  geometry::DispatchLoadMessage(scene_graph);
 
   PiecewisePolynomial<double> traj = MakePlan();
 
-  drake::lcm::DrakeLcm lcm;
-  SimDiagramBuilder<double> builder;
-  // Adds a plant
-  auto plant = builder.AddPlant(std::move(tree));
-  builder.AddVisualizer(&lcm);
+  auto tree = std::make_unique<RigidBodyTree<double>>();
+  CreateTreedFromFixedModelAtPose(FindResourceOrThrow(kUrdfPath), tree.get());
 
   // Adds a iiwa controller
   VectorX<double> iiwa_kp, iiwa_kd, iiwa_ki;
   SetPositionControlledIiwaGains(&iiwa_kp, &iiwa_ki, &iiwa_kd);
-
-  auto controller = builder.AddController<
-      systems::controllers::InverseDynamicsController<double>>(
-      RigidBodyTreeConstants::kFirstNonWorldModelInstanceId,
-      plant->get_rigid_body_tree().Clone(), iiwa_kp, iiwa_ki, iiwa_kd,
+  auto controller = builder.AddSystem<
+      systems::controllers::InverseDynamicsController>(
+      std::move(tree), iiwa_kp, iiwa_ki, iiwa_kd,
       false /* no feedforward acceleration */);
 
-  // Adds a trajectory source for desired state.
-  systems::DiagramBuilder<double>* diagram_builder =
-      builder.get_mutable_builder();
+  builder.Connect(kuka_plant.get_continuous_state_output_port(),
+                  controller->get_input_port_estimated_state());
+
   auto traj_src =
-      diagram_builder->template AddSystem<systems::TrajectorySource<double>>(
+      builder.AddSystem<systems::TrajectorySource<double>>(
           traj, 1 /* outputs q + v */);
   traj_src->set_name("trajectory_source");
-
-  diagram_builder->Connect(traj_src->get_output_port(),
+  builder.Connect(traj_src->get_output_port(),
                            controller->get_input_port_desired_state());
 
+  builder.Connect(controller->get_output_port_control(),
+                  kuka_plant.get_actuation_input_port());
+
+  // And build the Diagram:
   std::unique_ptr<systems::Diagram<double>> diagram = builder.Build();
+
+  // Create a context for this system:
+  std::unique_ptr<systems::Context<double>> diagram_context =
+      diagram->CreateDefaultContext();
 
   systems::Simulator<double> simulator(*diagram);
   simulator.Initialize();

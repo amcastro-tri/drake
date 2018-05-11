@@ -19,11 +19,16 @@ drake_cc_binary(
     deps = [
         "//common:find_resource",
         "//examples/kuka_iiwa_arm:iiwa_common",
+        "//geometry:geometry_visualization",
         "//lcm",
         "//manipulation/util:sim_diagram_builder",
+        "//multibody/multibody_tree/multibody_plant",
+        "//multibody/multibody_tree/parsing:multibody_plant_sdf_parser",
         "//systems/analysis:simulator",
         "//systems/controllers:inverse_dynamics_controller",
+        "//systems/lcm:lcm_pubsub_system",
         "//systems/primitives:trajectory_source",
+        "//systems/rendering:pose_bundle_to_draw_message",
         "@gflags",
     ],
 )

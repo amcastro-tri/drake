@@ -10,6 +10,8 @@
 #include <memory>
 #include <string>
 
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 #include <gflags/gflags.h>
 
 #include "drake/common/find_resource.h"
@@ -69,7 +71,6 @@ const char kUrdfPath[] =
     "drake/manipulation/models/iiwa_description/urdf/"
     "iiwa14_polytope_collision.urdf";
 
-const char kSdfPath[] =
     "drake/manipulation/models/iiwa_description/sdf/iiwa14_no_collision.sdf";
 
 PiecewisePolynomial<double> MakePlan() {
@@ -183,11 +184,17 @@ int DoMain() {
   AddModelFromSdfFile(FindResourceOrThrow(kSdfPath), &kuka_plant, &scene_graph);
 
   // Add gravity to the model.
-  kuka_plant.AddForceElement<UniformGravityFieldElement>(
-      -9.81 * Vector3<double>::UnitZ());
+  //kuka_plant.AddForceElement<UniformGravityFieldElement>(
+    //  -9.81 * Vector3<double>::UnitZ());
 
   // Now the model is complete.
   kuka_plant.Finalize();
+
+  PRINT_VAR(kuka_plant.num_positions());
+  PRINT_VAR(kuka_plant.num_actuators());
+  PRINT_VAR(kuka_plant.num_actuated_dofs());
+
+  DRAKE_THROW_UNLESS(kuka_plant.num_positions() == 14);
 
   // Boilerplate used to connect the plant to a SceneGraph for
   // visualization.
@@ -214,6 +221,8 @@ int DoMain() {
   // geometry.
   geometry::DispatchLoadMessage(scene_graph);
 
+  (void) MakePlan();
+#if 0
   PiecewisePolynomial<double> traj = MakePlan();
 
   auto tree = std::make_unique<RigidBodyTree<double>>();
@@ -227,8 +236,8 @@ int DoMain() {
       std::move(tree), iiwa_kp, iiwa_ki, iiwa_kd,
       false /* no feedforward acceleration */);
 
-  builder.Connect(kuka_plant.get_continuous_state_output_port(),
-                  controller->get_input_port_estimated_state());
+  //builder.Connect(kuka_plant.get_continuous_state_output_port(),
+    //              controller->get_input_port_estimated_state());
 
   auto traj_src =
       builder.AddSystem<systems::TrajectorySource<double>>(
@@ -237,8 +246,10 @@ int DoMain() {
   builder.Connect(traj_src->get_output_port(),
                            controller->get_input_port_desired_state());
 
-  builder.Connect(controller->get_output_port_control(),
-                  kuka_plant.get_actuation_input_port());
+//  builder.Connect(controller->get_output_port_control(),
+  //                kuka_plant.get_actuation_input_port());
+
+#endif
 
   // And build the Diagram:
   std::unique_ptr<systems::Diagram<double>> diagram = builder.Build();
@@ -247,11 +258,23 @@ int DoMain() {
   std::unique_ptr<systems::Context<double>> diagram_context =
       diagram->CreateDefaultContext();
 
+  PRINT_VAR(kuka_plant.get_actuation_input_port().get_index());
+  PRINT_VAR(kuka_plant.get_num_input_ports());
+  PRINT_VAR(kuka_plant.get_num_output_ports());
+
+  systems::Context<double>& plant_context =
+      diagram->GetMutableSubsystemContext(kuka_plant, diagram_context.get());
+  // There is no input actuation in this example for the passive dynamics.
+  plant_context.FixInputPort(
+      kuka_plant.get_actuation_input_port().get_index(), VectorXd::Zero(14));
+
+#if 0
   systems::Simulator<double> simulator(*diagram);
   simulator.Initialize();
   simulator.set_target_realtime_rate(1.0);
 
   simulator.StepTo(FLAGS_simulation_sec);
+#endif
 
   return 0;
 }

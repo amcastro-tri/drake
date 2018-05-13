@@ -99,7 +99,7 @@ int do_main() {
   // Last thing before building the diagram; dispatch the message to load
   // geometry.
   geometry::DispatchLoadMessage(scene_graph);
-
+#if 0
   // And build the Diagram:
   std::unique_ptr<systems::Diagram<double>> diagram = builder.Build();
 
@@ -130,7 +130,7 @@ int do_main() {
   simulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
   simulator.Initialize();
   simulator.StepTo(FLAGS_simulation_time);
-
+#endif
   return 0;
 }
 

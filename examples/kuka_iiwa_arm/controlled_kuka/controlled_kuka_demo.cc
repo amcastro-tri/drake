@@ -71,7 +71,7 @@ const char kUrdfPath[] =
     "drake/manipulation/models/iiwa_description/urdf/"
     "iiwa14_polytope_collision.urdf";
 
-    "drake/manipulation/models/iiwa_description/sdf/iiwa14_no_collision.sdf";
+const char kSdfPath[] = "drake/manipulation/models/iiwa_description/sdf/iiwa14_no_collision.sdf";
 
 PiecewisePolynomial<double> MakePlan() {
   auto tree = make_unique<RigidBodyTree<double>>();

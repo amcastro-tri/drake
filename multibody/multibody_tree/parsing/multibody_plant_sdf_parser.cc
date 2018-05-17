@@ -215,7 +215,6 @@ void AddJointFromSpecification(
   // P directly. We indicate that by passing a nullopt.
   if (X_PJ.value().isApprox(Isometry3d::Identity())) X_PJ = nullopt;
 
-  // Only supporting revolute joints for now.
   switch (joint_spec.Type()) {
     case sdf::JointType::REVOLUTE: {
       Vector3d axis_J = ExtractJointAxis(joint_spec);
@@ -231,8 +230,7 @@ void AddJointFromSpecification(
           joint_spec.Name(),
           parent_body, X_PJ,
           child_body, X_CJ,
-          // The pose X_JpJc of Jc in Jp.
-          Isometry3d::Identity());
+          Isometry3d::Identity() /* X_JpJc */);
       break;
     }
     case sdf::JointType::PRISMATIC: {

@@ -36,9 +36,10 @@
 #include "drake/systems/lcm/lcm_publisher_system.h"
 #include "drake/systems/lcm/serializer.h"
 #include "drake/systems/rendering/pose_bundle_to_draw_message.h"
+#include "drake/systems/primitives/constant_vector_source.h"
 #include "drake/systems/primitives/trajectory_source.h"
 
-DEFINE_double(simulation_sec, 0.1, "Number of seconds to simulate.");
+DEFINE_double(simulation_sec, 10.0, "Number of seconds to simulate.");
 
 using drake::geometry::SceneGraph;
 using drake::lcm::DrakeLcm;
@@ -184,8 +185,8 @@ int DoMain() {
   AddModelFromSdfFile(FindResourceOrThrow(kSdfPath), &kuka_plant, &scene_graph);
 
   // Add gravity to the model.
-  //kuka_plant.AddForceElement<UniformGravityFieldElement>(
-    //  -9.81 * Vector3<double>::UnitZ());
+  kuka_plant.AddForceElement<UniformGravityFieldElement>(
+      -9.81 * Vector3<double>::UnitZ());
 
   // Now the model is complete.
   kuka_plant.Finalize();
@@ -193,8 +194,10 @@ int DoMain() {
   PRINT_VAR(kuka_plant.num_positions());
   PRINT_VAR(kuka_plant.num_actuators());
   PRINT_VAR(kuka_plant.num_actuated_dofs());
+  PRINT_VAR(kuka_plant.num_visual_geometries());
+  PRINT_VAR(kuka_plant.num_collision_geometries());
 
-  DRAKE_THROW_UNLESS(kuka_plant.num_positions() == 14);
+  DRAKE_THROW_UNLESS(kuka_plant.num_positions() == 7);
 
   // Boilerplate used to connect the plant to a SceneGraph for
   // visualization.
@@ -251,6 +254,14 @@ int DoMain() {
 
 #endif
 
+  // A constant source for a zero applied torque at the elbow joint.
+  const VectorXd actuation = VectorXd::Constant(7, 0.1);
+  auto actuation_source =
+      builder.AddSystem<systems::ConstantVectorSource>(actuation);
+  actuation_source->set_name("Constant Actuation");
+  builder.Connect(actuation_source->get_output_port(),
+                  kuka_plant.get_actuation_input_port());
+
   // And build the Diagram:
   std::unique_ptr<systems::Diagram<double>> diagram = builder.Build();
 
@@ -261,20 +272,13 @@ int DoMain() {
   PRINT_VAR(kuka_plant.get_actuation_input_port().get_index());
   PRINT_VAR(kuka_plant.get_num_input_ports());
   PRINT_VAR(kuka_plant.get_num_output_ports());
+  PRINT_VAR(kuka_plant.get_actuation_input_port().size());
 
-  systems::Context<double>& plant_context =
-      diagram->GetMutableSubsystemContext(kuka_plant, diagram_context.get());
-  // There is no input actuation in this example for the passive dynamics.
-  plant_context.FixInputPort(
-      kuka_plant.get_actuation_input_port().get_index(), VectorXd::Zero(14));
-
-#if 0
   systems::Simulator<double> simulator(*diagram);
   simulator.Initialize();
   simulator.set_target_realtime_rate(1.0);
 
   simulator.StepTo(FLAGS_simulation_sec);
-#endif
 
   return 0;
 }

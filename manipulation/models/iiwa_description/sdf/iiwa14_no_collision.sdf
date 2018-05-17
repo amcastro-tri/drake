@@ -15,21 +15,12 @@
         </inertia>
       </inertial>
 
-      <visual name='base_tests'>
-        <pose frame=''>0 0 0 0 -0 0</pose>
-        <geometry>
-          <sphere>
-            <radius>1</radius>
-          </sphere>
-        </geometry>
-      </visual>
-
       <visual name='base_fixed_joint_lump__iiwa_link_0_visual'>
         <pose frame=''>0 0 0 0 -0 0</pose>
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_0.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_0.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -39,10 +30,17 @@
           </script>
         </material>
       </visual>
+
       <gravity>1</gravity>
       <velocity_decay/>
       <self_collide>0</self_collide>
     </link>
+
+    <joint name='weld_base_to_world' type='fixed'>
+      <child>base</child>
+      <parent>world</parent>
+    </joint>
+
     <link name='iiwa_link_1'>
       <pose frame=''>0 0 0.1575 0 -0 0</pose>
       <inertial>
@@ -62,7 +60,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_1.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_1.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -115,7 +113,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_2.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_2.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -168,7 +166,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_3.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_3.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -221,7 +219,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_4.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_4.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -274,7 +272,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_5.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_5.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -327,7 +325,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_6.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_6.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -380,7 +378,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_7.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_7.obj</uri>
           </mesh>
         </geometry>
         <material>

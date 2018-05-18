@@ -37,9 +37,10 @@
 #include "drake/systems/lcm/serializer.h"
 #include "drake/systems/rendering/pose_bundle_to_draw_message.h"
 #include "drake/systems/primitives/constant_vector_source.h"
+#include "drake/systems/primitives/signal_logger.h"
 #include "drake/systems/primitives/trajectory_source.h"
 
-DEFINE_double(simulation_sec, 10.0, "Number of seconds to simulate.");
+DEFINE_double(simulation_sec, 0.01, "Number of seconds to simulate.");
 
 using drake::geometry::SceneGraph;
 using drake::lcm::DrakeLcm;
@@ -47,6 +48,7 @@ using drake::multibody::Body;
 using drake::multibody::multibody_plant::MultibodyPlant;
 using drake::multibody::parsing::AddModelFromSdfFile;
 using drake::multibody::RevoluteJoint;
+using drake::multibody::JointActuatorIndex;
 using drake::multibody::UniformGravityFieldElement;
 using drake::systems::lcm::LcmPublisherSystem;
 using drake::systems::lcm::Serializer;
@@ -224,8 +226,8 @@ int DoMain() {
   // geometry.
   geometry::DispatchLoadMessage(scene_graph);
 
-  (void) MakePlan();
-#if 0
+  //(void) MakePlan();
+//#if 0
   PiecewisePolynomial<double> traj = MakePlan();
 
   auto tree = std::make_unique<RigidBodyTree<double>>();
@@ -239,8 +241,8 @@ int DoMain() {
       std::move(tree), iiwa_kp, iiwa_ki, iiwa_kd,
       false /* no feedforward acceleration */);
 
-  //builder.Connect(kuka_plant.get_continuous_state_output_port(),
-    //              controller->get_input_port_estimated_state());
+  builder.Connect(kuka_plant.get_continuous_state_output_port(),
+                  controller->get_input_port_estimated_state());
 
   auto traj_src =
       builder.AddSystem<systems::TrajectorySource<double>>(
@@ -249,11 +251,30 @@ int DoMain() {
   builder.Connect(traj_src->get_output_port(),
                            controller->get_input_port_desired_state());
 
-//  builder.Connect(controller->get_output_port_control(),
-  //                kuka_plant.get_actuation_input_port());
+  builder.Connect(controller->get_output_port_control(),
+                  kuka_plant.get_actuation_input_port());
 
-#endif
+  for (JointActuatorIndex actuator(0); actuator < kuka_plant.num_actuators(); ++ actuator) {
+    PRINT_VAR(kuka_plant.model().get_joint_actuator(actuator).name());
+  }
 
+  // Log state:
+  const auto& logger = *builder.AddSystem<systems::SignalLogger>(14);
+  builder.Connect(kuka_plant.get_continuous_state_output_port(),
+                  logger.get_input_port());
+
+  // Log acutation:
+  const auto& logger_act = *builder.AddSystem<systems::SignalLogger>(7);
+  builder.Connect(controller->get_output_port_control(),
+                  logger_act.get_input_port());
+
+  // Log traj:
+  const auto& logger_traj = *builder.AddSystem<systems::SignalLogger>(14);
+  builder.Connect(traj_src->get_output_port(),
+                  logger_traj.get_input_port());
+
+
+#if 0
   // A constant source for a zero applied torque at the elbow joint.
   const VectorXd actuation = VectorXd::Constant(7, 0.1);
   auto actuation_source =
@@ -261,6 +282,7 @@ int DoMain() {
   actuation_source->set_name("Constant Actuation");
   builder.Connect(actuation_source->get_output_port(),
                   kuka_plant.get_actuation_input_port());
+#endif
 
   // And build the Diagram:
   std::unique_ptr<systems::Diagram<double>> diagram = builder.Build();
@@ -279,6 +301,28 @@ int DoMain() {
   simulator.set_target_realtime_rate(1.0);
 
   simulator.StepTo(FLAGS_simulation_sec);
+
+  PRINT_VAR(logger.data().rows());
+  PRINT_VAR(logger.data().cols());
+  PRINT_VAR(logger.sample_times().rows());
+
+  std::ofstream fstate("state.dat");
+  MatrixXd state_out(logger.data().cols(), 15);
+  state_out << logger.sample_times() , logger.data().transpose();
+  fstate << state_out;
+  fstate.close();
+
+  std::ofstream fact("actuation.dat");
+  MatrixXd act_out(logger_act.data().cols(), 8);
+  act_out << logger_act.sample_times() , logger_act.data().transpose();
+  fact << act_out;
+  fact.close();
+
+  std::ofstream ftraj("traj.dat");
+  MatrixXd traj_out(logger_traj.data().cols(), 15);
+  traj_out << logger_traj.sample_times() , logger_traj.data().transpose();
+  ftraj << traj_out;
+  ftraj.close();
 
   return 0;
 }

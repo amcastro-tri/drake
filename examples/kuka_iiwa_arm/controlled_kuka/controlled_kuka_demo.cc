@@ -49,6 +49,7 @@ using drake::multibody::multibody_plant::MultibodyPlant;
 using drake::multibody::parsing::AddModelFromSdfFile;
 using drake::multibody::RevoluteJoint;
 using drake::multibody::JointActuatorIndex;
+using drake::multibody::JointIndex;
 using drake::multibody::UniformGravityFieldElement;
 using drake::systems::lcm::LcmPublisherSystem;
 using drake::systems::lcm::Serializer;
@@ -226,8 +227,8 @@ int DoMain() {
   // geometry.
   geometry::DispatchLoadMessage(scene_graph);
 
-  //(void) MakePlan();
-//#if 0
+  (void) MakePlan();
+ #if 1
   PiecewisePolynomial<double> traj = MakePlan();
 
   auto tree = std::make_unique<RigidBodyTree<double>>();
@@ -241,21 +242,36 @@ int DoMain() {
       std::move(tree), iiwa_kp, iiwa_ki, iiwa_kd,
       false /* no feedforward acceleration */);
 
+  //const VectorXd traj_vector = VectorXd::Constant(14, 0.0);
+  //auto traj_src =
+    //  builder.AddSystem<systems::ConstantVectorSource>(traj_vector);
+
+  //builder.Connect(traj_src->get_output_port(),
+    //              controller->get_input_port_estimated_state());
   builder.Connect(kuka_plant.get_continuous_state_output_port(),
                   controller->get_input_port_estimated_state());
 
+  // A constant source for a zero applied torque at the elbow joint.
+ #if 1
   auto traj_src =
       builder.AddSystem<systems::TrajectorySource<double>>(
           traj, 1 /* outputs q + v */);
+ #endif
   traj_src->set_name("trajectory_source");
+
   builder.Connect(traj_src->get_output_port(),
-                           controller->get_input_port_desired_state());
+                  controller->get_input_port_desired_state());
 
   builder.Connect(controller->get_output_port_control(),
                   kuka_plant.get_actuation_input_port());
+ #endif
 
   for (JointActuatorIndex actuator(0); actuator < kuka_plant.num_actuators(); ++ actuator) {
     PRINT_VAR(kuka_plant.model().get_joint_actuator(actuator).name());
+  }
+
+  for (JointIndex index(0); index < kuka_plant.num_joints(); ++ index) {
+    PRINT_VAR(kuka_plant.model().get_joint(index).name());
   }
 
   // Log state:
@@ -263,6 +279,7 @@ int DoMain() {
   builder.Connect(kuka_plant.get_continuous_state_output_port(),
                   logger.get_input_port());
 
+#if 1
   // Log acutation:
   const auto& logger_act = *builder.AddSystem<systems::SignalLogger>(7);
   builder.Connect(controller->get_output_port_control(),
@@ -272,11 +289,12 @@ int DoMain() {
   const auto& logger_traj = *builder.AddSystem<systems::SignalLogger>(14);
   builder.Connect(traj_src->get_output_port(),
                   logger_traj.get_input_port());
+#endif
 
 
 #if 0
   // A constant source for a zero applied torque at the elbow joint.
-  const VectorXd actuation = VectorXd::Constant(7, 0.1);
+  const VectorXd actuation = VectorXd::Constant(7, 0.0);
   auto actuation_source =
       builder.AddSystem<systems::ConstantVectorSource>(actuation);
   actuation_source->set_name("Constant Actuation");
@@ -312,6 +330,7 @@ int DoMain() {
   fstate << state_out;
   fstate.close();
 
+#if 1
   std::ofstream fact("actuation.dat");
   MatrixXd act_out(logger_act.data().cols(), 8);
   act_out << logger_act.sample_times() , logger_act.data().transpose();
@@ -323,6 +342,7 @@ int DoMain() {
   traj_out << logger_traj.sample_times() , logger_traj.data().transpose();
   ftraj << traj_out;
   ftraj.close();
+#endif
 
   return 0;
 }

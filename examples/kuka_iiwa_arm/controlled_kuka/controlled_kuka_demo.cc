@@ -58,6 +58,7 @@ using drake::multibody::UniformGravityFieldElement;
 using drake::systems::lcm::LcmPublisherSystem;
 using drake::systems::lcm::Serializer;
 using drake::systems::rendering::PoseBundleToDrawMessage;
+using Eigen::Isometry3d;
 using Eigen::Vector2d;
 using Eigen::Vector3d;
 using Eigen::VectorXd;
@@ -197,6 +198,23 @@ void CompareModels(
       if (!Mmbt.isApprox(Mrbt, 10 * std::numeric_limits<double>::epsilon()))
         throw std::logic_error("Mmbt != Mrbt");
     }
+  }
+
+  for (JointIndex index(0); index < mbt.num_joints(); ++ index) {
+    PRINT_VAR(mbt.get_joint(index).name());
+
+    const Isometry3d X_PF_rbt =
+        rbt.get_body(index+1).getJoint().get_transform_to_parent_body();
+
+    PRINT_VARn(X_PF_rbt.matrix());
+
+    const auto& joint = mbt.get_joint(index);
+    const Isometry3d X_PF_mbt =joint.frame_on_parent().GetFixedPoseInBodyFrame();
+
+    PRINT_VARn(X_PF_mbt.matrix());
+
+    if (!X_PF_mbt.matrix().isApprox(X_PF_rbt.matrix(), 10 * std::numeric_limits<double>::epsilon()))
+      throw std::logic_error("X_PF_mbt != X_PF_rbt");
   }
 
 }

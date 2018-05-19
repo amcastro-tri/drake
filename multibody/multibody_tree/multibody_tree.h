@@ -690,6 +690,16 @@ class MultibodyTree {
     return *owned_bodies_[body_index];
   }
 
+  const RigidBody<T>& get_rigid_body(BodyIndex body_index) const {
+    DRAKE_THROW_UNLESS(body_index < num_bodies());
+    const RigidBody<T>* body =
+        dynamic_cast<const RigidBody<T>*>(owned_bodies_[body_index].get());
+    if (body == nullptr) {
+      throw std::logic_error("Body '" + get_body(body_index).name() + "' is not a RigidBody.");
+    }
+    return *body;
+  }
+
   /// Returns a constant reference to the joint with unique index `joint_index`.
   /// @throws std::runtime_error when `joint_index` does not correspond to a
   /// joint in this multibody tree.

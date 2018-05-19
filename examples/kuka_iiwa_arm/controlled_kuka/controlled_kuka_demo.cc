@@ -11,6 +11,7 @@
 #include <string>
 
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
 
 #include <gflags/gflags.h>
 
@@ -30,6 +31,7 @@
 #include "drake/multibody/ik_options.h"
 #include "drake/multibody/joints/floating_base_types.h"
 #include "drake/multibody/parsers/urdf_parser.h"
+#include "drake/multibody/parsers/sdf_parser.h"
 #include "drake/multibody/rigid_body_ik.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/controllers/inverse_dynamics_controller.h"
@@ -46,10 +48,12 @@ using drake::geometry::SceneGraph;
 using drake::lcm::DrakeLcm;
 using drake::multibody::Body;
 using drake::multibody::multibody_plant::MultibodyPlant;
+using drake::multibody::MultibodyTree;
 using drake::multibody::parsing::AddModelFromSdfFile;
 using drake::multibody::RevoluteJoint;
 using drake::multibody::JointActuatorIndex;
 using drake::multibody::JointIndex;
+using drake::multibody::BodyIndex;
 using drake::multibody::UniformGravityFieldElement;
 using drake::systems::lcm::LcmPublisherSystem;
 using drake::systems::lcm::Serializer;
@@ -175,6 +179,28 @@ PiecewisePolynomial<double> MakePlan() {
   return PiecewisePolynomial<double>::FirstOrderHold(kTimes, knots);
 }
 
+void CompareModels(
+    const MultibodyTree<double>& mbt, const RigidBodyTree<double>& rbt) {
+
+  for (BodyIndex body_index(0); body_index < mbt.num_bodies(); ++body_index) {
+    const auto& body = mbt.get_rigid_body(body_index);
+    PRINT_VAR(body.name());
+    PRINT_VARn(body.default_spatial_inertia().CopyToFullMatrix6());
+
+    const auto& rbt_body = rbt.get_body(body_index);
+    PRINT_VAR(rbt_body.get_name());
+    PRINT_VARn(rbt_body.get_spatial_inertia());
+
+    if (body_index != 0) {
+      auto Mmbt = body.default_spatial_inertia().CopyToFullMatrix6();
+      auto Mrbt = rbt_body.get_spatial_inertia();
+      if (!Mmbt.isApprox(Mrbt, 10 * std::numeric_limits<double>::epsilon()))
+        throw std::logic_error("Mmbt != Mrbt");
+    }
+  }
+
+}
+
 int DoMain() {
   DRAKE_DEMAND(FLAGS_simulation_sec > 0);
 
@@ -193,6 +219,14 @@ int DoMain() {
 
   // Now the model is complete.
   kuka_plant.Finalize();
+
+  auto tree_sdf = std::make_unique<RigidBodyTree<double>>();
+  drake::parsers::sdf::AddModelInstancesFromSdfFileToWorld(
+      FindResourceOrThrow(
+          "drake/manipulation/models/iiwa_description/sdf/iiwa14_no_collision_rbt.sdf"),
+      drake::multibody::joints::kFixed, tree_sdf.get());
+
+  CompareModels(kuka_plant.model(), *tree_sdf);
 
   PRINT_VAR(kuka_plant.num_positions());
   PRINT_VAR(kuka_plant.num_actuators());

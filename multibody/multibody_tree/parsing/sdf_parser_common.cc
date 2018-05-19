@@ -16,7 +16,7 @@ Isometry3d ToIsometry3(const ignition::math::Pose3d& pose) {
   const Isometry3d::TranslationType translation(ToVector3(pose.Pos()));
   const Quaternion<double> rotation(pose.Rot().W(), pose.Rot().X(),
                                     pose.Rot().Y(), pose.Rot().Z());
-  return translation * rotation;
+  return translation * rotation.normalized();
 }
 
 }  // namespace detail

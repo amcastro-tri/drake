@@ -10,6 +10,9 @@
 #include "drake/geometry/geometry_frame.h"
 #include "drake/geometry/geometry_instance.h"
 
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+
 namespace drake {
 namespace multibody {
 namespace multibody_plant {
@@ -256,6 +259,10 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
   if (num_actuators() > 0) {
     Eigen::VectorBlock<const VectorX<T>> u =
         this->EvalEigenVectorInput(context, actuation_port_);
+
+    //PRINT_VAR(u.transpose());
+    //PRINT_VAR(forces.generalized_forces().transpose());
+
     for (JointActuatorIndex actuator_index(0);
          actuator_index < num_actuators(); ++actuator_index) {
       const JointActuator<T>& actuator =
@@ -268,6 +275,9 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
       }
     }
   }
+
+
+  //PRINT_VAR(forces.generalized_forces().transpose());
 
   model_->CalcMassMatrixViaInverseDynamics(context, &M);
 

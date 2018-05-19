@@ -1,4 +1,4 @@
- <sdf version='1.6'>
+<sdf version='1.6'>
   <model name='iiwa14'>
     <link name='base'>
       <pose frame=''>0 0 0 0 -0 0</pose>
@@ -14,7 +14,6 @@
           <izz>0.03</izz>
         </inertia>
       </inertial>
-
       <visual name='base_fixed_joint_lump__iiwa_link_0_visual'>
         <pose frame=''>0 0 0 0 -0 0</pose>
         <geometry>
@@ -30,7 +29,6 @@
           </script>
         </material>
       </visual>
-
       <gravity>1</gravity>
       <velocity_decay/>
       <self_collide>0</self_collide>

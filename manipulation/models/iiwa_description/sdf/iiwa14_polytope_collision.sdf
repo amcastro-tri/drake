@@ -1,4 +1,4 @@
- <sdf version='1.6'>
+<sdf version='1.6'>
   <model name='iiwa14'>
     <link name='base'>
       <pose frame=''>0 0 0 0 -0 0</pose>
@@ -14,13 +14,12 @@
           <izz>0.03</izz>
         </inertia>
       </inertial>
-
       <visual name='base_fixed_joint_lump__iiwa_link_0_visual'>
         <pose frame=''>0 0 0 0 -0 0</pose>
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_0.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_0.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -30,16 +29,15 @@
           </script>
         </material>
       </visual>
-
       <gravity>1</gravity>
       <velocity_decay/>
       <self_collide>0</self_collide>
     </link>
 
-    <!-- <joint name='weld_base_to_world' type='fixed'> -->
-    <!--   <child>base</child> -->
-    <!--   <parent>world</parent> -->
-    <!-- </joint> -->
+    <joint name='weld_base_to_world' type='fixed'>
+      <child>base</child>
+      <parent>world</parent>
+    </joint>
 
     <link name='iiwa_link_1'>
       <pose frame=''>0 0 0.1575 0 -0 0</pose>
@@ -60,7 +58,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_1.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_1.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -80,13 +78,13 @@
       <axis>
         <xyz>0 0 1</xyz>
         <limit>
-          <!-- <lower>-2.96706</lower> -->
-          <!-- <upper>2.96706</upper> -->
+          <lower>-2.96706</lower>
+          <upper>2.96706</upper>
           <effort>300</effort>
           <velocity>10</velocity>
         </limit>
         <dynamics>
-          <damping>0.0</damping>
+          <damping>0.5</damping>
           <friction>0</friction>
           <spring_reference>0</spring_reference>
           <spring_stiffness>0</spring_stiffness>
@@ -113,7 +111,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_2.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_2.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -133,13 +131,13 @@
       <axis>
         <xyz>-0 1 0</xyz>
         <limit>
-          <!-- <lower>-2.0944</lower> -->
-          <!-- <upper>2.0944</upper> -->
+          <lower>-2.0944</lower>
+          <upper>2.0944</upper>
           <effort>300</effort>
           <velocity>10</velocity>
         </limit>
         <dynamics>
-          <damping>0.0</damping>
+          <damping>0.5</damping>
           <friction>0</friction>
           <spring_reference>0</spring_reference>
           <spring_stiffness>0</spring_stiffness>
@@ -166,7 +164,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_3.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_3.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -186,13 +184,13 @@
       <axis>
         <xyz>0 0 1</xyz>
         <limit>
-          <!-- <lower>-2.96706</lower> -->
-          <!-- <upper>2.96706</upper> -->
+          <lower>-2.96706</lower>
+          <upper>2.96706</upper>
           <effort>300</effort>
           <velocity>10</velocity>
         </limit>
         <dynamics>
-          <damping>0.0</damping>
+          <damping>0.5</damping>
           <friction>0</friction>
           <spring_reference>0</spring_reference>
           <spring_stiffness>0</spring_stiffness>
@@ -219,7 +217,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_4.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_4.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -239,13 +237,13 @@
       <axis>
         <xyz>0 -1 0</xyz>
         <limit>
-          <!-- <lower>-2.0944</lower> -->
-          <!-- <upper>2.0944</upper> -->
+          <lower>-2.0944</lower>
+          <upper>2.0944</upper>
           <effort>300</effort>
           <velocity>10</velocity>
         </limit>
         <dynamics>
-          <damping>0.0</damping>
+          <damping>0.5</damping>
           <friction>0</friction>
           <spring_reference>0</spring_reference>
           <spring_stiffness>0</spring_stiffness>
@@ -272,7 +270,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_5.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_5.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -292,13 +290,13 @@
       <axis>
         <xyz>0 0 1</xyz>
         <limit>
-          <!-- <lower>-2.96706</lower> -->
-          <!-- <upper>2.96706</upper> -->
+          <lower>-2.96706</lower>
+          <upper>2.96706</upper>
           <effort>300</effort>
           <velocity>10</velocity>
         </limit>
         <dynamics>
-          <damping>0.0</damping>
+          <damping>0.5</damping>
           <friction>0</friction>
           <spring_reference>0</spring_reference>
           <spring_stiffness>0</spring_stiffness>
@@ -325,7 +323,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_6.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_6.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -345,13 +343,13 @@
       <axis>
         <xyz>-0 1 -0</xyz>
         <limit>
-          <!-- <lower>-2.0944</lower> -->
-          <!-- <upper>2.0944</upper> -->
+          <lower>-2.0944</lower>
+          <upper>2.0944</upper>
           <effort>300</effort>
           <velocity>10</velocity>
         </limit>
         <dynamics>
-          <damping>0.0</damping>
+          <damping>0.5</damping>
           <friction>0</friction>
           <spring_reference>0</spring_reference>
           <spring_stiffness>0</spring_stiffness>
@@ -378,7 +376,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>../meshes/visual/link_7.obj</uri>
+            <uri>drake/manipulation/models/iiwa_description/meshes/visual/link_7.obj</uri>
           </mesh>
         </geometry>
         <material>
@@ -398,13 +396,13 @@
       <axis>
         <xyz>0 0 1</xyz>
         <limit>
-          <!-- <lower>-3.05433</lower> -->
-          <!-- <upper>3.05433</upper> -->
+          <lower>-3.05433</lower>
+          <upper>3.05433</upper>
           <effort>300</effort>
           <velocity>10</velocity>
         </limit>
         <dynamics>
-          <damping>0.0</damping>
+          <damping>0.5</damping>
           <friction>0</friction>
           <spring_reference>0</spring_reference>
           <spring_stiffness>0</spring_stiffness>

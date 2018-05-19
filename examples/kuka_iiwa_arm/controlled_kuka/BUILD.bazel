@@ -24,6 +24,8 @@ drake_cc_binary(
         "//manipulation/util:sim_diagram_builder",
         "//multibody/multibody_tree/multibody_plant",
         "//multibody/multibody_tree/parsing:multibody_plant_sdf_parser",
+        "//multibody/rigid_body_plant",
+        "//multibody/rigid_body_plant:rigid_body_plant_bridge",
         "//systems/analysis:simulator",
         "//systems/controllers:inverse_dynamics_controller",
         "//systems/lcm:lcm_pubsub_system",

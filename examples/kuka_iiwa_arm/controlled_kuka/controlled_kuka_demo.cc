@@ -24,6 +24,8 @@
 #include "drake/lcmt_viewer_draw.hpp"
 #include "drake/multibody/multibody_tree/joints/revolute_joint.h"
 #include "drake/multibody/multibody_tree/multibody_plant/multibody_plant.h"
+#include "drake/multibody/rigid_body_plant/rigid_body_plant.h"
+#include "drake/multibody/rigid_body_plant/rigid_body_plant_bridge.h"
 #include "drake/multibody/multibody_tree/parsing/multibody_plant_sdf_parser.h"
 #include "drake/multibody/multibody_tree/uniform_gravity_field_element.h"
 #include "drake/manipulation/util/sim_diagram_builder.h"
@@ -49,6 +51,7 @@ using drake::lcm::DrakeLcm;
 using drake::multibody::Body;
 using drake::multibody::multibody_plant::MultibodyPlant;
 using drake::multibody::MultibodyTree;
+using drake::systems::RigidBodyPlant;
 using drake::multibody::parsing::AddModelFromSdfFile;
 using drake::multibody::RevoluteJoint;
 using drake::multibody::JointActuatorIndex;
@@ -80,12 +83,18 @@ const char kUrdfPath[] =
     "drake/manipulation/models/iiwa_description/urdf/"
     "iiwa14_polytope_collision.urdf";
 
-const char kSdfPath[] = "drake/manipulation/models/iiwa_description/sdf/iiwa14_no_collision.sdf";
+const char kSdfPath[] = "drake/manipulation/models/iiwa_description/sdf/iiwa14_polytope_collision.sdf";
+
+const char kSdfPath_rel[] = "drake/manipulation/models/iiwa_description/sdf/iiwa14_polytope_collision_relative_paths.sdf";
 
 PiecewisePolynomial<double> MakePlan() {
   auto tree = make_unique<RigidBodyTree<double>>();
   parsers::urdf::AddModelInstanceFromUrdfFileToWorld(
       FindResourceOrThrow(kUrdfPath), multibody::joints::kFixed, tree.get());
+//  drake::parsers::sdf::AddModelInstancesFromSdfFileToWorld(
+  //    FindResourceOrThrow(
+    //      "drake/manipulation/models/iiwa_description/sdf/iiwa14_no_collision_rbt.sdf"),
+  //    drake::multibody::joints::kFixed, tree.get());
 
   // Creates a basic pointwise IK trajectory for moving the iiwa arm.
   // It starts in the zero configuration (straight up).
@@ -213,7 +222,7 @@ void CompareModels(
 
     PRINT_VARn(X_PF_mbt.matrix());
 
-    if (!X_PF_mbt.matrix().isApprox(X_PF_rbt.matrix(), 10 * std::numeric_limits<double>::epsilon()))
+    if (!X_PF_mbt.matrix().isApprox(X_PF_rbt.matrix(), 1e-14))
       throw std::logic_error("X_PF_mbt != X_PF_rbt");
   }
 
@@ -238,13 +247,26 @@ int DoMain() {
   // Now the model is complete.
   kuka_plant.Finalize();
 
+  (void) kSdfPath_rel;
   auto tree_sdf = std::make_unique<RigidBodyTree<double>>();
-  drake::parsers::sdf::AddModelInstancesFromSdfFileToWorld(
-      FindResourceOrThrow(
-          "drake/manipulation/models/iiwa_description/sdf/iiwa14_no_collision_rbt.sdf"),
-      drake::multibody::joints::kFixed, tree_sdf.get());
+  parsers::urdf::AddModelInstanceFromUrdfFileToWorld(
+      FindResourceOrThrow(kUrdfPath), multibody::joints::kFixed, tree_sdf.get());
+  //drake::parsers::sdf::AddModelInstancesFromSdfFileToWorld(
+    //  FindResourceOrThrow(
+      //    kSdfPath_rel),
+      //drake::multibody::joints::kFixed, tree_sdf.get());
 
-  CompareModels(kuka_plant.model(), *tree_sdf);
+  (void)CompareModels;
+  //CompareModels(kuka_plant.model(), *tree_sdf);
+
+  RigidBodyPlant<double>& rbp = *builder.AddSystem<RigidBodyPlant>(std::move(tree_sdf));
+  auto rbt_gs_bridge = builder.AddSystem<systems::RigidBodyPlantBridge<double>>(
+      &rbp.get_rigid_body_tree(), &scene_graph);
+  builder.Connect(rbp.state_output_port(),
+                  rbt_gs_bridge->rigid_body_plant_state_input_port());
+  builder.Connect(
+      rbt_gs_bridge->geometry_pose_output_port(),
+      scene_graph.get_source_pose_port(rbt_gs_bridge->source_id()));
 
   PRINT_VAR(kuka_plant.num_positions());
   PRINT_VAR(kuka_plant.num_actuators());
@@ -280,7 +302,10 @@ int DoMain() {
   geometry::DispatchLoadMessage(scene_graph);
 
   (void) MakePlan();
- #if 1
+
+#define WITH_CONTROLLER
+
+#ifdef WITH_CONTROLLER
   PiecewisePolynomial<double> traj = MakePlan();
 
   auto tree = std::make_unique<RigidBodyTree<double>>();
@@ -300,7 +325,11 @@ int DoMain() {
 
   //builder.Connect(traj_src->get_output_port(),
     //              controller->get_input_port_estimated_state());
-  builder.Connect(kuka_plant.get_continuous_state_output_port(),
+
+  //builder.Connect(kuka_plant.get_continuous_state_output_port(),
+    //              controller->get_input_port_estimated_state());
+
+  builder.Connect(rbp.state_output_port(),
                   controller->get_input_port_estimated_state());
 
   // A constant source for a zero applied torque at the elbow joint.
@@ -316,7 +345,11 @@ int DoMain() {
 
   builder.Connect(controller->get_output_port_control(),
                   kuka_plant.get_actuation_input_port());
- #endif
+
+  DRAKE_DEMAND(rbp.get_num_model_instances() == 1);
+  builder.Connect(controller->get_output_port_control(),
+                  rbp.actuator_command_input_port());
+#endif
 
   for (JointActuatorIndex actuator(0); actuator < kuka_plant.num_actuators(); ++ actuator) {
     PRINT_VAR(kuka_plant.model().get_joint_actuator(actuator).name());
@@ -331,7 +364,7 @@ int DoMain() {
   builder.Connect(kuka_plant.get_continuous_state_output_port(),
                   logger.get_input_port());
 
-#if 1
+#ifdef WITH_CONTROLLER
   // Log acutation:
   const auto& logger_act = *builder.AddSystem<systems::SignalLogger>(7);
   builder.Connect(controller->get_output_port_control(),
@@ -343,8 +376,7 @@ int DoMain() {
                   logger_traj.get_input_port());
 #endif
 
-
-#if 0
+#ifndef WITH_CONTROLLER
   // A constant source for a zero applied torque at the elbow joint.
   const VectorXd actuation = VectorXd::Constant(7, 0.0);
   auto actuation_source =
@@ -352,6 +384,10 @@ int DoMain() {
   actuation_source->set_name("Constant Actuation");
   builder.Connect(actuation_source->get_output_port(),
                   kuka_plant.get_actuation_input_port());
+
+  DRAKE_DEMAND(rbp.get_num_model_instances() == 1);
+  builder.Connect(actuation_source->get_output_port(),
+                  rbp.model_instance_actuator_command_input_port(0));
 #endif
 
   // And build the Diagram:
@@ -382,7 +418,7 @@ int DoMain() {
   fstate << state_out;
   fstate.close();
 
-#if 1
+#ifdef WITH_CONTROLLER
   std::ofstream fact("actuation.dat");
   MatrixXd act_out(logger_act.data().cols(), 8);
   act_out << logger_act.sample_times() , logger_act.data().transpose();

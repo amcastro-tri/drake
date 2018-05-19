@@ -109,7 +109,8 @@ const Body<double>& GetBodyByLinkSpecificationName(
 }
 
 // Extracts a Vector3d representation of the joint axis for joints with an axis.
-Vector3d ExtractJointAxis(const sdf::Joint& joint_spec) {
+Vector3d ExtractJointAxis(const sdf::Model& model_spec,
+                          const sdf::Joint& joint_spec) {
   DRAKE_DEMAND(joint_spec.Type() == sdf::JointType::REVOLUTE ||
       joint_spec.Type() == sdf::JointType::PRISMATIC);
 
@@ -125,7 +126,11 @@ Vector3d ExtractJointAxis(const sdf::Joint& joint_spec) {
   // supported by sdformat.
   Vector3d axis_J = ToVector3(axis->Xyz());
   if (axis->UseParentModelFrame()) {
-    const Isometry3d X_MJ = ToIsometry3(joint_spec.Pose());
+    const Isometry3d X_CJ = ToIsometry3(joint_spec.Pose());
+    // Get the pose of the child link C in the model frame M.
+    const Isometry3d X_MC =
+        ToIsometry3(model_spec.LinkByName(joint_spec.ChildLinkName())->Pose());
+    const Isometry3d X_MJ = X_MC * X_CJ;
     // axis_J actually contains axis_M, expressed in the model frame M.
     axis_J = X_MJ.linear().transpose() * axis_J;
   }
@@ -177,7 +182,7 @@ void AddJointFromSpecification(
   const Body<double>& child_body = GetBodyByLinkSpecificationName(
       model_spec, joint_spec.ChildLinkName(), *plant);
 
-  // Get the pose of frame J in the model frame M, as specified in
+  // Get the pose of frame J in the child link frame C, as specified in
   // <joint> <pose> ... </pose></joint>.
   // TODO(amcastro-tri): Verify sdformat supports frame specifications
   // correctly.
@@ -188,15 +193,14 @@ void AddJointFromSpecification(
   // And combinations of the above?
   // There is no way to verify at this level which one is supported or not.
   // Here we trust that no mather how a user specified the file, joint.Pose()
-  // will ALWAYS return X_MJ.
-  const Isometry3d X_MJ = ToIsometry3(joint_spec.Pose());
+  // will ALWAYS return X_CJ.
+  const Isometry3d X_CJ = ToIsometry3(joint_spec.Pose());
 
   // Get the pose of the child link C in the model frame M.
   const Isometry3d X_MC =
       ToIsometry3(model_spec.LinkByName(joint_spec.ChildLinkName())->Pose());
 
-  // Compute the location of the joint in the child link's frame.
-  const Isometry3d X_CJ = X_MC.inverse() * X_MJ;
+  const Isometry3d X_MJ = X_MC * X_CJ;
 
   // Pose of the frame J in the parent body frame P.
   optional<Isometry3d> X_PJ;
@@ -218,7 +222,7 @@ void AddJointFromSpecification(
 
   switch (joint_spec.Type()) {
     case sdf::JointType::REVOLUTE: {
-      Vector3d axis_J = ExtractJointAxis(joint_spec);
+      Vector3d axis_J = ExtractJointAxis(model_spec, joint_spec);
       const auto &joint = plant->AddJoint<RevoluteJoint>(
           joint_spec.Name(),
           parent_body, X_PJ,
@@ -235,7 +239,7 @@ void AddJointFromSpecification(
       break;
     }
     case sdf::JointType::PRISMATIC: {
-      Vector3d axis_J = ExtractJointAxis(joint_spec);
+      Vector3d axis_J = ExtractJointAxis(model_spec, joint_spec);
       const auto& joint = plant->AddJoint<PrismaticJoint>(
           joint_spec.Name(),
           parent_body, X_PJ,

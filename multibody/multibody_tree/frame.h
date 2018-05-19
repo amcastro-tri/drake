@@ -54,6 +54,8 @@ class Frame : public FrameBase<T> {
   virtual Isometry3<T> CalcPoseInBodyFrame(
       const systems::Context<T>& context) const = 0;
 
+  virtual Isometry3<T> GetFixedPoseInBodyFrame() const = 0;
+
   /// Given the offset pose `X_FQ` of a frame Q in `this` frame F, this method
   /// computes the pose `X_BQ` of frame Q in the body frame B to which this
   /// frame is attached.
@@ -68,6 +70,11 @@ class Frame : public FrameBase<T> {
       const systems::Context<T>& context,
       const Isometry3<T>& X_FQ) const {
     return CalcPoseInBodyFrame(context) * X_FQ;
+  }
+
+  virtual Isometry3<T> GetFixedOffsetPoseInBody(
+      const Isometry3<T>& X_FQ) const {
+    return GetFixedPoseInBodyFrame() * X_FQ;
   }
 
   /// NVI to DoCloneToScalar() templated on the scalar type of the new clone to

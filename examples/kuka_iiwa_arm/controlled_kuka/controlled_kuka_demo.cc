@@ -44,7 +44,7 @@
 #include "drake/systems/primitives/signal_logger.h"
 #include "drake/systems/primitives/trajectory_source.h"
 
-DEFINE_double(simulation_sec, 0.01, "Number of seconds to simulate.");
+DEFINE_double(simulation_sec, 15.0, "Number of seconds to simulate.");
 
 using drake::geometry::SceneGraph;
 using drake::lcm::DrakeLcm;
@@ -83,17 +83,21 @@ const char kUrdfPath[] =
     "drake/manipulation/models/iiwa_description/urdf/"
     "iiwa14_polytope_collision_no_damping.urdf";
 
-const char kSdfPath[] = "drake/manipulation/models/iiwa_description/sdf/iiwa14_polytope_collision.sdf";
-
-const char kSdfPath_rel[] = "drake/manipulation/models/iiwa_description/sdf/iiwa14_polytope_collision_relative_paths.sdf";
+const char kSdfPath[] =
+    "drake/manipulation/models/iiwa_description/sdf/"
+        "iiwa14_polytope_collision.sdf";
 
 PiecewisePolynomial<double> MakePlan() {
   auto tree = make_unique<RigidBodyTree<double>>();
   parsers::urdf::AddModelInstanceFromUrdfFileToWorld(
       FindResourceOrThrow(kUrdfPath), multibody::joints::kFixed, tree.get());
-//  drake::parsers::sdf::AddModelInstancesFromSdfFileToWorld(
+  // TODO: consider building the RBT model from the same SDF to avoid
+  // proliferation of files. So far our MBP SDF parser only supports absolute
+  // mesh paths, which RBT's parser don't like.
+
+  // drake::parsers::sdf::AddModelInstancesFromSdfFileToWorld(
   //    FindResourceOrThrow(
-    //      "drake/manipulation/models/iiwa_description/sdf/iiwa14_no_collision_rbt.sdf"),
+  //      "drake/manipulation/models/iiwa_description/sdf/iiwa14_no_collision_rbt.sdf"),
   //    drake::multibody::joints::kFixed, tree.get());
 
   // Creates a basic pointwise IK trajectory for moving the iiwa arm.
@@ -189,67 +193,7 @@ PiecewisePolynomial<double> MakePlan() {
   return PiecewisePolynomial<double>::FirstOrderHold(kTimes, knots);
 }
 
-void CompareModels(
-    const MultibodyTree<double>& mbt, const RigidBodyTree<double>& rbt) {
-
-  PRINT_VAR(mbt.num_bodies());
-  PRINT_VAR(rbt.get_num_bodies());
-
-  for (BodyIndex body_index(1); body_index < mbt.num_bodies(); ++body_index) {
-    const auto& body = mbt.get_rigid_body(body_index);
-    PRINT_VAR(body.name());
-    PRINT_VARn(body.default_spatial_inertia().CopyToFullMatrix6());
-
-    auto name = body.name();
-    const auto& rbt_body = *rbt.FindBody(name);
-
-    PRINT_VAR(rbt_body.get_name());
-    PRINT_VARn(rbt_body.get_spatial_inertia());
-
-    if (body_index != 0) {
-      auto Mmbt = body.default_spatial_inertia().CopyToFullMatrix6();
-      auto Mrbt = rbt_body.get_spatial_inertia();
-      if (!Mmbt.isApprox(Mrbt, 10 * std::numeric_limits<double>::epsilon()))
-        throw std::logic_error("Mmbt != Mrbt");
-    }
-  }
-
-  for (JointIndex index(0); index < mbt.num_joints(); ++ index) {
-    const auto& joint = mbt.get_joint(index);
-    PRINT_VAR(mbt.get_joint(index).name());
-
-    if (joint.num_dofs() == 0) continue;
-
-    const auto& body_name = joint.child_body().name();
-    const auto& rbt_body = *rbt.FindBody(body_name);
-    const auto& rbt_joint = rbt_body.getJoint();
-
-    PRINT_VAR(rbt_joint.get_name());
-
-    const Isometry3d X_PF_rbt = rbt_joint.get_transform_to_parent_body();
-
-    if (rbt_joint.get_name() != joint.name()) {
-      throw std::logic_error("mbt_joint_name != rbt_joint_name");
-    }
-
-    PRINT_VARn(X_PF_rbt.matrix());
-
-    const Isometry3d X_PF_mbt =joint.frame_on_parent().GetFixedPoseInBodyFrame();
-
-    const Isometry3d X_BM_mbt =joint.frame_on_child().GetFixedPoseInBodyFrame();
-
-    PRINT_VARn(X_PF_mbt.matrix());
-    PRINT_VARn(X_BM_mbt.matrix());
-
-    if (!X_PF_mbt.matrix().isApprox(X_PF_rbt.matrix(), 1e-5))
-      throw std::logic_error("X_PF_mbt != X_PF_rbt");
-  }
-
-}
-
 int DoMain() {
-  DRAKE_DEMAND(FLAGS_simulation_sec > 0);
-
   systems::DiagramBuilder<double> builder;
 
   SceneGraph<double>& scene_graph = *builder.AddSystem<SceneGraph>();
@@ -265,40 +209,20 @@ int DoMain() {
 
   // Now the model is complete.
   kuka_plant.Finalize();
+  DRAKE_THROW_UNLESS(kuka_plant.num_positions() == 7);
 
-  (void) kSdfPath_rel;
-  auto tree_sdf = std::make_unique<RigidBodyTree<double>>();
-  parsers::urdf::AddModelInstanceFromUrdfFileToWorld(
-      FindResourceOrThrow(kUrdfPath), multibody::joints::kFixed, tree_sdf.get());
-  //tree_sdf->a_grav.setZero();
-  //drake::parsers::sdf::AddModelInstancesFromSdfFileToWorld(
-    //  FindResourceOrThrow(
-      //    kSdfPath_rel),
-      //drake::multibody::joints::kFixed, tree_sdf.get());
-
-  (void)CompareModels;
-  CompareModels(kuka_plant.model(), *tree_sdf);
-
-  PRINT_VARn(tree_sdf->B);
-
-#if 0
-  RigidBodyPlant<double>& rbp = *builder.AddSystem<RigidBodyPlant>(std::move(tree_sdf));
-  auto rbt_gs_bridge = builder.AddSystem<systems::RigidBodyPlantBridge<double>>(
-      &rbp.get_rigid_body_tree(), &scene_graph);
-  builder.Connect(rbp.state_output_port(),
-                  rbt_gs_bridge->rigid_body_plant_state_input_port());
-  builder.Connect(
-      rbt_gs_bridge->geometry_pose_output_port(),
-      scene_graph.get_source_pose_port(rbt_gs_bridge->source_id()));
-#endif
-
+  // Print stuff.
   PRINT_VAR(kuka_plant.num_positions());
   PRINT_VAR(kuka_plant.num_actuators());
   PRINT_VAR(kuka_plant.num_actuated_dofs());
   PRINT_VAR(kuka_plant.num_visual_geometries());
   PRINT_VAR(kuka_plant.num_collision_geometries());
-
-  DRAKE_THROW_UNLESS(kuka_plant.num_positions() == 7);
+  for (JointActuatorIndex actuator(0); actuator < kuka_plant.num_actuators(); ++ actuator) {
+    PRINT_VAR(kuka_plant.model().get_joint_actuator(actuator).name());
+  }
+  for (JointIndex index(0); index < kuka_plant.num_joints(); ++ index) {
+    PRINT_VAR(kuka_plant.model().get_joint(index).name());
+  }
 
   // Boilerplate used to connect the plant to a SceneGraph for
   // visualization.
@@ -325,13 +249,6 @@ int DoMain() {
   // geometry.
   geometry::DispatchLoadMessage(scene_graph);
 
-  (void) MakePlan();
-
-#define WITH_CONTROLLER
-
-#ifdef WITH_CONTROLLER
-  PiecewisePolynomial<double> traj = MakePlan();
-
   auto tree = std::make_unique<RigidBodyTree<double>>();
   CreateTreedFromFixedModelAtPose(FindResourceOrThrow(kUrdfPath), tree.get());
 
@@ -343,52 +260,27 @@ int DoMain() {
       std::move(tree), iiwa_kp, iiwa_ki, iiwa_kd,
       false /* no feedforward acceleration */);
 
-  //const VectorXd traj_vector = VectorXd::Constant(14, 0.0);
-  //auto traj_src =
-    //  builder.AddSystem<systems::ConstantVectorSource>(traj_vector);
-
-  //builder.Connect(traj_src->get_output_port(),
-    //              controller->get_input_port_estimated_state());
-
+  // Wire up Kuka plant to controller.
   builder.Connect(kuka_plant.get_continuous_state_output_port(),
                   controller->get_input_port_estimated_state());
+  builder.Connect(controller->get_output_port_control(),
+                  kuka_plant.get_actuation_input_port());
 
-  //builder.Connect(rbp.state_output_port(),
-    //              controller->get_input_port_estimated_state());
-
-  // A constant source for a zero applied torque at the elbow joint.
- #if 1
+  // Wire up output from planned trajectory to controller.
+  PiecewisePolynomial<double> traj = MakePlan();
   auto traj_src =
       builder.AddSystem<systems::TrajectorySource<double>>(
           traj, 1 /* outputs q + v */);
- #endif
   traj_src->set_name("trajectory_source");
 
   builder.Connect(traj_src->get_output_port(),
                   controller->get_input_port_desired_state());
-
-  builder.Connect(controller->get_output_port_control(),
-                  kuka_plant.get_actuation_input_port());
-
-  //DRAKE_DEMAND(rbp.get_num_model_instances() == 1);
-  //builder.Connect(controller->get_output_port_control(),
-    //              rbp.actuator_command_input_port());
-#endif
-
-  for (JointActuatorIndex actuator(0); actuator < kuka_plant.num_actuators(); ++ actuator) {
-    PRINT_VAR(kuka_plant.model().get_joint_actuator(actuator).name());
-  }
-
-  for (JointIndex index(0); index < kuka_plant.num_joints(); ++ index) {
-    PRINT_VAR(kuka_plant.model().get_joint(index).name());
-  }
 
   // Log state:
   const auto& logger = *builder.AddSystem<systems::SignalLogger>(14);
   builder.Connect(kuka_plant.get_continuous_state_output_port(),
                   logger.get_input_port());
 
-#ifdef WITH_CONTROLLER
   // Log acutation:
   const auto& logger_act = *builder.AddSystem<systems::SignalLogger>(7);
   builder.Connect(controller->get_output_port_control(),
@@ -398,58 +290,16 @@ int DoMain() {
   const auto& logger_traj = *builder.AddSystem<systems::SignalLogger>(14);
   builder.Connect(traj_src->get_output_port(),
                   logger_traj.get_input_port());
-#endif
-
-#ifndef WITH_CONTROLLER
-  // A constant source for a zero applied torque at the elbow joint.
-  //const VectorXd actuation = VectorXd::Constant(7, 0.0);
-  VectorXd actuation(7);
-  actuation << -346.529,  -524.438,  -266.961,   8.26594,   7.84754,  -8.01813, -0.163994;
-  actuation /= 100;
-  //actuation.setZero();
-  auto actuation_source =
-      builder.AddSystem<systems::ConstantVectorSource>(actuation);
-  actuation_source->set_name("Constant Actuation");
-  builder.Connect(actuation_source->get_output_port(),
-                  kuka_plant.get_actuation_input_port());
-
-  DRAKE_DEMAND(rbp.get_num_model_instances() == 1);
-  builder.Connect(actuation_source->get_output_port(),
-                  rbp.model_instance_actuator_command_input_port(0));
-#endif
 
   // And build the Diagram:
   std::unique_ptr<systems::Diagram<double>> diagram = builder.Build();
 
-  // Create a context for this system:
-  std::unique_ptr<systems::Context<double>> diagram_context =
-      diagram->CreateDefaultContext();
-
-  auto& mbp_context = diagram->GetMutableSubsystemContext(kuka_plant, diagram_context.get());
-  //auto& rbp_context = diagram->GetMutableSubsystemContext(rbp, diagram_context.get());
-
-  VectorXd state(7);
-  state << M_PI_2, M_PI_2, M_PI_2, M_PI_2, M_PI_2, M_PI_2, M_PI_2;
-  state.setZero();
-
-  //rbp_context.get_mutable_continuous_state().get_mutable_generalized_position().SetFromVector(state);
-  mbp_context.get_mutable_continuous_state().get_mutable_generalized_position().SetFromVector(state);
-
-  PRINT_VAR(kuka_plant.get_actuation_input_port().get_index());
-  PRINT_VAR(kuka_plant.get_num_input_ports());
-  PRINT_VAR(kuka_plant.get_num_output_ports());
-  PRINT_VAR(kuka_plant.get_actuation_input_port().size());
-
-  systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
+  systems::Simulator<double> simulator(*diagram);
   simulator.Initialize();
   simulator.set_target_realtime_rate(1.0);
   simulator.get_mutable_integrator()->set_target_accuracy(1e-3);
 
   simulator.StepTo(FLAGS_simulation_sec);
-
-  PRINT_VAR(logger.data().rows());
-  PRINT_VAR(logger.data().cols());
-  PRINT_VAR(logger.sample_times().rows());
 
   std::ofstream fstate("state.dat");
   MatrixXd state_out(logger.data().cols(), 15);
@@ -457,7 +307,6 @@ int DoMain() {
   fstate << state_out;
   fstate.close();
 
-#ifdef WITH_CONTROLLER
   std::ofstream fact("actuation.dat");
   MatrixXd act_out(logger_act.data().cols(), 8);
   act_out << logger_act.sample_times() , logger_act.data().transpose();
@@ -469,7 +318,6 @@ int DoMain() {
   traj_out << logger_traj.sample_times() , logger_traj.data().transpose();
   ftraj << traj_out;
   ftraj.close();
-#endif
 
   return 0;
 }

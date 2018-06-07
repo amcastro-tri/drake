@@ -398,9 +398,13 @@ class ImplicitStribeckSolver {
   ///      solver. In such a case, SetProblemData() and SolveWithGuess() must be
   ///      invoked again.
   void SetProblemData(
-      EigenPtr<const MatrixX<T>> M, EigenPtr<const MatrixX<T>> Jt,
+      EigenPtr<const MatrixX<T>> M,
+      EigenPtr<const MatrixX<T>> Jn,
+      EigenPtr<const MatrixX<T>> Jt,
       EigenPtr<const VectorX<T>> p_star,
-      EigenPtr<const VectorX<T>> fn, EigenPtr<const VectorX<T>> mu);
+      EigenPtr<const VectorX<T>> phi0,
+      EigenPtr<const VectorX<T>> mu,
+      double normal_stiffness, double normal_damping);
 
   /// Solves for the generalized velocities satisfying Eq. (3) in this class's
   /// documentation. To retrieve the solution, please refer to
@@ -428,7 +432,7 @@ class ImplicitStribeckSolver {
   /// Returns a constant reference to the last solved vector of generalized
   /// friction forces.
   const VectorX<T>& get_generalized_forces() const {
-    return fixed_size_workspace_.tau_f;
+    return fixed_size_workspace_.tau;
   }
 
   /// Returns a constant reference to the last solved vector of tangential
@@ -471,27 +475,37 @@ class ImplicitStribeckSolver {
   // SetProblemData() and until SolveWithGuess() returns.
   struct ProblemDataAliases {
     // Sets the references to the data defining the problem.
-    void Set(EigenPtr<const MatrixX<T>> M, EigenPtr<const MatrixX<T>> D,
+    void Set(EigenPtr<const MatrixX<T>> M,
+             EigenPtr<const MatrixX<T>> Jn,
+             EigenPtr<const MatrixX<T>> Jt,
              EigenPtr<const VectorX<T>> p_star,
-             EigenPtr<const VectorX<T>> fn, EigenPtr<const VectorX<T>> mu) {
+             EigenPtr<const VectorX<T>> phi0,
+             EigenPtr<const VectorX<T>> mu,
+             double normal_stiffness, double normal_damping) {
       M_ptr = M;
-      D_ptr = D;
+      Jn_ptr = Jn;
+      phi0_ptr = phi0;
+      Jt_ptr = Jt;
       p_star_ptr = p_star;
-      fn_ptr = fn;
       mu_ptr = mu;
+      stiffness = normal_stiffness;
+      damping = normal_damping;
     }
 
     // The mass matrix of the system.
     EigenPtr<const MatrixX<T>> M_ptr{nullptr};
+    EigenPtr<const MatrixX<T>> Jn_ptr{nullptr};
+    EigenPtr<const VectorX<T>> phi0_ptr{nullptr};
     // The tangential velocities Jacobian.
-    EigenPtr<const MatrixX<T>> D_ptr{nullptr};
+    EigenPtr<const MatrixX<T>> Jt_ptr{nullptr};
     // The generalized momementum vector **before** friction is applied.
     EigenPtr<const VectorX<T>> p_star_ptr{nullptr};
     // At each contact point ic, fn(ic) and mu(ic) store the normal contact
     // force and friction coefficient, respectively. Both have size nc, the
     // number of contact points.
-    EigenPtr<const VectorX<T>> fn_ptr{nullptr};
     EigenPtr<const VectorX<T>> mu_ptr{nullptr};
+    double stiffness;
+    double damping;
   };
 
   // The solver's workspace allocated at construction time. Sizes only depend on
@@ -518,6 +532,7 @@ class ImplicitStribeckSolver {
     VectorX<T> Delta_v;
     // Vector of generalized forces due to friction.
     VectorX<T> tau_f;
+    VectorX<T> tau;
     // LDLT Factorization of the Newton-Raphson Jacobian J.
     std::unique_ptr<Eigen::LDLT<MatrixX<T>>> J_ldlt;
   };
@@ -542,6 +557,9 @@ class ImplicitStribeckSolver {
       if (capacity() >= nc) return;  // no-op if not needed.
       const int nf = 2 * nc;
       // Only reallocate if sizes from previous allocations are not sufficient.
+      vn_.resize(nc);
+      phi_.resize(nc);
+      fn_.resize(nc);
       vt_.resize(nf);
       ft_.resize(nf);
       Delta_vt_.resize(nf);
@@ -554,6 +572,18 @@ class ImplicitStribeckSolver {
     // Returns the current (maximum) capacity of the workspace.
     int capacity() const {
       return vt_.size();
+    }
+
+    Eigen::VectorBlock<VectorX<T>> mutable_vn() {
+      return vn_.segment(0, nc_);
+    }
+
+    Eigen::VectorBlock<VectorX<T>> mutable_phi() {
+      return phi_.segment(0, nc_);
+    }
+
+    Eigen::VectorBlock<VectorX<T>> mutable_fn() {
+      return fn_.segment(0, nc_);
     }
 
     /// Returns a constant reference to the vector containing the tangential
@@ -608,6 +638,9 @@ class ImplicitStribeckSolver {
     // The number of contact points. This determines sizes in this workspace.
     int nc_;
     VectorX<T> Delta_vt_;  // Δvₜᵏ = Jₜ⋅Δvᵏ, in ℝ²ⁿᶜ, for the k-th iteration.
+    VectorX<T> vn_;
+    VectorX<T> phi_;
+    VectorX<T> fn_;
     VectorX<T> vt_;        // vₜᵏ, in ℝ²ⁿᶜ.
     VectorX<T> ft_;        // fₜᵏ, in ℝ²ⁿᶜ.
     VectorX<T> t_hat_;      // Tangential directions, t̂ᵏ. In ℝ²ⁿᶜ.

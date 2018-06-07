@@ -772,9 +772,11 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
   VectorX<T> p_star = M0 * v0 - dt * minus_tau;
 
   // Compute normal and tangential velocity Jacobians at t0.
-  MatrixX<T> D(2 * num_contacts, nv);
+  MatrixX<T> Jn(num_contacts, nv);
+  MatrixX<T> Jt(2 * num_contacts, nv);
   if (num_contacts > 0) {
-    D = CalcTangentVelocitiesJacobian(context0, point_pairs0);
+    Jn = CalcNormalSeparationVelocitiesJacobian(context0, point_pairs0);
+    Jt = CalcTangentVelocitiesJacobian(context0, point_pairs0);
   }
 
   // Get friction coefficient into a single vector. Dynamic friction is ignored.
@@ -787,13 +789,34 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
                    return coulomb_friction.static_friction();
                  });
 
+  VectorX<T> phi0(point_pairs0.size());
+  std::transform(point_pairs0.begin(), point_pairs0.end(),
+                 phi0.data(),
+                 [](const PenetrationAsPointPair<T>& pair) {
+                   return pair.depth;
+                 });
+
   // Update the solver with the new data defining the problem for this update.
-  implicit_stribeck_solver_->SetProblemData(&M0, &D, &p_star, &fn, &mu);
+  const double k = penalty_method_contact_parameters_.stiffness;
+  const double d = penalty_method_contact_parameters_.damping;
+
+#if 0
+  EigenPtr<const MatrixX<T>> M,
+      EigenPtr<const MatrixX<T>> Jn,
+      EigenPtr<const MatrixX<T>> Jt,
+      EigenPtr<const VectorX<T>> p_star,
+      EigenPtr<const VectorX<T>> phi0,
+      EigenPtr<const VectorX<T>> fn, EigenPtr<const VectorX<T>> mu,
+      double normal_stiffness, double normal_damping
+#endif
+
+  implicit_stribeck_solver_->SetProblemData(
+      &M0, &Jn, &Jt, &p_star, &phi0, &mu, k, d);
 
   // Solver for the generalized contact forces.
   implicit_stribeck::ComputationInfo info = implicit_stribeck_solver_->SolveWithGuess(dt, v0);
   DRAKE_DEMAND(info == implicit_stribeck::Success);
-  const VectorX<T>& tau_f = implicit_stribeck_solver_->get_generalized_forces();
+//  const VectorX<T>& tau_f = implicit_stribeck_solver_->get_generalized_forces();
 
   const implicit_stribeck::IterationStats& stats =
       implicit_stribeck_solver_->get_iteration_statistics();
@@ -808,6 +831,8 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
                       num_contacts, stats.vt_residual, alpha);
   outfile.close();
 
+#if 0
+
   // Compute velocity at next time step.
   VectorX<T> v_next(this->num_velocities());
   // Compute p_next into p_star.
@@ -816,6 +841,10 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
     p_star -= time_step_ * tau_f;
   }
   v_next = M0_llt.solve(p_star);
+#endif
+
+  const VectorX<T>& v_next =
+      implicit_stribeck_solver_->get_generalized_velocities();
 
   VectorX<T> qdot_next(this->num_positions());
   model_->MapVelocityToQDot(context0, v_next, &qdot_next);

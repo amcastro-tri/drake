@@ -28,16 +28,22 @@ ImplicitStribeckSolver<T>::ImplicitStribeckSolver(int nv) :
 
 template <typename T>
 void ImplicitStribeckSolver<T>::SetProblemData(
-    EigenPtr<const MatrixX<T>> M, EigenPtr<const MatrixX<T>> D,
+    EigenPtr<const MatrixX<T>> M,
+    EigenPtr<const MatrixX<T>> Jn,
+    EigenPtr<const MatrixX<T>> Jt,
     EigenPtr<const VectorX<T>> p_star,
-    EigenPtr<const VectorX<T>> fn, EigenPtr<const VectorX<T>> mu) {
-  nc_ = fn->size();
+    EigenPtr<const VectorX<T>> phi0,
+    EigenPtr<const VectorX<T>> mu,
+    double normal_stiffness, double normal_damping) {
+  nc_ = phi0->size();
   DRAKE_THROW_UNLESS(p_star->size() == nv_);
   DRAKE_THROW_UNLESS(M->rows() == nv_ && M->cols() == nv_);
-  DRAKE_THROW_UNLESS(D->rows() == 2 * nc_ && D->cols() == nv_);
+  DRAKE_THROW_UNLESS(Jn->rows() == nc_ && Jn->cols() == nv_);
+  DRAKE_THROW_UNLESS(Jt->rows() == 2 * nc_ && Jt->cols() == nv_);
   DRAKE_THROW_UNLESS(mu->size() == nc_);
   // Keep references to the problem data.
-  problem_data_aliases_.Set(M, D, p_star, fn, mu);
+  problem_data_aliases_.Set(M, Jn, Jt, p_star, phi0, mu,
+                            normal_stiffness, normal_damping);
   variable_size_workspace_.ResizeIfNeeded(nc_);
 }
 
@@ -54,7 +60,12 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
   // If there are no contact points return a zero generalized friction forces
   // vector, i.e. tau_f = 0.
   if (nc_ == 0) {
+    const auto& M = *problem_data_aliases_.M_ptr;
+    const auto& p_star = *problem_data_aliases_.p_star_ptr;
+    auto& v = fixed_size_workspace_.v;
+    v = M.ldlt().solve(p_star);
     fixed_size_workspace_.tau_f.setZero();
+    fixed_size_workspace_.tau.setZero();
     return ComputationInfo::Success;
   }
 
@@ -72,10 +83,13 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
 
   // Convenient aliases to problem data.
   const auto& M = *problem_data_aliases_.M_ptr;
-  const auto& D = *problem_data_aliases_.D_ptr;
+  const auto& Jn = *problem_data_aliases_.Jn_ptr;
+  const auto& Jt = *problem_data_aliases_.Jt_ptr;
+  const auto& phi0 = *problem_data_aliases_.phi0_ptr;
   const auto& p_star = *problem_data_aliases_.p_star_ptr;
-  const auto& fn = *problem_data_aliases_.fn_ptr;
   const auto& mu = *problem_data_aliases_.mu_ptr;
+  const double stiffness = problem_data_aliases_.stiffness;
+  const double damping = problem_data_aliases_.damping;
 
   // Convenient aliases to fixed size workspace variables.
   auto& v = fixed_size_workspace_.v;
@@ -86,10 +100,13 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
   auto& tau_f = fixed_size_workspace_.tau_f;
 
   // Convenient aliases to variable size workspace variables.
+  auto fn = variable_size_workspace_.mutable_fn();
+  auto vn = variable_size_workspace_.mutable_vn();
+  auto phi = variable_size_workspace_.mutable_phi();
   auto vt = variable_size_workspace_.mutable_vt();
   auto ft = variable_size_workspace_.mutable_ft();
   auto Delta_vt = variable_size_workspace_.mutable_delta_vt();
-  auto dft_dv = variable_size_workspace_.mutable_dft_dv();
+  auto& dft_dv = variable_size_workspace_.mutable_dft_dv();
   auto mus = variable_size_workspace_.mutable_mu();
   auto that = variable_size_workspace_.mutable_t_hat();
   auto v_slip = variable_size_workspace_.mutable_v_slip();
@@ -100,7 +117,8 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
 
   // Initialize iteration with the provided guess.
   v = v_guess;
-  vt = D * v;
+  vn = Jn * v;
+  vt = Jt * v;
 
   // The stiction tolerance.
   const double v_stribeck = parameters_.stiction_tolerance;
@@ -139,16 +157,28 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
       ft.template segment<2>(ik) = mus(ic) * that_ic * fn(ic);
     }
 
+    // Compute separation distance at O(dt).
+    // φⁿ⁺¹ = φⁿ - δt⋅vₙⁿ⁺¹. The minus sign is needed because vn's are
+    // **separation** velocities, i.e. when negative, phi (penetration distance)
+    // increases. That is, φ̇ = -vₙ.
+    phi = phi0 - dt * Jn * v;
+
+    // Compute normal force at t^{n+1}
+    const VectorX<T> stiffness_vector =
+        stiffness * (VectorX<T>::Ones(nc) + damping * vn);
+    fn = stiffness_vector.asDiagonal() * phi;
+
     // After the previous iteration, we allow updating ft above to have its
     // latest value before leaving.
     if (residual < vt_tolerance) {
       // Update generalized forces vector and return.
-      tau_f = D.transpose() * ft;
+      tau_f = -Jt.transpose() * ft;
+      fixed_size_workspace_.tau = tau_f + Jn.transpose() * fn;
       return ComputationInfo::Success;
     }
 
     // Newton-Raphson residual
-    R = M * v - p_star + dt * D.transpose() * ft;
+    R = M * v - p_star + dt * Jt.transpose() * ft - dt * Jn.transpose() * fn;
 
     // Compute dft/dvt, a 2x2 matrix with the derivative of the friction
     // force (in ℝ²) with respect to the tangent velocity (also in ℝ²).
@@ -208,12 +238,12 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
     }
 
     // Newton-Raphson Jacobian:
-    //  J = I + dt M⁻¹Dᵀdiag(dfₜ/dvₜ)D
+    //  J = I + dt M⁻¹Dᵀdiag(dfₜ/dvₜ)Jt
     // J is an (nv x nv) symmetric positive definite matrix.
     // diag(dfₜ/dvₜ) is the (2nc x 2nc) block diagonal matrix with dfₜ/dvₜ
     // in each 2x2 diagonal entry.
 
-    // Start by multiplying diag(dfₜ/dvₜ)D and use the fact that
+    // Start by multiplying diag(dfₜ/dvₜ)Jt and use the fact that
     // diag(dfₜ/dvₜ) is block diagonal.
     MatrixX<T> diag_dftdv_times_D(nf, nv);
     // TODO(amcastro-tri): Only build half of the matrix since it is
@@ -221,10 +251,15 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
     for (int ic = 0; ic < nc; ++ic) {
       const int ik = 2 * ic;
       diag_dftdv_times_D.block(ik, 0, 2, nv) =
-          dft_dv[ic] * D.block(ik, 0, 2, nv);
+          dft_dv[ic] * Jt.block(ik, 0, 2, nv);
     }
-    // Form J = M + dt Dᵀdiag(dfₜ/dvₜ)D:
-    J = M + dt * D.transpose() * diag_dftdv_times_D;
+    // Form J = M + dt Dᵀdiag(dfₜ/dvₜ)Jt:
+    J = M + dt * Jt.transpose() * diag_dftdv_times_D;
+
+    // Normal forces term of the Jacobian:
+    J += dt * Jn.transpose() *
+        (dt * stiffness_vector + damping * stiffness * phi).asDiagonal()
+        * Jn;
 
     // TODO(amcastro-tri): Consider using a cheap iterative solver like CG.
     // Since we are in a non-linear iteration, an approximate cheap solution
@@ -237,15 +272,15 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
     }
     Delta_v = J_ldlt.solve(-R);
 
-    // Since we keep D constant we have that:
-    // vₜᵏ⁺¹ = D⋅vᵏ⁺¹ = D⋅(vᵏ + α Δvᵏ)
-    //                = vₜᵏ + α D⋅Δvᵏ
+    // Since we keep Jt constant we have that:
+    // vₜᵏ⁺¹ = Jt⋅vᵏ⁺¹ = Jt⋅(vᵏ + α Δvᵏ)
+    //                = vₜᵏ + α Jt⋅Δvᵏ
     //                = vₜᵏ + α Δvₜᵏ
-    // where we defined Δvₜᵏ = D⋅Δvᵏ and 0 < α < 1 is a constant that we'll
+    // where we defined Δvₜᵏ = Jt⋅Δvᵏ and 0 < α < 1 is a constant that we'll
     // determine by limiting the maximum angle change between vₜᵏ and vₜᵏ⁺¹.
     // For multiple contact points, we choose the minimum α amongs all contact
     // points.
-    Delta_vt = D * Delta_v;
+    Delta_vt = Jt * Delta_v;
 
     // Convergence is monitored in the tangential velocties.
     residual = Delta_vt.norm();
@@ -271,7 +306,8 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
 
     // Limit v update:
     v = v + alpha * Delta_v;
-    vt = D * v;
+    vn = Jn * v;
+    vt = Jt * v;
 
     // Save iteration statistics.
     statistics_.Update(ExtractDoubleOrThrow(residual),

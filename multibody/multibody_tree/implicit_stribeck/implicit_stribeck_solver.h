@@ -671,6 +671,9 @@ class ImplicitStribeckSolver {
   // x = v / v_stribeck.
   static T ModifiedStribeckDerivative(const T& speed_BcAc, const T& mu);
 
+  template <typename Scalar>
+  VectorX<Scalar> CalcResidualOnScalar(double dt, const VectorX<Scalar>& v);
+
   int nv_;  // Number of generalized velocities.
   int nc_;  // Number of contact points.
   double cos_theta_max_;

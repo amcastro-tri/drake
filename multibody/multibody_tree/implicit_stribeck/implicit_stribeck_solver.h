@@ -399,6 +399,13 @@ class ImplicitStribeckSolver {
   ///      invoked again.
   void SetProblemData(
       EigenPtr<const MatrixX<T>> M,
+      EigenPtr<const MatrixX<T>> Jt,
+      EigenPtr<const VectorX<T>> p_star,
+      EigenPtr<const VectorX<T>> fn,
+      EigenPtr<const VectorX<T>> mu);
+
+  void SetProblemData(
+      EigenPtr<const MatrixX<T>> M,
       EigenPtr<const MatrixX<T>> Jn,
       EigenPtr<const MatrixX<T>> Jt,
       EigenPtr<const VectorX<T>> p_star,
@@ -476,6 +483,18 @@ class ImplicitStribeckSolver {
   struct ProblemDataAliases {
     // Sets the references to the data defining the problem.
     void Set(EigenPtr<const MatrixX<T>> M,
+             EigenPtr<const MatrixX<T>> Jt,
+             EigenPtr<const VectorX<T>> p_star,
+             EigenPtr<const VectorX<T>> fn,
+             EigenPtr<const VectorX<T>> mu) {
+      M_ptr = M;
+      fn_ptr = fn;
+      Jt_ptr = Jt;
+      p_star_ptr = p_star;
+      mu_ptr = mu;
+    }
+
+    void Set(EigenPtr<const MatrixX<T>> M,
              EigenPtr<const MatrixX<T>> Jn,
              EigenPtr<const MatrixX<T>> Jt,
              EigenPtr<const VectorX<T>> p_star,
@@ -495,6 +514,7 @@ class ImplicitStribeckSolver {
     // The mass matrix of the system.
     EigenPtr<const MatrixX<T>> M_ptr{nullptr};
     EigenPtr<const MatrixX<T>> Jn_ptr{nullptr};
+    EigenPtr<const VectorX<T>> fn_ptr{nullptr};
     EigenPtr<const VectorX<T>> phi0_ptr{nullptr};
     // The tangential velocities Jacobian.
     EigenPtr<const MatrixX<T>> Jt_ptr{nullptr};
@@ -649,6 +669,13 @@ class ImplicitStribeckSolver {
     // Vector of size nc storing ∂fₜ/∂vₜ (in ℝ²ˣ²) for each contact point.
     std::vector<Matrix2<T>> dft_dv_;
   };
+
+  bool couple_with_normal_forces() const {
+    // If normal forces were provided, the solver keeps them constant. Thus,
+    // there is no two-way coupling with friction forces.
+    // This means phi0_ptr != nullptr
+    return problem_data_aliases_.fn_ptr == nullptr;
+  }
 
   // Dimensionless modified Stribeck function defined as:
   // ms(x) = ⌈ mu * x * (2.0 - x),  x  < 1

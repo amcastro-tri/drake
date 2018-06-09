@@ -29,6 +29,23 @@ ImplicitStribeckSolver<T>::ImplicitStribeckSolver(int nv) :
 template <typename T>
 void ImplicitStribeckSolver<T>::SetProblemData(
     EigenPtr<const MatrixX<T>> M,
+    EigenPtr<const MatrixX<T>> Jt,
+    EigenPtr<const VectorX<T>> p_star,
+    EigenPtr<const VectorX<T>> fn,
+    EigenPtr<const VectorX<T>> mu) {
+  nc_ = fn->size();
+  DRAKE_THROW_UNLESS(p_star->size() == nv_);
+  DRAKE_THROW_UNLESS(M->rows() == nv_ && M->cols() == nv_);
+  DRAKE_THROW_UNLESS(Jt->rows() == 2 * nc_ && Jt->cols() == nv_);
+  DRAKE_THROW_UNLESS(mu->size() == nc_);
+  // Keep references to the problem data.
+  problem_data_aliases_.Set(M, Jt, p_star, fn, mu);
+  variable_size_workspace_.ResizeIfNeeded(nc_);
+}
+
+template <typename T>
+void ImplicitStribeckSolver<T>::SetProblemData(
+    EigenPtr<const MatrixX<T>> M,
     EigenPtr<const MatrixX<T>> Jn,
     EigenPtr<const MatrixX<T>> Jt,
     EigenPtr<const VectorX<T>> p_star,
@@ -61,11 +78,8 @@ VectorX<Scalar> ImplicitStribeckSolver<T>::CalcResidualOnScalar(
   const auto& M = *problem_data_aliases_.M_ptr;
   const auto& Jn = *problem_data_aliases_.Jn_ptr;
   const auto& Jt = *problem_data_aliases_.Jt_ptr;
-  const auto& phi0 = *problem_data_aliases_.phi0_ptr;
   const auto& p_star = *problem_data_aliases_.p_star_ptr;
   const auto& mu = *problem_data_aliases_.mu_ptr;
-  const double stiffness = problem_data_aliases_.stiffness;
-  const double damping = problem_data_aliases_.damping;
 
   // Convenient aliases to variable size workspace variables.
   VectorX<Scalar> fn;
@@ -114,16 +128,26 @@ VectorX<Scalar> ImplicitStribeckSolver<T>::CalcResidualOnScalar(
     ft.template segment<2>(ik) = -mus(ic) * that_ic * fn(ic);
   }
 
-  // Compute separation distance at O(dt).
-  // φⁿ⁺¹ = φⁿ - δt⋅vₙⁿ⁺¹. The minus sign is needed because vn's are
-  // **separation** velocities, i.e. when negative, phi (penetration distance)
-  // increases. That is, φ̇ = -vₙ.
-  phi = phi0 - dt * vn;
+  if (couple_with_normal_forces()) {
+    const auto& phi0 = *problem_data_aliases_.phi0_ptr;
+    const double stiffness = problem_data_aliases_.stiffness;
+    const double damping = problem_data_aliases_.damping;
 
-  // Compute normal force at t^{n+1}
-  const VectorX<Scalar> stiffness_vector =
-      stiffness * (VectorX<Scalar>::Ones(nc) - damping * vn);
-  fn = (stiffness_vector.asDiagonal() * phi).template cwiseMax(VectorX<Scalar>::Zero(nc));
+    // Compute separation distance at O(dt).
+    // φⁿ⁺¹ = φⁿ - δt⋅vₙⁿ⁺¹. The minus sign is needed because vn's are
+    // **separation** velocities, i.e. when negative, phi (penetration distance)
+    // increases. That is, φ̇ = -vₙ.
+    phi = phi0 - dt * vn;
+
+    // Compute normal force at t^{n+1}
+    const VectorX<Scalar> stiffness_vector =
+        stiffness * (VectorX<Scalar>::Ones(nc) - damping * vn);
+    fn = (stiffness_vector.asDiagonal()
+        * phi).template cwiseMax(VectorX<Scalar>::Zero(nc));
+  } else {
+    // Zero derivatives, i.e. no coupling.
+    fn = problem_data_aliases_.fn_ptr->template cast<Scalar>();
+  }
 
   // Newton-Raphson residual
   VectorX<Scalar> residual = M * v - p_star - dt * Jt.transpose() * ft - dt * Jn.transpose() * fn;

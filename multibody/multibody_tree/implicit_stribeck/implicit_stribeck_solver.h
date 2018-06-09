@@ -399,6 +399,7 @@ class ImplicitStribeckSolver {
   ///      invoked again.
   void SetProblemData(
       EigenPtr<const MatrixX<T>> M,
+      EigenPtr<const MatrixX<T>> Jn,
       EigenPtr<const MatrixX<T>> Jt,
       EigenPtr<const VectorX<T>> p_star,
       EigenPtr<const VectorX<T>> fn,
@@ -483,12 +484,14 @@ class ImplicitStribeckSolver {
   struct ProblemDataAliases {
     // Sets the references to the data defining the problem.
     void Set(EigenPtr<const MatrixX<T>> M,
+             EigenPtr<const MatrixX<T>> Jn,
              EigenPtr<const MatrixX<T>> Jt,
              EigenPtr<const VectorX<T>> p_star,
              EigenPtr<const VectorX<T>> fn,
              EigenPtr<const VectorX<T>> mu) {
       M_ptr = M;
       fn_ptr = fn;
+      Jn_ptr = Jn;
       Jt_ptr = Jt;
       p_star_ptr = p_star;
       mu_ptr = mu;
@@ -689,17 +692,28 @@ class ImplicitStribeckSolver {
   //   2. Non-zero derivative at x = 0 (zero slip velocity). This provides a
   //      good strong gradient in the neighborhood to zero slip velocities that
   //      aids in finding a good solution update.
-  static T ModifiedStribeck(const T& x, const T& mu);
+  template <typename U>
+  static U ModifiedStribeck(const U& x, const U& mu);
 
   // Derivative of the dimensionless modified Stribeck function:
   // ms(x) = ⌈ mu * (2 * (1 - x)),  x  < 1
   //         ⌊ 0                 ,  x >= 1
   // where x corresponds to the dimensionless tangential speed
   // x = v / v_stribeck.
-  static T ModifiedStribeckDerivative(const T& speed_BcAc, const T& mu);
+  template <typename U>
+  static U ModifiedStribeckDerivative(const U& speed_BcAc, const U& mu);
 
   template <typename Scalar>
   VectorX<Scalar> CalcResidualOnScalar(double dt, const VectorX<Scalar>& v);
+
+  VectorX<double> CalcResidualAndJacobian(
+      double dt, const VectorX<double>& v, EigenPtr<MatrixX<double>> J);
+
+  template <typename U>
+  VectorX<U> CalcNormalForces(double dt, const VectorX<U>& vn);
+
+  template <typename U>
+  VectorX<U> CalcFrictionForces(const VectorX<U>& vt, const VectorX<U>& fn);
 
   int nv_;  // Number of generalized velocities.
   int nc_;  // Number of contact points.

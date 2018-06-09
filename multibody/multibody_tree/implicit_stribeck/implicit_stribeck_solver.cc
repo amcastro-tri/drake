@@ -8,6 +8,7 @@
 
 #include "drake/common/default_scalars.h"
 #include "drake/common/extract_double.h"
+#include "drake/math/autodiff_gradient.h"
 
 namespace drake {
 namespace multibody {
@@ -29,6 +30,7 @@ ImplicitStribeckSolver<T>::ImplicitStribeckSolver(int nv) :
 template <typename T>
 void ImplicitStribeckSolver<T>::SetProblemData(
     EigenPtr<const MatrixX<T>> M,
+    EigenPtr<const MatrixX<T>> Jn,
     EigenPtr<const MatrixX<T>> Jt,
     EigenPtr<const VectorX<T>> p_star,
     EigenPtr<const VectorX<T>> fn,
@@ -36,12 +38,14 @@ void ImplicitStribeckSolver<T>::SetProblemData(
   nc_ = fn->size();
   DRAKE_THROW_UNLESS(p_star->size() == nv_);
   DRAKE_THROW_UNLESS(M->rows() == nv_ && M->cols() == nv_);
+  DRAKE_THROW_UNLESS(Jn->rows() == nc_ && Jn->cols() == nv_);
   DRAKE_THROW_UNLESS(Jt->rows() == 2 * nc_ && Jt->cols() == nv_);
   DRAKE_THROW_UNLESS(mu->size() == nc_);
   // Keep references to the problem data.
-  problem_data_aliases_.Set(M, Jt, p_star, fn, mu);
+  problem_data_aliases_.Set(M, Jn, Jt, p_star, fn, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_);
 }
+
 
 template <typename T>
 void ImplicitStribeckSolver<T>::SetProblemData(
@@ -65,32 +69,44 @@ void ImplicitStribeckSolver<T>::SetProblemData(
 }
 
 template <typename T>
-template <typename Scalar>
-VectorX<Scalar> ImplicitStribeckSolver<T>::CalcResidualOnScalar(
-    double dt, const VectorX<Scalar>& v) {
-  // Problem sizes.
-  //const int nv = nv_;  // Number of generalized velocities.
+template <typename U>
+VectorX<U> ImplicitStribeckSolver<T>::CalcNormalForces(
+    double dt, const VectorX<U>& vn) {
+  int nc = nc_;
+  VectorX<U> fn(nc);
+  if (couple_with_normal_forces()) {
+    const auto& phi0 = *problem_data_aliases_.phi0_ptr;
+    const double stiffness = problem_data_aliases_.stiffness;
+    const double damping = problem_data_aliases_.damping;
+
+    // Compute separation distance at O(dt).
+    // φⁿ⁺¹ = φⁿ - δt⋅vₙⁿ⁺¹. The minus sign is needed because vn's are
+    // **separation** velocities, i.e. when negative, phi (penetration distance)
+    // increases. That is, φ̇ = -vₙ.
+    VectorX<U> phi = phi0 - dt * vn;
+
+    // Compute normal force at t^{n+1}
+    const VectorX<U> stiffness_vector =
+        stiffness * (VectorX<U>::Ones(nc) - damping * vn);
+    fn = (stiffness_vector.asDiagonal()
+        * phi).template cwiseMax(VectorX<U>::Zero(nc));
+  } else {
+    // Zero derivatives, i.e. no coupling.
+    fn = problem_data_aliases_.fn_ptr->template cast<U>();
+  }
+  return fn;
+}
+
+template <typename T>
+template <typename U>
+VectorX<U> ImplicitStribeckSolver<T>::CalcFrictionForces(
+    const VectorX<U>& vt, const VectorX<U>& fn) {
   const int nc = nc_;  // Number of contact points.
-  // Size of the friction forces vector ft and tangential velocities vector vt.
-  //const int nf = 2 * nc;
-
-  // Convenient aliases to problem data.
-  const auto& M = *problem_data_aliases_.M_ptr;
-  const auto& Jn = *problem_data_aliases_.Jn_ptr;
-  const auto& Jt = *problem_data_aliases_.Jt_ptr;
-  const auto& p_star = *problem_data_aliases_.p_star_ptr;
-  const auto& mu = *problem_data_aliases_.mu_ptr;
-
-  // Convenient aliases to variable size workspace variables.
-  VectorX<Scalar> fn;
-  VectorX<Scalar> phi;
-  VectorX<Scalar> ft;
-  VectorX<Scalar> mus;
-  VectorX<Scalar> that;
-  VectorX<Scalar> v_slip;
 
   // The stiction tolerance.
   const double v_stribeck = parameters_.stiction_tolerance;
+
+  const auto& mu = *problem_data_aliases_.mu_ptr;
 
   // We use the stiction tolerance as a reference scale to estimate a small
   // velocity v_epsilon. With v_epsilon we define a "soft norm" which we
@@ -99,9 +115,11 @@ VectorX<Scalar> ImplicitStribeckSolver<T>::CalcResidualOnScalar(
   const double epsilon_v = v_stribeck * 1.0e-4;
   const double epsilon_v2 = epsilon_v * epsilon_v;
 
-  VectorX<Scalar> vn = Jn * v;
-  VectorX<Scalar> vt = Jt * v;
-
+  VectorX<U> ft(2 * nc);
+  VectorX<U> mus(nc);
+  VectorX<U> that(2 * nc);
+  VectorX<U> v_slip(nc);
+  
   // Compute 2D tangent vectors.
   // To avoid the singularity at v_slip = ‖vt‖ = 0 we use a "soft norm". The
   // idea is to replace the norm in the definition of slip velocity by a
@@ -120,39 +138,55 @@ VectorX<Scalar> ImplicitStribeckSolver<T>::CalcResidualOnScalar(
     // "soft norm":
     v_slip(ic) = sqrt(vt_ic.squaredNorm() + epsilon_v2);
     // "soft" tangent vector:
-    const Vector2<Scalar> that_ic = vt_ic / v_slip(ic);
+    const Vector2<U> that_ic = vt_ic / v_slip(ic);
     that.template segment<2>(ik) = that_ic;
-    mus(ic) = ModifiedStribeck(v_slip(ic) / v_stribeck, mu(ic));
+    mus(ic) = ModifiedStribeck(v_slip(ic) / v_stribeck, U(mu(ic)));
     // Friction force.
-    // Note: minus sign not included in this definition.
     ft.template segment<2>(ik) = -mus(ic) * that_ic * fn(ic);
   }
+  return ft;
+}
 
-  if (couple_with_normal_forces()) {
-    const auto& phi0 = *problem_data_aliases_.phi0_ptr;
-    const double stiffness = problem_data_aliases_.stiffness;
-    const double damping = problem_data_aliases_.damping;
+template <typename T>
+template <typename Scalar>
+VectorX<Scalar> ImplicitStribeckSolver<T>::CalcResidualOnScalar(
+    double dt, const VectorX<Scalar>& v) {
+  const int nc = nc_;  // Number of contact points.
 
-    // Compute separation distance at O(dt).
-    // φⁿ⁺¹ = φⁿ - δt⋅vₙⁿ⁺¹. The minus sign is needed because vn's are
-    // **separation** velocities, i.e. when negative, phi (penetration distance)
-    // increases. That is, φ̇ = -vₙ.
-    phi = phi0 - dt * vn;
+  // Convenient aliases to problem data.
+  const auto& M = *problem_data_aliases_.M_ptr;
+  const auto& Jn = *problem_data_aliases_.Jn_ptr;
+  const auto& Jt = *problem_data_aliases_.Jt_ptr;
+  const auto& p_star = *problem_data_aliases_.p_star_ptr;
 
-    // Compute normal force at t^{n+1}
-    const VectorX<Scalar> stiffness_vector =
-        stiffness * (VectorX<Scalar>::Ones(nc) - damping * vn);
-    fn = (stiffness_vector.asDiagonal()
-        * phi).template cwiseMax(VectorX<Scalar>::Zero(nc));
-  } else {
-    // Zero derivatives, i.e. no coupling.
-    fn = problem_data_aliases_.fn_ptr->template cast<Scalar>();
-  }
+  // Convenient aliases to variable size workspace variables.
+  VectorX<Scalar> fn(nc);
+  VectorX<Scalar> phi(nc);
+  VectorX<Scalar> ft(2 * nc);
+  VectorX<Scalar> mus(nc);
+  VectorX<Scalar> that(2 * nc);
+  VectorX<Scalar> v_slip(nc);
+
+  VectorX<Scalar> vn = Jn * v;
+  VectorX<Scalar> vt = Jt * v;
+
+  fn = CalcNormalForces(dt, vn);
+  ft = CalcFrictionForces(vt, fn);
 
   // Newton-Raphson residual
   VectorX<Scalar> residual = M * v - p_star - dt * Jt.transpose() * ft - dt * Jn.transpose() * fn;
 
   return residual;
+}
+
+template <typename T>
+VectorX<double> ImplicitStribeckSolver<T>::CalcResidualAndJacobian(
+    double dt, const VectorX<double>& v, EigenPtr<MatrixX<double>> J) {
+  VectorX<AutoDiffXd> v_autodiff(v.size());
+  math::initializeAutoDiff(v, v_autodiff);
+  VectorX<AutoDiffXd> residual = CalcResidualOnScalar(dt, v_autodiff);
+  *J = math::autoDiffToGradientMatrix(residual);
+  return math::autoDiffToValueMatrix(residual);
 }
 
 template <typename T>
@@ -184,20 +218,18 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
       parameters_.tolerance * parameters_.stiction_tolerance;
 
   // Problem sizes.
-  const int nv = nv_;  // Number of generalized velocities.
+  //const int nv = nv_;  // Number of generalized velocities.
   const int nc = nc_;  // Number of contact points.
   // Size of the friction forces vector ft and tangential velocities vector vt.
-  const int nf = 2 * nc;
+  //const int nf = 2 * nc;
 
   // Convenient aliases to problem data.
-  const auto& M = *problem_data_aliases_.M_ptr;
+  //const auto& M = *problem_data_aliases_.M_ptr;
   const auto& Jn = *problem_data_aliases_.Jn_ptr;
   const auto& Jt = *problem_data_aliases_.Jt_ptr;
-  const auto& phi0 = *problem_data_aliases_.phi0_ptr;
+  //const auto& phi0 = *problem_data_aliases_.phi0_ptr;
   //const auto& p_star = *problem_data_aliases_.p_star_ptr;
-  const auto& mu = *problem_data_aliases_.mu_ptr;
-  const double stiffness = problem_data_aliases_.stiffness;
-  const double damping = problem_data_aliases_.damping;
+  //const auto& mu = *problem_data_aliases_.mu_ptr;
 
   // Convenient aliases to fixed size workspace variables.
   auto& v = fixed_size_workspace_.v;
@@ -210,14 +242,14 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
   // Convenient aliases to variable size workspace variables.
   auto fn = variable_size_workspace_.mutable_fn();
   auto vn = variable_size_workspace_.mutable_vn();
-  auto phi = variable_size_workspace_.mutable_phi();
+  //auto phi = variable_size_workspace_.mutable_phi();
   auto vt = variable_size_workspace_.mutable_vt();
   auto ft = variable_size_workspace_.mutable_ft();
   auto Delta_vt = variable_size_workspace_.mutable_delta_vt();
-  auto& dft_dv = variable_size_workspace_.mutable_dft_dv();
-  auto mus = variable_size_workspace_.mutable_mu();
-  auto that = variable_size_workspace_.mutable_t_hat();
-  auto v_slip = variable_size_workspace_.mutable_v_slip();
+  //auto& dft_dv = variable_size_workspace_.mutable_dft_dv();
+  //auto mus = variable_size_workspace_.mutable_mu();
+  //auto that = variable_size_workspace_.mutable_t_hat();
+  //auto v_slip = variable_size_workspace_.mutable_v_slip();
 
   // Initialize residual to a value larger than tolerance so that the solver at
   // least performs one iteration
@@ -231,144 +263,21 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
   // The stiction tolerance.
   const double v_stribeck = parameters_.stiction_tolerance;
 
-  // We use the stiction tolerance as a reference scale to estimate a small
-  // velocity v_epsilon. With v_epsilon we define a "soft norm" which we
-  // use to compute "soft" tangent vectors to avoid a division by zero
-  // singularity when tangential velocities are zero.
-  const double epsilon_v = v_stribeck * 1.0e-4;
-  const double epsilon_v2 = epsilon_v * epsilon_v;
-
   for (int iter = 0; iter < max_iterations; ++iter) {
-    // Compute 2D tangent vectors.
-    // To avoid the singularity at v_slip = ‖vt‖ = 0 we use a "soft norm". The
-    // idea is to replace the norm in the definition of slip velocity by a
-    // "soft norm":
-    //    ‖v‖ ≜ sqrt(vᵀv + εᵥ²)
-    // We use this to redefine the slip velocity:
-    //   v_slip = sqrt(vtᵀvt + v_epsilon)
-    // and a "soft" tangent vector:
-    //   t̂ = vₜ / sqrt(vₜᵀvₜ + εᵥ²)
-    // which now is not only well defined but it has well defined derivatives.
-    // We use these softened quantities all throuout our derivations for
-    // consistency.
-    for (int ic = 0; ic < nc; ++ic) {
-      const int ik = 2 * ic;
-      const auto vt_ic = vt.template segment<2>(ik);
-      // "soft norm":
-      v_slip(ic) = sqrt(vt_ic.squaredNorm() + epsilon_v2);
-      // "soft" tangent vector:
-      const Vector2<T> that_ic = vt_ic / v_slip(ic);
-      that.template segment<2>(ik) = that_ic;
-      mus(ic) = ModifiedStribeck(v_slip(ic) / v_stribeck, mu(ic));
-      // Friction force.
-      // Note: minus sign not included in this definition.
-      ft.template segment<2>(ik) = mus(ic) * that_ic * fn(ic);
-    }
-
-    // Compute separation distance at O(dt).
-    // φⁿ⁺¹ = φⁿ - δt⋅vₙⁿ⁺¹. The minus sign is needed because vn's are
-    // **separation** velocities, i.e. when negative, phi (penetration distance)
-    // increases. That is, φ̇ = -vₙ.
-    phi = phi0 - dt * Jn * v;
-
-    // Compute normal force at t^{n+1}
-    const VectorX<T> stiffness_vector =
-        stiffness * (VectorX<T>::Ones(nc) - damping * vn);
-    fn = stiffness_vector.asDiagonal() * phi;
-
     // After the previous iteration, we allow updating ft above to have its
     // latest value before leaving.
     if (residual < vt_tolerance) {
       // Update generalized forces vector and return.
-      tau_f = -Jt.transpose() * ft;
+      fn = CalcNormalForces(dt, VectorX<double>(vn));
+      ft = CalcFrictionForces(VectorX<double>(vt), VectorX<double>(fn));
+      tau_f = Jt.transpose() * ft;
       fixed_size_workspace_.tau = tau_f + Jn.transpose() * fn;
       return ComputationInfo::Success;
     }
 
-    // Newton-Raphson residual
-    R = CalcResidualOnScalar(dt, v);
+    // Newton-Raphson residual and Jacobian
+    R = CalcResidualAndJacobian(dt, v, &J);
     //R = M * v - p_star + dt * Jt.transpose() * ft - dt * Jn.transpose() * fn;
-
-    // Compute dft/dvt, a 2x2 matrix with the derivative of the friction
-    // force (in ℝ²) with respect to the tangent velocity (also in ℝ²).
-    for (int ic = 0; ic < nc; ++ic) {
-      const int ik = 2 * ic;
-
-      // Compute dmu/dv = (1/v_stribeck) * dmu/dx
-      // where x = v_slip / v_stribeck is the dimensionless slip velocity.
-      const T dmudv = ModifiedStribeckDerivative(
-          v_slip(ic) / v_stribeck, mu(ic)) / v_stribeck;
-
-      const auto that_ic = that.template segment<2>(ik);
-
-      // Projection matrix. It projects in the direction of that.
-      // Notice it is a symmetric 2x2 matrix.
-      const Matrix2<T> P_ic = that_ic * that_ic.transpose();
-
-      // Removes the projected direction along that.
-      // This is also a symmetric 2x2 matrix.
-      const Matrix2<T> Pperp_ic = Matrix2<T>::Identity() - P_ic;
-
-      // Some notes about projection matrices P:
-      //  - They are symmetric, positive semi-definite.
-      //  - All their eigenvalues are either one or zero.
-      //  - Their rank equals the number of non-zero eigenvales.
-      //  - From the previous item we have rank(P) = trace(P).
-      //  - If P is a projection matrix, so is (I - P).
-      // From the above we then know that P and Pperp are both projection
-      // matrices of rank one (i.e. rank deficient) and are symmetric
-      // semi-positive definite. This has very important consequences for the
-      // Jacobian of the residual.
-
-      // We now compute dft/dvt as:
-      //   dft/dvt = fn * (
-      //     mu_stribeck(‖vₜ‖) / ‖vₜ‖ * Pperp(t̂) +
-      //     dmu_stribeck/dx * P(t̂) / v_stribeck )
-      // where x = v_slip / v_stribeck is the dimensionless slip velocity.
-      // Therefore dft/dvt (in ℝ²ˣ²) is a linear combination of PSD matrices
-      // (P and Pperp) where the coefficients of the combination are positive
-      // scalars. Therefore,
-      // IMPORTANT NOTE: dft/dvt also PSD.
-      // IMPORTANT NOTE 2: The derivation for dft/dvt leads to exactly the
-      // same result when using the "softened" definitions for v_slip and
-      // that where each occurrence of these quantities is replaced by their
-      // softened counterpart.
-
-      // Compute dft/dv:
-      // Changes of vt in the direction perpendicular to that.
-      dft_dv[ic] = Pperp_ic * mus(ic) / v_slip(ic);
-
-      // Changes in the magnitude of vt (which in turns makes mu_stribeck
-      // change), in the direction of that.
-      dft_dv[ic] += P_ic * dmudv;
-
-      // Note: dft_dv is a symmetric 2x2 matrix.
-      dft_dv[ic] *= fn(ic);
-    }
-
-    // Newton-Raphson Jacobian:
-    //  J = I + dt M⁻¹Dᵀdiag(dfₜ/dvₜ)Jt
-    // J is an (nv x nv) symmetric positive definite matrix.
-    // diag(dfₜ/dvₜ) is the (2nc x 2nc) block diagonal matrix with dfₜ/dvₜ
-    // in each 2x2 diagonal entry.
-
-    // Start by multiplying diag(dfₜ/dvₜ)Jt and use the fact that
-    // diag(dfₜ/dvₜ) is block diagonal.
-    MatrixX<T> diag_dftdv_times_D(nf, nv);
-    // TODO(amcastro-tri): Only build half of the matrix since it is
-    // symmetric.
-    for (int ic = 0; ic < nc; ++ic) {
-      const int ik = 2 * ic;
-      diag_dftdv_times_D.block(ik, 0, 2, nv) =
-          dft_dv[ic] * Jt.block(ik, 0, 2, nv);
-    }
-    // Form J = M + dt Dᵀdiag(dfₜ/dvₜ)Jt:
-    J = M + dt * Jt.transpose() * diag_dftdv_times_D;
-
-    // Normal forces term of the Jacobian:
-    J += dt * Jn.transpose() *
-        (dt * stiffness_vector + damping * stiffness * phi).asDiagonal()
-        * Jn;
 
     // TODO(amcastro-tri): Consider using a cheap iterative solver like CG.
     // Since we are in a non-linear iteration, an approximate cheap solution
@@ -429,7 +338,8 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
 }
 
 template <typename T>
-T ImplicitStribeckSolver<T>::ModifiedStribeck(const T& x, const T& mu) {
+template <typename U>
+U ImplicitStribeckSolver<T>::ModifiedStribeck(const U& x, const U& mu) {
   DRAKE_ASSERT(x >= 0);
   if (x >= 1) {
     return mu;
@@ -439,8 +349,9 @@ T ImplicitStribeckSolver<T>::ModifiedStribeck(const T& x, const T& mu) {
 }
 
 template <typename T>
-T ImplicitStribeckSolver<T>::ModifiedStribeckDerivative(
-    const T& x, const T& mu) {
+template <typename U>
+U ImplicitStribeckSolver<T>::ModifiedStribeckDerivative(
+    const U& x, const U& mu) {
   DRAKE_ASSERT(x >= 0);
   if (x >= 1) {
     return 0;
@@ -672,10 +583,12 @@ T DirectionChangeLimiter<T>::SolveQuadraticForTheSmallestPositiveRoot(
 
 }  // namespace internal
 
+template class ImplicitStribeckSolver<double>;
+
 }  // namespace implicit_stribeck
 }  // namespace multibody
 }  // namespace drake
 
 // Explicitly instantiates on the most common scalar types.
-DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    class ::drake::multibody::implicit_stribeck::ImplicitStribeckSolver)
+//DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
+//    class ::drake::multibody::implicit_stribeck::ImplicitStribeckSolver)

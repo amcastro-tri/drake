@@ -77,6 +77,10 @@ class PizzaSaver : public ::testing::Test {
     return D;
   }
 
+  MatrixX<double> ComputeNormalJacobian() {
+    return MatrixX<double>::Zero(nc_, nv_);
+  }
+
   void SetProblem(const Vector3<double>& v0, const Vector3<double>& tau,
                   double mu, double theta, double dt) {
     // Next time step generalized momentum if there are no friction forces.
@@ -88,9 +92,10 @@ class PizzaSaver : public ::testing::Test {
     // All contact points have the same friction for this case.
     mu_ = mu * Vector3<double>::Ones();
 
+    N_ = ComputeNormalJacobian();
     D_ = ComputeTangentialJacobian(theta);
 
-    solver_.SetProblemData(&M_, &D_, &p_star_, &fn_, &mu_);
+    solver_.SetProblemData(&M_, &N_, &D_, &p_star_, &fn_, &mu_);
   }
 
  protected:
@@ -110,6 +115,8 @@ class PizzaSaver : public ::testing::Test {
 
   // Mass matrix.
   MatrixX<double> M_{nv_, nv_};
+
+  MatrixX<double> N_{nc_, nv_};
 
   // Tangential velocities Jacobian.
   MatrixX<double> D_{2 * nc_, nv_};
@@ -171,7 +178,7 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
 
   // The moment due to friction should balance the applied Mz. There is though
   // an error introduced by the non-zero stiction tolerance.
-  EXPECT_NEAR(tau_f(2), Mz, 5.0e-4);
+  EXPECT_NEAR(tau_f(2), -Mz, 5.0e-4);
 
   const VectorX<double>& vt = solver_.get_tangential_velocities();
   ASSERT_EQ(vt.size(), 2 * nc_);
@@ -247,7 +254,7 @@ TEST_F(PizzaSaver, LargeAppliedMoment) {
   EXPECT_NEAR(tau_f(0), 0.0, kTolerance);
   EXPECT_NEAR(tau_f(1), 0.0, kTolerance);
   // Since we are sliding, the total moment should match M_transition.
-  EXPECT_NEAR(tau_f(2), M_transition, 1.0e-13);
+  EXPECT_NEAR(tau_f(2), -M_transition, 1.0e-13);
 
   const VectorX<double>& vt = solver_.get_tangential_velocities();
   ASSERT_EQ(vt.size(), 2 * nc_);

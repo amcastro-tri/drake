@@ -216,7 +216,7 @@ void MultibodyPlant<T>::FinalizePlantOnly() {
   // Make contact solver when the plant is discrete.
   if (is_discrete()) {
     implicit_stribeck_solver_ =
-        std::make_unique<implicit_stribeck::ImplicitStribeckSolver<T>>(num_velocities());
+        std::make_unique<implicit_stribeck::ImplicitStribeckSolver<double>>(num_velocities());
     implicit_stribeck::Parameters solver_parameters;
     solver_parameters.stiction_tolerance = stribeck_model_.stiction_tolerance();
     implicit_stribeck_solver_->set_solver_parameters(solver_parameters);
@@ -677,10 +677,22 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
 }
 
 template<typename T>
-void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
-    const drake::systems::Context<T>& context0,
-    const std::vector<const drake::systems::DiscreteUpdateEvent<T>*>& events,
-    drake::systems::DiscreteValues<T>* updates) const {
+template <typename T1>
+typename std::enable_if<!std::is_same<T1, double>::value>::type
+MultibodyPlant<T>::DoCalcDiscreteVariableUpdatesOnScalar(
+    const drake::systems::Context<T1>& context0,
+    const std::vector<const drake::systems::DiscreteUpdateEvent<T1>*>& events,
+    drake::systems::DiscreteValues<T1>* updates) const {
+  DRAKE_ABORT_MSG("Only double supported");
+};
+
+template<typename T>
+template <typename T1>
+typename std::enable_if<std::is_same<T1, double>::value>::type
+MultibodyPlant<T>::DoCalcDiscreteVariableUpdatesOnScalar(
+    const drake::systems::Context<T1>& context0,
+    const std::vector<const drake::systems::DiscreteUpdateEvent<T1>*>& events,
+    drake::systems::DiscreteValues<T1>* updates) const {
   // Assert this method was called on a context storing discrete state.
   DRAKE_ASSERT(context0.get_num_discrete_state_groups() == 1);
   DRAKE_ASSERT(context0.get_continuous_state().size() == 0);
@@ -741,14 +753,18 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
   std::vector<PenetrationAsPointPair<T>> point_pairs0 =
       CalcPointPairPenetrations(context0);
   const int num_contacts = point_pairs0.size();
-  VectorX<T> fn(num_contacts);
+//  VectorX<T> fn(num_contacts);
 
   std::vector<SpatialForce<T>>& F_BBo_W_array = forces0.mutable_body_forces();
   // Compute contact forces0 on each body by penalty method. No friction, only normal forces0.
+#if 0
+  // NO NEED TO APPLY ANY FORCES WITH THE NEW SOLVER SINCE EVERYTHING GOES THROUGH
+  // THE JACOBIANS.
   if (num_collision_geometries() > 0) {
     CalcAndAddContactForcesByPenaltyMethod(
         context0, pc0, vc0, &F_BBo_W_array, false, point_pairs0, &fn);
   }
+#endif
 
   // Workspace for inverse dynamics:
   // Bodies' accelerations, ordered by BodyNodeIndex.

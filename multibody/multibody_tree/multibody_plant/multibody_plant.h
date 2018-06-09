@@ -939,6 +939,20 @@ class MultibodyPlant : public systems::LeafSystem<T> {
       const systems::Context<T>& context,
       systems::ContinuousState<T>* derivatives) const override;
 
+  template <typename T1 = T>
+  typename std::enable_if<std::is_same<T1, double>::value>::type
+  DoCalcDiscreteVariableUpdatesOnScalar(
+      const drake::systems::Context<T1>& context0,
+      const std::vector<const drake::systems::DiscreteUpdateEvent<T1>*>& events,
+      drake::systems::DiscreteValues<T1>* updates) const;
+
+  template <typename T1 = T>
+  typename std::enable_if<!std::is_same<T1, double>::value>::type
+  DoCalcDiscreteVariableUpdatesOnScalar(
+      const drake::systems::Context<T1>& context0,
+      const std::vector<const drake::systems::DiscreteUpdateEvent<T1>*>& events,
+      drake::systems::DiscreteValues<T1>* updates) const;
+
   // If the plant is modeled as a discrete system with periodic updates (see
   // is_discrete()), this method computes the periodic updates of the state
   // using a semi-explicit Euler strategy, that is:
@@ -956,7 +970,9 @@ class MultibodyPlant : public systems::LeafSystem<T> {
   void DoCalcDiscreteVariableUpdates(
       const drake::systems::Context<T>& context0,
       const std::vector<const drake::systems::DiscreteUpdateEvent<T>*>& events,
-      drake::systems::DiscreteValues<T>* updates) const override;
+      drake::systems::DiscreteValues<T>* updates) const override {
+    DoCalcDiscreteVariableUpdatesOnScalar(context0, events, updates);
+  }
 
   void DoMapQDotToVelocity(
       const systems::Context<T>& context,
@@ -1239,7 +1255,7 @@ class MultibodyPlant : public systems::LeafSystem<T> {
   double time_step_{0};
 
   // The default solver when the plant is modeled as a discrete system.
-  std::unique_ptr<implicit_stribeck::ImplicitStribeckSolver<T>> implicit_stribeck_solver_;
+  std::unique_ptr<implicit_stribeck::ImplicitStribeckSolver<double>> implicit_stribeck_solver_;
 
   // Temporary solution for fake cache entries to help stabilize the API.
   // TODO(amcastro-tri): Remove these when caching lands.

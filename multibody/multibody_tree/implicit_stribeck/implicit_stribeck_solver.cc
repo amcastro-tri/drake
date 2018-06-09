@@ -284,11 +284,15 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
     // is probably best.
     // TODO(amcastro-tri): Consider using a matrix-free iterative method to
     // avoid computing M and J. CG and the Krylov family can be matrix-free.
-    J_ldlt.compute(J);  // Update factorization.
-    if (J_ldlt.info() != Eigen::Success) {
-      return ComputationInfo::LinearSolverFailed;
+    if (couple_with_normal_forces()) {
+      Delta_v = J.lu().solve(-R);
+    } else {
+      J_ldlt.compute(J);  // Update factorization.
+      if (J_ldlt.info() != Eigen::Success) {
+        return ComputationInfo::LinearSolverFailed;
+      }
+      Delta_v = J_ldlt.solve(-R);
     }
-    Delta_v = J_ldlt.solve(-R);
 
     // Since we keep Jt constant we have that:
     // vₜᵏ⁺¹ = Jt⋅vᵏ⁺¹ = Jt⋅(vᵏ + α Δvᵏ)

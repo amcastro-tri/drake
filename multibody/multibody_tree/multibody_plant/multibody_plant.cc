@@ -244,6 +244,7 @@ void MultibodyPlant<T>::FinalizePlantOnly() {
         std::make_unique<implicit_stribeck::ImplicitStribeckSolver<T>>(num_velocities());
     implicit_stribeck::Parameters solver_parameters;
     solver_parameters.stiction_tolerance = stribeck_model_.stiction_tolerance();
+    solver_parameters.theta_max = M_PI / 3.0;
     implicit_stribeck_solver_->set_solver_parameters(solver_parameters);
   }
 }
@@ -859,8 +860,10 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
   VectorX<T> p_star = M0 * v0 - dt * minus_tau;
 
   // Compute normal and tangential velocity Jacobians at t0.
+  MatrixX<T> Jn(num_contacts, nv);
   MatrixX<T> D(2 * num_contacts, nv);
   if (num_contacts > 0) {
+    Jn = CalcNormalSeparationVelocitiesJacobian(context0, point_pairs0);
     D = CalcTangentVelocitiesJacobian(context0, point_pairs0);
   }
 
@@ -875,34 +878,36 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
                  });
 
   // Update the solver with the new data defining the problem for this update.
-  implicit_stribeck_solver_->SetProblemData(&M0, &D, &p_star, &fn, &mu);
+  implicit_stribeck_solver_->SetProblemData(&M0, &Jn, &D, &p_star, &fn, &mu);
 
   // Solver for the generalized contact forces.
   implicit_stribeck::ComputationInfo info = implicit_stribeck_solver_->SolveWithGuess(dt, v0);
   DRAKE_DEMAND(info == implicit_stribeck::Success);
-  const VectorX<T>& tau_f = implicit_stribeck_solver_->get_generalized_forces();
+  //const VectorX<T>& tau_f = implicit_stribeck_solver_->get_generalized_forces();
 
   const implicit_stribeck::IterationStats& stats =
       implicit_stribeck_solver_->get_iteration_statistics();
 
-  const T alpha = (stats.num_iterations == 0) ? 1.0 : stats.alphas.back();
+  //const T alpha = (stats.num_iterations == 0) ? 1.0 : stats.alphas.back();
 
   std::ofstream outfile;
   outfile.open("nr_iteration.dat", std::ios_base::app);
   outfile <<
-          fmt::format("{0:14.6e} {1:d} {2:d} {3:d} {4:14.6e} {5:14.6e}\n",
+          fmt::format("{0:14.6e} {1:d} {2:d} {3:d} {4:14.6e}\n",
                       context0.get_time(), istep, stats.num_iterations,
-                      num_contacts, stats.vt_residual, alpha);
+                      num_contacts, stats.vt_residual());
   outfile.close();
 
   // Compute velocity at next time step.
-  VectorX<T> v_next(this->num_velocities());
+  VectorX<T> v_next = implicit_stribeck_solver_->get_generalized_velocities();
+#if 0
   // Compute p_next into p_star.
   //   p_next = p_star - dt⋅Dᵀ⋅ft
   if (num_contacts > 0) {
     p_star -= time_step_ * tau_f;
   }
   v_next = M0_llt.solve(p_star);
+#endif
 
   VectorX<T> qdot_next(this->num_positions());
   model_->MapVelocityToQDot(context0, v_next, &qdot_next);

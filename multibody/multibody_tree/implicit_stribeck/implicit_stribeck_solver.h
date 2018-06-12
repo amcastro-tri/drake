@@ -9,7 +9,6 @@
 namespace drake {
 namespace multibody {
 namespace implicit_stribeck {
-
 namespace internal {
 /// This struct implements an internal (thus within `internal::`) detail of the
 /// implicit Stribeck solver. The implicit Stribeck solver performs a
@@ -22,13 +21,13 @@ namespace internal {
 /// Stribeck is solving the root of a continuous function, this function has
 /// very steep gradients only within the very small regions close to where the
 /// tangential velocities are zero. These regions are circles in ℝ² of radius
-/// equal to the stiction tolerance of the solver vₛ. For short, we refer to
+/// equal to the stiction tolerance of the solver vₛ. We refer to
 /// these circular regions as the "stiction regions" and to their boundaries as
 /// the "stiction circles". We refer to the region of ℝ² outside the stiction
 /// region around the origin as the "sliding region".
 /// The implicit Stribeck solver uses the following modified Stribeck function
 /// describing the functional dependence of the Stribeck coefficient of friction
-/// μₛwith slip speed: <pre>
+/// μₛ with slip speed: <pre>
 ///     μₛ(x) = ⌈ μ⋅x⋅(2.0 - x),  x  < 1
 ///             ⌊ μ            ,  x >= 1
 /// </pre>
@@ -36,26 +35,28 @@ namespace internal {
 /// μ is the Coulomb's law coefficient of friction. The implicit Stribeck solver
 /// makes no distinction between static and dynamic coefficients of friction and
 /// therefore a single coefficient μ needs to be specified.
-/// Since the Stribeck function used for the friction coefficient has a very
+/// Since the Stribeck function used for the friction coefficient has very
 /// steep gradients only within the stiction region and zero outside of it,
 /// gradients (that is the Jacobian of the residual) in the Newton-Raphson
 /// iteration performed by the implicit Stribeck solver are large within
 /// these small circular regions (stiction) and small outside them (slip).
 /// We say that gradients within these stiction circles are "strong" and
 /// gradients outside these regions are "weak".
-/// These regions are so small comparatively to the velocity scales dealt with
+/// These regions are so small compared to the velocity scales dealt with
 /// by the implicit Stribeck solver, that effectively, the Newton-Raphson
 /// iteration would only "see" a fixed dynamic coefficient of friction and it
 /// would never be able to predict stiction. That is, if search direction Δvₜᵏ
-/// computed within the Newton-Raphson is not limited in some way, the iteration
-/// would never fall within the stiction regions where gradients are "strong" to
-/// guide the convergence of the solution, to either stiction or sliding.
+/// computed by the Newton-Raphson algorithm is not limited in some way, the
+/// iteration would never fall within the stiction regions where gradients
+/// are "strong" to guide the convergence of the solution, to either stiction
+/// or sliding.
 ///
 /// The remedy to this situation is to limit changes in the tangential
-/// velocities at each iteration. Since the problem is purely geometric, it is
-/// possible to devise a strategy that is appropriate for this particular
-/// problem. We use the strategy outlined in [Uchida et al., 2015] and provide
-/// particulars to our implementation below.
+/// velocities at each iteration. The situation described above, in which an
+/// update  Δvₜᵏ "misses" the stiction circle can be described in purely
+/// geometric terms. We exploit this fact to devise a strategy that is
+/// appropriate for this particular problem. We use the methodology outlined in
+/// [Uchida et al., 2015] and describe particulars to our implementation below.
 ///
 /// LimitDirectionChange implements a specific strategy with knowledge of the
 /// implicit Stribeck iteration procedure. It is important to note that the
@@ -81,25 +82,28 @@ namespace internal {
 /// LimitDirectionChange. We use the observations made above.
 ///  - LimitDirectionChange first deals with the case ‖vₜ‖ < εᵥ to avoid
 ///    divisions by zero in the subsequent cases. It essentially clips vₜᵏ⁺¹
-///    to have magnitude vₛ/2 when the update Δvₜᵏ ≠ 0 while it allows small
-///    updates within the stiction region (i.e. α = 1). See implementation
-///    notes for CalcAlpha() for further details.
-///  - Transition from ‖vₜ‖ ≈ 0 (stiction) to ‖vₜ‖/vₛ > 1 (sliding). Since we
-///    are in a region of "weak" gradients, we limit the update to
-///    vₜᵏ⁺¹ = vₜᵏ/‖vₜᵏ‖⋅vₛ/2. In other words, if the speed would grow too
-///    fast, we cap it at vₛ/2 so that at least two Newton iterations are
-///    required to go from near-0 sticking to sliding.
+///    to have magnitude vₛ/2 when the update Δvₜᵏ ≠ 0. For small updates
+///    Δvₜᵏ leading to vₜᵏ⁺¹ within the stiction region, we take  α = 1.
+///    See implementation notes for CalcAlpha() for further details.
+///  - Transition from ‖vₜ‖ < εᵥ (stiction) to ‖vₜ‖/vₛ > 1 (sliding). Since
+///    we are in a region of "weak" gradients (due to "norm softening",
+///    see discussion above), we limit the update to vₜᵏ⁺¹ = vₜᵏ/‖vₜᵏ‖⋅vₛ/2.
+///    In other words, if the speed would grow too fast, we cap it at vₛ/2
+///    so that at least two Newton iterations are required to go from near-0
+///    sticking to sliding.
 ///  - Transition from sliding ‖vₜᵏ‖/vₛ > 1 to an almost perfect stiction with
 ///    ‖vₜᵏ⁺¹‖ < εᵥ. In an attempt to avoid weak gradients for the next
 ///    iteration, we impose the limit vₜᵏ⁺¹ = vₜᵏ/‖vₜᵏ‖⋅vₛ/2, placing the
 ///    velocity "in the same direction where it came from", within the stiction
 ///    region, but where gradients are strong.
-///  - Velocity change Δvₜᵏ intersects the stiction circle. This situation
-///    implies that most likely a stiction transition could happen but the pure
-///    Newton-Raphson would miss it. This situation is outlined in
-///    [Uchida et al., 2015]. In this case LimitDirectionChange computes α so
-///    that vₜᵏ⁺¹ =  vₜᵏ + αΔvₜᵏ is the closest vector to the origin. This
-///    corresponds to the geometric condition dot(vₜᵏ⁺¹, Δvₜᵏ) = 0.
+///  - Velocity change Δvₜᵏ intersects the stiction circle. To be more precise,
+///    the line connecting vₜᵏ and vₜᵏ + Δvₜᵏ crosses the stiction region.
+///    This situation implies that most likely a stiction transition could
+///    happen but the pure Newton-Raphson would miss it. This situation is
+///    outlined in [Uchida et al., 2015]. In this case LimitDirectionChange
+///    computes α so that vₜᵏ⁺¹ =  vₜᵏ + αΔvₜᵏ is the closest vector to the
+///    origin. This corresponds to the geometric condition
+///    dot(vₜᵏ⁺¹, Δvₜᵏ) = 0.
 ///  - Velocity change Δvₜᵏ does not intersect the stiction circle, i.e.
 ///    changes happen in a region away from stiction (within the sliding
 ///    region). However, large angular changes (measured by the angle
@@ -124,12 +128,16 @@ struct DirectionChangeLimiter {
   /// @param[in] cos_theta_max precomputed value of cos(θₘₐₓ).
   /// @param[in] v_stiction the stiction tolerance vₛ, in m/s.
   /// @param[in] tolerance a value << 1 used to determine when ‖vₜ‖ ≈ 0.
+  /// Typical values lie withing the 10⁻³ - 10⁻² range. This allows us to
+  /// compute `εᵥ = tolerance⋅vₛ` (in m/s) which defines a "small tangential
+  /// velocity scale". This value is used to compute "soft norms" (see class's
+  /// documentation) and to detect values close to zero, ‖vₜ‖ < εᵥ.
   /// @retval α the limit in [0, 1] so that vₜᵏ⁺¹ = vₜᵏ + αΔvₜᵏ.
   static T CalcAlpha(const Eigen::Ref<const Vector2<T>>& v,
                      const Eigen::Ref<const Vector2<T>>& dv,
                      double cos_theta_max, double v_stiction, double tolerance);
 
-  /// Helper method detect when the line connecting v with v1 = v + dv
+  /// Helper method for detecting when the line connecting v with v1 = v + dv
   /// crosses the stiction region, a circle of radius `v_stiction`.
   /// All other input arguments are quantities already precomputed by
   /// CalcAlpha() and thus we reuse them.
@@ -214,10 +222,10 @@ struct IterationStats {
   /// solve.
   int num_iterations{0};
 
-  /// The residual in the tangential velocities, in m/s. Upon convergence of
-  /// the solver this value should be smaller than Parameters::tolerance times
-  /// Parameters::stiction_tolerance.
-  double vt_residual{0.0};
+  /// Returns the residual in the tangential velocities, in m/s. Upon
+  /// convergence of the solver this value should be smaller than
+  /// Parameters::tolerance times Parameters::stiction_tolerance.
+  double vt_residual() const { return residuals.back();}
 
   /// (Advanced) Residual in the tangential velocities, in m/s. The k-th entry
   /// in this vector corresponds to the residual for the k-th Newton-Raphson
@@ -228,24 +236,18 @@ struct IterationStats {
   /// to the residual upon completion of the solver, i.e. vt_residual.
   std::vector<double> residuals;
 
-  std::vector<double> alphas;
-
   /// (Internal) Used by ImplicitStribeckSolver to reset statistics.
   void Reset() {
     num_iterations = 0;
-    vt_residual = -1.0;  // an invalid value.
     // Clear does not change a std::vector "capacity", and therefore there's
     // no reallocation (or deallocation) that could affect performance.
     residuals.clear();
-    alphas.clear();
   }
 
   /// (Internal) Used by ImplicitStribeckSolver to update statistics.
-  void Update(double iteration_residual, double iteration_alpha) {
+  void Update(double iteration_residual) {
     ++num_iterations;
-    vt_residual = iteration_residual;
     residuals.push_back(iteration_residual);
-    alphas.push_back(iteration_alpha);
   }
 };
 
@@ -270,7 +272,7 @@ struct IterationStats {
 ///   (2)  M(qⁿ)⋅vⁿ⁺¹ =
 ///            M(qⁿ)⋅vⁿ + δt (τⁿ + Jₙᵀ(qⁿ)⋅fₙ(qⁿ, vⁿ) + Jₜᵀ(qⁿ)⋅fₜ(vⁿ⁺¹))
 /// </pre>
-/// Please see details in the @ref time_splitting "Time Stepping Derivation"
+/// Please see details in the @ref time_discretization "Discretization in Time"
 /// section.
 /// The equation for the generalized velocities in Eq. (2) is rewritten as:
 /// <pre>
@@ -284,8 +286,22 @@ struct IterationStats {
 /// using a compliant contact approach, for which normal forces are a function
 /// of the state.
 ///
-/// @anchor time_splitting
-/// <h2>Time Stepping Derivation</h2>
+/// %ImplicitStribeckSolver is designed to solve, implicitly, the system in
+/// Eq. (3) for the next time step vector of generalized velocities `vⁿ⁺¹`.
+/// The solver uses a Newton-Raphson iteration to compute an update `Δvᵏ` at the
+/// k-th Newton-Raphson iteration. Once `Δvᵏ` is computed, the solver limits the
+/// change in the tangential velocities `Δvₜᵏ = Jₜᵀ⋅Δvᵏ` using the approach
+/// described in [Uchida et al., 2015]. This approach limits the maximum angle
+/// change θ between two successive iterations in the tangential velocity. The
+/// maximum angle change between iterations is given by the parameter
+/// Parameters::theta_max.
+///
+/// Uchida, T.K., Sherman, M.A. and Delp, S.L., 2015.
+///   Making a meaningful impact: modelling simultaneous frictional collisions
+///   in spatial multibody systems. Proc. R. Soc. A, 471(2177), p.20140859.
+///
+/// @anchor time_discretization
+/// <h2>Discretization in Time</h2>
 /// In this section we provide a detailed derivation of the first order time
 /// stepping approach in Eq. (2). We start from the continuous Eq. (1): <pre>
 ///   (1)  M(q)⋅v̇ = τ + Jₙᵀ(q)⋅fₙ(q, v) + Jₜᵀ(q)⋅fₜ(v)
@@ -296,7 +312,7 @@ struct IterationStats {
 ///           δt (τⁿ + Jₙᵀ(qⁿ)⋅fₙ(qⁿ, vⁿ⁺¹) + Jₜᵀ(qⁿ)⋅fₜ(vⁿ⁺¹)) + O₁(δt²)
 /// </pre>
 /// where the equality holds strictly since we included the leading terms in
-/// `O(δt²)`. We use `τⁿ = τ(tⁿ, qⁿ, vⁿ)` for brevity in Eq. (4).
+/// `O(δt²)`. We use `τⁿ = τ(tⁿ, qⁿ, vⁿ⁺¹)` for brevity in Eq. (4).
 /// When moving from the continuous Eq. (1) to the discrete version Eq. (4), we
 /// lost the nice property that our compliant normal forces are decoupled from
 /// the friction forces (both depend on the same unknown vⁿ⁺¹ in Eq (4)). The
@@ -398,9 +414,20 @@ class ImplicitStribeckSolver {
   ///      solver. In such a case, SetProblemData() and SolveWithGuess() must be
   ///      invoked again.
   void SetProblemData(
-      EigenPtr<const MatrixX<T>> M, EigenPtr<const MatrixX<T>> Jt,
+      EigenPtr<const MatrixX<T>> M,
+      EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
       EigenPtr<const VectorX<T>> p_star,
       EigenPtr<const VectorX<T>> fn, EigenPtr<const VectorX<T>> mu);
+
+  /// The problem is two-way coupled: normal forces affect friction forces and,
+  /// conversely, friction forces affect normal forces.
+  void SetTwoWayCoupledProblemData(
+      EigenPtr<const MatrixX<T>> M,
+      EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
+      EigenPtr<const VectorX<T>> p_star,
+      EigenPtr<const VectorX<T>> phi0,
+      EigenPtr<const VectorX<T>> stiffness, EigenPtr<const VectorX<T>> damping,
+      EigenPtr<const VectorX<T>> mu);
 
   /// Solves for the generalized velocities satisfying Eq. (3) in this class's
   /// documentation. To retrieve the solution, please refer to
@@ -460,37 +487,68 @@ class ImplicitStribeckSolver {
   /// Sets the parameters to be used by the solver.
   /// See Parameters for details.
   void set_solver_parameters(const Parameters parameters) {
-    using std::cos;
     parameters_ = parameters;
-    cos_theta_max_ = cos(parameters_.theta_max);
   }
 
  private:
+  // Helper class for unit testing.
+  friend class ImplicitStribeckSolverTester;
+
   // Contains all the references that define the problem to be solved.
   // These references must remain valid at least from the time they are set with
   // SetProblemData() and until SolveWithGuess() returns.
   struct ProblemDataAliases {
     // Sets the references to the data defining the problem.
-    void Set(EigenPtr<const MatrixX<T>> M, EigenPtr<const MatrixX<T>> D,
+    void Set(EigenPtr<const MatrixX<T>> M,
+             EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
              EigenPtr<const VectorX<T>> p_star,
              EigenPtr<const VectorX<T>> fn, EigenPtr<const VectorX<T>> mu) {
       M_ptr = M;
-      D_ptr = D;
+      Jn_ptr = Jn;
+      Jt_ptr = Jt;
       p_star_ptr = p_star;
       fn_ptr = fn;
       mu_ptr = mu;
     }
 
+    void Set(EigenPtr<const MatrixX<T>> M,
+             EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
+             EigenPtr<const VectorX<T>> p_star,
+             EigenPtr<const VectorX<T>> phi0,
+             EigenPtr<const VectorX<T>> stiffness,
+             EigenPtr<const VectorX<T>> damping,
+             EigenPtr<const VectorX<T>> mu) {
+      M_ptr = M;
+      Jn_ptr = Jn;
+      Jt_ptr = Jt;
+      p_star_ptr = p_star;
+      phi0_ptr = phi0;
+      stiffness_ptr = stiffness;
+      damping_ptr = damping;
+      mu_ptr = mu;
+    }
+
     // The mass matrix of the system.
     EigenPtr<const MatrixX<T>> M_ptr{nullptr};
+    // The separation velocities Jacobian.
+    EigenPtr<const MatrixX<T>> Jn_ptr{nullptr};
     // The tangential velocities Jacobian.
-    EigenPtr<const MatrixX<T>> D_ptr{nullptr};
+    EigenPtr<const MatrixX<T>> Jt_ptr{nullptr};
     // The generalized momementum vector **before** friction is applied.
     EigenPtr<const VectorX<T>> p_star_ptr{nullptr};
     // At each contact point ic, fn(ic) and mu(ic) store the normal contact
     // force and friction coefficient, respectively. Both have size nc, the
     // number of contact points.
+    // fn_ptr is nullptr for two-way coupled problems.
     EigenPtr<const VectorX<T>> fn_ptr{nullptr};
+    // Penetration distance. Positive when there is penetration and negative
+    // when there is separation, i.e. it is minus the signed distance function.
+    // phi0_ptr is nullptr for one-way coupled problems.
+    EigenPtr<const VectorX<T>> phi0_ptr{nullptr};
+    // Stiffness in the normal direction. nullptr for one-way coupled problems.
+    EigenPtr<const VectorX<T>> stiffness_ptr{nullptr};
+    // Damping in the normal direction. nullptr for one-way coupled problems.
+    EigenPtr<const VectorX<T>> damping_ptr{nullptr};
     EigenPtr<const VectorX<T>> mu_ptr{nullptr};
   };
 
@@ -500,26 +558,30 @@ class ImplicitStribeckSolver {
   // lifetime of the solver. Do not resize any of them!.
   struct FixedSizeWorkspace {
     // Constructs a workspace with size only dependent on nv.
-    explicit FixedSizeWorkspace(int nv) {
+    explicit FixedSizeWorkspace(int nv) : J_lu(nv) {
       v.resize(nv);
-      R.resize(nv);
+      residual.resize(nv);
       Delta_v.resize(nv);
       J.resize(nv, nv);
       J_ldlt = std::make_unique<Eigen::LDLT<MatrixX<T>>>(nv);
       tau_f.resize(nv);
+      tau.resize(nv);
     }
     // Vector of generalized velocities.
     VectorX<T> v;
     // Newton-Raphson residual.
-    VectorX<T> R;
+    VectorX<T> residual;
     // Newton-Raphson Jacobian, i.e. Jᵢⱼ = ∂Rᵢ/∂vⱼ.
     MatrixX<T> J;
     // Solution to Newton-Raphson update, i.e. Δv = -J⁻¹⋅R.
     VectorX<T> Delta_v;
     // Vector of generalized forces due to friction.
     VectorX<T> tau_f;
+    // Vector of generalized forces (normal + friction forces).
+    VectorX<T> tau;
     // LDLT Factorization of the Newton-Raphson Jacobian J.
     std::unique_ptr<Eigen::LDLT<MatrixX<T>>> J_ldlt;
+    Eigen::PartialPivLU<MatrixX<T>> J_lu;
   };
 
   // The variables in this workspace can change size with each invocation of
@@ -531,29 +593,38 @@ class ImplicitStribeckSolver {
   // than the data size.
   class VariableSizeWorkspace {
    public:
-    explicit VariableSizeWorkspace(int initial_nc) {
-      ResizeIfNeeded(initial_nc);
+    explicit VariableSizeWorkspace(int initial_nc, int nv) {
+      ResizeIfNeeded(initial_nc, nv);
     }
 
     // Performs a resize of this workspace's variables only if the new size `nc`
     // is larger than capacity() in order to reuse previously allocated space.
-    void ResizeIfNeeded(int nc) {
+    void ResizeIfNeeded(int nc, int nv) {
       nc_ = nc;
+      nv_ = nv;
       if (capacity() >= nc) return;  // no-op if not needed.
       const int nf = 2 * nc;
       // Only reallocate if sizes from previous allocations are not sufficient.
+      vn_.resize(nc);
       vt_.resize(nf);
+      fn_.resize(nc);
       ft_.resize(nf);
+      phi_.resize(nc);
       Delta_vt_.resize(nf);
       t_hat_.resize(nf);
       v_slip_.resize(nc);
       mus_.resize(nc);
       dft_dv_.resize(nc);
+      Gn_.resize(nc, nv);
     }
 
     // Returns the current (maximum) capacity of the workspace.
     int capacity() const {
       return vt_.size();
+    }
+
+    Eigen::VectorBlock<VectorX<T>> mutable_vn() {
+      return vn_.segment(0, nc_);
     }
 
     /// Returns a constant reference to the vector containing the tangential
@@ -571,6 +642,16 @@ class ImplicitStribeckSolver {
     /// velocity updates Δvₜ for all contact points, of size 2nc.
     Eigen::VectorBlock<VectorX<T>> mutable_delta_vt() {
       return Delta_vt_.segment(0, 2 * nc_);
+    }
+
+    /// Returns a mutable reference to the vector containing the normal
+    /// contact forces fₙ for all contact points, of size nc.
+    Eigen::VectorBlock<VectorX<T>> mutable_fn() {
+      return fn_.segment(0, nc_);
+    }
+
+    Eigen::VectorBlock<VectorX<T>> mutable_phi() {
+      return phi_.segment(0, nc_);
     }
 
     /// Returns a mutable reference to the vector containing the tangential
@@ -598,6 +679,10 @@ class ImplicitStribeckSolver {
       return mus_.segment(0, nc_);
     }
 
+    Eigen::Block<MatrixX<T>> mutable_Gn() {
+      return Gn_.block(0, 0, nc_, nv_);
+    }
+
     /// Returns a mutable reference to the vector storing ∂fₜ/∂vₜ (in ℝ²ˣ²)
     /// for each contact pont, of size nc.
     std::vector<Matrix2<T>>& mutable_dft_dv() {
@@ -606,16 +691,52 @@ class ImplicitStribeckSolver {
 
    private:
     // The number of contact points. This determines sizes in this workspace.
-    int nc_;
+    int nc_, nv_;
     VectorX<T> Delta_vt_;  // Δvₜᵏ = Jₜ⋅Δvᵏ, in ℝ²ⁿᶜ, for the k-th iteration.
+    VectorX<T> vn_;        // vₙᵏ, in ℝⁿᶜ.
     VectorX<T> vt_;        // vₜᵏ, in ℝ²ⁿᶜ.
+    VectorX<T> fn_;        // fₙᵏ, in ℝⁿᶜ.
     VectorX<T> ft_;        // fₜᵏ, in ℝ²ⁿᶜ.
-    VectorX<T> t_hat_;      // Tangential directions, t̂ᵏ. In ℝ²ⁿᶜ.
+    VectorX<T> phi_;       // φⁿ⁺¹ = φⁿ - δt vₙⁿ
+    VectorX<T> t_hat_;     // Tangential directions, t̂ᵏ. In ℝ²ⁿᶜ.
     VectorX<T> v_slip_;    // vₛᵏ = ‖vₜᵏ‖, in ℝⁿᶜ.
     VectorX<T> mus_;       // (modified) Stribeck friction, in ℝⁿᶜ.
     // Vector of size nc storing ∂fₜ/∂vₜ (in ℝ²ˣ²) for each contact point.
     std::vector<Matrix2<T>> dft_dv_;
+    MatrixX<T> Gn_;
   };
+
+  // Returns true if the solver is solving the two-way coupled problem.
+  bool two_way_coupling() const {
+    return problem_data_aliases_.fn_ptr == nullptr;
+  }
+
+  void CalcNormalForces(
+      const Eigen::Ref<const VectorX<T>>& phi,
+      const Eigen::Ref<const VectorX<T>>& vn,
+      const Eigen::Ref<const MatrixX<T>>& Jn,
+      double dt,
+      EigenPtr<VectorX<T>> fn_ptr,
+      EigenPtr<MatrixX<T>> Gn_ptr);
+
+  void CalcFrictionForces(const Eigen::Ref<const VectorX<T>>& vt,
+                          const Eigen::Ref<const VectorX<T>>& fn);
+
+  void CalcFrictionForcesGradient(
+      const Eigen::Ref<const VectorX<T>>& fn,
+      const Eigen::Ref<const VectorX<T>>& mus,
+      const Eigen::Ref<const VectorX<T>>& t_hat,
+      const Eigen::Ref<const VectorX<T>>& v_slip);
+
+  void CalcJacobian(
+      const Eigen::Ref<const MatrixX<T>>& M,
+      const Eigen::Ref<const MatrixX<T>>& Jn,
+      const Eigen::Ref<const MatrixX<T>>& Jt,
+      const Eigen::Ref<const MatrixX<T>>& Gn,
+      const std::vector<Matrix2<T>>& dft_dvt,
+      const Eigen::Ref<const VectorX<T>>& t_hat,
+      const Eigen::Ref<const VectorX<T>>& mus,
+      double dt);
 
   // Dimensionless modified Stribeck function defined as:
   // ms(x) = ⌈ mu * x * (2.0 - x),  x  < 1
@@ -640,7 +761,6 @@ class ImplicitStribeckSolver {
 
   int nv_;  // Number of generalized velocities.
   int nc_;  // Number of contact points.
-  double cos_theta_max_;
 
   // The parameters of the solver controlling the iteration strategy.
   Parameters parameters_;

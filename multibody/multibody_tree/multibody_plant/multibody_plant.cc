@@ -833,10 +833,10 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
 
   std::vector<SpatialForce<T>>& F_BBo_W_array = forces0.mutable_body_forces();
   // Compute contact forces0 on each body by penalty method. No friction, only normal forces0.
-  if (num_collision_geometries() > 0) {
-    CalcAndAddContactForcesByPenaltyMethod(
-        context0, pc0, vc0, &F_BBo_W_array, false, point_pairs0, &fn);
-  }
+  //if (num_collision_geometries() > 0) {
+   // CalcAndAddContactForcesByPenaltyMethod(
+     //   context0, pc0, vc0, &F_BBo_W_array, false, point_pairs0, &fn);
+  //}
 
   // Workspace for inverse dynamics:
   // Bodies' accelerations, ordered by BodyNodeIndex.
@@ -877,8 +877,21 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
                    return coulomb_friction.static_friction();
                  });
 
+  VectorX<T> phi0(num_contacts);
+  std::transform(point_pairs0.begin(), point_pairs0.end(),
+                 phi0.data(),
+                 [](const PenetrationAsPointPair<T>& pair) {
+                   return pair.depth;
+                 });
+
+  VectorX<T> stiffness = VectorX<T>::Constant(
+      num_contacts, penalty_method_contact_parameters_.stiffness);
+  VectorX<T> damping = VectorX<T>::Constant(
+      num_contacts, penalty_method_contact_parameters_.damping);
+
   // Update the solver with the new data defining the problem for this update.
-  implicit_stribeck_solver_->SetProblemData(&M0, &Jn, &D, &p_star, &fn, &mu);
+  implicit_stribeck_solver_->SetTwoWayCoupledProblemData(
+      &M0, &Jn, &D, &p_star, &phi0, &stiffness, &damping, &mu);
 
   // Solver for the generalized contact forces.
   implicit_stribeck::ComputationInfo info = implicit_stribeck_solver_->SolveWithGuess(dt, v0);

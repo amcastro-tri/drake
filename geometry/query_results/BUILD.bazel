@@ -27,4 +27,15 @@ drake_cc_library(
     ],
 )
 
+drake_cc_library(
+    name = "mesh_penetration_as_patch_pair",
+    srcs = [],
+    hdrs = ["mesh_penetration_as_patch_pair.h"],
+    deps= [
+        "//common:essential",
+        "//geometry:geometry_ids",
+    ],
+)
+
+
 add_lint_tests()

@@ -73,11 +73,12 @@ using drake::systems::Sine;
 
 // TODO(amcastro-tri): Consider moving this large set of parameters to a
 // configuration file (e.g. YAML).
-DEFINE_double(target_realtime_rate, 1.0,
+DEFINE_double(target_realtime_rate, 0.1,
               "Desired rate relative to real time.  See documentation for "
               "Simulator::set_target_realtime_rate() for details.");
 
-DEFINE_double(simulation_time, 10.0,
+// we'll just run four time steps.
+DEFINE_double(simulation_time, 0.004,
               "Desired duration of the simulation. [s].");
 
 // Integration parameters:
@@ -96,7 +97,7 @@ DEFINE_bool(time_stepping, true, "If 'true', the plant is modeled as a "
     "If 'false', the plant is modeled as a continuous system.");
 
 // Contact parameters
-DEFINE_double(penetration_allowance, 1.0e-2,
+DEFINE_double(penetration_allowance, 1.0e-4,
               "Penetration allowance. [m]. "
               "See MultibodyPlant::set_penetration_allowance().");
 DEFINE_double(v_stiction_tolerance, 1.0e-3,

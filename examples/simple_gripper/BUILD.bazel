@@ -45,4 +45,35 @@ drake_cc_binary(
     ],
 )
 
+drake_cc_binary(
+    name = "sphere_vs_box",
+    srcs = ["sphere_vs_box.cc"],
+    add_test_rule = 1,
+    test_rule_args = [
+        "--integration_scheme=runge_kutta2",
+        "--simulation_time=0.01",
+        "--target_realtime_rate=0.0",
+    ],
+    test_rule_timeout = "moderate",
+    deps = [
+        "//common:find_resource",
+        "//common:text_logging_gflags",
+        "//geometry:geometry_visualization",
+        "//math:geometric_transform",
+        "//multibody/multibody_tree/multibody_plant",
+        "//multibody/multibody_tree/multibody_plant:contact_results_to_lcm",
+        "//multibody/multibody_tree/parsing:multibody_plant_sdf_parser",
+        "//systems/analysis:implicit_euler_integrator",
+        "//systems/analysis:runge_kutta2_integrator",
+        "//systems/analysis:runge_kutta3_integrator",
+        "//systems/analysis:semi_explicit_euler_integrator",
+        "//systems/analysis:simulator",
+        "//systems/framework:diagram",
+        "//systems/lcm:lcm_pubsub_system",
+        "//systems/primitives:sine",
+        "//systems/rendering:pose_bundle_to_draw_message",
+        "@gflags",
+    ],
+)
+
 add_lint_tests()

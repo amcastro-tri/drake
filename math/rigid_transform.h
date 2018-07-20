@@ -166,6 +166,7 @@ class RigidTransform {
     Isometry3<T> pose;
     pose.linear() = rotation().matrix();
     pose.translation() = translation();
+    pose.makeAffine();
     return pose;
   }
 

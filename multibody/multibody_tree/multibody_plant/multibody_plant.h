@@ -1428,6 +1428,9 @@ class MultibodyPlant : public systems::LeafSystem<T> {
       const std::vector<geometry::PenetrationAsPointPair<T>>&
       point_pairs) const;
 
+  void EstimateTimeSteppingPenaltyParametersForContact(
+      double penetration_allowance);
+
   // Helper method to compute contact forces in the normal direction using a
   // penalty method.
   void CalcAndAddContactForcesByPenaltyMethod(

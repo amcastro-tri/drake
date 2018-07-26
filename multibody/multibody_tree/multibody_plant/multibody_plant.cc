@@ -733,6 +733,78 @@ MatrixX<T> MultibodyPlant<T>::CalcTangentVelocitiesJacobian(
 }
 
 template<typename T>
+void MultibodyPlant<T>::EstimateTimeSteppingPenaltyParametersForContact(
+    double penetration_allowance) {
+  std::vector<std::set<BodyIndex>> welded_bodies_set =
+      model().get_topology().CreateListOfWeldedBodies();
+
+  auto CalcWeldedBodyMass = [&model = this->model()](const std::set<BodyIndex>& welded_body) {
+    double welded_body_mass = 0;
+    for (BodyIndex body_index : welded_body) {
+      welded_body_mass += model.get_body(body_index).get_default_mass();
+    }
+    return welded_body_mass;
+  };
+
+  VectorX<double> welded_bodies_mass(num_bodies());
+  for (const auto& welded_body : welded_bodies_set) {
+    const double mass = CalcWeldedBodyMass(welded_body);
+    for (BodyIndex body_index : welded_body) {
+      welded_bodies_mass[body_index] = mass;
+    }
+  }
+
+  // Default to Earth's gravity for this estimation.
+  const double g = gravity_field_.has_value() ?
+                   gravity_field_.value()->gravity_vector().norm() : 9.81;
+
+  // With the estimated inertia of each body, estimate a per-body contact
+  // penalty.
+  for (BodyIndex body_index(0); body_index < num_bodies(); ++body_index) {
+    const double mass = welded_bodies_mass[body_index];
+
+    // We use the model of a critically damped spring mass oscillator to
+    // estimate these parameters: mẍ+cẋ+kx=mg
+    // Notice however that normal forces are computed according to: fₙ=kx(1+dẋ)
+    // which translate to a second order oscillator of the form:
+    // mẍ+(kdx)ẋ+kx=mg
+    // Therefore, for this more complex, non-linear, oscillator, we estimate the
+    // damping constant d using a time scale related to the free oscillation
+    // (omega below) and the requested penetration allowance as a length scale.
+
+    // We first estimate the stiffness based on static equilibrium.
+    const double stiffness = mass * g / penetration_allowance;
+    // Frequency associated with the stiffness above.
+    const double omega = sqrt(stiffness / mass);
+
+    // Estimated contact time scale. The relative velocity of objects coming
+    // into contact goes to zero within this time scale.
+    const double time_scale = 1.0 / omega;
+
+    // Damping ratio for a critically damped model. We could allow users to set
+    // this. Right now, critically damp the normal direction.
+    // This corresponds to a non-penetraion constraint in the limit for
+    // contact_penetration_allowance_ goint to zero (no bounce off).
+    const double damping_ratio = 1.0;
+    // We form the damping (with units of 1/velocity) using dimensional
+    // analysis. Thus we use 1/omega for the time scale and
+    // penetration_allowance for the length scale. We then scale it by the
+    // damping ratio.
+    const double damping = damping_ratio * time_scale / penetration_allowance;
+
+    // Final parameters used in the penalty method:
+    penalty_method_contact_parameters_.stiffness = stiffness;
+    penalty_method_contact_parameters_.damping = damping;
+    // The time scale can be requested to hint the integrator's time step.
+    penalty_method_contact_parameters_.time_scale = time_scale;
+
+
+  }
+
+}
+
+
+template<typename T>
 void MultibodyPlant<T>::set_penetration_allowance(
     double penetration_allowance) {
   DRAKE_MBP_THROW_IF_NOT_FINALIZED();

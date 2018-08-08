@@ -101,6 +101,10 @@ DEFINE_double(ring_static_friction, 1.0, "The coefficient of static friction "
 DEFINE_double(ring_dynamic_friction, 0.5, "The coefficient of dynamic friction "
               "for the ring pad.");
 
+DEFINE_double(pad_spheres_radius, 6e-3, "The force to be applied by the gripper. [N]. "
+    "A value of 0 indicates a fixed grip width as set with option "
+    "grip_width.");
+
 // Parameters for rotating the mug.
 DEFINE_double(rx, 0, "The x-rotation of the mug around its origin - the center "
               "of its bottom. [degrees]. Extrinsic rotation order: X, Y, Z");
@@ -108,6 +112,13 @@ DEFINE_double(ry, 0, "The y-rotation of the mug around its origin - the center "
               "of its bottom. [degrees]. Extrinsic rotation order: X, Y, Z");
 DEFINE_double(rz, 0, "The z-rotation of the mug around its origin - the center "
               "of its bottom. [degrees]. Extrinsic rotation order: X, Y, Z");
+
+DEFINE_double(x0, 0, "The x-rotation of the mug around its origin - the center "
+    "of its bottom. [degrees]. Extrinsic rotation order: X, Y, Z");
+DEFINE_double(y0, 0, "The y-rotation of the mug around its origin - the center "
+    "of its bottom. [degrees]. Extrinsic rotation order: X, Y, Z");
+DEFINE_double(z0, 0, "The z-rotation of the mug around its origin - the center "
+    "of its bottom. [degrees]. Extrinsic rotation order: X, Y, Z");
 
 // Gripping force.
 DEFINE_double(gripper_force, 10, "The force to be applied by the gripper. [N]. "
@@ -163,11 +174,11 @@ void AddGripperPads(MultibodyPlant<double>* plant,
         FLAGS_ring_static_friction, FLAGS_ring_static_friction);
 
     plant->RegisterCollisionGeometry(
-        finger, X_FS, Sphere(kPadMinorRadius), friction, scene_graph);
+        finger, X_FS, Sphere(FLAGS_pad_spheres_radius), friction, scene_graph);
 
     const geometry::VisualMaterial red(Vector4<double>(1.0, 0.0, 0.0, 1.0));
     plant->RegisterVisualGeometry(
-        finger, X_FS, Sphere(kPadMinorRadius), red, scene_graph);
+        finger, X_FS, Sphere(FLAGS_pad_spheres_radius), red, scene_graph);
   }
 }
 
@@ -366,7 +377,7 @@ int do_main() {
                FLAGS_ry * M_PI / 180,
                (FLAGS_rz * M_PI / 180) + M_PI);
   X_WM.linear() = RotationMatrix<double>(RollPitchYaw<double>(rpy)).matrix();
-  X_WM.translation() = Vector3d(0.0, mug_y_W, 0.0);
+  X_WM.translation() = Vector3d(FLAGS_x0, mug_y_W + FLAGS_y0, FLAGS_z0);
   plant.model().SetFreeBodyPoseOrThrow(mug, X_WM, &plant_context);
 
   // Set the initial height of the gripper and its initial velocity so that with

@@ -688,7 +688,8 @@ ComputationInfo ImplicitStribeckSolver<T>::SolveWithGuess(
 
     // After the previous iteration, we allow updating ft above to have its
     // latest value before leaving.
-    if (std::max(vt_error, vn_error) < vt_tolerance) {
+    (void) vn_error;
+    if (vt_error < vt_tolerance) {
       // Update generalized forces and return.
       tau_f = Jt.transpose() * ft;
       tau = tau_f + Jn.transpose() * fn;

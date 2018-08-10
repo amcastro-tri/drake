@@ -4,7 +4,7 @@
 -->
 <sdf version='1.6'>
   <model name='allegro_hand_left'>
-    <joint name='weld_base' type='fixed'>
+    <joint name='weld_base' type='fixed' drake_ignore='true'>
       <parent>world</parent>
       <child>hand_root</child>
       <pose>0 0 0 0 0 0</pose>

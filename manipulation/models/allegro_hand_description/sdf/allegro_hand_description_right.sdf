@@ -4,11 +4,6 @@
 -->
 <sdf version='1.6'>
   <model name='allegro_hand_right'>
-    <joint name='weld_base' type='fixed'>
-      <parent>world</parent>
-      <child>hand_root</child>
-      <pose>0 0 0 0 0 0</pose>
-    </joint>
     <link name='hand_root'>
       <pose frame=''>0 0 0 0 -0 0</pose>
       <inertial>
@@ -41,6 +36,13 @@
         </geometry>
       </visual>
     </link>
+
+    <joint name='weld_base' type='fixed' drake_ignore='true'>
+      <parent>world</parent>
+      <child>hand_root</child>
+      <pose>0 0 0 0 0 0</pose>
+    </joint>
+
     <link name='link_0'>
       <pose frame=''>0 0.0435 0.093458 -0.087267 0 0</pose>
       <inertial>

@@ -4,6 +4,11 @@
 -->
 <sdf version='1.6'>
   <model name='allegro_hand_right'>
+    <joint name='weld_base' type='fixed'>
+      <parent>world</parent>
+      <child>hand_root</child>
+      <pose>0 0 0 0 0 0</pose>
+    </joint>
     <link name='hand_root'>
       <pose frame=''>0 0 0 0 -0 0</pose>
       <inertial>
@@ -36,15 +41,6 @@
         </geometry>
       </visual>
     </link>
-
-    <joint name='weld_base' type='fixed' drake_ignore='true'>
-      <parent>world</parent>
-      <child>hand_root</child>
-      <pose>0 0 0 0 0 0</pose>
-    </joint>
-
-
-
     <link name='link_0'>
       <pose frame=''>0 0.0435 0.093458 -0.087267 0 0</pose>
       <inertial>
@@ -104,10 +100,10 @@
         <mass>0.065</mass>
         <inertia>
           <ixx>7.95654e-05</ixx>
-          <ixy>1.7199e-050</ixy>
-          <ixz>8.75875e-060</ixz>
+          <ixy>1.7199e-05</ixy>
+          <ixz>8.75875e-06</ixz>
           <iyy>2.47089e-05</iyy>
-          <iyz>2.41313e-050</iyz>
+          <iyz>2.41313e-05</iyz>
           <izz>7.95654e-05</izz>
         </inertia>
       </inertial>
@@ -157,10 +153,10 @@
         <mass>0.0355</mass>
         <inertia>
           <ixx>2.63979e-05</ixx>
-          <ixy>6.67968e-060</ixy>
-          <ixz>4.78363e-060</ixz>
+          <ixy>6.67968e-06</ixy>
+          <ixz>4.78363e-06</ixz>
           <iyy>1.34949e-05</iyy>
-          <iyz>9.372e-060</iyz>
+          <iyz>9.372e-06.</iyz>
           <izz>2.63979e-05</izz>
         </inertia>
       </inertial>
@@ -210,10 +206,10 @@
         <mass>0.0264</mass>
         <inertia>
           <ixx>1.00244e-05</ixx>
-          <ixy>1.25597e-060</ixy>
-          <ixz>1.2936e-060</ixz>
+          <ixy>1.25597e-06</ixy>
+          <ixz>1.2936e-06</ixz>
           <iyy>8.97242e-06</iyy>
-          <iyz>1.7622e-060</iyz>
+          <iyz>1.7622e-06</iyz>
           <izz>5.66925e-06</izz>
         </inertia>
       </inertial>
@@ -275,7 +271,6 @@
       </axis>
     </joint>
 
-
     <link name='link_12'>
       <pose frame=''>-0.0182 0.019333 0.049013 3.14159 -1.48353 1.5708</pose>
       <inertial>
@@ -283,10 +278,10 @@
         <mass>0.0176</mass>
         <inertia>
           <ixx>1.89273e-05</ixx>
-          <ixy>7.16716e-060</ixy>
-          <ixz>5.35568e-060</ixz>
+          <ixy>7.16716e-06</ixy>
+          <ixz>5.35568e-06</ixz>
           <iyy>1.43008e-05</iyy>
-          <iyz>6.8068e-060</iyz>
+          <iyz>6.8068e-06</iyz>
           <izz>1.89273e-05</izz>
         </inertia>
       </inertial>
@@ -336,10 +331,10 @@
         <mass>0.0119</mass>
         <inertia>
           <ixx>4.24251e-06</ixx>
-          <ixy>1.03209e-060</ixy>
-          <ixz>1.60353e-060</ixz>
+          <ixy>1.03209e-06</ixy>
+          <ixz>1.60353e-06</ixz>
           <iyy>4.52363e-06</iyy>
-          <iyz>1.44808e-060</iyz>
+          <iyz>1.44808e-06</iyz>
           <izz>4.24251e-06</izz>
         </inertia>
       </inertial>
@@ -388,10 +383,10 @@
         <mass>0.038</mass>
         <inertia>
           <ixx>4.3044e-05</ixx>
-          <ixy>9.57068e-060</ixy>
-          <ixz>5.1205e-060</ixz>
+          <ixy>9.57068e-06</ixy>
+          <ixz>5.1205e-06</ixz>
           <iyy>1.44452e-05</iyy>
-          <iyz>1.34282e-050</iyz>
+          <iyz>1.34282e-05</iyz>
           <izz>4.3044e-05</izz>
         </inertia>
       </inertial>
@@ -506,7 +501,6 @@
       </axis>
     </joint>
 
-<!--
     <link name='link_4'>
       <pose frame=''>0 0 0.0957 0 -0 0</pose>
       <inertial>
@@ -566,10 +560,10 @@
         <mass>0.065</mass>
         <inertia>
           <ixx>7.95654e-05</ixx>
-          <ixy>1.7199e-050</ixy>
-          <ixz>8.75875e-060</ixz>
+          <ixy>1.7199e-05</ixy>
+          <ixz>8.75875e-06</ixz>
           <iyy>2.47089e-05</iyy>
-          <iyz>2.41313e-050</iyz>
+          <iyz>2.41313e-05</iyz>
           <izz>7.95654e-05</izz>
         </inertia>
       </inertial>
@@ -621,10 +615,10 @@
         <mass>0.0355</mass>
         <inertia>
           <ixx>2.63979e-05</ixx>
-          <ixy>6.67968e-060</ixy>
-          <ixz>4.78363e-060</ixz>
+          <ixy>6.67968e-06</ixy>
+          <ixz>4.78363e-06</ixz>
           <iyy>1.34949e-05</iyy>
-          <iyz>9.372e-060</iyz>
+          <iyz>9.372e-06</iyz>
           <izz>2.63979e-05</izz>
         </inertia>
       </inertial>
@@ -796,10 +790,10 @@
         <mass>0.065</mass>
         <inertia>
           <ixx>7.95654e-05</ixx>
-          <ixy>1.7199e-050</ixy>
-          <ixz>8.75875e-060</ixz>
+          <ixy>1.7199e-05</ixy>
+          <ixz>8.75875e-06</ixz>
           <iyy>2.47089e-05</iyy>
-          <iyz>2.41313e-050</iyz>
+          <iyz>2.41313e-05</iyz>
           <izz>7.95654e-05</izz>
         </inertia>
       </inertial>
@@ -849,10 +843,10 @@
         <mass>0.0355</mass>
         <inertia>
           <ixx>2.63979e-05</ixx>
-          <ixy>6.67968e-060</ixy>
-          <ixz>4.78363e-060</ixz>
+          <ixy>6.67968e-06</ixy>
+          <ixz>4.78363e-06</ixz>
           <iyy>1.34949e-05</iyy>
-          <iyz>9.372e-060</iyz>
+          <iyz>9.372e-06</iyz>
           <izz>2.63979e-05</izz>
         </inertia>
       </inertial>      
@@ -963,8 +957,5 @@
         <use_parent_model_frame>1</use_parent_model_frame>
       </axis>
     </joint>
-
--->
-
   </model>
 </sdf>

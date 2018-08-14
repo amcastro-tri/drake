@@ -23,7 +23,6 @@
 #include "drake/systems/analysis/runge_kutta2_integrator.h"
 #include "drake/systems/analysis/runge_kutta3_integrator.h"
 #include "drake/systems/analysis/semi_explicit_euler_integrator.h"
-#include "drake/systems/controllers/inverse_dynamics_controller.h"
 #include "drake/systems/framework/diagram.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/lcm/lcm_publisher_system.h"
@@ -31,9 +30,6 @@
 #include "drake/systems/primitives/constant_vector_source.h"
 #include "drake/systems/primitives/signal_logger.h"
 #include "drake/systems/rendering/pose_bundle_to_draw_message.h"
-
-#include <iostream>
-#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
 
 namespace drake {
 
@@ -73,7 +69,7 @@ DEFINE_bool(add_gravity, false, "Whether adding gravity in the simulation");
 
 DEFINE_double(accuracy, 1.0e-2, "Sets the simulation accuracy for variable step"
               "size integrators with error control.");
-DEFINE_double(target_realtime_rate, 2e-4,
+DEFINE_double(target_realtime_rate, 1,
               "Desired rate relative to real time.  See documentation for "
               "Simulator::set_target_realtime_rate() for details.");
 
@@ -99,19 +95,6 @@ int DoMain() {
   if (FLAGS_add_gravity)  plant.AddForceElement<
       multibody::UniformGravityFieldElement>(-9.81 * Eigen::Vector3d::UnitZ());
 
-  // Filter out collisions between fingers and the palm.
-#if 0
-  const auto& hand_root = plant.model().GetRigidBodyByName("hand_root");
-  const auto& link_12 = plant.model().GetRigidBodyByName("link_12");
-  const auto& link_13 = plant.model().GetRigidBodyByName("link_13");
-  (void) hand_root;
-  (void) link_12;
-  (void) link_13;
-#endif
-  // std::vector<const RigidBody<T>*> bodies{&body1, &body2, &body3};
-  /// geometry::GeometrySet set = plant.CollectRegisteredGeometries(bodies);
-  /// scene_graph.ExcludeCollisionsWithin(set);
-
   plant.Finalize(&scene_graph);
   plant.set_penetration_allowance(FLAGS_penetration_allowance);
   plant.set_stiction_tolerance(FLAGS_v_stiction_tolerance);
@@ -134,88 +117,21 @@ int DoMain() {
 
   std::cout<< "Model added \n";
 
-
-  // Add the position controller
-  auto tree_rigidbody = std::make_unique<RigidBodyTree<double>>();
-  parsers::sdf::AddModelInstancesFromSdfFile(FindResourceOrThrow(HandSdfPath),
-       multibody::joints::kFixed, nullptr, tree_rigidbody.get());
-
-  std::cout<< "rigid tree added \n";
-
-  VectorX<double> kp, kd, ki;
-  SetPositionControlledIiwaGains(&kp, &ki, &kd);
-
-  // auto controller = builder.AddSystem<
-  //     systems::controllers::InverseDynamicsController>(
-  //     std::move(tree_rigidbody), kp, ki, kd,
-  //     false /* no feedforward acceleration */);
-#if 0
-  auto controller = builder.AddSystem<
-      systems::controllers::PidController>(
-      kp, ki, kd);
-#endif
-
-  std::cout<< "controller built\n";
-
-  //builder.Connect(plant.get_continuous_state_output_port(),
-    //              controller->get_input_port_estimated_state());
-
-  //builder.Connect(controller->get_output_port_control(),
-    //              plant.get_actuation_input_port());
-
-  std::cout<< "controller connected \n";
-
-  // Wire up trajectory
-  Eigen::VectorXd const_pos = Eigen::VectorXd::Zero(kAllegroNumJoints * 2) ;
-  Eigen::VectorXd q_d = Eigen::VectorXd::Zero(kAllegroNumJoints);
-  //const_pos(1)=0.5;
-  //const_pos(2)=0.4;
-
-  //const_pos(3)=0.1;
-  //const_pos(3)=0.1;
-  Vector1<double> value;
-  value << 0.002;
-  const auto& joint1_act = plant.GetJointActuatorByName("joint_3");
-  joint1_act.set_actuation_vector(value, &q_d);
-
-  const_pos << q_d, Eigen::VectorXd::Zero(kAllegroNumJoints);
-
-  PRINT_VAR(q_d.transpose());
-
+  Eigen::VectorXd const_pos = Eigen::VectorXd::Zero(kAllegroNumJoints) ;
+  // const_pos(1)=0.5;
+  // const_pos(2)=0.4;
   systems::ConstantVectorSource<double>* const_src =
-      builder.AddSystem<systems::ConstantVectorSource<double>>(q_d);
+      builder.AddSystem<systems::ConstantVectorSource<double>>(const_pos);
   const_src->set_name("constant_source");
-  //builder.Connect(const_src->get_output_port(),
-    //              controller->get_input_port_desired_state());
-
   builder.Connect(const_src->get_output_port(),
                   plant.get_actuation_input_port());
 
   std::cout<<"trajectory added \n";
 
 
-// -------------------------
-  // Publish contact results for visualization.
-  const auto& contact_results_to_lcm =
-      *builder.AddSystem<multibody::multibody_plant::ContactResultsToLcmSystem>
-      (plant);
-  const auto& contact_results_publisher = *builder.AddSystem(
-      systems::lcm::LcmPublisherSystem::Make<lcmt_contact_results_for_viz>
-      ("CONTACT_RESULTS", &lcm));
-  // Contact results to lcm msg.
-  builder.Connect(plant.get_contact_results_output_port(),
-                  contact_results_to_lcm.get_input_port(0));
-  builder.Connect(contact_results_to_lcm.get_output_port(0),
-                  contact_results_publisher.get_input_port());
-
-
   //set up signal loggers 
-  auto pid_state = builder.AddSystem<drake::systems::SignalLogger<double>>(
-                          kAllegroNumJoints, 5e5);
   auto plant_state = builder.AddSystem<drake::systems::SignalLogger<double>>(
                           kAllegroNumJoints * 2, 10e5);
-  builder.Connect(controller->get_output_port_control(), 
-                  pid_state->get_input_port());
   builder.Connect(plant.get_continuous_state_output_port(), 
                   plant_state->get_input_port());
   // pid_state ->set_publish_period(1e-2);
@@ -256,13 +172,12 @@ int DoMain() {
   simulator.Initialize();
   simulator.StepTo(FLAGS_simulation_time);
 
-  for(long int i=0; i<= pid_state->data().cols(); i+=10)
-    std::cout<<pid_state->data().col(i).transpose()<<"      "<<
-      plant_state->data().col(i).transpose()<<std::endl;
+  for(long int i=0; i<= plant_state->data().cols(); i+=10)
+    std::cout<<plant_state->data().col(i).transpose()<<std::endl;
 
   // std::cout<<pid_state->data()<<std::endl;
-  std::cout<<pid_state->data().cols()<<std::endl;
-    std::cout<<pid_state->data().rows()<<std::endl;
+  // std::cout<<pid_state->data().cols()<<std::endl;
+    // std::cout<<pid_state->data().rows()<<std::endl;
 
   return 1;
 }  // int main

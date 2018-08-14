@@ -64,6 +64,31 @@ drake_cc_binary(
         "//systems/analysis",
         "//systems/controllers:inverse_dynamics_controller",
         "//systems/primitives:constant_vector_source",
+        "//systems/primitives:signal_logger",
+        "//systems/rendering:pose_bundle_to_draw_message",
+        "//systems/lcm:lcm_pubsub_system",
+        "@gflags",
+    ],
+)
+
+drake_cc_binary(
+    name = "test_allegro_actuation",
+    srcs = ["test_allegro_actuation.cc"],
+    data = [
+        "//manipulation/models/allegro_hand_description:models",
+    ],
+    deps = [
+        ":allegro_common",
+        "//common:find_resource",
+        "//common:text_logging_gflags",
+        "//lcm",
+        "//geometry:geometry_visualization",
+        "//multibody/multibody_tree/multibody_plant",
+        "//multibody/multibody_tree/multibody_plant:contact_results_to_lcm",
+        "//multibody/multibody_tree/parsing:multibody_plant_sdf_parser",
+        "//systems/analysis",
+        "//systems/primitives:constant_vector_source",
+        "//systems/primitives:signal_logger",
         "//systems/rendering:pose_bundle_to_draw_message",
         "//systems/lcm:lcm_pubsub_system",
         "@gflags",

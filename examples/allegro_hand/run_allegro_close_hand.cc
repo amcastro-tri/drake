@@ -31,6 +31,9 @@
 #include "drake/systems/primitives/constant_vector_source.h"
 #include "drake/systems/rendering/pose_bundle_to_draw_message.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 namespace drake {
 
 
@@ -95,6 +98,19 @@ int DoMain() {
   if (FLAGS_add_gravity)  plant.AddForceElement<
       multibody::UniformGravityFieldElement>(-9.81 * Eigen::Vector3d::UnitZ());
 
+  // Filter out collisions between fingers and the palm.
+#if 0
+  const auto& hand_root = plant.model().GetRigidBodyByName("hand_root");
+  const auto& link_12 = plant.model().GetRigidBodyByName("link_12");
+  const auto& link_13 = plant.model().GetRigidBodyByName("link_13");
+  (void) hand_root;
+  (void) link_12;
+  (void) link_13;
+#endif
+  // std::vector<const RigidBody<T>*> bodies{&body1, &body2, &body3};
+  /// geometry::GeometrySet set = plant.CollectRegisteredGeometries(bodies);
+  /// scene_graph.ExcludeCollisionsWithin(set);
+
   plant.Finalize(&scene_graph);
   plant.set_penetration_allowance(FLAGS_penetration_allowance);
   plant.set_stiction_tolerance(FLAGS_v_stiction_tolerance);
@@ -131,28 +147,47 @@ int DoMain() {
   //     systems::controllers::InverseDynamicsController>(
   //     std::move(tree_rigidbody), kp, ki, kd,
   //     false /* no feedforward acceleration */);
+#if 0
   auto controller = builder.AddSystem<
       systems::controllers::PidController>(
       kp, ki, kd);
+#endif
 
   std::cout<< "controller built\n";
 
-  builder.Connect(plant.get_continuous_state_output_port(),
-                  controller->get_input_port_estimated_state());
-  builder.Connect(controller->get_output_port_control(),
-                  plant.get_actuation_input_port());
+  //builder.Connect(plant.get_continuous_state_output_port(),
+    //              controller->get_input_port_estimated_state());
+
+  //builder.Connect(controller->get_output_port_control(),
+    //              plant.get_actuation_input_port());
 
   std::cout<< "controller connected \n";
 
   // Wire up trajectory
   Eigen::VectorXd const_pos = Eigen::VectorXd::Zero(kAllegroNumJoints * 2) ;
-  const_pos(1)=0.5;
-  const_pos(2)=0.4;
+  Eigen::VectorXd q_d = Eigen::VectorXd::Zero(kAllegroNumJoints);
+  //const_pos(1)=0.5;
+  //const_pos(2)=0.4;
+
+  //const_pos(3)=0.1;
+  //const_pos(3)=0.1;
+  Vector1<double> value;
+  value << 0.002;
+  const auto& joint1_act = plant.GetJointActuatorByName("joint_3");
+  joint1_act.set_actuation_vector(value, &q_d);
+
+  const_pos << q_d, Eigen::VectorXd::Zero(kAllegroNumJoints);
+
+  PRINT_VAR(q_d.transpose());
+
   systems::ConstantVectorSource<double>* const_src =
-      builder.AddSystem<systems::ConstantVectorSource<double>>(const_pos);
+      builder.AddSystem<systems::ConstantVectorSource<double>>(q_d);
   const_src->set_name("constant_source");
+  //builder.Connect(const_src->get_output_port(),
+    //              controller->get_input_port_desired_state());
+
   builder.Connect(const_src->get_output_port(),
-                  controller->get_input_port_desired_state());
+                  plant.get_actuation_input_port());
 
   std::cout<<"trajectory added \n";
 

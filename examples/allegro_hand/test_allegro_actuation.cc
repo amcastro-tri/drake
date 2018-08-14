@@ -23,7 +23,6 @@
 #include "drake/systems/analysis/runge_kutta2_integrator.h"
 #include "drake/systems/analysis/runge_kutta3_integrator.h"
 #include "drake/systems/analysis/semi_explicit_euler_integrator.h"
-#include "drake/systems/controllers/inverse_dynamics_controller.h"
 #include "drake/systems/framework/diagram.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/lcm/lcm_publisher_system.h"
@@ -70,7 +69,7 @@ DEFINE_bool(add_gravity, false, "Whether adding gravity in the simulation");
 
 DEFINE_double(accuracy, 1.0e-2, "Sets the simulation accuracy for variable step"
               "size integrators with error control.");
-DEFINE_double(target_realtime_rate, 2e-4,
+DEFINE_double(target_realtime_rate, 1,
               "Desired rate relative to real time.  See documentation for "
               "Simulator::set_target_realtime_rate() for details.");
 
@@ -118,69 +117,21 @@ int DoMain() {
 
   std::cout<< "Model added \n";
 
-
-  // Add the position controller
-  auto tree_rigidbody = std::make_unique<RigidBodyTree<double>>();
-  parsers::sdf::AddModelInstancesFromSdfFile(FindResourceOrThrow(HandSdfPath),
-       multibody::joints::kFixed, nullptr, tree_rigidbody.get());
-
-  std::cout<< "rigid tree added \n";
-
-  VectorX<double> kp, kd, ki;
-  SetPositionControlledIiwaGains(&kp, &ki, &kd);
-
-  // auto controller = builder.AddSystem<
-  //     systems::controllers::InverseDynamicsController>(
-  //     std::move(tree_rigidbody), kp, ki, kd,
-  //     false /* no feedforward acceleration */);
-  auto controller = builder.AddSystem<
-      systems::controllers::PidController>(
-      kp, ki, kd);
-
-  std::cout<< "controller built\n";
-
-  builder.Connect(plant.get_continuous_state_output_port(),
-                  controller->get_input_port_estimated_state());
-  builder.Connect(controller->get_output_port_control(),
-                  plant.get_actuation_input_port());
-
-  std::cout<< "controller connected \n";
-
-  // Wire up trajectory
-  Eigen::VectorXd const_pos = Eigen::VectorXd::Zero(kAllegroNumJoints * 2) ;
-  const_pos(1)=0.5;
-  const_pos(2)=0.4;
+  Eigen::VectorXd const_pos = Eigen::VectorXd::Zero(kAllegroNumJoints) ;
+  // const_pos(1)=0.5;
+  // const_pos(2)=0.4;
   systems::ConstantVectorSource<double>* const_src =
       builder.AddSystem<systems::ConstantVectorSource<double>>(const_pos);
   const_src->set_name("constant_source");
   builder.Connect(const_src->get_output_port(),
-                  controller->get_input_port_desired_state());
+                  plant.get_actuation_input_port());
 
   std::cout<<"trajectory added \n";
 
 
-// -------------------------
-  // Publish contact results for visualization.
-  const auto& contact_results_to_lcm =
-      *builder.AddSystem<multibody::multibody_plant::ContactResultsToLcmSystem>
-      (plant);
-  const auto& contact_results_publisher = *builder.AddSystem(
-      systems::lcm::LcmPublisherSystem::Make<lcmt_contact_results_for_viz>
-      ("CONTACT_RESULTS", &lcm));
-  // Contact results to lcm msg.
-  builder.Connect(plant.get_contact_results_output_port(),
-                  contact_results_to_lcm.get_input_port(0));
-  builder.Connect(contact_results_to_lcm.get_output_port(0),
-                  contact_results_publisher.get_input_port());
-
-
   //set up signal loggers 
-  auto pid_state = builder.AddSystem<drake::systems::SignalLogger<double>>(
-                          kAllegroNumJoints, 5e5);
   auto plant_state = builder.AddSystem<drake::systems::SignalLogger<double>>(
                           kAllegroNumJoints * 2, 10e5);
-  builder.Connect(controller->get_output_port_control(), 
-                  pid_state->get_input_port());
   builder.Connect(plant.get_continuous_state_output_port(), 
                   plant_state->get_input_port());
   // pid_state ->set_publish_period(1e-2);
@@ -221,13 +172,12 @@ int DoMain() {
   simulator.Initialize();
   simulator.StepTo(FLAGS_simulation_time);
 
-  for(long int i=0; i<= pid_state->data().cols(); i+=10)
-    std::cout<<pid_state->data().col(i).transpose()<<"      "<<
-      plant_state->data().col(i).transpose()<<std::endl;
+  for(long int i=0; i<= plant_state->data().cols(); i+=10)
+    std::cout<<plant_state->data().col(i).transpose()<<std::endl;
 
   // std::cout<<pid_state->data()<<std::endl;
-  std::cout<<pid_state->data().cols()<<std::endl;
-    std::cout<<pid_state->data().rows()<<std::endl;
+  // std::cout<<pid_state->data().cols()<<std::endl;
+    // std::cout<<pid_state->data().rows()<<std::endl;
 
   return 1;
 }  // int main

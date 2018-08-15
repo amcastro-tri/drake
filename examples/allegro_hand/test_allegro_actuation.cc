@@ -31,6 +31,10 @@
 #include "drake/systems/primitives/signal_logger.h"
 #include "drake/systems/rendering/pose_bundle_to_draw_message.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+
 namespace drake {
 
 
@@ -43,6 +47,10 @@ using drake::multibody::multibody_plant::MultibodyPlant;
 DEFINE_double(constant_load, 0, "the constant load on all the joint. "
               "Suggested load is in the order of 0.01. When equals to "
               "0 (default), the program simulate the passive demo");
+
+DEFINE_int32(joint_user_index, 3, "Actuate this joint for testing");
+
+DEFINE_double(joint_torque, 0.05, "Torque applid to finger joint.");
 
 DEFINE_double(simulation_time, 5, "Number of seconds to simulate");
 
@@ -99,6 +107,95 @@ int DoMain() {
   plant.set_penetration_allowance(FLAGS_penetration_allowance);
   plant.set_stiction_tolerance(FLAGS_v_stiction_tolerance);
 
+  // Actuation matrix.
+  MatrixX<double> B = plant.model().actuation_map_matrix();
+  PRINT_VARn(B);
+
+  // Create a map from fingers dofs in a "desired order" into the order these
+  // same dofs are arranged in the state vector.
+  // This is the projection matrix Px for the PID controller.
+  // This code was only written for the right hand now. Verify this.
+  DRAKE_DEMAND(FLAGS_test_hand == "right");
+  // This map defines in what order we want the PID controller to "see" the
+  // states.
+  std::vector<std::string> joint_names_map;
+
+  // This maps from our desired joint order into a joint index in the MBP.
+  std::vector<multibody::JointIndex> joint_index_map;
+
+  // This maps from a JointIndex in the MBP into our "user-defined" ordering.
+  std::vector<int> joint_user_index_map;
+
+  // Index
+  joint_names_map.push_back("joint_0");
+  joint_names_map.push_back("joint_1");
+  joint_names_map.push_back("joint_2");
+  joint_names_map.push_back("joint_3");
+
+  // Thumb
+  joint_names_map.push_back("joint_12");
+  joint_names_map.push_back("joint_13");
+  joint_names_map.push_back("joint_14");
+  joint_names_map.push_back("joint_15");
+
+  // Projection matrix. We include "all" dofs in the hand.
+  // x_tilde = Px * x;
+  // where:
+  //  x is the state in the MBP.
+  //  x_tilde is the state in the order we want it for our better understanding.
+  MatrixX<double> Px(
+      plant.num_multibody_states(), plant.num_multibody_states());
+  Px.setZero();
+  const int nq = plant.num_positions();
+  int joint_user_index = 0;
+  joint_user_index_map.resize(plant.num_joints());
+  for (const auto& joint_name : joint_names_map) {
+    const auto& joint = plant.GetJointByName(joint_name);
+
+    // joint user index to JointIndx map.
+    joint_index_map.push_back(joint.index());
+
+    // JointIndex to user index map.
+    joint_user_index_map[joint.index()] = joint_user_index;
+
+    const int q_index = joint.position_start();
+    const int v_index = joint.velocity_start();
+    Px(joint_user_index, q_index) = 1.0;
+    Px(nq + joint_user_index, nq + v_index) = 1.0;
+    ++joint_user_index;
+  }
+
+  PRINT_VARn(Px);
+  // Verify the mapping (or "projection") matrix Px only has a single 1.0 entry
+  // per row/column.
+  for (int i=0;i<plant.num_multibody_states();++i) {
+    DRAKE_DEMAND(Px.row(i).sum() == 1.0);
+    DRAKE_DEMAND(Px.col(i).sum() == 1.0);
+  }
+
+  // Build the projection matrix Py for the PID controller. Maps u_c from
+  // the controller into u for the MBP, that is, u = Py * u_c where:
+  //  u_c is the output from the PID controller in our prefered order.
+  //  u is the output as require by the MBP.
+  MatrixX<double> Py(
+      plant.num_actuated_dofs(), plant.num_velocities());
+  Py.setZero();
+  for (multibody::JointActuatorIndex actuator_index(0);
+       actuator_index < plant.num_actuators(); ++actuator_index) {
+    const auto& actuator = plant.model().get_joint_actuator(actuator_index);
+    const auto& joint = actuator.joint();
+    Py(actuator_index, joint_user_index_map[joint.index()]) = 1.0;
+  }
+
+  PRINT_VARn(Py);
+  // Verify the mapping (or "projection") matrix Py only has a single 1.0 entry
+  // per row/column.
+  for (int i=0;i<plant.num_multibody_states();++i) {
+    DRAKE_DEMAND(Px.row(i).sum() == 1.0);
+    DRAKE_DEMAND(Px.col(i).sum() == 1.0);
+  }
+
+
   // visualization of the hand model
   const systems::rendering::PoseBundleToDrawMessage& converter =
       *builder.template AddSystem<systems::rendering::PoseBundleToDrawMessage>();
@@ -117,11 +214,12 @@ int DoMain() {
 
   std::cout<< "Model added \n";
 
-  Eigen::VectorXd const_pos = Eigen::VectorXd::Zero(kAllegroNumJoints) ;
-  // const_pos(1)=0.5;
-  // const_pos(2)=0.4;
+  Eigen::VectorXd u_c = Eigen::VectorXd::Zero(nq);
+  u_c(FLAGS_joint_user_index) = FLAGS_joint_torque;
+  VectorX<double> u = Py * u_c;
+  PRINT_VAR(u.transpose());
   systems::ConstantVectorSource<double>* const_src =
-      builder.AddSystem<systems::ConstantVectorSource<double>>(const_pos);
+      builder.AddSystem<systems::ConstantVectorSource<double>>(u);
   const_src->set_name("constant_source");
   builder.Connect(const_src->get_output_port(),
                   plant.get_actuation_input_port());
@@ -172,8 +270,9 @@ int DoMain() {
   simulator.Initialize();
   simulator.StepTo(FLAGS_simulation_time);
 
+  // We'll log in our user-defined order for better understanding.
   for(long int i=0; i<= plant_state->data().cols(); i+=10)
-    std::cout<<plant_state->data().col(i).transpose()<<std::endl;
+    std::cout<< (Px * plant_state->data().col(i)).transpose()<<std::endl;
 
   // std::cout<<pid_state->data()<<std::endl;
   // std::cout<<pid_state->data().cols()<<std::endl;

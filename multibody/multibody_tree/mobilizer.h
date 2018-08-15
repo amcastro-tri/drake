@@ -263,6 +263,18 @@ class Mobilizer : public MultibodyTreeElement<Mobilizer<T>, MobilizerIndex> {
   /// @see num_positions()
   virtual int num_velocities() const = 0;
 
+  int velocity_start_in_v() const {
+    return topology_.velocities_start_in_v;
+  }
+
+  int position_start_in_q() const {
+    return topology_.positions_start;
+  }
+
+  int velocity_start_in_x() const {
+    return topology_.velocities_start;
+  }
+
   /// Returns a constant reference to the inboard frame.
   const Frame<T>& inboard_frame() const {
     return inboard_frame_;

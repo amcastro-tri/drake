@@ -2026,6 +2026,12 @@ class MultibodyTree {
   /// @}
   // Closes "Computational methods" Doxygen section.
 
+  /// Returns the actuation map matrix B that maps inputs `u` to generalized
+  /// forces `tau` as `tau = B u`.
+  const MatrixX<T> actuation_map_matrix() const {
+    return actuation_map_matrix_;
+  }
+
   /// @name Methods to retrieve multibody element variants
   ///
   /// Given two variants of the same %MultibodyTree, these methods map an
@@ -2269,6 +2275,8 @@ class MultibodyTree {
   // The world body is special in that it is the only body in the model with no
   // mobilizer, even after Finalize().
   void AddQuaternionFreeMobilizerToAllBodiesWithNoMobilizer();
+
+  void BuildActuationMapMatrix();
 
   // Helper method to access the mobilizer of a free body.
   // If `body` is a free body in the model, this method will return the
@@ -2594,6 +2602,8 @@ class MultibodyTree {
   // i-th level body_node_levels_[i] contains the list of all body node indexes
   // in that level.
   std::vector<std::vector<BodyNodeIndex>> body_node_levels_;
+
+  MatrixX<T> actuation_map_matrix_;
 
   MultibodyTreeTopology topology_;
 };

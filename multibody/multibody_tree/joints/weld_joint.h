@@ -62,6 +62,14 @@ class WeldJoint final : public Joint<T> {
     return 0;
   }
 
+  int do_get_velocity_start() const override {
+    throw std::logic_error("Weld joints do not have state.");
+  }
+
+  int do_get_position_start() const override {
+    throw std::logic_error("Weld joints do not have state.");
+  }
+
   // Joint<T> overrides:
   std::unique_ptr<typename Joint<T>::BluePrint>
   MakeImplementationBlueprint() const override {

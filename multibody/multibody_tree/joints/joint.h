@@ -128,6 +128,22 @@ class Joint : public MultibodyTreeElement<Joint<T>, JointIndex>  {
     return n_joint_dofs;
   }
 
+  /// Returns the start index in a vector of generalized velocities for the
+  /// entire model for joints adding generalized velocities to the model.
+  int velocity_start() const {
+    return do_get_velocity_start();
+  }
+
+  /// Returns the start index in a vector of generalized positions for the
+  /// entire model for joints adding generlized positions to the model.
+  int position_start() const {
+    return do_get_position_start();
+  }
+
+  int get_num_velocities() const {
+    return num_dofs();
+  }
+
   /// Returns the position coordinate for joints with a single degree of
   /// freedom.
   /// @throws std::exception if the joint does not have a single degree of
@@ -288,6 +304,10 @@ class Joint : public MultibodyTreeElement<Joint<T>, JointIndex>  {
   /// E.g., this method should return one for a revolute joint and it should
   /// return three for a ball joint.
   virtual int do_get_num_dofs() const = 0;
+
+  virtual int do_get_velocity_start() const = 0;
+
+  virtual int do_get_position_start() const = 0;
 
   /// Implementation to the NVI GetOnePosition() that must only be implemented
   /// by those joint subclasses that have a single degree of freedom.

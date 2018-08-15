@@ -209,6 +209,14 @@ class PrismaticJoint final : public Joint<T> {
     return 1;
   }
 
+  int do_get_velocity_start() const override {
+    return get_mobilizer()->velocity_start_in_v();
+  }
+
+  int do_get_position_start() const override {
+    return get_mobilizer()->position_start_in_q();
+  }
+
   const T& DoGetOnePosition(const systems::Context<T>& context) const override {
     return get_translation(context);
   }

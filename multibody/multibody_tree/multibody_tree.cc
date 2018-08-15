@@ -218,6 +218,19 @@ void MultibodyTree<T>::Finalize() {
   AddQuaternionFreeMobilizerToAllBodiesWithNoMobilizer();
   FinalizeTopology();
   FinalizeInternals();
+
+  BuildActuationMapMatrix();
+}
+
+template <typename T>
+void MultibodyTree<T>::BuildActuationMapMatrix() {
+  actuation_map_matrix_.resize(num_velocities(), num_actuated_dofs());
+  actuation_map_matrix_.setZero();
+  for (const auto& actuator : owned_actuators_) {
+    const JointActuatorIndex actuator_index = actuator->index();
+    const int tau_index = actuator->joint().velocity_start();
+    actuation_map_matrix_(tau_index, actuator_index) = 1.0;
+  }
 }
 
 template <typename T>

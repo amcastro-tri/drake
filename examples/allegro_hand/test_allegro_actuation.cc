@@ -42,6 +42,42 @@ namespace examples {
 namespace allegro_hand {
 namespace {
 
+template <typename T>
+class DesiredStateSource final : public systems::LeafSystem<T> {
+ public:
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(DesiredStateSource)
+
+  /// Construct an %Adder System.
+  /// @param num_inputs is the number of input ports to be added.
+  /// @param size number of elements in each input and output signal.
+  DesiredStateSource(const MultibodyPlant<T>& plant,
+                     const std::vector<std::string>& joint_names_map,
+                     std::function<VectorX<T>(const T& time)> xd_vs_time)
+    xd_vs_time_(xd_vs_time), joint_names_map_(joint_names_map) : {
+    this->DeclareVectorOutputPort(systems::BasicVector<T>(
+        joint_names_map.size()), &DesiredStateSource<T>::CalcDesiredeState);
+  }
+
+  /// Returns the output port on which the sum is presented.
+  const OutputPort<T>& get_output_port() const {
+    return LeafSystem<T>::get_output_port(0);
+  }
+
+ private:
+  std::vector<std::string> joint_names_map_;
+  std::function<VectorX<T>(const T& time)> xd_vs_time_;
+
+  // Sums the input ports into a value suitable for the output port. If the
+  // input ports are not the appropriate count or size, std::runtime_error will
+  // be thrown.
+  void CalcDesiredeState(
+      const systems::Context<T>& context, systems::BasicVector<T>* xd) const {
+    const T& time = context.get_time();
+    xd->SetFromVector(xd_vs_time_(time));
+  }
+};
+
+
 using drake::multibody::multibody_plant::MultibodyPlant;
 
 DEFINE_double(constant_load, 0, "the constant load on all the joint. "
@@ -218,8 +254,20 @@ int DoMain() {
   u_c(FLAGS_joint_user_index) = FLAGS_joint_torque;
   VectorX<double> u = Py * u_c;
   PRINT_VAR(u.transpose());
-  systems::ConstantVectorSource<double>* const_src =
-      builder.AddSystem<systems::ConstantVectorSource<double>>(u);
+
+  auto close_hand = [](double time) {
+    // Code to return xd that close hande
+    MatrixX<double> xd(4 /* finger */, 4 /* finger joint index */);
+    xd(0, 2) = 0.5*std::sin(0.1*time);
+    return xd;
+  };
+
+  // VectorX<double> function(double time)
+  auto& src = builder.AddSystem<DesiredStateSource<double>>(
+          plant, joint_names_map, close_hand);
+
+  //systems::ConstantVectorSource<double>* const_src =
+  //    builder.AddSystem<systems::ConstantVectorSource<double>>(u);
   const_src->set_name("constant_source");
   builder.Connect(const_src->get_output_port(),
                   plant.get_actuation_input_port());

@@ -8,6 +8,7 @@
 #include <gflags/gflags.h>
 
 #include "drake/common/find_resource.h"
+#include "drake/common/openmp_wrapper.h"
 #include "drake/geometry/mesh_query/vtk_io.h"
 #include "drake/geometry/mesh_query/mesh_query.h"
 #include "drake/multibody/shapes/geometry.h"
@@ -197,8 +198,8 @@ std::unique_ptr<BoussinesqContactModelResults<double>> RunSpherePlaneModel(
 }
 
 GTEST_TEST(ExampleTest, SpherePlane) {
-  std::vector<double> indentations{0.02};
-  std::vector<int> meshes{1, 2, 3};
+  std::vector<double> indentations{0.05};
+  std::vector<int> meshes{1, 2, 3, 4};
   std::vector<double> mesh_sizes{0.135, 0.09, 0.06, 0.04};
 
   double young_modulus_star_sphere = 10000.0;
@@ -208,6 +209,10 @@ GTEST_TEST(ExampleTest, SpherePlane) {
   PRINT_VAR(young_modulus_star_plane);
 
   int num_indentations = indentations.size();
+
+  PRINT_VAR(drake::common::GetNumOmpThreads());
+  PRINT_VAR(drake::common::GetOmpThreadLimit());
+  PRINT_VAR(drake::common::GetMaxNumOmpThreads());
 
   std::ofstream results_file("forces.dat");
 
@@ -233,7 +238,7 @@ GTEST_TEST(ExampleTest, SpherePlane) {
 
       const auto& results = RunSpherePlaneModel(
           indentation_index, mesh_index,
-          indentation, 0.1 /* sigma */,
+          indentation, 0.0 /* sigma */,
           sphere_file_name, young_modulus_star_sphere,
           plane_file_name, young_modulus_star_plane);
 

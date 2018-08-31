@@ -13,6 +13,9 @@ MatrixX<double> CalcComplianceMatrix(
   const int num_nodes = points_in_mesh.size();
   MatrixX<double> compliance(num_nodes, num_nodes);
 
+  #if defined(_OPENMP)
+    #pragma omp parallel for
+  #endif
   for (int i_row = 0; i_row < num_nodes; i_row++) {
     compliance.row(i_row) = CalcRowComplianceMatrix(points_in_mesh,
                                                     triangles_in_mesh,

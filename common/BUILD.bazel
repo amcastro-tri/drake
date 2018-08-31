@@ -38,6 +38,7 @@ drake_cc_package_library(
         ":is_less_than_comparable",
         ":nice_type_name",
         ":number_traits",
+        ":openmp_wrapper",
         ":pointer_cast",
         ":polynomial",
         ":reset_after_move",
@@ -51,6 +52,12 @@ drake_cc_package_library(
         ":type_safe_index",
         ":unused",
     ],
+)
+
+drake_cc_library(
+    name = "openmp_wrapper",
+    srcs = [],
+    hdrs = ["openmp_wrapper.h"],
 )
 
 # A library of things that EVERYONE should want and MUST EAT.
@@ -493,18 +500,18 @@ drake_py_binary(
 
 install(
     name = "install",
+    allowed_externals = [DRAKE_RESOURCE_SENTINEL],
+    data_dest = "share/drake",
+    guess_data = "WORKSPACE",
     install_tests = [":test/resource_tool_installed_test.py"],
-    targets = [
-        ":libdrake_marker.so",
-        ":resource_tool",
-    ],
     # TODO(jwnimmer-tri) The install rule should offer more specific options
     # for programs not in bin/, and including the workspace and/or package name
     # in the installed path.  For now, we'll just specify it manually.
     runtime_dest = "share/drake/common",
-    data_dest = "share/drake",
-    guess_data = "WORKSPACE",
-    allowed_externals = [DRAKE_RESOURCE_SENTINEL],
+    targets = [
+        ":libdrake_marker.so",
+        ":resource_tool",
+    ],
 )
 
 # === test/ ===

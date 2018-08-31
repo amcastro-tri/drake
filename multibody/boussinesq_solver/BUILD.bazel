@@ -195,6 +195,7 @@ drake_cc_googletest(
         ":objects_contact_model",
         ":test_helper",
         "//common:find_resource",
+        "//common:openmp_wrapper",
         "//common/test_utilities:eigen_matrix_compare",
         "//geometry/mesh_query",
         "//geometry/mesh_query:vtk_io",

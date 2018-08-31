@@ -57,7 +57,7 @@ std::vector<PenetrationAsTrianglePair<double>> MeshToMeshQuery(
           p_WQ,
           &point_mesh_result);
 
-      if (!is_inside) {
+      if (!is_inside && sigma != 0) {
         CalcPointToMeshPositiveDistance(
             X_WM2, mesh2.points_G, mesh2.triangles,
             mesh2.face_normals_G, mesh2.node_normals_G,
@@ -437,7 +437,11 @@ bool CalcPointToMeshNegativeDistance(
 
     // point is outside convex mesh. Thus we are done.
     // The check is made against a small tolerance to avoid zero distances.
-    if (plane_distance > -kNearSurfaceTolerance) return false;
+    if (plane_distance > -kNearSurfaceTolerance) {
+      point_mesh_distance_ptr->distance =
+          std::numeric_limits<double>::infinity();
+      return false;
+    }
 
     // Save the triangle with the minimum distance.
     if (plane_distance > max_neg_dist) {

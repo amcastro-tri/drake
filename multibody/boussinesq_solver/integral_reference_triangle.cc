@@ -73,14 +73,30 @@ Vector3<double> CalcIntegralReferenceTriangle(const Vector2<double>& p1,
   rotation_matrix_psi << cos(psi_offset_from_x), -sin(psi_offset_from_x),
       sin(psi_offset_from_x), cos(psi_offset_from_x);
 
+  const double sin_theta_f = sin(theta_f);
+  const double cos_theta_f = cos(theta_f);
+  const double tan_theta_f = sin_theta_f / cos_theta_f;
+  const double sin_theta_0 = sin(theta_0);
+  const double cos_theta_0 = cos(theta_0);
+  const double tan_theta_0 = sin_theta_0 / cos_theta_0;
+
+  auto CalcIntegralJ0minus1_lambda = [&]() {
+    // Return Jmn
+    return log(fabs(1.0 / cos_theta_f + tan_theta_f)) -
+           log(fabs(1.0 / cos_theta_0 + tan_theta_0));
+  };
+
+  auto CalcIntegralJ1minus2_lambda = [&]() {
+    return 1.0 / cos_theta_f - 1.0 / cos_theta_0;
+  };
+
   Vector2<double> integral_without_rotation;
   integral_without_rotation <<
-                            CalcIntegralJ0minus1(theta_0, theta_f),
-      CalcIntegralJ1minus2(theta_0, theta_f);
+      CalcIntegralJ0minus1_lambda(), CalcIntegralJ1minus2_lambda();
 
   results.head(2) = beta * beta /
       2 * rotation_matrix_psi * rotation_matrix_phi * integral_without_rotation;
-  results(2) = beta * CalcIntegralJ0minus1(theta_0, theta_f);
+  results(2) = beta * CalcIntegralJ0minus1_lambda();
 
   return results;
 }

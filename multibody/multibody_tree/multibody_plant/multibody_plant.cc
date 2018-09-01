@@ -14,6 +14,10 @@
 #include "drake/multibody/multibody_tree/joints/prismatic_joint.h"
 #include "drake/multibody/multibody_tree/joints/revolute_joint.h"
 
+#include "drake/geometry/mesh_query/vtk_io.h"
+#include "drake/geometry/mesh_query/mesh_query.h"
+#include "multibody/boussinesq_solver/_virtual_includes/objects_contact_model/drake/multibody/boussinesq_solver/objects_contact_model.h"
+
 namespace drake {
 namespace multibody {
 namespace multibody_plant {
@@ -333,6 +337,20 @@ geometry::GeometryId MultibodyPlant<T>::RegisterCollisionGeometry(
 }
 
 template <typename T>
+void MultibodyPlant<T>::RegisterMeshCollisionGeometry(
+    const Body<T>& body, const Isometry3<double>& X_BG,
+    const std::string& mesh_file,
+    const CoulombFriction<double>& coulomb_friction, bool flip_normals) {
+  std::unique_ptr<geometry::mesh_query::Mesh<double>> mesh =
+      geometry::mesh_query::LoadMeshFromObj(mesh_file, flip_normals);
+  mesh->mesh_index = owned_meshes_.size();
+  body_mesh_[body.index()] = mesh->mesh_index;
+  owned_meshes_.push_back(std::move(mesh));
+  mesh_friction_coeff_.push_back(coulomb_friction.static_friction());
+  mesh_X_BG_.push_back(X_BG);
+}
+
+template <typename T>
 const std::vector<geometry::GeometryId>&
 MultibodyPlant<T>::GetCollisionGeometriesForBody(const Body<T>& body) const {
   DRAKE_ASSERT(body.index() < num_bodies());
@@ -425,6 +443,7 @@ void MultibodyPlant<T>::Finalize(geometry::SceneGraph<T>* scene_graph) {
   FilterAdjacentBodies(scene_graph);
   ExcludeCollisionsWithVisualGeometry(scene_graph);
   FinalizePlantOnly();
+  body_mesh_.resize(num_bodies());
 }
 
 template<typename T>
@@ -1196,6 +1215,9 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
   DRAKE_ASSERT(context0.get_num_discrete_state_groups() == 1);
   DRAKE_ASSERT(context0.get_continuous_state().size() == 0);
 
+  using boussinesq_solver::BoussinesqContactModelResults;
+  using boussinesq_solver::CalcContactSpatialForceBetweenMeshes;
+
   const double dt = time_step_;  // just a shorter alias.
 
   const int nq = this->num_positions();
@@ -1233,6 +1255,13 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
   // TODO(amcastro-tri): Eval() point_pairs0 when caching lands.
   const std::vector<PenetrationAsPointPair<T>> point_pairs0 =
       CalcPointPairPenetrations(context0);
+
+  std::unique_ptr<BoussinesqContactModelResults<double>>
+  boussinesq_results_by_force =
+      CalcContactSpatialForceBetweenMeshes(
+          *sphere, X_WSphere, young_modulus_star_sphere,
+          *plane, X_WPlane, young_modulus_star_plane,
+          sigma);
 
   // Workspace for inverse dynamics:
   // Bodies' accelerations, ordered by BodyNodeIndex.

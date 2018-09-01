@@ -38,6 +38,9 @@ drake_cc_library(
         "//common:default_scalars",
         "//geometry:geometry_ids",
         "//geometry:scene_graph",
+        "//geometry/mesh_query",
+        "//geometry/mesh_query:vtk_io",
+        "//multibody/boussinesq_solver:objects_contact_model",
         "//math:orthonormal_basis",
         "//multibody/multibody_tree",
         "//multibody/multibody_tree/implicit_stribeck:implicit_stribeck_solver",  # noqa

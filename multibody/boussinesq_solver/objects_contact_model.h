@@ -12,6 +12,8 @@ template <typename T>
 struct BoussinesqContactModelResults {
   SpatialForce<T> F_Ao_W;
   SpatialForce<T> F_Bo_W;
+  SpatialForce<T> Fpi_Ao_W;
+  SpatialForce<T> Fpi_Bo_W;
   SpatialForce<T> F_Pio_W_combined_normal;
   SpatialForce<T> F_Pio_W_query_direction;
   std::unique_ptr<geometry::mesh_query::Mesh<T>> object_A_patch;

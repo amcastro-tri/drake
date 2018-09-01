@@ -21,6 +21,8 @@
 #include "drake/systems/framework/leaf_system.h"
 #include "drake/systems/framework/scalar_conversion_traits.h"
 
+#include "drake/geometry/mesh_query/mesh.h"
+
 namespace drake {
 namespace multibody {
 namespace multibody_plant {
@@ -803,6 +805,11 @@ class MultibodyPlant : public systems::LeafSystem<T> {
       const geometry::Shape& shape,
       const CoulombFriction<double>& coulomb_friction,
       geometry::SceneGraph<T>* scene_graph);
+
+  void RegisterMeshCollisionGeometry(
+      const Body<T>& body, const Isometry3<double>& X_BG,
+      const std::string& mesh_file,
+      const CoulombFriction<double>& coulomb_friction, bool flip_normals);
 
   /// Returns an array of GeometryId's identifying the different contact
   /// geometries for `body` previously registered with a SceneGraph.
@@ -1704,6 +1711,17 @@ class MultibodyPlant : public systems::LeafSystem<T> {
   // We make it mutable so we can change its values even from within const
   // methods.
   mutable ContactResults<T> contact_results_;
+
+  // ordered by mesh_index
+  std::vector<std::unique_ptr<geometry::mesh_query::Mesh<double>>> owned_meshes_;
+  std::vector<double> mesh_friction_coeff_;  // ordered by mesh_index
+  // pose of the mesh in the body frame.
+  std::vector<Isometry3<double>> mesh_X_BG_;
+  
+  // body_mesh_[body_index] < 0 if body has no mesh
+  // For body with meshes, owned_meshes_[body_mesh_[body_index]] is the mesh for
+  // body_index.
+  std::vector<int> body_mesh_;
 };
 
 /// @cond

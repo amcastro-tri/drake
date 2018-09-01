@@ -202,8 +202,8 @@ GTEST_TEST(ExampleTest, SpherePlane) {
   std::vector<int> meshes{1, 2, 3, 4};
   std::vector<double> mesh_sizes{0.135, 0.09, 0.06, 0.04};
 
-  double young_modulus_star_sphere = 10000.0;
-  double young_modulus_star_plane = 1.0;
+  double young_modulus_star_sphere = 2.0;
+  double young_modulus_star_plane = 2.0;
 
   PRINT_VAR(young_modulus_star_sphere);
   PRINT_VAR(young_modulus_star_plane);
@@ -251,6 +251,8 @@ GTEST_TEST(ExampleTest, SpherePlane) {
 
       PRINT_VAR(results->F_Ao_W);
       PRINT_VAR(results->F_Bo_W);
+      PRINT_VAR(results->Fpi_Ao_W);
+      PRINT_VAR(results->Fpi_Bo_W);
 
       // We write:
       // h Fsphere[1:3] Fplane[1:3]

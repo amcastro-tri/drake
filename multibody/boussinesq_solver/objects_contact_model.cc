@@ -146,9 +146,10 @@ CalcContactSpatialForceBetweenMeshes(
   F_Ao_W.SetZero();
   SpatialForce<double> F_Bo_W;
   F_Bo_W.SetZero();
+  SpatialForce<double> Fpi_Ao_W = SpatialForce<double>::Zero();
+  SpatialForce<double> Fpi_Bo_W = SpatialForce<double>::Zero();
 
   // WEIGHTED NORMALS FORMULATION.
-#if 0
   // Computation of forces directly from multipliers
   auto sign = [](double x) {
     // std::copysign(x, y):
@@ -163,19 +164,23 @@ CalcContactSpatialForceBetweenMeshes(
     const auto& nB0_W = query.normal_B_W;
 
     // Approximation to the deformed surface normal on A.
-    const Vector3<double> nA_W =
-        (young_modulus_star_B * nA0_W -
-         young_modulus_star_A * nB0_W).normalized();
+    //const Vector3<double> nA_W =
+      //  (young_modulus_star_B * nA0_W -
+        // young_modulus_star_A * nB0_W).normalized();
 
     Vector3<double> n_AtoB_W = (query.p_WoBs_W - query.p_WoAs_W).normalized();
     const Vector3<double> that = -sign(query.signed_distance) * n_AtoB_W;
 
-    F_Ao_W.translational() += that.dot(nA_W) * kkt_multipliers(k) * nA_W;
+    //F_Ao_W.translational() += that.dot(nA_W) * kkt_multipliers(k) * nA_W;
+    Fpi_Ao_W.translational() -=
+        kkt_multipliers(k) * that * sign(that.dot(nA0_W));
+    Fpi_Bo_W.translational() -=
+        kkt_multipliers(k) * that * sign(that.dot(nB0_W));
   }
 
   // Since nB_W = -nA_W
-  F_Bo_W.translational() += -F_Ao_W.translational();
-#endif
+//  F_Bo_W.translational() += -F_Ao_W.translational();
+
 
   // ORIGINAL FORMULATION using the normals on the undeformed surfaces.
   // When kkt multipliers are forces:
@@ -197,6 +202,8 @@ CalcContactSpatialForceBetweenMeshes(
 
   boussinesq_results->F_Ao_W = F_Ao_W;
   boussinesq_results->F_Bo_W = F_Bo_W;
+  boussinesq_results->Fpi_Ao_W = Fpi_Ao_W;
+  boussinesq_results->Fpi_Bo_W = Fpi_Bo_W;
   boussinesq_results->object_A_patch = std::move(object_A_patch);  // now object_A_patch is nullptr.
   boussinesq_results->object_B_patch = std::move(object_B_patch);
 

@@ -29,8 +29,8 @@ typedef std::chrono::steady_clock my_clock;
 
 int do_main() {
   const int nq = 7;
-  const int num_reps = 100000;
-  const int num_autodiff_reps = 500;
+  const int num_reps = 10000;
+  //const int num_autodiff_reps = 50;
 
   // Build and test RigidBodyPlant
   auto tree = std::make_unique<RigidBodyTree<double>>();
@@ -51,9 +51,11 @@ int do_main() {
   auto stop =  my_clock::now();
   auto duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  std::cout << "(acrobot_plant) " << std::to_string(num_reps) << "x inertia calculations took " << duration.count() << " milliseconds." << 
+  std::cout << "(rigid_body_plant) " << std::to_string(num_reps) << "x "
+                                                                    "inertia calculations took " << duration.count() << " milliseconds." <<
   std::endl;
 
+#if 0
   start =  my_clock::now();
   for (int i = 0; i < num_autodiff_reps; i++) {
     x(0) = i;
@@ -64,9 +66,10 @@ int do_main() {
   stop =  my_clock::now();
   duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  std::cout << "(rigid_body_plant)" << std::to_string(num_autodiff_reps) << "xinertia autodiff calculations took "
+  std::cout << "(rigid_body_plant)" << std::to_string(num_autodiff_reps) <<
+  "x inertia autodiff calculations took "
       << duration.count() << " milliseconds." << std::endl;
-
+#endif
 
   // Build and test multibody plant
   systems::DiagramBuilder<double> builder;
@@ -102,7 +105,8 @@ int do_main() {
   stop =  my_clock::now();
   duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  std::cout << "(multibody_plant)" << std::to_string(num_reps) << "xinertia calculations took " <<
+  std::cout << "(multibody_plant)" << std::to_string(num_reps) << "x inertia "
+                                                                  "calculations took " <<
       duration.count() << " milliseconds." << std::endl;
 
 
@@ -110,7 +114,7 @@ int do_main() {
   // std::unique_ptr<MultibodyPlant<AutoDiffXd>> multibody_plant_autodiff =
   //   multibody_plant.ToAutoDiffXd();
 
-
+#if 0
   std::unique_ptr<MultibodyPlant<AutoDiffXd>> multibody_plant_autodiff =
       systems::System<double>::ToAutoDiffXd(multibody_plant);
 
@@ -205,7 +209,7 @@ int do_main() {
       std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
   std::cout << "(multibody_plant)" << std::to_string(num_autodiff_reps) << "xautodiff inverse dynamics calculations took " <<
       duration.count() << " milliseconds." << std::endl;
-
+#endif
 
   return 0;
 }

@@ -580,6 +580,40 @@ void MultibodyTree<T>::CalcSpatialInertiaInWorldCache(
 }
 
 template <typename T>
+void MultibodyTree<T>::CalcDynamicBiasCache(
+    const systems::Context<T>& context,
+    std::vector<SpatialForce<T>>* b_Bo_W_cache) const {
+  DRAKE_DEMAND(b_Bo_W_cache != nullptr);
+  DRAKE_DEMAND(static_cast<int>(b_Bo_W_cache->size()) == num_bodies());
+
+  const std::vector<SpatialInertia<T>>& spatial_inertia_in_world_cache =
+      EvalSpatialInertiaInWorldCache(context);
+
+  // Skip the world.
+  for (BodyIndex body_index(1); body_index < num_bodies(); ++body_index) {
+    const Body<T>& body = get_body(body_index);
+
+    const SpatialInertia<T>& M_B_W =
+        spatial_inertia_in_world_cache[body.node_index()];
+
+    const T& mass = M_B_W.get_mass();
+    // B's center of mass measured in B and expressed in W.
+    const Vector3<T>& p_BoBcm_W = M_B_W.get_com();
+    // B's unit rotational inertia about Bo, expressed in W.
+    const UnitInertia<T>& G_B_W = M_B_W.get_unit_inertia();
+
+    // Gyroscopic spatial force on body B about Bo.
+    // Notice b_Bo_W(q, v) is a function of positions and velocities only.
+    const SpatialVelocity<T>& V_WB = body.EvalSpatialVelocityInWorld(context);
+    const Vector3<T>& w_WB = V_WB.rotational();
+    SpatialForce<T>& b_Bo_W = (*b_Bo_W_cache)[body.node_index()];
+    b_Bo_W = mass * SpatialForce<T>(
+        w_WB.cross(G_B_W * w_WB),         /* rotational */
+        w_WB.cross(w_WB.cross(p_BoBcm_W)) /* translational */);
+  }
+}
+
+template <typename T>
 void MultibodyTree<T>::CalcSpatialAccelerationsFromVdot(
     const systems::Context<T>& context,
     const PositionKinematicsCache<T>& pc,
@@ -697,6 +731,9 @@ void MultibodyTree<T>::CalcInverseDynamics(
   const std::vector<SpatialInertia<T>>& spatial_inertia_in_world_cache =
       EvalSpatialInertiaInWorldCache(context);
 
+  const std::vector<SpatialForce<T>>& dynamic_bias_cache =
+      EvalDynamicBiasCache(context);
+
   // Performs a tip-to-base recursion computing the total spatial force F_BMo_W
   // acting on body B, about point Mo, expressed in the world frame W.
   // This includes the world (depth = 0) so that F_BMo_W_array[world_index()]
@@ -728,7 +765,8 @@ void MultibodyTree<T>::CalcInverseDynamics(
       // Compute F_BMo_W for the body associated with this node and project it
       // onto the space of generalized forces for the associated mobilizer.
       node.CalcInverseDynamics_TipToBase(
-          mbt_context, pc, vc, spatial_inertia_in_world_cache,
+          mbt_context, pc, vc,
+          spatial_inertia_in_world_cache, dynamic_bias_cache,
           *A_WB_array,
           Fapplied_Bo_W, tau_applied_mobilizer,
           F_BMo_W_array, tau_array);

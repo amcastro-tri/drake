@@ -1683,6 +1683,10 @@ class MultibodyTree {
       const systems::Context<T>& context,
       std::vector<SpatialInertia<T>>* M_B_W_cache) const;
 
+  void CalcDynamicBiasCache(
+      const systems::Context<T>& context,
+      std::vector<SpatialForce<T>>* b_Bo_W_cache) const;
+
   /// Computes all the kinematic quantities that depend on the generalized
   /// accelerations that is, the generalized velocities' time derivatives, and
   /// stores them in the acceleration kinematics cache `ac`.
@@ -2151,6 +2155,12 @@ class MultibodyTree {
       const systems::Context<T>& context) const {
     DRAKE_ASSERT(tree_system_ != nullptr);
     return tree_system_->EvalSpatialInertiaInWorldCache(context);
+  }
+
+  const std::vector<SpatialForce<T>>& EvalDynamicBiasCache(
+      const systems::Context<T>& context) const {
+    DRAKE_ASSERT(tree_system_ != nullptr);
+    return tree_system_->EvalDynamicBiasCache(context);
   }
 
   /// Evaluates velocity kinematics cached in context. This will also

@@ -106,6 +106,12 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
         .template Eval<std::vector<SpatialInertia<T>>>(context);
   }
 
+  const std::vector<SpatialForce<T>>& EvalDynamicBiasCache(
+      const systems::Context<T>& context) const {
+    return this->get_cache_entry(dynamic_bias_cache_index_)
+        .template Eval<std::vector<SpatialForce<T>>>(context);
+  }
+
   /** Returns a reference to the up to date cached value for the
   across-mobilizer geometric Jacobian H_PB_W in the given Context, recalculating
   it first if necessary. Also if necessary, the PositionKinematicsCache will be
@@ -209,6 +215,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   systems::CacheIndex velocity_kinematics_cache_index_;
   systems::CacheIndex H_PB_W_cache_index_;
   systems::CacheIndex spatial_inertia_in_world_cache_index_;
+  systems::CacheIndex dynamic_bias_cache_index_;
 
   // Used to enforce "finalize once" restriction for protected-API users.
   bool already_finalized_{false};

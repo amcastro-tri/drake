@@ -39,6 +39,9 @@ drake_cc_library(
     srcs = [
         "multibody_plant.cc",
     ],
+    #    clang_copts
+    #    gcc_copts
+    #    copts = ["-O0"],
     hdrs = [
         "multibody_plant.h",
     ],

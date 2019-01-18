@@ -142,6 +142,25 @@ void MultibodyTreeSystem<T>::Finalize() {
   velocity_kinematics_cache_index_ =
       velocity_kinematics_cache_entry.cache_index();
 
+  // Allocate cache entry to store b_Bo_W(q, v) for each body.
+  // Note: Most likely lumping M_B_W(q) and b_Bo_W(q,v) will result in slightly
+  // faster code due to caching overhead.
+  auto& dynamic_bias_cache_entry = this->DeclareCacheEntry(
+      std::string("dynamic bias (b_Bo_W)"),
+      [tree = tree_.get()]() {
+        return systems::AbstractValue::Make(
+            std::vector<SpatialForce<T>>(tree->num_bodies()));
+      },
+      [tree = tree_.get()](const systems::ContextBase& context_base,
+                           systems::AbstractValue* cache_value) {
+        auto& context = dynamic_cast<const Context<T>&>(context_base);
+        auto& dynamic_bias_cache =
+            cache_value->GetMutableValue<std::vector<SpatialForce<T>>>();
+        tree->CalcDynamicBiasCache(context, &dynamic_bias_cache);
+      },
+      {this->cache_entry_ticket(velocity_kinematics_cache_index_)});
+  dynamic_bias_cache_index_ = dynamic_bias_cache_entry.cache_index();
+
   // Declare cache entry for H_PB_W(q).
   // The type of this cache value is std::vector<Vector6<T>>.
   auto& H_PB_W_cache_entry = this->DeclareCacheEntry(

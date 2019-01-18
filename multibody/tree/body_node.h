@@ -750,7 +750,9 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     const SpatialForce<T> F_BMo_F = R_WF.transpose() * F_BMo_W;
 
     // Generalized velocities and forces use the same indexing.
-    auto tau = get_mutable_generalized_forces_from_array(tau_array);
+    //auto tau = get_mutable_generalized_forces_from_array(tau_array);
+    auto tau = tau_array->segment(topology_.mobilizer_velocities_start_in_v,
+                          topology_.num_mobilizer_velocities);
 
     // Demand that tau_applied is not an entry of tau. It would otherwise get
     // overwritten.

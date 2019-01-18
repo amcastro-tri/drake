@@ -120,6 +120,7 @@ TEST_F(CartPoleTest, MassMatrix) {
 
   Matrix2<double> M;
   pole_pin_->set_angle(context_.get(), theta);
+  context_->EnableCaching();
   cart_pole_.CalcMassMatrixViaInverseDynamics(*context_, &M);
   Matrix2<double> M_expected = CartPoleHandWritenMassMatrix(theta);
 

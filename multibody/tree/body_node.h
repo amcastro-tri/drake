@@ -602,6 +602,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
       const MultibodyTreeContext<T>& context,
       const PositionKinematicsCache<T>& pc,
       const VelocityKinematicsCache<T>& vc,
+      const std::vector<SpatialInertia<T>>& M_B_W_cache,
       const std::vector<SpatialAcceleration<T>>& A_WB_array,
       const SpatialForce<T>& Fapplied_Bo_W,
       const Eigen::Ref<const VectorX<T>>& tau_applied,
@@ -676,6 +677,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     CalcBodySpatialForceGivenItsSpatialAcceleration(context,
                                                     pc,
                                                     vc,
+                                                    M_B_W_cache,
                                                     A_WB,
                                                     &Ftot_BBo_W);
 
@@ -1393,6 +1395,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
       const MultibodyTreeContext<T>& context,
       const PositionKinematicsCache<T>& pc,
       const VelocityKinematicsCache<T>& vc,
+      const std::vector<SpatialInertia<T>>& M_B_W_cache,
       const SpatialAcceleration<T>& A_WB, SpatialForce<T>* Ftot_BBo_W_ptr)
   const {
     DRAKE_DEMAND(Ftot_BBo_W_ptr != nullptr);
@@ -1405,24 +1408,9 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // Body for this node.
     const Body<T>& body_B = body();
 
-    // Pose of B in W.
-    const Isometry3<T>& X_WB = get_X_WB(pc);
+    // Body B spatial inertia about Bo expressed in world W.
+    const SpatialInertia<T>& M_B_W = M_B_W_cache[body_B.node_index()];
 
-    // Orientation of B in W.
-    const math::RotationMatrix<T> R_WB(X_WB.linear());
-
-    // Body spatial velocity in W.
-    const SpatialVelocity<T>& V_WB = get_V_WB(vc);
-    const Vector3<T>& w_WB = V_WB.rotational();
-
-    // Spatial inertia of body B about Bo and expressed in the body frame B.
-    const SpatialInertia<T> M_B = body_B.CalcSpatialInertiaInBodyFrame(context);
-
-    // Re-express body B's spatial inertia in the world frame W.
-    // TODO(amcastro-tri): Consider placing M_B_W within a PositionDynamicsCache
-    // containing this and other dynamic quantities dependent on
-    // PositionKinematicsCache.
-    const SpatialInertia<T> M_B_W = M_B.ReExpress(R_WB);
     const T& mass = M_B_W.get_mass();
     // B's center of mass measured in B and expressed in W.
     const Vector3<T>& p_BoBcm_W = M_B_W.get_com();
@@ -1432,6 +1420,9 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // Gyroscopic spatial force on body B about Bo.
     // Notice b_Bo_W(q, v) is a function of positions and velocities only.
     // TODO(amcastro-tri): consider caching b_Bo_W in PositionDynamicsCache.
+    // Body spatial velocity in W.
+    const SpatialVelocity<T>& V_WB = get_V_WB(vc);
+    const Vector3<T>& w_WB = V_WB.rotational();
     SpatialForce<T> b_Bo_W = mass *
         SpatialForce<T>(w_WB.cross(G_B_W * w_WB),         /* rotational */
                         w_WB.cross(w_WB.cross(p_BoBcm_W)) /* translational */);

@@ -9,6 +9,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/tree/multibody_tree_forward_decl.h"
 #include "drake/multibody/tree/position_kinematics_cache.h"
+#include "drake/multibody/tree/spatial_inertia.h"
 #include "drake/multibody/tree/velocity_kinematics_cache.h"
 #include "drake/systems/framework/cache_entry.h"
 #include "drake/systems/framework/context.h"
@@ -97,6 +98,12 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
       const systems::Context<T>& context) const {
     return this->get_cache_entry(velocity_kinematics_cache_index_)
         .template Eval<VelocityKinematicsCache<T>>(context);
+  }
+
+  const std::vector<SpatialInertia<T>>& EvalSpatialInertiaInWorldCache(
+      const systems::Context<T>& context) const {
+    return this->get_cache_entry(spatial_inertia_in_world_cache_index_)
+        .template Eval<std::vector<SpatialInertia<T>>>(context);
   }
 
   /** Returns a reference to the up to date cached value for the
@@ -201,6 +208,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   systems::CacheIndex position_kinematics_cache_index_;
   systems::CacheIndex velocity_kinematics_cache_index_;
   systems::CacheIndex H_PB_W_cache_index_;
+  systems::CacheIndex spatial_inertia_in_world_cache_index_;
 
   // Used to enforce "finalize once" restriction for protected-API users.
   bool already_finalized_{false};

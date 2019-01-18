@@ -551,6 +551,35 @@ void MultibodyTree<T>::CalcVelocityKinematicsCache(
 }
 
 template <typename T>
+void MultibodyTree<T>::CalcSpatialInertiaInWorldCache(
+    const systems::Context<T>& context,
+    std::vector<SpatialInertia<T>>* M_B_W_cache) const {
+  DRAKE_DEMAND(M_B_W_cache != nullptr);
+  DRAKE_DEMAND(static_cast<int>(M_B_W_cache->size()) == num_bodies());
+
+  const auto& mbt_context =
+      dynamic_cast<const MultibodyTreeContext<T>&>(context);
+
+  // Skip the world.
+  for (BodyIndex body_index(1); body_index < num_bodies(); ++body_index) {
+    const Body<T>& body = get_body(body_index);
+    const Isometry3<T>& X_WB = body.EvalPoseInWorld(context);
+
+    // Orientation of B in W.
+    const math::RotationMatrix<T> R_WB(X_WB.linear());
+
+    // Spatial inertia of body B about Bo and expressed in the body frame B.
+    // This call has zero cost for rigid bodies.
+    const SpatialInertia<T> M_B =
+        body.CalcSpatialInertiaInBodyFrame(mbt_context);
+
+    // Re-express body B's spatial inertia in the world frame W.
+    SpatialInertia<T>& M_B_W = (*M_B_W_cache)[body.node_index()];
+    M_B_W = M_B.ReExpress(R_WB);
+  }
+}
+
+template <typename T>
 void MultibodyTree<T>::CalcSpatialAccelerationsFromVdot(
     const systems::Context<T>& context,
     const PositionKinematicsCache<T>& pc,
@@ -665,6 +694,9 @@ void MultibodyTree<T>::CalcInverseDynamics(
   // It is left initialized to zero if no forces are applied.
   SpatialForce<T> Fapplied_Bo_W = SpatialForce<T>::Zero();
 
+  const std::vector<SpatialInertia<T>>& spatial_inertia_in_world_cache =
+      EvalSpatialInertiaInWorldCache(context);
+
   // Performs a tip-to-base recursion computing the total spatial force F_BMo_W
   // acting on body B, about point Mo, expressed in the world frame W.
   // This includes the world (depth = 0) so that F_BMo_W_array[world_index()]
@@ -696,7 +728,8 @@ void MultibodyTree<T>::CalcInverseDynamics(
       // Compute F_BMo_W for the body associated with this node and project it
       // onto the space of generalized forces for the associated mobilizer.
       node.CalcInverseDynamics_TipToBase(
-          mbt_context, pc, vc, *A_WB_array,
+          mbt_context, pc, vc, spatial_inertia_in_world_cache,
+          *A_WB_array,
           Fapplied_Bo_W, tau_applied_mobilizer,
           F_BMo_W_array, tau_array);
     }

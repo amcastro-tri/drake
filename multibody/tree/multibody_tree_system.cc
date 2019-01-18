@@ -104,6 +104,25 @@ void MultibodyTreeSystem<T>::Finalize() {
   position_kinematics_cache_index_ =
       position_kinematics_cache_entry.cache_index();
 
+  // Allocate cache entry to store M_B_W for each body.
+  auto& spatial_inertia_in_world_cache_entry = this->DeclareCacheEntry(
+      std::string("spatial inertia in world (M_B_W)"),
+      [tree = tree_.get()]() {
+        return systems::AbstractValue::Make(
+            std::vector<SpatialInertia<T>>(tree->num_bodies()));
+      },
+      [tree = tree_.get()](const systems::ContextBase& context_base,
+                           systems::AbstractValue* cache_value) {
+        auto& context = dynamic_cast<const Context<T>&>(context_base);
+        auto& spatial_inertia_in_world_cache =
+            cache_value->GetMutableValue<std::vector<SpatialInertia<T>>>();
+        tree->CalcSpatialInertiaInWorldCache(
+            context, &spatial_inertia_in_world_cache);
+      },
+      {this->cache_entry_ticket(position_kinematics_cache_index_)});
+  spatial_inertia_in_world_cache_index_ =
+      spatial_inertia_in_world_cache_entry.cache_index();
+
   // Allocate velocity cache.
   auto& velocity_kinematics_cache_entry = this->DeclareCacheEntry(
       std::string("velocity kinematics"),

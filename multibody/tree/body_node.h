@@ -215,6 +215,10 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     //   have already been updated.
     CalcAcrossMobilizerBodyPoses_BaseToTip(context, pc);
 
+    // Note: DO NOT switch the call order with
+    // CalcAcrossMobilizerBodyPoses_BaseToTip() above.
+    CalcInverseDynamicsPositionKinematicsCache(context, pc);
+
     // TODO(amcastro-tri):
     // Update Body specific kinematics. These include:
     // - p_PB_W: vector from P to B to perform shift operations.
@@ -226,6 +230,32 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // Mobilizer::UpdatePositionKinematicsCache()) update the cache
     // entries for H_PB_W, the Jacobian for the SpatialVelocity jump between
     // body B and its parent body P expressed in the world frame W.
+  }
+
+
+  // It MUST be called AFTER CalcAcrossMobilizerBodyPoses_BaseToTip
+  // TODO(amcastro-tri): consider making a separate cache entry from pc for
+  // quantities computed by this method.
+  void CalcInverseDynamicsPositionKinematicsCache(
+      const MultibodyTreeContext<T>& context,
+      PositionKinematicsCache<T>* pc) const {
+    const Frame<T>& frame_M = outboard_frame();
+    const Isometry3<T> X_BM = frame_M.CalcPoseInBodyFrame(context);
+    const Vector3<T>& p_BoMo_B = X_BM.translation();
+    const Isometry3<T>& X_WB = get_X_WB(*pc);
+    const Matrix3<T>& R_WB = X_WB.linear();
+
+    Vector3<T> p_BoMo_W = get_mutable_p_BoMo_W(pc);
+    p_BoMo_W = R_WB * p_BoMo_B;
+
+    // Pose of body P in it's inboard body frame P.
+    const Isometry3<T>& X_PB = get_X_PB(*pc);
+    const Isometry3<T>& X_WP = get_X_WP(*pc);
+    const Matrix3<T>& R_WP = X_WP.linear();
+
+    // p_PoBo_W = R_WP * p_PoBo_P:
+    Vector3<T> p_PoBo_W = get_mutable_p_PoBo_W(pc);
+    p_PoBo_W = R_WP * X_PB.translation();
   }
 
   /// This method is used by MultibodyTree within a base-to-tip loop to compute
@@ -667,9 +697,6 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // where the spatial force F_BMo must be re-expressed in the inboard frame F
     // before the projection can be performed.
 
-    // This node's body B.
-    const Body<T>& body_B = body();
-
     // Input spatial acceleration for this node's body B.
     const SpatialAcceleration<T>& A_WB = get_A_WB_from_array(A_WB_array);
 
@@ -679,14 +706,8 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
         context,
         pc, vc, M_B_W_cache, b_Bo_W_cache, A_WB, &Ftot_BBo_W);
 
-    // Compute shift vector from Bo to Mo expressed in the world frame W.
-    const Frame<T>& frame_M = outboard_frame();
-    DRAKE_DEMAND(frame_M.body().index() == body_B.index());
-    const Isometry3<T> X_BM = frame_M.CalcPoseInBodyFrame(context);
-    const Vector3<T>& p_BoMo_B = X_BM.translation();
-    const Isometry3<T>& X_WB = get_X_WB(pc);
-    const Matrix3<T>& R_WB = X_WB.linear();
-    const Vector3<T> p_BoMo_W = R_WB * p_BoMo_B;
+    // Retrieve position kinematics cached quantities for this node.
+    const Vector3<T>& p_BoMo_W = get_p_BoMo_W(pc);
 
     // Output spatial force that would need to be exerted by this node's
     // mobilizer in order to attain the prescribed acceleration A_WB.
@@ -701,16 +722,8 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     for (const BodyNode<T>* child_node : children_) {
       BodyNodeIndex child_node_index = child_node->index();
 
-      // Pose of child body C in this node's body frame B.
-      const Isometry3<T>& X_BC = child_node->get_X_PB(pc);
-      // p_BoCo_W = R_WB * p_BoCo_B:
-      const Vector3<T> p_BoCo_W = R_WB * X_BC.translation();
-
-      // p_CoMc_W:
-      const Frame<T>& frame_Mc = child_node->outboard_frame();
-      const Matrix3<T>& R_WC = child_node->get_X_WB(pc).linear();
-      const Isometry3<T> X_CMc = frame_Mc.CalcPoseInBodyFrame(context);
-      const Vector3<T>& p_CoMc_W = R_WC * X_CMc.translation();
+      const Vector3<T>& p_BoCo_W = child_node->get_p_PoBo_W(pc);
+      const Vector3<T>& p_CoMc_W = child_node->get_p_BoMo_W(pc);
 
       // Shift position vector from child C outboard mobilizer frame Mc to body
       // B outboard mobilizer Mc. p_MoMc_W:
@@ -1134,6 +1147,22 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
   // in the frame of the parent body P.
   Isometry3<T>& get_mutable_X_PB(PositionKinematicsCache<T>* pc) const {
     return pc->get_mutable_X_PB(topology_.index);
+  }
+
+  const Vector3<T>& get_p_BoMo_W(const PositionKinematicsCache<T>& pc) const {
+    return pc.get_p_BoMo_W(topology_.index);
+  }
+
+  Vector3<T>& get_mutable_p_BoMo_W(PositionKinematicsCache<T>* pc) const {
+    return pc->get_mutable_p_BoMo_W(topology_.index);
+  }
+
+  const Vector3<T>& get_p_PoBo_W(const PositionKinematicsCache<T>& pc) const {
+    return pc.get_p_PoBo_W(topology_.index);
+  }
+
+  Vector3<T>& get_mutable_p_PoBo_W(PositionKinematicsCache<T>* pc) const {
+    return pc->get_mutable_p_PoBo_W(topology_.index);
   }
 
   // =========================================================================

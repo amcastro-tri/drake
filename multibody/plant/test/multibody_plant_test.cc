@@ -34,6 +34,10 @@
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/primitives/linear_system.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+
 namespace drake {
 
 using Eigen::AngleAxisd;
@@ -1871,6 +1875,40 @@ class KukaArmTest : public ::testing::TestWithParam<double> {
   std::unique_ptr<MultibodyPlant<double>> plant_;
   std::unique_ptr<Context<double>> context_;
 };
+
+#if 0
+TEST_P(KukaArmTest, InverseDynamics) {
+  const int nq = plant_->num_positions();
+  PRINT_VAR(nq);
+
+  Eigen::MatrixXd M(nq, nq);
+  VectorX<double> x(2 * nq);
+
+  plant_->CalcInverseDynamics
+
+  x.setLinSpaced(1, 5);
+  x.segment(nq, nq).setZero();
+  plant_->SetPositionsAndVelocities(context_.get(), x);
+  plant_->CalcMassMatrixViaInverseDynamics(*context_, &M);
+  PRINT_VARn(M);
+  PRINT_VAR((M-M.transpose()).norm());
+}
+#endif
+
+TEST_P(KukaArmTest, MassMatrix) {
+  const int nq = plant_->num_positions();
+  PRINT_VAR(nq);
+
+  Eigen::MatrixXd M(nq, nq);
+  VectorX<double> x(2 * nq);
+
+  x.setLinSpaced(1, 5);
+  x.segment(nq, nq).setZero();
+  plant_->SetPositionsAndVelocities(context_.get(), x);
+  plant_->CalcMassMatrixViaInverseDynamics(*context_, &M);
+  PRINT_VARn(M);
+  PRINT_VAR((M-M.transpose()).norm());
+}
 
 // This test verifies we can easily access the multibody state vector x = [q, v]
 // for either a discrete or continuous multibody model.

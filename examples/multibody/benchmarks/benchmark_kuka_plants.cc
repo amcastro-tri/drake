@@ -104,7 +104,7 @@ int do_main() {
   multibody_plant.Finalize();
 
   auto multibody_context = multibody_plant.CreateDefaultContext();
-  multibody_context->DisableCaching();
+  multibody_context->EnableCaching();
 
   Eigen::MatrixXd M(nq, nq);
   {
@@ -113,6 +113,7 @@ int do_main() {
     multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);
     multibody_plant.CalcMassMatrixViaInverseDynamics(*multibody_context, &M);
     PRINT_VARn(M);
+    PRINT_VAR((M-M.transpose()).norm());
   }
 
   start =  my_clock::now();

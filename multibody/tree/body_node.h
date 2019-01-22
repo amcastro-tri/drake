@@ -20,6 +20,10 @@
 #include "drake/multibody/tree/spatial_inertia.h"
 #include "drake/multibody/tree/velocity_kinematics_cache.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+
 namespace drake {
 namespace multibody {
 
@@ -245,7 +249,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     const Isometry3<T>& X_WB = get_X_WB(*pc);
     const Matrix3<T>& R_WB = X_WB.linear();
 
-    Vector3<T> p_BoMo_W = get_mutable_p_BoMo_W(pc);
+    Vector3<T>& p_BoMo_W = get_mutable_p_BoMo_W(pc);
     p_BoMo_W = R_WB * p_BoMo_B;
 
     // Pose of body P in it's inboard body frame P.
@@ -254,7 +258,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     const Matrix3<T>& R_WP = X_WP.linear();
 
     // p_PoBo_W = R_WP * p_PoBo_P:
-    Vector3<T> p_PoBo_W = get_mutable_p_PoBo_W(pc);
+    Vector3<T>& p_PoBo_W = get_mutable_p_PoBo_W(pc);
     p_PoBo_W = R_WP * X_PB.translation();
   }
 

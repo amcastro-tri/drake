@@ -16,6 +16,10 @@
 #include "drake/multibody/parsing/parser.h"
 #include "drake/geometry/scene_graph.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+
 //using drake::solvers::SolutionResult;
 using drake::multibody::MultibodyPlant;
 using drake::geometry::SceneGraph;
@@ -41,6 +45,13 @@ int do_main() {
   systems::RigidBodyPlant<double> rigid_body_plant(std::move(tree));
 
   Eigen::VectorXd x = Eigen::VectorXd::Zero(2*nq);
+  {
+    x.setLinSpaced(1, 5);
+    auto
+        cache = rigid_body_plant.get_rigid_body_tree().doKinematics(x.head(nq));
+    auto Mrbt = rigid_body_plant.get_rigid_body_tree().massMatrix(cache);
+    PRINT_VARn(Mrbt);
+  }
 
   auto start =  my_clock::now();
   for (int i = 0; i < num_reps; i++) {
@@ -93,10 +104,18 @@ int do_main() {
   multibody_plant.Finalize();
 
   auto multibody_context = multibody_plant.CreateDefaultContext();
-  multibody_context->EnableCaching();
+  multibody_context->DisableCaching();
+
+  Eigen::MatrixXd M(nq, nq);
+  {
+    x.setLinSpaced(1, 5);
+    x.segment(nq, nq).setZero();
+    multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);
+    multibody_plant.CalcMassMatrixViaInverseDynamics(*multibody_context, &M);
+    PRINT_VARn(M);
+  }
 
   start =  my_clock::now();
-  Eigen::MatrixXd M(nq, nq);
   for (int i = 0; i < num_reps; i++) {
     x(0) = i;
     multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);

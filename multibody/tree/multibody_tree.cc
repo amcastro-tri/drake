@@ -853,19 +853,17 @@ void MultibodyTree<T>::CalcMassMatrixViaInverseDynamics(
   DRAKE_DEMAND(H != nullptr);
   DRAKE_DEMAND(H->rows() == num_velocities());
   DRAKE_DEMAND(H->cols() == num_velocities());
-  const PositionKinematicsCache<T>& pc = EvalPositionKinematics(context);
-  DoCalcMassMatrixViaInverseDynamics(context, pc, H);
-}
 
-template <typename T>
-void MultibodyTree<T>::DoCalcMassMatrixViaInverseDynamics(
-    const systems::Context<T>& context,
-    const PositionKinematicsCache<T>& pc,
-    EigenPtr<MatrixX<T>> H) const {
-  // TODO(amcastro-tri): Consider passing a boolean flag to tell
-  // CalcInverseDynamics() to ignore velocity dependent terms.
-  VelocityKinematicsCache<T> vc(get_topology());
-  vc.InitializeToZero();
+  auto context_with_zero_v = context.Clone();
+  auto x = GetMutablePositionsAndVelocities(context_with_zero_v.get());
+  x.segment(num_positions(), num_velocities()).setZero();
+
+  // pc & vc must be in sync with context_with_zero_v as required by the
+  // signature of CalcInverseDynamics() used below.
+  const PositionKinematicsCache<T>& pc =
+      EvalPositionKinematics(*context_with_zero_v);
+  const VelocityKinematicsCache<T>& vc =
+      EvalVelocityKinematics(*context_with_zero_v);
 
   // Compute one column of the mass matrix via inverse dynamics at a time.
   const int nv = num_velocities();
@@ -878,7 +876,7 @@ void MultibodyTree<T>::DoCalcMassMatrixViaInverseDynamics(
   for (int j = 0; j < nv; ++j) {
     vdot = VectorX<T>::Unit(nv, j);
     tau.setZero();
-    CalcInverseDynamics(context, pc, vc, vdot, {}, VectorX<T>(),
+    CalcInverseDynamics(*context_with_zero_v, pc, vc, vdot, {}, VectorX<T>(),
                         &A_WB_array, &F_BMo_W_array, &tau);
     H->col(j) = tau;
   }

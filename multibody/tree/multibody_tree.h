@@ -2319,17 +2319,6 @@ class MultibodyTree {
       bool from_qdot,
       EigenPtr<MatrixX<T>> Jr_WFq, EigenPtr<MatrixX<T>> Jt_WFq) const;
 
-  // Implementation for CalcMassMatrixViaInverseDynamics().
-  // It assumes:
-  //  - The position kinematics cache object is already updated to be in sync
-  //    with `context`.
-  //  - H is not nullptr.
-  //  - H has storage for a square matrix of size num_velocities().
-  void DoCalcMassMatrixViaInverseDynamics(
-      const systems::Context<T>& context,
-      const PositionKinematicsCache<T>& pc,
-      EigenPtr<MatrixX<T>> H) const;
-
   // Implementation of CalcBiasTerm().
   // It assumes:
   //  - The position kinematics cache object is already updated to be in sync

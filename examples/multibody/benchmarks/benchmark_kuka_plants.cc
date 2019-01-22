@@ -156,6 +156,7 @@ int do_main() {
       std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
   std::cout << "(multibody_plant)" << std::to_string(num_autodiff_reps) << "xinertia autodiff calculations took " <<
       duration.count() << " milliseconds." << std::endl;
+#endif
 
   // rigid body inverse dynamics
   Eigen::VectorXd desired_vdot(nq);
@@ -173,10 +174,11 @@ int do_main() {
   stop =  my_clock::now();
   duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  std::cout << "(rigid_body_plant)" << std::to_string(num_reps) << "xinverse dynamics calculations took "<<
+  std::cout << "(rigid_body_plant)" << std::to_string(num_reps) <<
+  "x inverse dynamics calculations took "<<
       duration.count() << " milliseconds." << std::endl;
 
-
+#if 0
   start =  my_clock::now();
     RigidBodyTree<AutoDiffXd>::BodyToWrenchMap external_wrenches_autodiff;
 
@@ -192,10 +194,13 @@ int do_main() {
   stop =  my_clock::now();
   duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  std::cout << "(rigid_body_plant)" << std::to_string(num_autodiff_reps) << "xautodiff inverse dynamics calculations took "<<
+  std::cout << "(rigid_body_plant)" << std::to_string(num_autodiff_reps) <<
+  "x autodiff inverse dynamics calculations took "<<
       duration.count() << " milliseconds." << std::endl;
+#endif
 
   // multibody inverse dynamics
+  multibody_context->EnableCaching();
   start =  my_clock::now();
   multibody::MultibodyForces<double> external_forces(multibody_plant);
 
@@ -212,7 +217,7 @@ int do_main() {
   std::cout << "(multibody_plant)" << std::to_string(num_reps) << "xinverse dynamics calculations took " <<
       duration.count() << " milliseconds." << std::endl;
 
-
+#if 0
   start =  my_clock::now();
   multibody::MultibodyForces<AutoDiffXd> external_forces_autodiff(
       *multibody_plant_autodiff);

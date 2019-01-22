@@ -9,14 +9,12 @@
 /// usage of `<Scalar>` in Eigen's code base.
 /// @see also eigen_autodiff_types.h
 
-#include <utility>
+#include <memory>
 
 #include <Eigen/Dense>
 
 #include "drake/common/constants.h"
-#include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
-#include "drake/common/drake_optional.h"
 
 namespace drake {
 
@@ -262,47 +260,6 @@ struct is_eigen_nonvector_of
 // TODO(eric.cousineau): Add alias is_eigen_matrix_of = is_eigen_scalar_same if
 // appropriate.
 
-namespace internal {
-
-// Simple reassignable container without requirement of heap allocation.
-// N.B. This is used because `drake::optional<>` does not play well with
-// `Eigen::Ref<>`.
-template <typename T>
-class reassignable {
- public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(reassignable)
-  reassignable() {}
-
-  void reset() {
-    if (has_value_) {
-      value().~T();
-      has_value_ = false;
-    }
-  }
-
-  template <typename U>
-  void set_value(U&& value_in) {
-    if (has_value_) {
-      value().~T();
-    }
-    new (&value()) T(std::forward<U>(value_in));
-    has_value_ = true;
-  }
-
-  T& value() {
-    DRAKE_ASSERT(has_value());
-    return reinterpret_cast<T&>(storage_);
-  }
-
-  bool has_value() const { return has_value_; }
-
- private:
-  bool has_value_{};
-  typename std::aligned_storage<sizeof(T), alignof(T)>::type storage_;
-};
-
-}  // namespace internal
-
 /// This wrapper class provides a way to write non-template functions taking raw
 /// pointers to Eigen objects as parameters while limiting the number of copies,
 /// similar to `Eigen::Ref`. Internally, it keeps an instance of `Eigen::Ref<T>`
@@ -380,7 +337,7 @@ class EigenPtr {
   // NOLINTNEXTLINE(runtime/explicit) This conversion is desirable.
   EigenPtr(PlainObjectTypeIn* m) {
     if (m) {
-      m_.set_value(*m);
+      m_.reset(new RefType(*m));
     }
   }
 
@@ -404,10 +361,10 @@ class EigenPtr {
   }
 
   /// @throws std::runtime_error if this is a null dereference.
-  RefType& operator*() const { return get_reference(); }
+  RefType& operator*() const { return *get_reference(); }
 
   /// @throws std::runtime_error if this is a null dereference.
-  RefType* operator->() const { return &get_reference(); }
+  RefType* operator->() const { return get_reference(); }
 
   /// Returns whether or not this contains a valid reference.
   operator bool() const { return is_valid(); }
@@ -417,15 +374,18 @@ class EigenPtr {
   bool operator!=(std::nullptr_t) const { return is_valid(); }
 
  private:
-  // Use mutable member to permit pointer-like semantics.
-  mutable internal::reassignable<RefType> m_;
+  // Use unique_ptr<> so that we may "reconstruct" the reference, making this
+  // a pointer-like type.
+  // TODO(eric.cousineau): Consider using a stack-based implementation if
+  // performance is a concern, possibly with a mutable member.
+  std::unique_ptr<RefType> m_;
 
   // Consolidate assignment here, so that both the copy constructor and the
   // construction from another type may be used.
   template <typename PlainObjectTypeIn>
   EigenPtr& assign(const EigenPtr<PlainObjectTypeIn>& other) {
     if (other) {
-      m_.set_value(*other);
+      m_.reset(new RefType(*other));
     } else {
       m_.reset();
     }
@@ -433,14 +393,13 @@ class EigenPtr {
   }
 
   // Consolidate getting a reference here.
-  RefType& get_reference() const {
-    if (!m_.has_value())
-      throw std::runtime_error("EigenPtr: nullptr dereference");
-    return m_.value();
+  RefType* get_reference() const {
+    if (!m_) throw std::runtime_error("EigenPtr: nullptr dereference");
+    return m_.get();
   }
 
   bool is_valid() const {
-    return m_.has_value();
+    return static_cast<bool>(m_);
   }
 };
 

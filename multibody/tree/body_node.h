@@ -240,7 +240,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
   // TODO(amcastro-tri): consider making a separate cache entry from pc for
   // quantities computed by this method.
   void CalcInverseDynamicsPositionKinematicsCache(
-      const MultibodyTreeContext<T>& context,
+      const systems::Context<T>& context,
       PositionKinematicsCache<T>* pc) const {
     const Frame<T>& frame_M = outboard_frame();
     const Isometry3<T> X_BM = frame_M.CalcPoseInBodyFrame(context);

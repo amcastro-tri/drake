@@ -24,6 +24,12 @@
 using drake::multibody::MultibodyPlant;
 using drake::geometry::SceneGraph;
 
+DEFINE_bool(rbt_inertia, false, "Compute M with RBT.");
+DEFINE_bool(mbp_inertia, false, "Compute M with MBP.");
+DEFINE_bool(rbt_inverse_dyn, false, "Compute ID with RBT.");
+DEFINE_bool(mbp_inverse_dyn, true, "Compute ID with MBP.");
+DEFINE_bool(mbp_enable_caching, true, "Enable caching for MBP.");
+
 namespace drake {
 namespace examples {
 namespace {
@@ -44,27 +50,35 @@ int do_main() {
     multibody::joints::kFixed, tree.get());
   systems::RigidBodyPlant<double> rigid_body_plant(std::move(tree));
 
-  Eigen::VectorXd x = Eigen::VectorXd::Zero(2*nq);
-  {
-    x.setLinSpaced(1, 5);
-    auto
-        cache = rigid_body_plant.get_rigid_body_tree().doKinematics(x.head(nq));
-    auto Mrbt = rigid_body_plant.get_rigid_body_tree().massMatrix(cache);
-    PRINT_VARn(Mrbt);
-  }
+  // ===========================================================================
+  // RBT MASS MATRIX
+  // ===========================================================================
+  if (FLAGS_rbt_inertia) {
+    Eigen::VectorXd x = Eigen::VectorXd::Zero(2 * nq);
+    {
+      x.setLinSpaced(1, 5);
+      auto
+          cache =
+          rigid_body_plant.get_rigid_body_tree().doKinematics(x.head(nq));
+      auto Mrbt = rigid_body_plant.get_rigid_body_tree().massMatrix(cache);
+      PRINT_VARn(Mrbt);
+    }
 
-  auto start =  my_clock::now();
-  for (int i = 0; i < num_reps; i++) {
-    x(0) = i;
-    auto cache = rigid_body_plant.get_rigid_body_tree().doKinematics(x.head(nq));
-    rigid_body_plant.get_rigid_body_tree().massMatrix(cache);
+    auto start = my_clock::now();
+    for (int i = 0; i < num_reps; i++) {
+      x(0) = i;
+      auto cache =
+          rigid_body_plant.get_rigid_body_tree().doKinematics(x.head(nq));
+      rigid_body_plant.get_rigid_body_tree().massMatrix(cache);
+    }
+    auto stop = my_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+    std::cout << "(rigid_body_plant) " << std::to_string(num_reps) << "x "
+                                                                      "inertia calculations took "
+              << duration.count() << " milliseconds." <<
+              std::endl;
   }
-  auto stop =  my_clock::now();
-  auto duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  std::cout << "(rigid_body_plant) " << std::to_string(num_reps) << "x "
-                                                                    "inertia calculations took " << duration.count() << " milliseconds." <<
-  std::endl;
 
 #if 0
   start =  my_clock::now();
@@ -104,30 +118,39 @@ int do_main() {
   multibody_plant.Finalize();
 
   auto multibody_context = multibody_plant.CreateDefaultContext();
-  multibody_context->EnableCaching();
-
-  Eigen::MatrixXd M(nq, nq);
-  {
-    x.setLinSpaced(1, 5);
-    x.segment(nq, nq).setZero();
-    multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);
-    multibody_plant.CalcMassMatrixViaInverseDynamics(*multibody_context, &M);
-    PRINT_VARn(M);
-    PRINT_VAR((M-M.transpose()).norm());
+  if (FLAGS_mbp_enable_caching) {
+    multibody_context->EnableCaching();
   }
 
-  start =  my_clock::now();
-  for (int i = 0; i < num_reps; i++) {
-    x(0) = i;
-    multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);
-    multibody_plant.CalcMassMatrixViaInverseDynamics(*multibody_context, &M);
+  // ===========================================================================
+  // MBP MASS MATRIX
+  // ===========================================================================
+  if (FLAGS_mbp_inertia) {
+    Eigen::VectorXd x = Eigen::VectorXd::Zero(2 * nq);
+    Eigen::MatrixXd M(nq, nq);
+    {
+      x.setLinSpaced(1, 5);
+      x.segment(nq, nq).setZero();
+      multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);
+      multibody_plant.CalcMassMatrixViaInverseDynamics(*multibody_context, &M);
+      PRINT_VARn(M);
+      PRINT_VAR((M - M.transpose()).norm());
+    }
+
+    auto start = my_clock::now();
+    for (int i = 0; i < num_reps; i++) {
+      x(0) = i;
+      multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);
+      multibody_plant.CalcMassMatrixViaInverseDynamics(*multibody_context, &M);
+    }
+    auto stop = my_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+    std::cout << "(multibody_plant)" << std::to_string(num_reps) << "x inertia "
+                                                                    "calculations took "
+              <<
+              duration.count() << " milliseconds." << std::endl;
   }
-  stop =  my_clock::now();
-  duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  std::cout << "(multibody_plant)" << std::to_string(num_reps) << "x inertia "
-                                                                  "calculations took " <<
-      duration.count() << " milliseconds." << std::endl;
 
 
   // Build and test multibody plant w/autodiff
@@ -158,26 +181,32 @@ int do_main() {
       duration.count() << " milliseconds." << std::endl;
 #endif
 
-  // rigid body inverse dynamics
-  Eigen::VectorXd desired_vdot(nq);
-  start =  my_clock::now();
+  // ===========================================================================
+  // RBT INVERSE DYNAMICS
+  // ===========================================================================
+  if (FLAGS_rbt_inverse_dyn) {
+    Eigen::VectorXd x = Eigen::VectorXd::Zero(2 * nq);
+    Eigen::VectorXd desired_vdot(nq);
+    auto start = my_clock::now();
     RigidBodyTree<double>::BodyToWrenchMap external_wrenches;
 
-  for (int i = 0; i < num_reps; i++) {
-    x = Eigen::VectorXd::Constant(2*nq, i);
-    desired_vdot = Eigen::VectorXd::Constant(nq, i);
-    auto cache = rigid_body_plant.get_rigid_body_tree().doKinematics(x.head(nq),
-                                                                     x.tail(nq));
-    rigid_body_plant.get_rigid_body_tree().inverseDynamics(cache,
-        external_wrenches, desired_vdot);
+    for (int i = 0; i < num_reps; i++) {
+      x = Eigen::VectorXd::Constant(2 * nq, i);
+      desired_vdot = Eigen::VectorXd::Constant(nq, i);
+      auto cache =
+          rigid_body_plant.get_rigid_body_tree().doKinematics(x.head(nq),
+                                                              x.tail(nq));
+      rigid_body_plant.get_rigid_body_tree().inverseDynamics(cache,
+                                                             external_wrenches,
+                                                             desired_vdot);
+    }
+    auto stop = my_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+    std::cout << "(rigid_body_plant)" << std::to_string(num_reps) <<
+              "x inverse dynamics calculations took " <<
+              duration.count() << " milliseconds." << std::endl;
   }
-  stop =  my_clock::now();
-  duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  std::cout << "(rigid_body_plant)" << std::to_string(num_reps) <<
-  "x inverse dynamics calculations took "<<
-      duration.count() << " milliseconds." << std::endl;
-
 #if 0
   start =  my_clock::now();
     RigidBodyTree<AutoDiffXd>::BodyToWrenchMap external_wrenches_autodiff;
@@ -199,24 +228,28 @@ int do_main() {
       duration.count() << " milliseconds." << std::endl;
 #endif
 
-  // multibody inverse dynamics
-  multibody_context->EnableCaching();
-  start =  my_clock::now();
-  multibody::MultibodyForces<double> external_forces(multibody_plant);
-
-  for (int i = 0; i < num_reps; i++) {
-    x = Eigen::VectorXd::Constant(2*nq, i);
-    desired_vdot = Eigen::VectorXd::Constant(nq, i);
-    multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);
-    multibody_plant.CalcInverseDynamics(*multibody_context, desired_vdot,
-                                        external_forces);
+  // ===========================================================================
+  // MBP INVERSE DYNAMICS
+  // ===========================================================================
+  if (FLAGS_mbp_inverse_dyn) {
+    Eigen::VectorXd x = Eigen::VectorXd::Zero(2 * nq);
+    Eigen::VectorXd desired_vdot(nq);
+    multibody::MultibodyForces<double> external_forces(multibody_plant);
+    auto start =  my_clock::now();
+    for (int i = 0; i < num_reps; i++) {
+      x = Eigen::VectorXd::Constant(2 * nq, i);
+      desired_vdot = Eigen::VectorXd::Constant(nq, i);
+      multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);
+      multibody_plant.CalcInverseDynamics(*multibody_context, desired_vdot,
+                                          external_forces);
+    }
+    auto stop = my_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+    std::cout << "(multibody_plant)" << std::to_string(num_reps)
+              << "xinverse dynamics calculations took " <<
+              duration.count() << " milliseconds." << std::endl;
   }
-  stop =  my_clock::now();
-  duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  std::cout << "(multibody_plant)" << std::to_string(num_reps) << "xinverse dynamics calculations took " <<
-      duration.count() << " milliseconds." << std::endl;
-
 #if 0
   start =  my_clock::now();
   multibody::MultibodyForces<AutoDiffXd> external_forces_autodiff(

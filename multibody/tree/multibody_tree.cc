@@ -708,9 +708,14 @@ void MultibodyTree<T>::CalcInverseDynamics(
 
   const std::vector<SpatialInertia<T>>& spatial_inertia_in_world_cache =
       EvalSpatialInertiaInWorldCache(context);
+  //std::vector<SpatialInertia<T>> spatial_inertia_in_world_cache;
+  //CalcSpatialInertiaInWorldCache(context,
+    //  &spatial_inertia_in_world_cache);
 
   const std::vector<SpatialForce<T>>& dynamic_bias_cache =
       EvalDynamicBiasCache(context);
+  //std::vector<SpatialForce<T>> dynamic_bias_cache;
+  //CalcDynamicBiasCache(context, &dynamic_bias_cache);
 
   // Performs a tip-to-base recursion computing the total spatial force F_BMo_W
   // acting on body B, about point Mo, expressed in the world frame W.
@@ -828,6 +833,8 @@ void MultibodyTree<T>::CalcMassMatrixViaInverseDynamics(
   DRAKE_DEMAND(H->cols() == num_velocities());
 
   auto context_with_zero_v = context.Clone();
+  // TODO(amcastro-tri): this should set accordingly by Clone().
+  //context_with_zero_v->EnableCaching();
   auto x = GetMutablePositionsAndVelocities(context_with_zero_v.get());
   x.segment(num_positions(), num_velocities()).setZero();
 

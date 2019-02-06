@@ -1,0 +1,16 @@
+# -*- python -*-
+# Copyright 2016-2018 Toyota Research Institute.  All rights reserved.
+
+cc_library(
+    name = "wildmagic",
+    srcs = glob([
+        "Library/ReleaseDynamic/*.so*",
+    ]),
+    hdrs = glob([
+        "Include/*.h",
+        "Include/*.inl",
+    ]),
+    linkopts = ["-lX11","-lGL","-pthread"],
+    strip_include_prefix = "Include",
+    visibility = ["//visibility:public"],
+)

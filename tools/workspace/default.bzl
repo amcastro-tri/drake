@@ -75,6 +75,7 @@ load("@drake//tools/workspace/uritemplate_py:repository.bzl", "uritemplate_py_re
 load("@drake//tools/workspace/vtk:repository.bzl", "vtk_repository")
 load("@drake//tools/workspace/yaml_cpp:repository.bzl", "yaml_cpp_repository")
 load("@drake//tools/workspace/zlib:repository.bzl", "zlib_repository")
+load("@drake//tools/workspace/wildmagic:repository.bzl", "wildmagic_repository")
 
 def add_default_repositories(excludes = [], mirrors = DEFAULT_MIRRORS):
     """Declares workspace repositories for all externals needed by drake (other
@@ -234,3 +235,5 @@ def add_default_repositories(excludes = [], mirrors = DEFAULT_MIRRORS):
         yaml_cpp_repository(name = "yaml_cpp")
     if "zlib" not in excludes:
         zlib_repository(name = "zlib")
+    if "wildmagic" not in excludes:
+        wildmagic_repository(name = "wildmagic")

@@ -6,13 +6,11 @@ package, Meshcat:
 from __future__ import print_function
 import argparse
 import math
+import warnings
 import webbrowser
 
-import meshcat
-import meshcat.transformations as tf
-
 from drake import lcmt_viewer_load_robot
-from pydrake.util.eigen_geometry import Quaternion
+from pydrake.common.eigen_geometry import Quaternion
 from pydrake.geometry import DispatchLoadMessage, SceneGraph
 from pydrake.lcm import DrakeMockLcm
 from pydrake.math import RigidTransform, RotationMatrix
@@ -20,6 +18,15 @@ from pydrake.systems.framework import (
     AbstractValue, LeafSystem, PublishEvent, TriggerType
 )
 from pydrake.systems.rendering import PoseBundle
+
+# TODO(eric.cousineau): Move this back to "third party" import positions
+# if/when PyCQA/pycodestyle#834 lands and is incorporated.
+with warnings.catch_warnings():
+    warnings.filterwarnings(
+        "ignore", category=ImportWarning,
+        message="can't resolve package from __spec__")
+    import meshcat
+import meshcat.transformations as tf  # noqa
 
 
 class MeshcatVisualizer(LeafSystem):
@@ -127,7 +134,7 @@ class MeshcatVisualizer(LeafSystem):
                 callback=on_initialize))
 
     def _parse_name(self, name):
-        # Parse name, split on the first (required) occurence of `::` to get
+        # Parse name, split on the first (required) occurrence of `::` to get
         # the source name, and let the rest be the frame name.
         # TODO(eric.cousineau): Remove name parsing once #9128 is resolved.
         delim = "::"
@@ -158,7 +165,7 @@ class MeshcatVisualizer(LeafSystem):
 
             for j in range(link.num_geom):
                 geom = link.geom[j]
-                # MultibodyPlant currenly sets alpha=0 to make collision
+                # MultibodyPlant currently sets alpha=0 to make collision
                 # geometry "invisible".  Ignore those geometries here.
                 if geom.color[3] == 0:
                     continue

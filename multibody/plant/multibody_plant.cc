@@ -5,7 +5,6 @@
 #include <memory>
 #include <vector>
 
-#include "drake/common/default_scalars.h"
 #include "drake/common/drake_throw.h"
 #include "drake/geometry/frame_kinematics_vector.h"
 #include "drake/geometry/geometry_frame.h"
@@ -40,7 +39,6 @@ using systems::OutputPort;
 using systems::State;
 
 using drake::multibody::MultibodyForces;
-using drake::multibody::MultibodyTree;
 using drake::multibody::PositionKinematicsCache;
 using drake::multibody::SpatialAcceleration;
 using drake::multibody::SpatialForce;
@@ -272,6 +270,7 @@ geometry::SourceId MultibodyPlant<T>::RegisterAsSourceForSceneGraph(
   // instance. This will be nullified at Finalize().
   scene_graph_ = scene_graph;
   body_index_to_frame_id_[world_index()] = scene_graph->world_frame_id();
+  frame_id_to_body_index_[scene_graph->world_frame_id()] = world_index();
   DeclareSceneGraphPorts();
   return source_id_.value();
 }
@@ -542,17 +541,16 @@ void MultibodyPlant<T>::SetUpJointLimitsParameters() {
     const double penalty_time_scale = kAlpha * time_step();
 
     if (revolute_joint) {
+      const double lower_limit = revolute_joint->position_lower_limits()(0);
+      const double upper_limit = revolute_joint->position_upper_limits()(0);
       // We only compute parameters if joints do have upper/lower bounds.
-      if (!std::isinf(revolute_joint->lower_limit()) ||
-          !std::isinf(revolute_joint->upper_limit())) {
+      if (!std::isinf(lower_limit) || !std::isinf(upper_limit)) {
         joint_limits_parameters_.joints_with_limits.push_back(
             revolute_joint->index());
 
         // Store joint limits.
-        joint_limits_parameters_.lower_limit.push_back(
-            revolute_joint->lower_limit());
-        joint_limits_parameters_.upper_limit.push_back(
-            revolute_joint->upper_limit());
+        joint_limits_parameters_.lower_limit.push_back(lower_limit);
+        joint_limits_parameters_.upper_limit.push_back(upper_limit);
         // Estimate penalty parameters.
         auto penalty_parameters =
             internal::JointLimitsPenaltyParametersEstimator<T>::
@@ -564,17 +562,16 @@ void MultibodyPlant<T>::SetUpJointLimitsParameters() {
     }
 
     if (prismatic_joint) {
+      const double lower_limit = prismatic_joint->position_lower_limits()(0);
+      const double upper_limit = prismatic_joint->position_upper_limits()(0);
       // We only compute parameters if joints do have upper/lower bounds.
-      if (!std::isinf(prismatic_joint->lower_limit()) ||
-          !std::isinf(prismatic_joint->upper_limit())) {
+      if (!std::isinf(lower_limit) || !std::isinf(upper_limit)) {
         joint_limits_parameters_.joints_with_limits.push_back(
             prismatic_joint->index());
 
         // Store joint limits.
-        joint_limits_parameters_.lower_limit.push_back(
-            prismatic_joint->lower_limit());
-        joint_limits_parameters_.upper_limit.push_back(
-            prismatic_joint->upper_limit());
+        joint_limits_parameters_.lower_limit.push_back(lower_limit);
+        joint_limits_parameters_.upper_limit.push_back(upper_limit);
 
         // Estimate penalty parameters.
         auto penalty_parameters =

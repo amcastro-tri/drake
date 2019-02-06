@@ -164,6 +164,7 @@ drake_cc_googletest(
         "//common:find_resource",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
+        "//geometry/test_utilities:geometry_set_tester",
         "//math:geometric_transform",
         "//math:gradient",
         "//multibody/benchmarks/acrobot",
@@ -258,6 +259,20 @@ drake_cc_googletest(
     deps = [
         ":coulomb_friction",
         "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "floating_body_test",
+    timeout = "moderate",
+    srcs = [
+        "test/floating_body_test.cc",
+    ],
+    deps = [
+        "//common/test_utilities:eigen_matrix_compare",
+        "//multibody/benchmarks/free_body",
+        "//multibody/test_utilities:floating_body_plant",
+        "//systems/analysis:simulator",
     ],
 )
 

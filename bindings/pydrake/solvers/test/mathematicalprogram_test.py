@@ -1,6 +1,7 @@
 from __future__ import print_function, absolute_import
 
 from pydrake.solvers import mathematicalprogram as mp
+from pydrake.solvers.gurobi import GurobiSolver
 from pydrake.solvers.mathematicalprogram import SolverType
 
 import unittest
@@ -10,6 +11,7 @@ import numpy as np
 
 import pydrake
 from pydrake.common.deprecation import DrakeDeprecationWarning
+from pydrake.autodiffutils import AutoDiffXd
 import pydrake.symbolic as sym
 
 
@@ -29,7 +31,7 @@ class TestQP:
             prog.AddLinearConstraint(sym.logical_and(x[1] >= 1, x[1] <= 2.)),
             # Linear inequality
             prog.AddLinearConstraint(3 * x[0] - x[1] <= 2),
-            # Linaer equality
+            # Linear equality
             prog.AddLinearConstraint(x[0] + 2 * x[1] == 3)]
 
         # TODO(eric.cousineau): Add constant terms
@@ -45,6 +47,7 @@ class TestMathematicalProgram(unittest.TestCase):
         vars_all = prog.decision_variables()
         self.assertEqual(vars_all.shape, (5,))
 
+    @unittest.skipUnless(GurobiSolver().available(), "Requires Gurobi")
     def test_mixed_integer_optimization(self):
         prog = mp.MathematicalProgram()
         x = prog.NewBinaryVariables(3, "x")
@@ -180,6 +183,10 @@ class TestMathematicalProgram(unittest.TestCase):
         c = prog.AddLinearConstraint(x0 >= 2).evaluator()
         ce = prog.AddLinearEqualityConstraint(2*x0, 1).evaluator()
 
+        self.assertTrue(c.CheckSatisfied([2.], tol=1e-3))
+        self.assertFalse(c.CheckSatisfied([AutoDiffXd(1.)]))
+        self.assertIsInstance(c.CheckSatisfied([x0]), sym.Formula)
+
         def check_bounds(c, A, lb, ub):
             self.assertTrue(np.allclose(c.A(), A))
             self.assertTrue(np.allclose(c.lower_bound(), lb))
@@ -253,6 +260,14 @@ class TestMathematicalProgram(unittest.TestCase):
         self.assertIsInstance(
             prog.EvalBindings(prog.GetAllConstraints(), x_expected),
             np.ndarray)
+
+        # Bindings for `Eval`.
+        x_list = (float(1.), AutoDiffXd(1.), sym.Variable("x"))
+        T_y_list = (float, AutoDiffXd, sym.Expression)
+        evaluator = costs[0].evaluator()
+        for x_i, T_y_i in zip(x_list, T_y_list):
+            y_i = evaluator.Eval(x=[x_i, x_i])
+            self.assertIsInstance(y_i[0], T_y_i)
 
     def test_matrix_variables(self):
         prog = mp.MathematicalProgram()
@@ -361,8 +376,8 @@ class TestMathematicalProgram(unittest.TestCase):
         def constraint(x):
             return x
 
-        prog.AddCost(cost, x)
-        prog.AddConstraint(constraint, [0.], [2.], x)
+        prog.AddCost(cost, vars=x)
+        prog.AddConstraint(constraint, lb=[0.], ub=[2.], vars=x)
         prog.Solve()
         self.assertAlmostEqual(prog.GetSolution(x)[0], 1.)
 

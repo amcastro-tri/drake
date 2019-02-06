@@ -248,7 +248,7 @@ class Simulator {
   ///
   /// @warning Initialize() does not automatically attempt to satisfy System
   /// constraints -- it is up to you to make sure that constraints are
-  /// satisifed by the initial conditions.
+  /// satisfied by the initial conditions.
   ///
   /// This method will throw `std::logic_error` if the combination of options
   /// doesn't make sense. Other failures are possible from the System and
@@ -337,23 +337,34 @@ class Simulator {
   /// @see set_target_realtime_rate()
   double get_actual_realtime_rate() const;
 
-  /// Sets whether the simulation should invoke Publish on the System under
-  /// simulation during every time step. If enabled, Publish will be invoked
-  /// after discrete updates and before continuous integration. Regardless of
-  /// whether publishing every time step is enabled, Publish will be invoked at
-  /// Simulator initialize time, and as System<T>::CalcNextUpdateTime requests.
+  /// Sets whether the simulation should trigger a forced-Publish event on the
+  /// System under simulation at the end of every trajectory-advancing substep.
+  /// Specifically, that means the System::Publish() event dispatcher will be
+  /// invoked on each subsystem of the System and passed the current Context
+  /// and a forced-publish Event. If a subsystem has declared a forced-publish
+  /// event handler, that will be called. Otherwise, nothing will happen unless
+  /// the DoPublish() dispatcher has been overridden.
+  ///
+  /// Enabling this option does not cause a forced-publish to be triggered at
+  /// initialization; if you want that you should also call
+  /// `set_publish_at_initialization(true)`. If you want a forced-publish at the
+  /// end of every step, you will usually also want one at the end of
+  /// initialization, requiring both options to be enabled.
+  ///
+  /// @see LeafSystem::DeclareForcedPublishEvent()
   void set_publish_every_time_step(bool publish) {
     publish_every_time_step_ = publish;
   }
 
-  /// Sets whether the simulation should invoke Publish in Initialize().
+  /// Sets whether the simulation should trigger a forced-Publish at the end
+  /// of Initialize(). See set_publish_every_time_step() documentation for
+  /// more information.
   void set_publish_at_initialization(bool publish) {
     publish_at_initialization_ = publish;
   }
 
-  /// Returns true if the simulation should invoke Publish on the System under
-  /// simulation every time step.  By default, returns true.
-  // TODO(sherm1, edrumwri): Consider making this false by default.
+  /// Returns true if the set_publish_every_time_step() option has been
+  /// enabled. By default, returns false.
   bool get_publish_every_time_step() const { return publish_every_time_step_; }
 
   /// Returns a const reference to the internally-maintained Context holding the
@@ -558,9 +569,9 @@ class Simulator {
   // Slow down to this rate if possible (user settable).
   double target_realtime_rate_{0.};
 
-  bool publish_every_time_step_{true};
+  bool publish_every_time_step_{false};
 
-  bool publish_at_initialization_{true};
+  bool publish_at_initialization_{false};
 
   // These are recorded at initialization or statistics reset.
   double initial_simtime_{nan()};  // Simulated time at start of period.
@@ -891,25 +902,22 @@ void Simulator<T>::StepTo(const T& boundary_time) {
     // Determine whether the set of events requested by the System at
     // next_timed_event_time includes an Update action, a Publish action, or
     // both.
-    T next_update_dt = std::numeric_limits<double>::infinity();
-    T next_publish_dt = std::numeric_limits<double>::infinity();
+    T next_update_time = std::numeric_limits<double>::infinity();
+    T next_publish_time = std::numeric_limits<double>::infinity();
     if (timed_events_->HasDiscreteUpdateEvents() ||
         timed_events_->HasUnrestrictedUpdateEvents()) {
-      next_update_dt = next_timed_event_time_ - step_start_time;
+      next_update_time = next_timed_event_time_;
     }
     if (timed_events_->HasPublishEvents()) {
-      next_publish_dt = next_timed_event_time_ - step_start_time;
+      next_publish_time = next_timed_event_time_;
     }
-
-    // Get the dt that gets to the boundary time.
-    const T boundary_dt = boundary_time - step_start_time;
 
     // Integrate the continuous state forward in time.
     timed_or_witnessed_event_triggered_ = IntegrateContinuousState(
-        next_publish_dt,
-        next_update_dt,
+        next_publish_time,
+        next_update_time,
         next_timed_event_time_,
-        boundary_dt,
+        boundary_time,
         witnessed_events_.get());
 
     // Update the number of simulation substeps taken.
@@ -1042,11 +1050,8 @@ void Simulator<T>::IsolateWitnessTriggers(
     const T inf = std::numeric_limits<double>::infinity();
     context.set_time(t0);
     context.get_mutable_continuous_state().SetFromVector(x0);
-    T t_remaining = t_des - t0;
-    while (t_remaining > 0) {
-      integrator_->IntegrateAtMost(inf, inf, t_remaining);
-      t_remaining = t_des - context.get_time();
-    }
+    while (context.get_time() < t_des)
+      integrator_->IntegrateNoFurtherThanTime(inf, inf, t_des);
   };
 
   // Loop until the isolation window is sufficiently small.
@@ -1098,19 +1103,18 @@ void Simulator<T>::IsolateWitnessTriggers(
 
 // Integrates the continuous state forward in time while also locating
 // the first zero of any triggered witness functions.
-// @param next_publish_dt the *time step* at which the next publish event
-//        occurs.
-// @param next_update_dt the *time step* at which the next update event occurs.
-// @param time_of_next_event the *time* at which the next timed event occurs.
-// @param boundary_dt the maximum time step to take.
+// @param next_publish_time the time at which the next publish event occurs.
+// @param next_update_time the time at which the next update event occurs.
+// @param time_of_next_event the time at which the next timed event occurs.
+// @param boundary_time the maximum time to advance to.
 // @param events a non-null collection of events, which the method will clear
 //        on entry.
 // @returns `true` if integration terminated on an event trigger, indicating
 //          that an event needs to be handled at the state on return.
 template <class T>
 bool Simulator<T>::IntegrateContinuousState(
-    const T& next_publish_dt, const T& next_update_dt,
-    const T& time_of_next_timed_event, const T& boundary_dt,
+    const T& next_publish_time, const T& next_update_time,
+    const T&, const T& boundary_time,
     CompositeEventCollection<T>* events) {
   using std::abs;
 
@@ -1122,18 +1126,6 @@ bool Simulator<T>::IntegrateContinuousState(
   const Context<T>& context = get_context();
   const T t0 = context.get_time();
   const VectorX<T> x0 = context.get_continuous_state().CopyToVector();
-
-  // Note: this function is only called in one place and under the conditions
-  // that (1) t0 + next_update_dt equals *either* time_of_next_timed_event *or*
-  // infinity and (2) t0 + next_publish_dt equals *either*
-  // time_of_next_timed_event or infinity. This function should work without
-  // these assumptions being valid but might benefit from additional review.
-  const double inf = std::numeric_limits<double>::infinity();
-  const double zero_tol = 10 * std::numeric_limits<double>::epsilon();
-  DRAKE_ASSERT(next_update_dt == inf ||
-      abs(t0 + next_update_dt - time_of_next_timed_event) < zero_tol);
-  DRAKE_ASSERT(next_publish_dt == inf ||
-      abs(t0 + next_publish_dt - time_of_next_timed_event) < zero_tol);
 
   // Get the set of witness functions active at the current state.
   const System<T>& system = get_system();
@@ -1153,8 +1145,8 @@ bool Simulator<T>::IntegrateContinuousState(
   // distinguished between. See internal documentation for
   // IntegratorBase::StepOnceAtMost() for more information.
   typename IntegratorBase<T>::StepResult result =
-      integrator_->IntegrateAtMost(next_publish_dt, next_update_dt,
-                                  boundary_dt);
+      integrator_->IntegrateNoFurtherThanTime(
+          next_publish_time, next_update_time, boundary_time);
   const T tf = context.get_time();
 
   // Evaluate the witness functions again.
@@ -1234,25 +1226,20 @@ bool Simulator<T>::IntegrateContinuousState(
   switch (result) {
     case IntegratorBase<T>::kReachedUpdateTime:
     case IntegratorBase<T>::kReachedPublishTime:
-      // Next line sets the time to the exact event time rather than
-      // introducing rounding error by summing the context time + dt.
-      context_->set_time(time_of_next_timed_event);
-      return true;            // Timed event hit.
-      break;
+      return true;
 
     case IntegratorBase<T>::kTimeHasAdvanced:
     case IntegratorBase<T>::kReachedBoundaryTime:
       return false;           // Did not hit a time for a timed event.
-      break;
 
-    default:DRAKE_ABORT_MSG("Unexpected integrator result.");
+    case IntegratorBase<T>::kReachedZeroCrossing:
+    case IntegratorBase<T>::kReachedStepLimit:
+      throw std::logic_error("Unexpected integrator result");
   }
 
   // TODO(sherm1) Constraint projection goes here.
 
-  // Should never get here.
-  DRAKE_ABORT();
-  return false;
+  DRAKE_UNREACHABLE();
 }
 
 }  // namespace systems

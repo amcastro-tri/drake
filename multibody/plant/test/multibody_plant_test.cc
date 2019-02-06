@@ -19,6 +19,7 @@
 #include "drake/geometry/geometry_roles.h"
 #include "drake/geometry/query_object.h"
 #include "drake/geometry/scene_graph.h"
+#include "drake/geometry/test_utilities/geometry_set_tester.h"
 #include "drake/math/autodiff_gradient.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/math/roll_pitch_yaw.h"
@@ -238,6 +239,18 @@ GTEST_TEST(MultibodyPlant, SimpleModelCreation) {
       plant->GetJointByName("pin");
   EXPECT_EQ(pin_joint.model_instance(), pendulum_model_instance);
   EXPECT_THROW(plant->GetJointByName(kInvalidName), std::logic_error);
+
+  // Get joint indices by model instance
+  const std::vector<JointIndex> acrobot_joint_indices =
+      plant->GetJointIndices(default_model_instance());
+  EXPECT_EQ(acrobot_joint_indices.size(), 2);
+  EXPECT_EQ(acrobot_joint_indices[0], shoulder_joint.index());
+  EXPECT_EQ(acrobot_joint_indices[1], elbow_joint.index());
+
+  const std::vector<JointIndex> pendulum_joint_indices =
+      plant->GetJointIndices(pendulum_model_instance);
+  EXPECT_EQ(pendulum_joint_indices.size(), 2);  // pin joint + weld joint.
+  EXPECT_EQ(pendulum_joint_indices[0], pin_joint.index());
 
   // Templatized version to obtain retrieve a particular known type of joint.
   const RevoluteJoint<double>& shoulder =
@@ -460,14 +473,16 @@ class AcrobotPlantTests : public ::testing::Test {
     elbow_->set_angular_rate(context_.get(), theta2dot);
 
     // Set the state for the discrete model:
-    // Note: modeling elements such as joints, bodies, frames, etc. are agnostic
-    // to whether the state is discrete or continuous. Therefore, we are allowed
-    // to using the same modeling elements to set both `context` and
-    // `discrete_context`.
-    shoulder_->set_angle(discrete_context_.get(), theta1);
-    elbow_->set_angle(discrete_context_.get(), theta2);
-    shoulder_->set_angular_rate(discrete_context_.get(), theta1dot);
-    elbow_->set_angular_rate(discrete_context_.get(), theta2dot);
+    const RevoluteJoint<double>& discrete_shoulder =
+        discrete_plant_->GetJointByName<RevoluteJoint>(
+            parameters_.shoulder_joint_name());
+    const RevoluteJoint<double>& discrete_elbow =
+        discrete_plant_->GetJointByName<RevoluteJoint>(
+            parameters_.elbow_joint_name());
+    discrete_shoulder.set_angle(discrete_context_.get(), theta1);
+    discrete_elbow.set_angle(discrete_context_.get(), theta2);
+    discrete_shoulder.set_angular_rate(discrete_context_.get(), theta1dot);
+    discrete_elbow.set_angular_rate(discrete_context_.get(), theta2dot);
 
     plant_->CalcTimeDerivatives(*context_, derivatives_.get());
     auto updates = discrete_plant_->AllocateDiscreteVariables();
@@ -618,6 +633,11 @@ TEST_F(AcrobotPlantTests, VisualGeometryRegistration) {
   // Compute the poses for each geometry in the model.
   plant_->get_geometry_poses_output_port().Calc(*context, poses_value.get());
 
+  const FrameId world_frame_id =
+      plant_->GetBodyFrameIdOrThrow(plant_->world_body().index());
+  ASSERT_TRUE(plant_->GetBodyFromFrameId(world_frame_id) != nullptr);
+  EXPECT_EQ(plant_->GetBodyFromFrameId(world_frame_id)->index(),
+            plant_->world_body().index());
   const double kTolerance = 5 * std::numeric_limits<double>::epsilon();
   for (BodyIndex body_index(1);
        body_index < plant_->num_bodies(); ++body_index) {
@@ -654,6 +674,26 @@ TEST_F(AcrobotPlantTests, VisualGeometryRegistration) {
       plant_->GetBodyFrameIdIfExists(world_index());
   EXPECT_EQ(undefined_id, nullopt);
 #endif
+}
+
+TEST_F(AcrobotPlantTests, SetDefaulState) {
+  EXPECT_EQ(shoulder_->get_angle(*context_), 0.0);
+  EXPECT_EQ(elbow_->get_angle(*context_), 0.0);
+
+  // Set the default joint angles for the acrobot.
+  shoulder_->set_default_angle(0.05);
+  elbow_->set_default_angle(1.2);
+
+  // New contexts should get the default angles.
+  auto test_context = plant_->CreateDefaultContext();
+  EXPECT_EQ(shoulder_->get_angle(*test_context), 0.05);
+  EXPECT_EQ(elbow_->get_angle(*test_context), 1.2);
+
+  shoulder_->set_default_angle(4.2);
+
+  // Calling SetDefaultContext directly works, too.
+  plant_->SetDefaultContext(context_.get());
+  EXPECT_EQ(shoulder_->get_angle(*context_), 4.2);
 }
 
 TEST_F(AcrobotPlantTests, SetRandomState) {
@@ -938,6 +978,7 @@ GTEST_TEST(MultibodyPlantTest, CollectRegisteredGeometriesErrors) {
 // will be included.
 GTEST_TEST(MultibodyPlantTest, CollectRegisteredGeometries) {
   using geometry::GeometrySet;
+  using geometry::GeometrySetTester;
 
   SphereChainScenario scenario(5);
 
@@ -946,25 +987,28 @@ GTEST_TEST(MultibodyPlantTest, CollectRegisteredGeometries) {
   // Case: Empty vector produces empty geometry set.
   {
     GeometrySet set = plant.CollectRegisteredGeometries({});
-    EXPECT_EQ(set.num_geometries(), 0);
-    EXPECT_EQ(set.num_frames(), 0);
+    GeometrySetTester tester(&set);
+    EXPECT_EQ(tester.num_geometries(), 0);
+    EXPECT_EQ(tester.num_frames(), 0);
   }
 
   // Case: Single body produces single, corresponding frame.
   {
     GeometrySet set = plant.CollectRegisteredGeometries({&scenario.sphere(0)});
-    EXPECT_EQ(set.num_geometries(), 0);
-    EXPECT_EQ(set.num_frames(), 1);
+    GeometrySetTester tester(&set);
+    EXPECT_EQ(tester.num_geometries(), 0);
+    EXPECT_EQ(tester.num_frames(), 1);
     FrameId id_0 = plant.GetBodyFrameIdOrThrow(scenario.sphere(0).index());
-    EXPECT_TRUE(set.contains(id_0));
+    EXPECT_TRUE(tester.contains(id_0));
   }
 
   // Case: Body with no corresponding geometry frame.
   {
     GeometrySet set =
         plant.CollectRegisteredGeometries({&scenario.no_geometry_body()});
-    EXPECT_EQ(set.num_geometries(), 0);
-    EXPECT_EQ(set.num_frames(), 0);
+    GeometrySetTester tester(&set);
+    EXPECT_EQ(tester.num_geometries(), 0);
+    EXPECT_EQ(tester.num_frames(), 0);
   }
 
   // Case: Include the world body.
@@ -972,9 +1016,10 @@ GTEST_TEST(MultibodyPlantTest, CollectRegisteredGeometries) {
     GeometrySet set =
         plant.CollectRegisteredGeometries(
             {&scenario.mutable_plant()->world_body()});
-    EXPECT_EQ(set.num_frames(), 1);
-    EXPECT_EQ(set.num_geometries(), 0);
-    EXPECT_FALSE(set.contains(scenario.ground_id()));
+    GeometrySetTester tester(&set);
+    EXPECT_EQ(tester.num_frames(), 1);
+    EXPECT_EQ(tester.num_geometries(), 0);
+    EXPECT_FALSE(tester.contains(scenario.ground_id()));
   }
 }
 
@@ -2088,7 +2133,7 @@ GTEST_TEST(StateSelection, KukaWithSimpleGripper) {
       parser.AddModelFromFile(FindResourceOrThrow(kWsg50SdfPath));
   const auto& end_effector = plant.GetBodyByName("iiwa_link_7", arm_model);
   const auto& gripper_body = plant.GetBodyByName("body", gripper_model);
-  // We dont care for the actual pose of the gripper in the end effector frame
+  // We don't care for the actual pose of the gripper in the end effector frame
   // for this example. We only care about the state size.
   plant.WeldFrames(end_effector.body_frame(), gripper_body.body_frame());
   plant.Finalize();
@@ -2338,6 +2383,11 @@ GTEST_TEST(StateSelection, FloatingBodies) {
   const Body<double>& mug = plant.GetBodyByName("main_body", mug_model);
 
   plant.Finalize();
+
+  // Check link 0 is anchored, and link 1 is not.
+  EXPECT_TRUE(plant.IsAnchored(plant.GetBodyByName("iiwa_link_0", arm_model)));
+  EXPECT_FALSE(
+      plant.IsAnchored(plant.GetBodyByName("iiwa_link_1", arm_model)));
 
   auto context = plant.CreateDefaultContext();
 

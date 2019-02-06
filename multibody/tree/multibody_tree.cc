@@ -6,11 +6,11 @@
 #include <unordered_set>
 #include <utility>
 
-#include "drake/common/autodiff.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_throw.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/tree/body_node_welded.h"
+#include "drake/multibody/tree/multibody_tree-inl.h"
 #include "drake/multibody/tree/quaternion_floating_mobilizer.h"
 #include "drake/multibody/tree/rigid_body.h"
 #include "drake/multibody/tree/spatial_inertia.h"
@@ -310,7 +310,7 @@ template <typename T>
 void MultibodyTree<T>::SetDefaultState(
     const systems::Context<T>& context, systems::State<T>* state) const {
   for (const auto& mobilizer : owned_mobilizers_) {
-    mobilizer->set_zero_state(context, state);
+    mobilizer->set_default_state(context, state);
   }
 }
 
@@ -327,19 +327,15 @@ template <typename T>
 Eigen::VectorBlock<const VectorX<T>>
 MultibodyTree<T>::GetPositionsAndVelocities(
     const systems::Context<T>& context) const {
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
-  return mbt_context.get_state_vector();
+  return get_state_vector(context);
 }
 
 template <typename T>
 VectorX<T> MultibodyTree<T>::GetPositionsAndVelocities(
     const systems::Context<T>& context,
     ModelInstanceIndex model_instance) const {
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
   Eigen::VectorBlock<const VectorX<T>> state_vector =
-      mbt_context.get_state_vector();
+      get_state_vector(context);
 
   VectorX<T> instance_state_vector(num_states(model_instance));
   instance_state_vector.head(num_positions(model_instance)) =
@@ -355,14 +351,9 @@ VectorX<T> MultibodyTree<T>::GetPositionsAndVelocities(
 template <typename T>
 Eigen::VectorBlock<VectorX<T>>
 MultibodyTree<T>::GetMutablePositionsAndVelocities(
-    const systems::Context<T>& context, systems::State<T>* state) const {
+    const systems::Context<T>&, systems::State<T>* state) const {
   DRAKE_DEMAND(state != nullptr);
-  auto* mbt_context = dynamic_cast<const MultibodyTreeContext<T>*>(&context);
-  if (mbt_context == nullptr) {
-    throw std::runtime_error(
-        "The context provided is not compatible with a multibody model.");
-  }
-  return mbt_context->get_mutable_state_vector(state);
+  return get_mutable_state_vector(state);
 }
 
 template <typename T>
@@ -484,8 +475,6 @@ void MultibodyTree<T>::CalcPositionKinematicsCache(
     const systems::Context<T>& context,
     PositionKinematicsCache<T>* pc) const {
   DRAKE_DEMAND(pc != nullptr);
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
 
   // TODO(amcastro-tri): Loop over bodies to update their position dependent
   // kinematics. This gives the chance to flexible bodies to update the pose
@@ -505,7 +494,7 @@ void MultibodyTree<T>::CalcPositionKinematicsCache(
       DRAKE_ASSERT(node.index() == body_node_index);
 
       // Update per-node kinematics.
-      node.CalcPositionKinematicsCache_BaseToTip(mbt_context, pc);
+      node.CalcPositionKinematicsCache_BaseToTip(context, pc);
     }
   }
 }
@@ -516,8 +505,6 @@ void MultibodyTree<T>::CalcVelocityKinematicsCache(
     const PositionKinematicsCache<T>& pc,
     VelocityKinematicsCache<T>* vc) const {
   DRAKE_DEMAND(vc != nullptr);
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
 
   // TODO(amcastro-tri): Loop over bodies to compute velocity kinematics updates
   // corresponding to flexible bodies.
@@ -545,7 +532,7 @@ void MultibodyTree<T>::CalcVelocityKinematicsCache(
           node.GetJacobianFromArray(H_PB_W_cache);
 
       // Update per-node kinematics.
-      node.CalcVelocityKinematicsCache_BaseToTip(mbt_context, pc, H_PB_W, vc);
+      node.CalcVelocityKinematicsCache_BaseToTip(context, pc, H_PB_W, vc);
     }
   }
 }
@@ -556,9 +543,6 @@ void MultibodyTree<T>::CalcSpatialInertiaInWorldCache(
     std::vector<SpatialInertia<T>>* M_B_W_cache) const {
   DRAKE_DEMAND(M_B_W_cache != nullptr);
   DRAKE_DEMAND(static_cast<int>(M_B_W_cache->size()) == num_bodies());
-
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
 
   // Skip the world.
   for (BodyIndex body_index(1); body_index < num_bodies(); ++body_index) {
@@ -571,7 +555,7 @@ void MultibodyTree<T>::CalcSpatialInertiaInWorldCache(
     // Spatial inertia of body B about Bo and expressed in the body frame B.
     // This call has zero cost for rigid bodies.
     const SpatialInertia<T> M_B =
-        body.CalcSpatialInertiaInBodyFrame(mbt_context);
+        body.CalcSpatialInertiaInBodyFrame(context);
 
     // Re-express body B's spatial inertia in the world frame W.
     SpatialInertia<T>& M_B_W = (*M_B_W_cache)[body.node_index()];
@@ -625,9 +609,6 @@ void MultibodyTree<T>::CalcSpatialAccelerationsFromVdot(
 
   DRAKE_DEMAND(known_vdot.size() == topology_.num_velocities());
 
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
-
   // TODO(amcastro-tri): Loop over bodies to compute acceleration kinematics
   // updates corresponding to flexible bodies.
 
@@ -645,7 +626,7 @@ void MultibodyTree<T>::CalcSpatialAccelerationsFromVdot(
 
       // Update per-node kinematics.
       node.CalcSpatialAcceleration_BaseToTip(
-          mbt_context, pc, vc, known_vdot, A_WB_array);
+          context, pc, vc, known_vdot, A_WB_array);
     }
   }
 }
@@ -713,9 +694,6 @@ void MultibodyTree<T>::CalcInverseDynamics(
 
   DRAKE_DEMAND(tau_array->size() == num_velocities());
 
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
-
   // Compute body spatial accelerations given the generalized accelerations are
   // known.
   CalcSpatialAccelerationsFromVdot(context, pc, vc, known_vdot, A_WB_array);
@@ -765,7 +743,7 @@ void MultibodyTree<T>::CalcInverseDynamics(
       // Compute F_BMo_W for the body associated with this node and project it
       // onto the space of generalized forces for the associated mobilizer.
       node.CalcInverseDynamics_TipToBase(
-          mbt_context, pc, vc,
+          context, pc, vc,
           spatial_inertia_in_world_cache, dynamic_bias_cache,
           *A_WB_array,
           Fapplied_Bo_W, tau_applied_mobilizer,
@@ -783,13 +761,10 @@ void MultibodyTree<T>::CalcForceElementsContribution(
   DRAKE_DEMAND(forces != nullptr);
   DRAKE_DEMAND(forces->CheckHasRightSizeForModel(*this));
 
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
-
   forces->SetZero();
   // Add contributions from force elements.
   for (const auto& force_element : owned_force_elements_) {
-    force_element->CalcAndAddForceContribution(mbt_context, pc, vc, forces);
+    force_element->CalcAndAddForceContribution(context, pc, vc, forces);
   }
 
   // TODO(amcastro-tri): Remove this call once damping is implemented in terms
@@ -814,13 +789,12 @@ void MultibodyTree<T>::MapQDotToVelocity(
   DRAKE_DEMAND(qdot.size() == num_positions());
   DRAKE_DEMAND(v != nullptr);
   DRAKE_DEMAND(v->size() == num_velocities());
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
+
   VectorUpTo6<T> v_mobilizer;
   for (const auto& mobilizer : owned_mobilizers_) {
     const auto qdot_mobilizer = mobilizer->get_positions_from_array(qdot);
     v_mobilizer.resize(mobilizer->num_velocities());
-    mobilizer->MapQDotToVelocity(mbt_context, qdot_mobilizer, &v_mobilizer);
+    mobilizer->MapQDotToVelocity(context, qdot_mobilizer, &v_mobilizer);
     mobilizer->get_mutable_velocities_from_array(v) = v_mobilizer;
   }
 }
@@ -833,8 +807,7 @@ void MultibodyTree<T>::MapVelocityToQDot(
   DRAKE_DEMAND(v.size() == num_velocities());
   DRAKE_DEMAND(qdot != nullptr);
   DRAKE_DEMAND(qdot->size() == num_positions());
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
+
   const int kMaxQdot = 7;
   // qdot_mobilizer is a dynamic sized vector of max size equal to seven.
   Eigen::Matrix<T, Eigen::Dynamic, 1, 0, kMaxQdot, 1> qdot_mobilizer;
@@ -842,7 +815,7 @@ void MultibodyTree<T>::MapVelocityToQDot(
     const auto v_mobilizer = mobilizer->get_velocities_from_array(v);
     DRAKE_DEMAND(mobilizer->num_positions() <= kMaxQdot);
     qdot_mobilizer.resize(mobilizer->num_positions());
-    mobilizer->MapVelocityToQDot(mbt_context, v_mobilizer, &qdot_mobilizer);
+    mobilizer->MapVelocityToQDot(context, v_mobilizer, &qdot_mobilizer);
     mobilizer->get_mutable_positions_from_array(qdot) = qdot_mobilizer;
   }
 }
@@ -979,9 +952,6 @@ void MultibodyTree<T>::CalcAcrossNodeGeometricJacobianExpressedInWorld(
   DRAKE_DEMAND(H_PB_W_cache != nullptr);
   DRAKE_DEMAND(static_cast<int>(H_PB_W_cache->size()) == num_velocities());
 
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
-
   for (BodyNodeIndex node_index(1);
        node_index < num_bodies(); ++node_index) {
     const BodyNode<T>& node = *body_nodes_[node_index];
@@ -996,7 +966,7 @@ void MultibodyTree<T>::CalcAcrossNodeGeometricJacobianExpressedInWorld(
         node.GetMutableJacobianFromArray(H_PB_W_cache);
 
     node.CalcAcrossNodeGeometricJacobianExpressedInWorld(
-        mbt_context, pc, &H_PB_W);
+        context, pc, &H_PB_W);
   }
 }
 
@@ -1181,7 +1151,7 @@ void MultibodyTree<T>::CalcJacobianSpatialVelocity(
       case JacobianWrtVariable::kV:
         return false;
     }
-    DRAKE_ABORT();  // NOTREACHED
+    DRAKE_UNREACHABLE();
   }();
   const int num_columns = wrt_qdot ? num_positions() : num_velocities();
   DRAKE_THROW_UNLESS(Jw_V_ABp_E->cols() == num_columns);
@@ -1368,14 +1338,12 @@ void MultibodyTree<T>::CalcFrameJacobianExpressedInWorld(
 
     // Mapping defined by v = N⁺(q)⋅q̇.
     if (from_qdot) {
-      const auto& mbt_context =
-          dynamic_cast<const MultibodyTreeContext<T>&>(context);
       // TODO(amcastro-tri): consider using an operator version instead only
       // if/when the computational cost of multiplying with Nplus from the
       // right becomes a bottleneck.
       // TODO(amcastro-tri): cache Nplus to avoid memory allocations.
       Nplus.resize(mobilizer_num_velocities, mobilizer_num_positions);
-      mobilizer.CalcNplusMatrix(mbt_context, &Nplus);
+      mobilizer.CalcNplusMatrix(context, &Nplus);
     } else {
       Nplus.setIdentity(mobilizer_num_velocities, mobilizer_num_velocities);
     }
@@ -1441,13 +1409,11 @@ template <typename T>
 T MultibodyTree<T>::DoCalcPotentialEnergy(
     const systems::Context<T>& context,
     const PositionKinematicsCache<T>& pc) const {
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
 
   T potential_energy = 0.0;
   // Add contributions from force elements.
   for (const auto& force_element : owned_force_elements_) {
-    potential_energy += force_element->CalcPotentialEnergy(mbt_context, pc);
+    potential_energy += force_element->CalcPotentialEnergy(context, pc);
   }
   return potential_energy;
 }
@@ -1465,14 +1431,12 @@ T MultibodyTree<T>::DoCalcConservativePower(
     const systems::Context<T>& context,
     const PositionKinematicsCache<T>& pc,
     const VelocityKinematicsCache<T>& vc) const {
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
 
   T conservative_power = 0.0;
   // Add contributions from force elements.
   for (const auto& force_element : owned_force_elements_) {
     conservative_power +=
-        force_element->CalcConservativePower(mbt_context, pc, vc);
+        force_element->CalcConservativePower(context, pc, vc);
   }
   return conservative_power;
 }
@@ -1502,9 +1466,6 @@ void MultibodyTree<T>::CalcArticulatedBodyInertiaCache(
     ArticulatedBodyInertiaCache<T>* abc) const {
   DRAKE_DEMAND(abc != nullptr);
 
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
-
   const std::vector<Vector6<T>>& H_PB_W_cache =
       tree_system_->EvalAcrossNodeGeometricJacobianExpressedInWorld(context);
 
@@ -1517,7 +1478,7 @@ void MultibodyTree<T>::CalcArticulatedBodyInertiaCache(
       const MatrixUpTo6<T> H_PB_W = node.GetJacobianFromArray(H_PB_W_cache);
 
       node.CalcArticulatedBodyInertiaCache_TipToBase(
-          mbt_context, pc, H_PB_W, abc);
+          context, pc, H_PB_W, abc);
     }
   }
 }
@@ -1648,7 +1609,7 @@ VectorX<double> MultibodyTree<T>::GetPositionLowerLimits() const {
   for (JointIndex i{0}; i < num_joints(); ++i) {
     const auto& joint = get_joint(i);
     q_lower.segment(joint.position_start(), joint.num_positions()) =
-        joint.lower_limits();
+        joint.position_lower_limits();
   }
   return q_lower;
 }
@@ -1661,16 +1622,66 @@ VectorX<double> MultibodyTree<T>::GetPositionUpperLimits() const {
   for (JointIndex i{0}; i < num_joints(); ++i) {
     const auto& joint = get_joint(i);
     q_upper.segment(joint.position_start(), joint.num_positions()) =
-        joint.upper_limits();
+        joint.position_upper_limits();
   }
   return q_upper;
 }
 
+template <typename T>
+VectorX<double> MultibodyTree<T>::GetVelocityLowerLimits() const {
+  DRAKE_MBT_THROW_IF_NOT_FINALIZED();
+  Eigen::VectorXd v_lower = Eigen::VectorXd::Constant(
+      num_velocities(), -std::numeric_limits<double>::infinity());
+  for (JointIndex i{0}; i < num_joints(); ++i) {
+    const auto& joint = get_joint(i);
+    v_lower.segment(joint.velocity_start(), joint.num_velocities()) =
+        joint.velocity_lower_limits();
+  }
+  return v_lower;
+}
 
-// Explicitly instantiates on the most common scalar types.
-template class MultibodyTree<double>;
-template class MultibodyTree<AutoDiffXd>;
+template <typename T>
+VectorX<double> MultibodyTree<T>::GetVelocityUpperLimits() const {
+  DRAKE_MBT_THROW_IF_NOT_FINALIZED();
+  Eigen::VectorXd v_upper = Eigen::VectorXd::Constant(
+      num_velocities(), std::numeric_limits<double>::infinity());
+  for (JointIndex i{0}; i < num_joints(); ++i) {
+    const auto& joint = get_joint(i);
+    v_upper.segment(joint.velocity_start(), joint.num_velocities()) =
+        joint.velocity_upper_limits();
+  }
+  return v_upper;
+}
+
+template <typename T>
+VectorX<double> MultibodyTree<T>::GetAccelerationLowerLimits() const {
+  DRAKE_MBT_THROW_IF_NOT_FINALIZED();
+  Eigen::VectorXd vd_lower = Eigen::VectorXd::Constant(
+      num_velocities(), -std::numeric_limits<double>::infinity());
+  for (JointIndex i{0}; i < num_joints(); ++i) {
+    const auto& joint = get_joint(i);
+    vd_lower.segment(joint.velocity_start(), joint.num_velocities()) =
+        joint.acceleration_lower_limits();
+  }
+  return vd_lower;
+}
+
+template <typename T>
+VectorX<double> MultibodyTree<T>::GetAccelerationUpperLimits() const {
+  DRAKE_MBT_THROW_IF_NOT_FINALIZED();
+  Eigen::VectorXd vd_upper = Eigen::VectorXd::Constant(
+      num_velocities(), std::numeric_limits<double>::infinity());
+  for (JointIndex i{0}; i < num_joints(); ++i) {
+    const auto& joint = get_joint(i);
+    vd_upper.segment(joint.velocity_start(), joint.num_velocities()) =
+        joint.acceleration_upper_limits();
+  }
+  return vd_upper;
+}
 
 }  // namespace internal
 }  // namespace multibody
 }  // namespace drake
+
+DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
+    class ::drake::multibody::internal::MultibodyTree)

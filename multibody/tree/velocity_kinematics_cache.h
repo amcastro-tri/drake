@@ -44,6 +44,9 @@ class VelocityKinematicsCache {
  public:
   DRAKE_DECLARE_COPY_AND_MOVE_AND_ASSIGN(VelocityKinematicsCache)
 
+  // Empty cache. No memory allocation.
+  VelocityKinematicsCache() {}
+
   /// Constructs a velocity kinematics cache entry for the given
   /// MultibodyTreeTopology.
   /// In Release builds specific entries are left uninitialized resulting in a

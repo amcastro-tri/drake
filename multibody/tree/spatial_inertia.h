@@ -153,9 +153,10 @@ class SpatialInertia {
   /// @param[in] G_SP_E UnitInertia of the body or composite body S computed
   ///                   about origin point P and expressed in frame E.
   SpatialInertia(
-      const T& mass, const Vector3<T>& p_PScm_E, const UnitInertia<T>& G_SP_E) :
+      const T& mass, const Vector3<T>& p_PScm_E, const UnitInertia<T>& G_SP_E,
+      bool unsafe = false) :
       mass_(mass), p_PScm_E_(p_PScm_E), G_SP_E_(G_SP_E) {
-    CheckInvariants();
+    if (!unsafe) CheckInvariants();
   }
 
   /// Returns a new %SpatialInertia object templated on `Scalar` initialized
@@ -175,7 +176,7 @@ class SpatialInertia {
     return SpatialInertia<Scalar>(
         get_mass(),
         get_com().template cast<Scalar>(),
-        get_unit_inertia().template cast<Scalar>());
+        get_unit_inertia().template cast<Scalar>(), true /* no checks */);
   }
 
   /// Get a constant reference to the mass of this spatial inertia.

@@ -16,6 +16,8 @@
 #include "drake/multibody/parsing/parser.h"
 #include "drake/geometry/scene_graph.h"
 
+#include <valgrind/callgrind.h>
+
 #include <iostream>
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
 #define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
@@ -231,6 +233,7 @@ int do_main() {
   // ===========================================================================
   // MBP INVERSE DYNAMICS
   // ===========================================================================
+  CALLGRIND_START_INSTRUMENTATION;
   if (FLAGS_mbp_inverse_dyn) {
     Eigen::VectorXd x = Eigen::VectorXd::Zero(2 * nq);
     Eigen::VectorXd desired_vdot(nq);
@@ -250,6 +253,8 @@ int do_main() {
               << "xinverse dynamics calculations took " <<
               duration.count() << " milliseconds." << std::endl;
   }
+  CALLGRIND_STOP_INSTRUMENTATION;
+  CALLGRIND_DUMP_STATS;
 #if 0
   start =  my_clock::now();
   multibody::MultibodyForces<AutoDiffXd> external_forces_autodiff(

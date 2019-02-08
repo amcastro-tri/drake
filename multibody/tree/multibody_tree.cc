@@ -544,10 +544,12 @@ void MultibodyTree<T>::CalcSpatialInertiaInWorldCache(
   DRAKE_DEMAND(M_B_W_cache != nullptr);
   DRAKE_DEMAND(static_cast<int>(M_B_W_cache->size()) == num_bodies());
 
+  const auto& pc = this->EvalPositionKinematics(context);
+
   // Skip the world.
   for (BodyIndex body_index(1); body_index < num_bodies(); ++body_index) {
     const Body<T>& body = get_body(body_index);
-    const Isometry3<T>& X_WB = body.EvalPoseInWorld(context);
+    const Isometry3<T>& X_WB = pc.get_X_WB(body.node_index());
 
     // Orientation of B in W.
     const math::RotationMatrix<T> R_WB(X_WB.linear());
@@ -573,6 +575,8 @@ void MultibodyTree<T>::CalcDynamicBiasCache(
   const std::vector<SpatialInertia<T>>& spatial_inertia_in_world_cache =
       EvalSpatialInertiaInWorldCache(context);
 
+  const auto& vc = this->EvalVelocityKinematics(context);
+
   // Skip the world.
   for (BodyIndex body_index(1); body_index < num_bodies(); ++body_index) {
     const Body<T>& body = get_body(body_index);
@@ -588,7 +592,7 @@ void MultibodyTree<T>::CalcDynamicBiasCache(
 
     // Gyroscopic spatial force on body B about Bo.
     // Notice b_Bo_W(q, v) is a function of positions and velocities only.
-    const SpatialVelocity<T>& V_WB = body.EvalSpatialVelocityInWorld(context);
+    const SpatialVelocity<T>& V_WB = vc.get_V_WB(body.node_index());
     const Vector3<T>& w_WB = V_WB.rotational();
     SpatialForce<T>& b_Bo_W = (*b_Bo_W_cache)[body.node_index()];
     b_Bo_W = mass * SpatialForce<T>(
@@ -600,14 +604,16 @@ void MultibodyTree<T>::CalcDynamicBiasCache(
 template <typename T>
 void MultibodyTree<T>::CalcSpatialAccelerationsFromVdot(
     const systems::Context<T>& context,
-    const PositionKinematicsCache<T>& pc,
-    const VelocityKinematicsCache<T>& vc,
     const VectorX<T>& known_vdot,
+    bool zero_velocities,
     std::vector<SpatialAcceleration<T>>* A_WB_array) const {
   DRAKE_DEMAND(A_WB_array != nullptr);
   DRAKE_DEMAND(static_cast<int>(A_WB_array->size()) == num_bodies());
 
   DRAKE_DEMAND(known_vdot.size() == topology_.num_velocities());
+
+  const auto& pc = this->EvalPositionKinematics(context);
+  const auto& vc = this->EvalVelocityKinematics(context);
 
   // TODO(amcastro-tri): Loop over bodies to compute acceleration kinematics
   // updates corresponding to flexible bodies.
@@ -626,7 +632,7 @@ void MultibodyTree<T>::CalcSpatialAccelerationsFromVdot(
 
       // Update per-node kinematics.
       node.CalcSpatialAcceleration_BaseToTip(
-          context, pc, vc, known_vdot, A_WB_array);
+          context, pc, vc, known_vdot, zero_velocities, A_WB_array);
     }
   }
 }
@@ -646,7 +652,8 @@ void MultibodyTree<T>::CalcAccelerationKinematicsCache(
 
   std::vector<SpatialAcceleration<T>>& A_WB_array = ac->get_mutable_A_WB_pool();
 
-  CalcSpatialAccelerationsFromVdot(context, pc, vc, known_vdot, &A_WB_array);
+  CalcSpatialAccelerationsFromVdot(
+      context, known_vdot, false, &A_WB_array);
 }
 
 template <typename T>
@@ -671,11 +678,27 @@ VectorX<T> MultibodyTree<T>::CalcInverseDynamics(
 template <typename T>
 void MultibodyTree<T>::CalcInverseDynamics(
     const systems::Context<T>& context,
-    const PositionKinematicsCache<T>& pc,
-    const VelocityKinematicsCache<T>& vc,
+    const PositionKinematicsCache<T>&,
+    const VelocityKinematicsCache<T>&,
     const VectorX<T>& known_vdot,
     const std::vector<SpatialForce<T>>& Fapplied_Bo_W_array,
     const Eigen::Ref<const VectorX<T>>& tau_applied_array,
+    std::vector<SpatialAcceleration<T>>* A_WB_array,
+    std::vector<SpatialForce<T>>* F_BMo_W_array,
+    EigenPtr<VectorX<T>> tau_array) const {
+  CalcInverseDynamics(
+      context, known_vdot, Fapplied_Bo_W_array, tau_applied_array,
+      false,
+      A_WB_array, F_BMo_W_array, tau_array);
+}
+
+template <typename T>
+void MultibodyTree<T>::CalcInverseDynamics(
+    const systems::Context<T>& context,
+    const VectorX<T>& known_vdot,
+    const std::vector<SpatialForce<T>>& Fapplied_Bo_W_array,
+    const Eigen::Ref<const VectorX<T>>& tau_applied_array,
+    bool zero_velocities,
     std::vector<SpatialAcceleration<T>>* A_WB_array,
     std::vector<SpatialForce<T>>* F_BMo_W_array,
     EigenPtr<VectorX<T>> tau_array) const {
@@ -696,7 +719,10 @@ void MultibodyTree<T>::CalcInverseDynamics(
 
   // Compute body spatial accelerations given the generalized accelerations are
   // known.
-  CalcSpatialAccelerationsFromVdot(context, pc, vc, known_vdot, A_WB_array);
+  // TODO(amcastro-tri): Consider passing pc, vc to avoid addition Eval()
+  // calls for performance.
+  CalcSpatialAccelerationsFromVdot(
+      context, known_vdot, zero_velocities, A_WB_array);
 
   // Vector of generalized forces per mobilizer.
   // It has zero size if no forces are applied.
@@ -705,6 +731,11 @@ void MultibodyTree<T>::CalcInverseDynamics(
   // Spatial force applied on B at Bo.
   // It is left initialized to zero if no forces are applied.
   SpatialForce<T> Fapplied_Bo_W = SpatialForce<T>::Zero();
+
+  const auto& pc = EvalPositionKinematics(context);
+  const auto& vc = zero_velocities ?
+      VelocityKinematicsCache<T>() : // empty cache. It won't get used.
+          EvalVelocityKinematics(context);
 
   const std::vector<SpatialInertia<T>>& spatial_inertia_in_world_cache =
       EvalSpatialInertiaInWorldCache(context);
@@ -750,6 +781,7 @@ void MultibodyTree<T>::CalcInverseDynamics(
       node.CalcInverseDynamics_TipToBase(
           context, pc, vc,
           spatial_inertia_in_world_cache, dynamic_bias_cache,
+          zero_velocities,
           *A_WB_array,
           Fapplied_Bo_W, tau_applied_mobilizer,
           F_BMo_W_array, tau_array);
@@ -832,32 +864,28 @@ void MultibodyTree<T>::CalcMassMatrixViaInverseDynamics(
   DRAKE_DEMAND(H->rows() == num_velocities());
   DRAKE_DEMAND(H->cols() == num_velocities());
 
-  auto context_with_zero_v = context.Clone();
+  //auto context_with_zero_v = context.Clone();
   // TODO(amcastro-tri): this should set accordingly by Clone().
   //context_with_zero_v->EnableCaching();
-  auto x = GetMutablePositionsAndVelocities(context_with_zero_v.get());
-  x.segment(num_positions(), num_velocities()).setZero();
-
-  // pc & vc must be in sync with context_with_zero_v as required by the
-  // signature of CalcInverseDynamics() used below.
-  const PositionKinematicsCache<T>& pc =
-      EvalPositionKinematics(*context_with_zero_v);
-  const VelocityKinematicsCache<T>& vc =
-      EvalVelocityKinematics(*context_with_zero_v);
+  //auto x = GetMutablePositionsAndVelocities(context_with_zero_v.get());
+  //x.segment(num_positions(), num_velocities()).setZero();
 
   // Compute one column of the mass matrix via inverse dynamics at a time.
   const int nv = num_velocities();
   VectorX<T> vdot(nv);
   VectorX<T> tau(nv);
   // Auxiliary arrays used by inverse dynamics.
+  // TODO(amcastro-tri): consider placing this memory somewher to avoid
+  // allocations. Can we use never_destroyed?
   std::vector<SpatialAcceleration<T>> A_WB_array(num_bodies());
   std::vector<SpatialForce<T>> F_BMo_W_array(num_bodies());
 
+  const bool zero_velocities = true;
   for (int j = 0; j < nv; ++j) {
     vdot = VectorX<T>::Unit(nv, j);
     tau.setZero();
-    CalcInverseDynamics(*context_with_zero_v, pc, vc, vdot, {}, VectorX<T>(),
-                        &A_WB_array, &F_BMo_W_array, &tau);
+    CalcInverseDynamics(context, vdot, {}, VectorX<T>(),
+                        zero_velocities, &A_WB_array, &F_BMo_W_array, &tau);
     H->col(j) = tau;
   }
 }
@@ -1059,7 +1087,7 @@ VectorX<T> MultibodyTree<T>::CalcBiasForPointsGeometricJacobianExpressedInWorld(
 
   std::vector<SpatialAcceleration<T>> A_WB_array(num_bodies());
   const VectorX<T> vdot = VectorX<T>::Zero(num_velocities());
-  CalcSpatialAccelerationsFromVdot(context, pc, vc, vdot, &A_WB_array);
+  CalcSpatialAccelerationsFromVdot(context, vdot, false, &A_WB_array);
 
   const Body<T>& body_B = frame_F.body();
   // Bias for body B spatial acceleration.
@@ -1244,7 +1272,7 @@ Vector6<T> MultibodyTree<T>::CalcBiasForFrameGeometricJacobianExpressedInWorld(
 
   std::vector<SpatialAcceleration<T>> A_WB_array(num_bodies());
   const VectorX<T> vdot = VectorX<T>::Zero(num_velocities());
-  CalcSpatialAccelerationsFromVdot(context, pc, vc, vdot, &A_WB_array);
+  CalcSpatialAccelerationsFromVdot(context, vdot, false, &A_WB_array);
 
   const Body<T>& body_B = frame_F.body();
   // Bias for body B spatial acceleration.

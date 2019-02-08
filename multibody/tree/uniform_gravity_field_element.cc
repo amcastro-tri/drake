@@ -56,10 +56,11 @@ VectorX<T> UniformGravityFieldElement<T>::CalcGravityGeneralizedForces(
   // TODO(amcastro-tri): Replace this inverse dynamics implementation by a JᵀF
   // operator implementation, which would be more efficient.
   model.CalcInverseDynamics(
-      context, pc, vc, /* state */
+      context, /* state */
       VectorX<T>::Zero(model.num_velocities()), /* vdot = 0 */
       /* Applied forces. In this case only gravity. */
       forces.body_forces(), forces.generalized_forces(),
+      true /*zero velocities*/,
       &A_WB_array, &F_BMo_W_array, /* temporary arrays. */
       &tau_g /* Output, the generalized forces. */);
   return -tau_g;

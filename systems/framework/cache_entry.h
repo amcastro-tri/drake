@@ -128,6 +128,30 @@ class CacheEntry {
     return ExtractValueOrThrow<ValueType>(abstract_value, __func__);
   }
 
+  template <typename ValueType>
+  const ValueType& UnsafeEval(const ContextBase& context) const {
+    //const AbstractValue& abstract_value = EvalAbstract(context);
+
+    const CacheEntryValue& cache_value = get_cache_entry_value(context);
+    if (cache_value.needs_recomputation()) {
+      UpdateValue(context);
+#if 0
+      CacheEntryValue& mutable_cache_value =
+          get_mutable_cache_entry_value(context);
+
+      AbstractValue& value =
+          mutable_cache_value.GetMutableAbstractValueOrThrow();
+
+      // If Calc() throws a recoverable exception, the cache remains out of date.
+      Calc(context, &value);
+      mutable_cache_value.mark_up_to_date();
+#endif
+    }
+    const AbstractValue& abstract_value = cache_value.get_abstract_value();
+
+    return static_cast<const Value<ValueType>*>(&abstract_value)->get_value();
+  }
+
   /** Returns a reference to the up-to-date abstract value of this cache entry
   contained in the given Context. If the value is not already up to date with
   respect to its prerequisites, or if caching is disabled for this entry, the

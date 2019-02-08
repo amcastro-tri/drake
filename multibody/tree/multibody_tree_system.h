@@ -86,7 +86,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   const PositionKinematicsCache<T>& EvalPositionKinematics(
       const systems::Context<T>& context) const {
     return this->get_cache_entry(position_kinematics_cache_index_)
-        .template Eval<PositionKinematicsCache<T>>(context);
+        .template UnsafeEval<PositionKinematicsCache<T>>(context);
   }
 
   /** Returns a reference to the up to date VelocityKinematicsCache in the
@@ -95,19 +95,19 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   const VelocityKinematicsCache<T>& EvalVelocityKinematics(
       const systems::Context<T>& context) const {
     return this->get_cache_entry(velocity_kinematics_cache_index_)
-        .template Eval<VelocityKinematicsCache<T>>(context);
+        .template UnsafeEval<VelocityKinematicsCache<T>>(context);
   }
 
   const std::vector<SpatialInertia<T>>& EvalSpatialInertiaInWorldCache(
       const systems::Context<T>& context) const {
     return this->get_cache_entry(spatial_inertia_in_world_cache_index_)
-        .template Eval<std::vector<SpatialInertia<T>>>(context);
+        .template UnsafeEval<std::vector<SpatialInertia<T>>>(context);
   }
 
   const std::vector<SpatialForce<T>>& EvalDynamicBiasCache(
       const systems::Context<T>& context) const {
     return this->get_cache_entry(dynamic_bias_cache_index_)
-        .template Eval<std::vector<SpatialForce<T>>>(context);
+        .template UnsafeEval<std::vector<SpatialForce<T>>>(context);
   }
 
   /** Returns a reference to the up to date cached value for the
@@ -127,7 +127,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   EvalAcrossNodeGeometricJacobianExpressedInWorld(
       const systems::Context<T> &context) const {
     return this->get_cache_entry(H_PB_W_cache_index_)
-        .template Eval<std::vector<Vector6<T>>>(context);
+        .template UnsafeEval<std::vector<Vector6<T>>>(context);
   }
 
   // TODO(sherm1) Add ArticulatedBodyInertiaCache.

@@ -1,0 +1,110 @@
+# -*- python -*-
+# This file contains rules for Bazel; see drake/doc/bazel.rst.
+
+load(
+    "@drake//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
+    "drake_cc_googletest",
+    "drake_cc_library",
+)
+load("//tools/install:install_data.bzl", "install_data")
+load("//tools/lint:lint.bzl", "add_lint_tests")
+
+drake_cc_library(
+    name = "mt_mesh",
+    srcs = [
+        "MTEdge.cpp",
+        "MTIEdge.cpp",
+        "MTITriangle.cpp",
+        "MTIVertex.cpp",
+        "MTMesh.cpp",
+        "MTTriangle.cpp",
+        "MTVertex.cpp",
+    ],
+    hdrs = [
+        "MTEdge.h",
+        "MTEdge.inl",
+        "MTIEdge.h",
+        "MTITriangle.h",
+        "MTIVertex.h",
+        "MTMesh.h",
+        "MTMesh.inl",
+        "MTTriangle.h",
+        "MTTriangle.inl",
+        "MTVertex.h",
+        "MTVertex.inl",
+        "UnorderedSet.h",
+        "UnorderedSet.inl",
+    ],
+    # All the inlined code from Wm5 needs this or we get a build error.
+    copts = [
+        "-Wno-old-style-cast",
+        "-Wno-error",
+        "-Wno-deprecated",
+        "-Wno-maybe-uninitialized",
+        "-Wno-overloaded-virtual",
+        "-Wno-extra",
+    ],
+    deps = [
+        "@wildmagic",
+    ],
+)
+
+drake_cc_library(
+    name = "convex_polyhedra",
+    srcs = [
+        "ConvexClipper.cpp",
+        "ConvexPolyhedron.cpp",
+    ],
+    hdrs = [
+        "ConvexClipper.h",
+        "ConvexPolyhedron.h",
+    ],
+    # All the inlined code from Wm5 needs this or we get a build error.
+    copts = [
+        "-Wno-old-style-cast",
+        "-Wno-error",
+        "-Wno-deprecated",
+        "-Wno-maybe-uninitialized",
+        "-Wno-overloaded-virtual",
+        "-Wno-extra",
+    ],
+    deps = [
+        ":mt_mesh",
+    ],
+)
+
+drake_cc_binary(
+    name = "intersect_convex_polyhedra",
+    srcs = ["intersect_convex_polyhedra.cc"],
+    # All the inlined code from Wm5 needs this or we get a build error.
+    copts = [
+        "-Wno-old-style-cast",
+        "-Wno-error",
+        "-Wno-deprecated",
+        "-Wno-maybe-uninitialized",
+        "-Wno-overloaded-virtual",
+        "-Wno-extra",
+    ],
+    deps = [":convex_clipper"],
+)
+
+drake_cc_binary(
+    name = "IntersectConvexPolyhedra",
+    srcs = [
+        "IntersectConvexPolyhedra.cpp",
+        "IntersectConvexPolyhedra.h",
+    ],
+    # All the inlined code from Wm5 needs this or we get a build error.
+    copts = [
+        "-Wno-old-style-cast",
+        "-Wno-error",
+        "-Wno-deprecated",
+        "-Wno-maybe-uninitialized",
+        "-Wno-overloaded-virtual",
+        "-Wno-extra",
+    ],
+    deps = [":convex_clipper"],
+)
+
+add_lint_tests()

@@ -28,6 +28,8 @@
 #include "drake/systems/framework/leaf_system.h"
 #include "drake/systems/framework/scalar_conversion_traits.h"
 
+#include "drake/multibody/plant/volumetric_contact/volumetric_contact_model.h"
+
 namespace drake {
 namespace multibody {
 
@@ -2297,6 +2299,11 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
       const CoulombFriction<double>& coulomb_friction,
       geometry::SceneGraph<T>* scene_graph = nullptr);
 
+  geometry::GeometryId RegisterMeshGeometry(
+      const Body<T>& body, const Isometry3<double>& X_BG,
+      const geometry::Shape& shape, const std::string& name,
+      const CoulombFriction<double>& coulomb_friction);    
+
   /// Returns an array of GeometryId's identifying the different contact
   /// geometries for `body` previously registered with a SceneGraph.
   /// @note This method can be called at any time during the lifetime of `this`
@@ -3256,6 +3263,9 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
   // Friction coefficients ordered by collision index.
   // See geometry_id_to_collision_index_.
   std::vector<CoulombFriction<double>> default_coulomb_friction_;
+
+  // Let MBP manage mesh geometries for contact.
+  VolumetricContactModel<T> volumetric_model_;
 
   // Port handles for geometry:
   systems::InputPortIndex geometry_query_port_;

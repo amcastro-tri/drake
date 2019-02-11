@@ -52,9 +52,18 @@ drake_cc_library(
         "//geometry:geometry_visualization",
         "//geometry:scene_graph",
         "//math:orthonormal_basis",
+        "//multibody/plant/volumetric_contact:volumetric_contact_model",
         "//multibody/tree",
         "//systems/framework:diagram_builder",
         "//systems/framework:leaf_system",
+    ],
+    copts = [
+        "-Wno-old-style-cast",
+        "-Wno-error",
+        "-Wno-deprecated",
+        "-Wno-maybe-uninitialized",
+        "-Wno-overloaded-virtual",
+        "-Wno-extra",
     ],
 )
 

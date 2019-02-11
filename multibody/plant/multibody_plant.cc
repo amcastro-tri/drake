@@ -361,6 +361,18 @@ geometry::GeometryId MultibodyPlant<T>::RegisterCollisionGeometry(
 }
 
 template <typename T>
+geometry::GeometryId MultibodyPlant<T>::RegisterMeshGeometry(
+    const Body<T>& body, const Isometry3<double>& X_BG,
+    const geometry::Shape& shape, const std::string& name,
+    const CoulombFriction<double>& coulomb_friction) {
+    auto id = RegisterCollisionGeometry(body, X_BG, shape, name, coulomb_friction);
+
+    // TODO: register mesh in VolumetricContactModel.
+
+    return id;
+}
+
+template <typename T>
 const std::vector<geometry::GeometryId>&
 MultibodyPlant<T>::GetCollisionGeometriesForBody(const Body<T>& body) const {
   DRAKE_ASSERT(body.index() < num_bodies());

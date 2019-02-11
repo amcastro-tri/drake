@@ -59,7 +59,7 @@ public:
     // distances should all be nonegative.  Floating point round-off errors
     // can cause some small distances, so you might set epsilon to a small
     // negative number.
-    bool ValidateHalfSpaceProperty (Real epsilon = (Real)0) const;
+    bool ValidateHalfSpaceProperty (Real epsilon = static_cast<Real>(0)) const;
     void ComputeCentroid ();
     const Vector3<Real>& GetCentroid () const;
 

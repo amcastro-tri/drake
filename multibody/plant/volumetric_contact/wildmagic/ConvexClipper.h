@@ -51,7 +51,7 @@ public:
 
     // Construction.
     ConvexClipper (const ConvexPolyhedron<Real>& polyhedron,
-        Real epsilon = (Real)0);
+        Real epsilon = static_cast<Real>(0));
 
     // Discard the portion of the mesh on the negative side of the plane.
     // This function is valid for any manifold triangle mesh (at most two

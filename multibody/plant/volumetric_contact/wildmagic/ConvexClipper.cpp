@@ -75,7 +75,7 @@ int ConvexClipper<Real>::Clip (const Plane3<Real>& plane)
                 // The point is on the plane (within floating point
                 // tolerance).
                 ++numZero;
-                vertex.Distance = (Real)0;
+                vertex.Distance = static_cast<Real>(0);
             }
         }
     }
@@ -108,7 +108,7 @@ int ConvexClipper<Real>::Clip (const Plane3<Real>& plane)
             Real d0 = mVertices[v0].Distance;
             Real d1 = mVertices[v1].Distance;
 
-            if (d0 <= (Real)0 && d1 <= (Real)0)
+            if (d0 <= static_cast<Real>(0) && d1 <= static_cast<Real>(0))
             {
                 // The edge is culled.  If the edge is exactly on the clip
                 // plane, it is possible that a visible triangle shares it.
@@ -129,7 +129,7 @@ int ConvexClipper<Real>::Clip (const Plane3<Real>& plane)
                 continue;
             }
 
-            if (d0 >= (Real)0 && d1 >= (Real)0)
+            if (d0 >= static_cast<Real>(0) && d1 >= static_cast<Real>(0))
             {
                 // Face retains the edge.
                 continue;
@@ -147,7 +147,7 @@ int ConvexClipper<Real>::Clip (const Plane3<Real>& plane)
             Vector3<Real>& point1 = mVertices[v1].Point;
             vertexNew.Point = point0 + (d0/(d0 - d1))*(point1 - point0);
 
-            if (d0 > (Real)0)
+            if (d0 > static_cast<Real>(0))
             {
                 edge.Vertex[1] = vNew;
             }
@@ -601,7 +601,7 @@ void ConvexClipper<Real>::GetTriangles (std::vector<int>& indices,
             Vector3<Real> diff1 = mVertices[v1].Point - mVertices[v0].Point;
             Vector3<Real> diff2 = mVertices[v2].Point - mVertices[v0].Point;
             Real sgnVolume = face.Plane.Normal.Dot(diff1.Cross(diff2));
-            if (sgnVolume > (Real)0)
+            if (sgnVolume > static_cast<Real>(0))
             {
                 // Clockwise, need to swap.
                 for (int i = 1; i + 1 < numEdges; ++i)
@@ -634,7 +634,7 @@ void ConvexClipper<Real>::GetTriangles (std::vector<int>& indices,
 template <typename Real>
 ConvexClipper<Real>::Vertex::Vertex ()
     :
-    Distance((Real)0),
+    Distance(static_cast<Real>(0)),
     Visible(true)
 {
     // Point and Occurs are uninitialized.

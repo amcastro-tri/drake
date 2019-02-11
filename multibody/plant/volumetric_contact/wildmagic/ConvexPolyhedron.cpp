@@ -88,7 +88,7 @@ void ConvexPolyhedron<Real>::Create (const V3Array& points,
         }
 
         Real distance = normal.Dot(diff);
-        if (distance < (Real)0)
+        if (distance < static_cast<Real>(0))
         {
             // The triangle is counterclockwise.
             Insert(v0, v1, v2);
@@ -132,7 +132,7 @@ void ConvexPolyhedron<Real>::Create (const V3Array& points,
         int v2 = *currentIndex++;
 
         Real distance = mPlanes[t].DistanceTo(mCentroid);
-        if (distance > (Real)0)
+        if (distance > static_cast<Real>(0))
         {
             // The triangle is counterclockwise.
             Insert(v0, v1, v2);
@@ -230,7 +230,7 @@ void ConvexPolyhedron<Real>::UpdatePlanes ()
         {
             normal /= length;
             Real dot = normal.Dot(diff);
-            if (dot < (Real)0)
+            if (dot < static_cast<Real>(0))
             {
                 normal = -normal;
             }
@@ -415,7 +415,7 @@ void ConvexPolyhedron<Real>::FindAllIntersections (int numPolyhedra,
 template <typename Real>
 Real ConvexPolyhedron<Real>::GetSurfaceArea () const
 {
-    Real surfaceArea = (Real)0;
+    Real surfaceArea = static_cast<Real>(0);
 
     const int numTriangles = mTriangles.GetNumElements();
     for (int t = 0; t < numTriangles; ++t)
@@ -438,7 +438,7 @@ Real ConvexPolyhedron<Real>::GetSurfaceArea () const
 template <typename Real>
 Real ConvexPolyhedron<Real>::GetVolume () const
 {
-    Real volume = (Real)0;
+    Real volume = static_cast<Real>(0);
 
     const int numTriangles = mTriangles.GetNumElements();
     for (int t = 0; t < numTriangles; ++t)
@@ -453,7 +453,7 @@ Real ConvexPolyhedron<Real>::GetVolume () const
         volume += vertex0.Dot(vertex1.Cross(vertex2));
     }
 
-    volume /= (Real)6;
+    volume /= static_cast<Real>(6);
     return volume;
 }
 //----------------------------------------------------------------------------
@@ -464,7 +464,7 @@ bool ConvexPolyhedron<Real>::ContainsPoint (const Vector3<Real>& point) const
     for (int t = 0; t < numTriangles; ++t)
     {
         Real distance = mPlanes[t].DistanceTo(point);
-        if (distance < (Real)0)
+        if (distance < static_cast<Real>(0))
         {
             return false;
         }
@@ -601,7 +601,7 @@ bool ConvexPolyhedron<Real>::ComputeSilhouette (V3Array& terminator,
     const Vector3<Real>& U, const Vector3<Real>& V, V2Array& silhouette)
 {
     Real eyeDistance = plane.DistanceTo(eye);
-    assertion(eyeDistance > (Real)0,
+    assertion(eyeDistance > static_cast<Real>(0),
         "The eye must be outside the polyhedron.\n");
 
     // The closest planar point to E is K = E - distance*N.
@@ -637,21 +637,21 @@ void ConvexPolyhedron<Real>::CreateEggShape (const Vector3<Real>& center,
     Real x0, Real x1, Real y0, Real y1, Real z0, Real z1, int maxSteps,
     ConvexPolyhedron& egg)
 {
-    assertion(x0 > (Real)0 && x1 > (Real)0, "Invalid input.\n");
-    assertion(y0 > (Real)0 && y1 > (Real)0, "Invalid input.\n");
-    assertion(z0 > (Real)0 && z1 > (Real)0, "Invalid input.\n");
+    assertion(x0 > static_cast<Real>(0) && x1 > static_cast<Real>(0), "Invalid input.\n");
+    assertion(y0 > static_cast<Real>(0) && y1 > static_cast<Real>(0), "Invalid input.\n");
+    assertion(z0 > static_cast<Real>(0) && z1 > static_cast<Real>(0), "Invalid input.\n");
     assertion(maxSteps >= 0, "Invalid input.\n");
 
     // Start with an octahedron whose 6 vertices are (-x0,0,0), (x1,0,0),
     // (0,-y0,0), (0,y1,0), (0,0,-z0), (0,0,z1).  The center point will be
     // added later.
     V3Array points(6);
-    points[0] = Vector3<Real>(-x0, (Real)0, (Real)0);
-    points[1] = Vector3<Real>( x1, (Real)0, (Real)0);
-    points[2] = Vector3<Real>((Real)0, -y0, (Real)0);
-    points[3] = Vector3<Real>((Real)0,  y1, (Real)0);
-    points[4] = Vector3<Real>((Real)0, (Real)0, -z0);
-    points[5] = Vector3<Real>((Real)0, (Real)0,  z1);
+    points[0] = Vector3<Real>(-x0, static_cast<Real>(0), static_cast<Real>(0));
+    points[1] = Vector3<Real>( x1, static_cast<Real>(0), static_cast<Real>(0));
+    points[2] = Vector3<Real>(static_cast<Real>(0), -y0, static_cast<Real>(0));
+    points[3] = Vector3<Real>(static_cast<Real>(0),  y1, static_cast<Real>(0));
+    points[4] = Vector3<Real>(static_cast<Real>(0), static_cast<Real>(0), -z0);
+    points[5] = Vector3<Real>(static_cast<Real>(0), static_cast<Real>(0),  z1);
 
     IArray indices(24);
     indices[ 0] = 1;  indices[ 1] = 3;  indices[ 2] = 5;
@@ -686,9 +686,9 @@ void ConvexPolyhedron<Real>::CreateEggShape (const Vector3<Real>& center,
 
             // Compute lifted centroid to points.
             Vector3<Real> lifted = egg.Point(v0) + egg.Point(v1);
-            Real xr = (lifted.X() > (Real)0 ? lifted.X()/x1 : lifted.X()/x0);
-            Real yr = (lifted.Y() > (Real)0 ? lifted.Y()/y1 : lifted.Y()/y0);
-            Real zr = (lifted.Z() > (Real)0 ? lifted.Z()/z1 : lifted.Z()/z0);
+            Real xr = (lifted.X() > static_cast<Real>(0) ? lifted.X()/x1 : lifted.X()/x0);
+            Real yr = (lifted.Y() > static_cast<Real>(0) ? lifted.Y()/y1 : lifted.Y()/y0);
+            Real zr = (lifted.Z() > static_cast<Real>(0) ? lifted.Z()/z1 : lifted.Z()/z0);
             lifted *= Math<Real>::InvSqrt(xr*xr + yr*yr + zr*zr);
 
             // Add the point to the array.  Store the point index in the edge
@@ -938,9 +938,9 @@ Real ConvexPolyhedron<Real>::GetTriangleArea (const Vector3<Real>& normal,
     }
 
     // Trap degenerate triangles.
-    if (maxAbsValue == (Real)0)
+    if (maxAbsValue == static_cast<Real>(0))
     {
-        return (Real)0;
+        return static_cast<Real>(0);
     }
 
     // Compute area of projected triangle.
@@ -970,7 +970,7 @@ Real ConvexPolyhedron<Real>::GetTriangleArea (const Vector3<Real>& normal,
             vertex2.X()*d2);
     }
 
-    area *= ((Real)0.5)/maxAbsValue;
+    area *= (static_cast<Real>(0.5))/maxAbsValue;
     return area;
 }
 //----------------------------------------------------------------------------
@@ -988,7 +988,7 @@ Real ConvexPolyhedron<Real>::GetDistance (const Vector3<Real>& eye, int t,
         distances[t] = -mPlanes[t].DistanceTo(eye);
         if (Math<Real>::FAbs(distances[t]) < Math<Real>::ZERO_TOLERANCE)
         {
-            distances[t] = (Real)0;
+            distances[t] = static_cast<Real>(0);
         }
     }
 
@@ -999,8 +999,8 @@ template <typename Real>
 bool ConvexPolyhedron<Real>::IsNegativeProduct (Real distance0,
     Real distance1)
 {
-    return (distance0 != (Real)0 ? (distance0*distance1 <= (Real)0) :
-        (distance1 != (Real)0));
+    return (distance0 != static_cast<Real>(0) ? (distance0*distance1 <= static_cast<Real>(0)) :
+        (distance1 != static_cast<Real>(0)));
 }
 //----------------------------------------------------------------------------
 

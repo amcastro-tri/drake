@@ -95,6 +95,21 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "disable_malloc",
+    testonly = 1,
+    srcs = ["disable_malloc.cc"],
+    hdrs = ["disable_malloc.h"],
+    tags = [
+        # The disable_malloc library be used sparingly, and not by default.
+        # Don't add this library into the ":test_utilities" package library.
+        "exclude_from_package",
+    ],
+    deps = [
+        # Keep it simple and don't depend on any Drake code.
+    ],
+)
+
+drake_cc_library(
     name = "symbolic_test_util",
     testonly = 1,
     hdrs = ["symbolic_test_util.h"],

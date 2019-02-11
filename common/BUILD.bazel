@@ -578,6 +578,13 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "disable_malloc_test",
+    deps = [
+        "//common/test_utilities:disable_malloc",
+    ],
+)
+
+drake_cc_googletest(
     name = "drake_bool_test",
     deps = [
         ":drake_bool",

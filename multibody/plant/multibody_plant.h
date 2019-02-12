@@ -3068,6 +3068,8 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
       const std::vector<Matrix3<T>>& R_WC_set,
       ContactResults<T>* contacts) const;
 
+  systems::EventStatus WriteMeshes(const systems::Context<T>& context) const;    
+
   // Helper method to add the contribution of external actuation forces to the
   // set of multibody `forces`. External actuation is applied through the
   // plant's input ports.
@@ -3265,7 +3267,7 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
   std::vector<CoulombFriction<double>> default_coulomb_friction_;
 
   // Let MBP manage mesh geometries for contact.
-  VolumetricContactModel<T> volumetric_model_;
+  std::unique_ptr<VolumetricContactModel<T>> volumetric_model_;
 
   // Port handles for geometry:
   systems::InputPortIndex geometry_query_port_;
@@ -3456,6 +3458,10 @@ geometry::GeometryId MultibodyPlant<double>::RegisterMeshGeometry(
     const Body<double>& body, const Isometry3<double>& X_BG,
     const std::string& file_name, const std::string& name,
     const CoulombFriction<double>& coulomb_friction, const Vector3<double>& scales);
+
+template <>
+systems::EventStatus MultibodyPlant<double>::WriteMeshes(
+    const systems::Context<double>&) const;
 #endif
 
 }  // namespace multibody
@@ -3467,11 +3473,19 @@ namespace drake {
 namespace systems {
 namespace scalar_conversion {
 template <>
-struct Traits<drake::multibody::MultibodyPlant> :
-    public NonSymbolicTraits {};
+struct Traits<multibody::MultibodyPlant> {
+  template <typename T, typename U>
+  using supported =
+      typename std::conditional<std::is_same<T, double>::value &&
+                                    std::is_same<U, double>::value,
+                                std::true_type, std::false_type>::type;
+};
 }  // namespace scalar_conversion
 }  // namespace systems
 }  // namespace drake
+
+//extern template class drake::multibody::MultibodyPlant<double>;
+//extern template class drake::multibody::AddMultibodyPlantSceneGraphResult<double>;
 
 DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     class drake::multibody::MultibodyPlant)

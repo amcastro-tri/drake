@@ -51,6 +51,7 @@ public:
     int AddPoint (const Vector3<Real>& point);
     V3Array& Points ();
     Vector3<Real>& Point (int i);
+    const Vector3<Real>& Point (int i) const;
     void UpdatePlanes ();
 
     // Test for convexity:  Assuming the application has guaranteed that the

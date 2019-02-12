@@ -104,15 +104,18 @@ MakeCylinderPlant(double length, double mass,
   Vector3<double> point_W(0, 0, 0);
 
   // A half-space for the ground geometry.
-  plant->RegisterCollisionGeometry(
-      plant->world_body(),
-      HalfSpace::MakePose(normal_W, point_W), HalfSpace(), "collision",
-      surface_friction);
+  const std::string model_file = "drake/examples/multibody/volumetric_contact_demo/ground.obj";
+  const std::string obj_model = FindResourceOrThrow(model_file);
+  plant->RegisterMeshGeometry(
+        plant->world_body(),
+        HalfSpace::MakePose(normal_W, point_W),
+        obj_model, "collision",
+        surface_friction, Vector3<double>(1.0, 1.0, 1.0));
 
   // Add visual for the ground.
   plant->RegisterVisualGeometry(
       plant->world_body(), HalfSpace::MakePose(normal_W, point_W),
-      HalfSpace(), "visual");
+      Mesh(obj_model), "visual");
 
   plant->AddForceElement<UniformGravityFieldElement>(gravity_W);
 

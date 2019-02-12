@@ -202,6 +202,12 @@ Vector3<Real>& ConvexPolyhedron<Real>::Point (int i)
 {
     return mPoints[i];
 }
+
+template <typename Real>
+const Vector3<Real>& ConvexPolyhedron<Real>::Point (int i) const
+{
+    return mPoints[i];
+}
 //----------------------------------------------------------------------------
 template <typename Real>
 void ConvexPolyhedron<Real>::UpdatePlanes ()

@@ -239,7 +239,9 @@ std::string GetScopedName(
 
 template <typename T>
 MultibodyPlant<T>::MultibodyPlant(double time_step)
-    : MultibodyPlant(nullptr, time_step) {}
+    : MultibodyPlant(nullptr, time_step) {
+    volumetric_model_ = std::make_unique<VolumetricContactModel<T>>();
+}
 
 template <typename T>
 MultibodyPlant<T>::MultibodyPlant(
@@ -369,7 +371,7 @@ geometry::GeometryId MultibodyPlant<double>::RegisterMeshGeometry(
     GeometryId id = RegisterCollisionGeometry(body, X_BG, geometry::Mesh(file_name), name, coulomb_friction);
 
     // TODO: register mesh in VolumetricContactModel.
-    volumetric_model_.RegisterGeometry(file_name, id, scales);
+    volumetric_model_->RegisterGeometry(file_name, id, scales);
 
     return id;
 }
@@ -1470,6 +1472,166 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
   CalcContactResults(context0, point_pairs0, R_WC_set, &contact_results_);
 }
 
+#if 0
+template<typename T>
+void MultibodyPlant<T>::DoCalcDiscreteVariableUpdatesWithVolumetricContact(
+    const drake::systems::Context<T>& context0,
+    const std::vector<const drake::systems::DiscreteUpdateEvent<T>*>&,
+    drake::systems::DiscreteValues<T>* updates) const {
+  // Assert this method was called on a context storing discrete state.
+  DRAKE_ASSERT(context0.get_num_discrete_state_groups() == 1);
+  DRAKE_ASSERT(context0.get_continuous_state().size() == 0);
+
+  const double dt = time_step_;  // just a shorter alias.
+
+  const int nq = this->num_positions();
+  const int nv = this->num_velocities();
+
+  // Get the system state as raw Eigen vectors
+  // (solution at the previous time step).
+  auto x0 = context0.get_discrete_state(0).get_value();
+  VectorX<T> q0 = x0.topRows(nq);
+  VectorX<T> v0 = x0.bottomRows(nv);
+
+  // Mass matrix and its factorization.
+  MatrixX<T> M0(nv, nv);
+  internal_tree().CalcMassMatrixViaInverseDynamics(context0, &M0);
+  auto M0_ldlt = M0.ldlt();
+
+  // Forces at the previous time step.
+  MultibodyForces<T> forces0(internal_tree());
+
+  const internal::PositionKinematicsCache<T>& pc0 =
+      EvalPositionKinematics(context0);
+  const internal::VelocityKinematicsCache<T>& vc0 =
+      EvalVelocityKinematics(context0);
+
+  // Compute forces applied through force elements.
+  internal_tree().CalcForceElementsContribution(context0, pc0, vc0, &forces0);
+
+  // If there is any input actuation, add it to the multibody forces.
+  AddJointActuationForces(context0, &forces0);
+
+  AddJointLimitsPenaltyForces(context0, &forces0);
+
+  // TODO(amcastro-tri): Eval() point_pairs0 when caching lands.
+  const std::vector<PenetrationAsPointPair<T>> point_pairs0 =
+      CalcPointPairPenetrations(context0);
+
+
+
+  // Workspace for inverse dynamics:
+  // Bodies' accelerations, ordered by BodyNodeIndex.
+  std::vector<SpatialAcceleration<T>> A_WB_array(internal_tree().num_bodies());
+  // Generalized accelerations.
+  VectorX<T> vdot = VectorX<T>::Zero(nv);
+  // Body forces (alias to forces0).
+  std::vector<SpatialForce<T>>& F_BBo_W_array = forces0.mutable_body_forces();
+
+  // With vdot = 0, this computes:
+  //   -tau = C(q, v)v - tau_app - ∑ J_WBᵀ(q) Fapp_Bo_W.
+  VectorX<T>& minus_tau = forces0.mutable_generalized_forces();
+  internal_tree().CalcInverseDynamics(
+      context0, pc0, vc0, vdot,
+      F_BBo_W_array, minus_tau,
+      &A_WB_array,
+      &F_BBo_W_array, /* Note: these arrays get overwritten on output. */
+      &minus_tau);
+
+  // Compute normal and tangential velocity Jacobians at t0.
+  const int num_contacts = point_pairs0.size();
+  MatrixX<T> Jn(num_contacts, nv);
+  MatrixX<T> Jt(2 * num_contacts, nv);
+  // For each contact point pair, the rotation matrix R_WC giving the
+  // orientation of the contact frame C in the world frame W.
+  // TODO(amcastro-tri): cache R_WC_set as soon as caching lands.
+  std::vector<Matrix3<T>> R_WC_set;
+  if (num_contacts > 0) {
+    // TODO(amcastro-tri): when it becomes a bottleneck, update the contact
+    // solver to use operators instead so that we don't have to form these
+    // Jacobian matrices explicitly (an O(num_contacts * nv) operation).
+    CalcNormalAndTangentContactJacobians(
+        context0, point_pairs0, &Jn, &Jt, &R_WC_set);
+  }
+
+  // Get friction coefficient into a single vector. Dynamic friction is ignored
+  // by the time stepping scheme.
+  std::vector<CoulombFriction<double>> combined_friction_pairs =
+      CalcCombinedFrictionCoefficients(point_pairs0);
+  VectorX<T> mu(num_contacts);
+  std::transform(combined_friction_pairs.begin(), combined_friction_pairs.end(),
+                 mu.data(),
+                 [](const CoulombFriction<double>& coulomb_friction) {
+                   return coulomb_friction.static_friction();
+                 });
+
+  // Place all the penetration depths within a single vector as required by
+  // the solver.
+  VectorX<T> phi0(num_contacts);
+  std::transform(point_pairs0.begin(), point_pairs0.end(),
+                 phi0.data(),
+                 [](const PenetrationAsPointPair<T>& pair) {
+                   return pair.depth;
+                 });
+
+  // TODO(amcastro-tri): Consider using different penalty parameters at each
+  // contact point.
+  // Compliance parameters used by the solver for each contact point.
+  VectorX<T> stiffness = VectorX<T>::Constant(
+      num_contacts, penalty_method_contact_parameters_.stiffness);
+  VectorX<T> damping = VectorX<T>::Constant(
+      num_contacts, penalty_method_contact_parameters_.damping);
+
+  // Solve for v and the contact forces.
+  ImplicitStribeckSolverResult info{
+      ImplicitStribeckSolverResult::kMaxIterationsReached};
+
+  ImplicitStribeckSolverParameters params =
+      implicit_stribeck_solver_->get_solver_parameters();
+  // A nicely converged NR iteration should not take more than 20 iterations.
+  // Otherwise we attempt a smaller time step.
+  params.max_iterations = 20;
+  implicit_stribeck_solver_->set_solver_parameters(params);
+
+  // We attempt to compute the update during the time interval dt using a
+  // progressively larger number of sub-steps (i.e each using a smaller time
+  // step than in the previous attempt). This loop breaks on the first
+  // successful attempt.
+  // We only allow a maximum number of trials. If the solver is unsuccessful in
+  // this number of trials, the user should probably decrease the discrete
+  // update time step dt or evaluate the validity of the model.
+  const int kNumMaxSubTimeSteps = 20;
+  int num_substeps = 0;
+  do {
+    ++num_substeps;
+    info = SolveUsingSubStepping(
+        num_substeps, M0, Jn, Jt, minus_tau, stiffness, damping, mu, v0, phi0);
+  } while (info != ImplicitStribeckSolverResult::kSuccess &&
+           num_substeps < kNumMaxSubTimeSteps);
+
+  DRAKE_DEMAND(info == ImplicitStribeckSolverResult::kSuccess);
+
+  // TODO(amcastro-tri): implement capability to dump solver statistics to a
+  // file for analysis.
+
+  // Retrieve the solution velocity for the next time step.
+  VectorX<T> v_next = implicit_stribeck_solver_->get_generalized_velocities();
+
+  VectorX<T> qdot_next(this->num_positions());
+  internal_tree().MapVelocityToQDot(context0, v_next, &qdot_next);
+  VectorX<T> q_next = q0 + dt * qdot_next;
+
+  VectorX<T> x_next(this->num_multibody_states());
+  x_next << q_next, v_next;
+  updates->get_mutable_vector(0).SetFromVector(x_next);
+
+  // Save contact results for analysis and visualization.
+  // TODO(amcastro-tri): remove next line once caching lands since point_pairs0
+  // and R_WC_set will be cached.
+  CalcContactResults(context0, point_pairs0, R_WC_set, &contact_results_);
+}
+#endif
+
 template<typename T>
 void MultibodyPlant<T>::DoMapQDotToVelocity(
     const systems::Context<T>& context,
@@ -1599,6 +1761,45 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
                                   "contact_results", ContactResults<T>(),
                                   &MultibodyPlant<T>::CalcContactResultsOutput)
                               .get_index();
+
+   // FOR TESTING VOLUMETRIC CONTACT
+   if (is_discrete()) {
+    this->DeclarePeriodicPublishEvent(time_step_, 0.,  // period, offset
+                                    &MultibodyPlant<T>::WriteMeshes);
+   }
+}
+
+template <typename T>
+systems::EventStatus MultibodyPlant<T>::WriteMeshes(
+    const Context<T>& context) const {
+   DRAKE_ABORT_MSG("not available for T != double");
+}
+
+template <>
+systems::EventStatus MultibodyPlant<double>::WriteMeshes(
+    const Context<double>& context) const {
+  const auto& pc = EvalPositionKinematics(context);
+
+  // geometry_id_to_collision_index_
+
+  // Body (mesh) poses per collision index.
+  std::vector<Isometry3<double>> X_WB_list(num_collision_geometries());
+  for (const auto& id_idx_pair : geometry_id_to_body_index_) {
+    const auto id = id_idx_pair.first;
+    const auto body_index = id_idx_pair.second;
+    const auto collision_index = geometry_id_to_collision_index_.at(id);
+
+    const auto& X_WB = pc.get_X_WB(get_body(body_index).node_index());
+
+    X_WB_list[collision_index] = X_WB;
+  }
+
+  std::vector<VolumetricContactPair<double>> pairs =
+      volumetric_model_->CalcAllIntersectionPairs(X_WB_list);
+
+  (void)pairs;
+
+  return systems::EventStatus::Succeeded();
 }
 
 template <typename T>
@@ -1869,6 +2070,9 @@ AddMultibodyPlantSceneGraph(
 
 }  // namespace multibody
 }  // namespace drake
+
+//template class drake::multibody::MultibodyPlant<double>;
+//template struct drake::multibody::AddMultibodyPlantSceneGraphResult<double>;
 
 DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     class drake::multibody::MultibodyPlant)

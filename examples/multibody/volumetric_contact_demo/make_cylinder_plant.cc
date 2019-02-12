@@ -28,7 +28,8 @@ void AddCylinderWithMultiContact(
   const Vector4<double> orange(1.0, 0.55, 0.0, 1.0);
   const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
 
-  const std::string obj_model = FindResourceOrThrow("cube.obj");
+  const std::string model_file = "drake/examples/multibody/volumetric_contact_demo/cube.obj";
+  const std::string obj_model = FindResourceOrThrow(model_file);
 
   // Visual for the Cylinder
   plant->RegisterVisualGeometry(
@@ -39,7 +40,7 @@ void AddCylinderWithMultiContact(
   plant->RegisterMeshGeometry(
         body,
         Isometry3d::Identity(),
-        Mesh(obj_model), "collision",
+        obj_model, "collision",
         friction);
 
 #if 0

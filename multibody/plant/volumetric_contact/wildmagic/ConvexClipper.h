@@ -10,7 +10,9 @@
 #define CONVEXCLIPPER_H
 
 #include "Wm5Plane3.h"
-using namespace Wm5;
+//using namespace Wm5;
+
+namespace Wm5 {
 
 template <class Real> class ConvexPolyhedron;
 
@@ -94,5 +96,7 @@ protected:
 
 typedef ConvexClipper<float> ConvexClipperf;
 typedef ConvexClipper<double> ConvexClipperd;
+
+}  // namespace Wm5
 
 #endif

@@ -2301,7 +2301,7 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
 
   geometry::GeometryId RegisterMeshGeometry(
       const Body<T>& body, const Isometry3<double>& X_BG,
-      const geometry::Shape& shape, const std::string& name,
+      const std::string& file_name, const std::string& name,
       const CoulombFriction<double>& coulomb_friction);    
 
   /// Returns an array of GeometryId's identifying the different contact
@@ -3450,6 +3450,12 @@ template <>
 std::vector<geometry::PenetrationAsPointPair<double>>
 MultibodyPlant<double>::CalcPointPairPenetrations(
     const systems::Context<double>&) const;
+
+template <>
+geometry::GeometryId MultibodyPlant<double>::RegisterMeshGeometry(
+    const Body<double>& body, const Isometry3<double>& X_BG,
+    const std::string& file_name, const std::string& name,
+    const CoulombFriction<double>& coulomb_friction);
 #endif
 
 }  // namespace multibody

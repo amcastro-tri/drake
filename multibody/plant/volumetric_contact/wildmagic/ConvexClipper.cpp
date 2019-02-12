@@ -9,6 +9,8 @@
 #include "drake/multibody/plant/volumetric_contact/wildmagic/ConvexClipper.h"
 #include "drake/multibody/plant/volumetric_contact/wildmagic/ConvexPolyhedron.h"
 
+namespace Wm5 {
+
 //----------------------------------------------------------------------------
 template <typename Real>
 ConvexClipper<Real>::ConvexClipper (const ConvexPolyhedron<Real>& polyhedron,
@@ -728,3 +730,5 @@ bool ConvexClipper<Real>::EdgePlus::operator!= (const EdgePlus& edge) const
 template class ConvexClipper<float>;
 template class ConvexClipper<double>;
 //----------------------------------------------------------------------------
+
+}  // namespace Wm5

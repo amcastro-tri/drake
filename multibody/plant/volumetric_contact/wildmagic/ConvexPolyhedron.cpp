@@ -9,6 +9,8 @@
 #include "drake/multibody/plant/volumetric_contact/wildmagic/ConvexPolyhedron.h"
 #include "drake/multibody/plant/volumetric_contact/wildmagic/ConvexClipper.h"
 
+namespace Wm5 {
+
 //----------------------------------------------------------------------------
 template <typename Real>
 ConvexPolyhedron<Real>::ConvexPolyhedron ()
@@ -1010,3 +1012,5 @@ bool ConvexPolyhedron<Real>::IsNegativeProduct (Real distance0,
 template class ConvexPolyhedron<float>;
 template class ConvexPolyhedron<double>;
 //----------------------------------------------------------------------------
+
+}  // namespace Wm5

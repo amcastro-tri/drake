@@ -74,6 +74,7 @@ drake_cc_binary(
         "--target_realtime_rate=0.0",
     ],
     test_rule_timeout = "long",
+    data = [":models"],
     deps = [
         ":make_cylinder_plant",
         "//common:text_logging_gflags",
@@ -93,5 +94,7 @@ drake_cc_binary(
         "-Wno-extra",
     ],
 )
+
+install_data()
 
 add_lint_tests()

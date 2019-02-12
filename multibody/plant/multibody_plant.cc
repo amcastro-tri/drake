@@ -10,6 +10,7 @@
 #include "drake/geometry/geometry_frame.h"
 #include "drake/geometry/geometry_instance.h"
 #include "drake/geometry/geometry_visualization.h"
+#include "drake/geometry/shape_specification.h"
 #include "drake/math/orthonormal_basis.h"
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/tree/prismatic_joint.h"
@@ -360,16 +361,25 @@ geometry::GeometryId MultibodyPlant<T>::RegisterCollisionGeometry(
   return id;
 }
 
+template <>
+geometry::GeometryId MultibodyPlant<double>::RegisterMeshGeometry(
+    const Body<double>& body, const Isometry3<double>& X_BG,
+    const std::string& file_name, const std::string& name,
+    const CoulombFriction<double>& coulomb_friction) {
+    GeometryId id = RegisterCollisionGeometry(body, X_BG, geometry::Mesh(file_name), name, coulomb_friction);
+
+    // TODO: register mesh in VolumetricContactModel.
+    volumetric_model_.RegisterGeometry(file_name, id);
+
+    return id;
+}
+
 template <typename T>
 geometry::GeometryId MultibodyPlant<T>::RegisterMeshGeometry(
     const Body<T>& body, const Isometry3<double>& X_BG,
-    const geometry::Shape& shape, const std::string& name,
+    const std::string& file_name, const std::string& name,
     const CoulombFriction<double>& coulomb_friction) {
-    auto id = RegisterCollisionGeometry(body, X_BG, shape, name, coulomb_friction);
-
-    // TODO: register mesh in VolumetricContactModel.
-
-    return id;
+    DRAKE_ABORT_MSG("This method only supports T = double."); 
 }
 
 template <typename T>

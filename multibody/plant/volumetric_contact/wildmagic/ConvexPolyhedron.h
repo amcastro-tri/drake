@@ -12,7 +12,9 @@
 #include "drake/multibody/plant/volumetric_contact/wildmagic/MTMesh.h"
 #include "Wm5Plane3.h"
 #include "Wm5Vector2.h"
-using namespace Wm5;
+//using namespace Wm5;
+
+namespace Wm5 {
 
 template <typename Real>
 class ConvexPolyhedron : public MTMesh
@@ -150,5 +152,7 @@ protected:
 
 typedef ConvexPolyhedron<float> ConvexPolyhedronf;
 typedef ConvexPolyhedron<double> ConvexPolyhedrond;
+
+}  // namespace Wm5
 
 #endif

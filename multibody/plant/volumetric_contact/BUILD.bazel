@@ -32,6 +32,8 @@ drake_cc_library(
     deps = [
         "//common:default_scalars",
         "//multibody/plant/volumetric_contact/wildmagic:convex_polyhedra",
+        "//geometry:geometry",
+        "@tinyobjloader",
     ],
 )
 

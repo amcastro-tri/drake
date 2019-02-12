@@ -21,10 +21,9 @@ using drake::multibody::UniformGravityFieldElement;
 using drake::multibody::UnitInertia;
 using Eigen::Isometry3d;
 
-void AddCylinderWithMultiContact(
+void AddGeometry(
     MultibodyPlant<double>* plant, const RigidBody<double>& body,
-    double radius, double length, const CoulombFriction<double>& friction,
-    double contact_spheres_radius, int num_contacts) {
+    double length, const CoulombFriction<double>& friction) {
   const Vector4<double> orange(1.0, 0.55, 0.0, 1.0);
   const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
 
@@ -35,13 +34,13 @@ void AddCylinderWithMultiContact(
   plant->RegisterVisualGeometry(
       body,
       /* Pose X_BG of the geometry frame G in the cylinder body frame B. */
-      Isometry3d::Identity(), Mesh(obj_model), "visual", orange);
+      Isometry3d::Identity(), Mesh(obj_model, length), "visual", orange);
       
   plant->RegisterMeshGeometry(
         body,
         Isometry3d::Identity(),
         obj_model, "collision",
-        friction);
+        friction, Vector3<double>(length, length, length));
 
 #if 0
   // Add a bunch of little spheres to simulate "multi-contact".
@@ -80,7 +79,7 @@ void AddCylinderWithMultiContact(
 }
 
 std::unique_ptr<drake::multibody::MultibodyPlant<double>>
-MakeCylinderPlant(double radius, double length, double mass,
+MakeCylinderPlant(double length, double mass,
                   const CoulombFriction<double>& surface_friction,
                   const Vector3<double>& gravity_W, double dt,
                   geometry::SceneGraph<double>* scene_graph) {
@@ -90,23 +89,15 @@ MakeCylinderPlant(double radius, double length, double mass,
   plant->RegisterAsSourceForSceneGraph(scene_graph);
 
   UnitInertia<double> G_Bcm =
-      UnitInertia<double>::SolidCylinder(radius, length);
+      UnitInertia<double>::SolidCube(length);
 
   SpatialInertia<double> M_Bcm(mass, Vector3<double>::Zero(), G_Bcm);
   const RigidBody<double>& cylinder = plant->AddRigidBody("Cylinder", M_Bcm);
 
-  // The radius of the small spheres used to emulate multicontact.
-  const double contact_radius = radius / 20.0;
-
-  // The number of small spheres places at each rim of the cylinder to emulate
-  // multicontact.
-  const int num_contact_spheres = 10;
-
   // Add geometry to the cylinder for both contact and visualization.
-  AddCylinderWithMultiContact(
+  AddGeometry(
       plant.get(),
-      cylinder, radius, length, surface_friction,
-      contact_radius, num_contact_spheres);
+      cylinder, length, surface_friction);
 
   // Add a model for the ground.
   Vector3<double> normal_W(0, 0, 1);

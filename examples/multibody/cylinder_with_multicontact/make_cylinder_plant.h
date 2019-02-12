@@ -36,7 +36,7 @@ namespace cylinder_with_multicontact {
 /// @throws std::exception if scene_graph is nullptr.
 std::unique_ptr<drake::multibody::MultibodyPlant<double>>
 MakeCylinderPlant(
-    double radius, double length, double mass,
+    double length, double mass,
     const drake::multibody::CoulombFriction<double>&
     surface_friction, const Vector3<double>& gravity_W,
     double dt,

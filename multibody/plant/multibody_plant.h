@@ -2302,7 +2302,7 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
   geometry::GeometryId RegisterMeshGeometry(
       const Body<T>& body, const Isometry3<double>& X_BG,
       const std::string& file_name, const std::string& name,
-      const CoulombFriction<double>& coulomb_friction);    
+      const CoulombFriction<double>& coulomb_friction, const Vector3<double>& scales);    
 
   /// Returns an array of GeometryId's identifying the different contact
   /// geometries for `body` previously registered with a SceneGraph.
@@ -3455,7 +3455,7 @@ template <>
 geometry::GeometryId MultibodyPlant<double>::RegisterMeshGeometry(
     const Body<double>& body, const Isometry3<double>& X_BG,
     const std::string& file_name, const std::string& name,
-    const CoulombFriction<double>& coulomb_friction);
+    const CoulombFriction<double>& coulomb_friction, const Vector3<double>& scales);
 #endif
 
 }  // namespace multibody

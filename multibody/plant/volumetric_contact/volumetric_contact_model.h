@@ -23,10 +23,10 @@ class VolumetricContactModel {
 
   VolumetricContactModel() {}
   
-  int RegisterGeometry(const std::string& file_name, geometry::GeometryId id) {      
+  int RegisterGeometry(const std::string& file_name, geometry::GeometryId id, const Vector3<double>& scales) {      
       std::vector<Wm5::Vector3<double>> points;
       std::vector<int> faces;
-      LoadObj(file_name, &points, &faces);
+      LoadObj(file_name, scales, &points, &faces);
 
       PRINT_VAR(points.size());
       PRINT_VAR(faces.size());
@@ -39,7 +39,7 @@ class VolumetricContactModel {
   }
 
  private:
-    static void LoadObj(const std::string& file_name, std::vector<Wm5::Vector3<double>>* points, std::vector<int>* indexes);
+    static void LoadObj(const std::string& file_name, const Vector3<double>& scales, std::vector<Wm5::Vector3<double>>* points, std::vector<int>* indexes);
 
     std::vector<geometry::GeometryId> geometry_ids_;
     std::vector<std::unique_ptr<Wm5::ConvexPolyhedron<T>>> owned_meshes_;

@@ -67,7 +67,7 @@ void AddCylinderWithMultiContact(
 }
 
 std::unique_ptr<drake::multibody::MultibodyPlant<double>>
-MakeCylinderPlant(double radius, double length, double mass,
+MakeCylinderPlant(double length, double mass,
                   const CoulombFriction<double>& surface_friction,
                   const Vector3<double>& gravity_W, double dt,
                   geometry::SceneGraph<double>* scene_graph) {

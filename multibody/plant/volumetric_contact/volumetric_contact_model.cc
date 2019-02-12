@@ -93,7 +93,7 @@ namespace multibody {
 
 
 template <typename T>
-void VolumetricContactModel<T>::LoadObj(const std::string& file_name, std::vector<Wm5::Vector3<double>>* points, std::vector<int>* indexes) {
+void VolumetricContactModel<T>::LoadObj(const std::string& file_name, const Vector3<double>& scales, std::vector<Wm5::Vector3<double>>* points, std::vector<int>* indexes) {
     
     PRINT_VAR(file_name);
 
@@ -130,7 +130,7 @@ void VolumetricContactModel<T>::LoadObj(const std::string& file_name, std::vecto
     }
 
     // Convert to format needed in ConvexPolyhedron
-    *points = TinyObjToVertices(attrib, Vector3<double>(1.0, 1.0, 1.0));
+    *points = TinyObjToVertices(attrib, scales);
 
     const tinyobj::mesh_t& mesh = shapes[0].mesh;
 

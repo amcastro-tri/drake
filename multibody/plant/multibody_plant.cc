@@ -365,11 +365,11 @@ template <>
 geometry::GeometryId MultibodyPlant<double>::RegisterMeshGeometry(
     const Body<double>& body, const Isometry3<double>& X_BG,
     const std::string& file_name, const std::string& name,
-    const CoulombFriction<double>& coulomb_friction) {
+    const CoulombFriction<double>& coulomb_friction, const Vector3<double>& scales) {
     GeometryId id = RegisterCollisionGeometry(body, X_BG, geometry::Mesh(file_name), name, coulomb_friction);
 
     // TODO: register mesh in VolumetricContactModel.
-    volumetric_model_.RegisterGeometry(file_name, id);
+    volumetric_model_.RegisterGeometry(file_name, id, scales);
 
     return id;
 }
@@ -378,7 +378,7 @@ template <typename T>
 geometry::GeometryId MultibodyPlant<T>::RegisterMeshGeometry(
     const Body<T>& body, const Isometry3<double>& X_BG,
     const std::string& file_name, const std::string& name,
-    const CoulombFriction<double>& coulomb_friction) {
+    const CoulombFriction<double>& coulomb_friction,  const Vector3<double>& scales) {
     DRAKE_ABORT_MSG("This method only supports T = double."); 
 }
 

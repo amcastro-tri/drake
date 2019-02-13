@@ -782,6 +782,55 @@ bool ConvexPolyhedron<Real>::Print (const char* filename) const
 }
 //----------------------------------------------------------------------------
 template <typename Real>
+void ConvexPolyhedron<Real>::PrintObj (std::ofstream& outFile) const
+{
+    int i;
+    char message[512];
+
+    //outFile << "points:" << std::endl;
+    const int numPoints = (int)mPoints.size();
+    for (i = 0; i < numPoints; ++i)
+    {
+        const Vector3<Real>& vertex = mPoints[i];
+        sprintf(message, "v %+8.4f %+8.4f %+8.4f",
+            vertex.X(), vertex.Y(), vertex.Z());
+        outFile << message << std::endl;
+    }
+    //outFile << std::endl;
+
+    // Print the triangle information.
+    const int numTriangles = mTriangles.GetNumElements();
+    //outFile << "triangle quantity = " << numTriangles << std::endl;
+    for (int t = 0; t < numTriangles; ++t)
+    {
+        const MTTriangle& triangle = mTriangles.Get(t);
+
+        const int p0 = mVertices.Get(triangle.GetVertex(0)).GetLabel() + 1;
+        const int p1 = mVertices.Get(triangle.GetVertex(1)).GetLabel() + 1;
+        const int p2 = mVertices.Get(triangle.GetVertex(2)).GetLabel() + 1;
+
+        outFile << "f ";
+        outFile
+            << p0 << ' ' << p1 << ' '<< p2 << std::endl;
+    }
+
+    outFile << std::endl;
+}
+//----------------------------------------------------------------------------
+template <typename Real>
+bool ConvexPolyhedron<Real>::PrintObj (const char* filename) const
+{
+    std::ofstream outFile(filename);
+    if (!outFile)
+    {
+        return false;
+    }
+
+    PrintObj(outFile);
+    return true;
+}
+//----------------------------------------------------------------------------
+template <typename Real>
 ConvexPolyhedron<Real>* ConvexPolyhedron<Real>::FindSolidIntersection (
     const ConvexPolyhedron& polyhedron0, const ConvexPolyhedron& polyhedron1)
 {

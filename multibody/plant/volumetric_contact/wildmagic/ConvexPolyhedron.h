@@ -126,6 +126,8 @@ public:
     // Debugging support.
     virtual void Print (std::ofstream& outFile) const;
     virtual bool Print (const char* filename) const;
+    virtual void PrintObj (std::ofstream& outFile) const;
+    virtual bool PrintObj (const char* filename) const;
 
 protected:
     // Support for intersection testing.

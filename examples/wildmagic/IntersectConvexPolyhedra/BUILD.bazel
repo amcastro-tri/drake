@@ -71,6 +71,7 @@ drake_cc_binary(
     data = [":models"],
     deps = [
         "//common:find_resource",
+        "//math:geometric_transform",
         "//multibody/plant/volumetric_contact/wildmagic:convex_polyhedra",
         "//multibody/plant/volumetric_contact/load_objs:load_objs",
         ],

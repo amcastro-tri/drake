@@ -104,7 +104,7 @@ MakeCylinderPlant(double length, double mass,
   Vector3<double> point_W(0, 0, 0);
 
   // A half-space for the ground geometry.
-  const std::string model_file = "drake/examples/multibody/volumetric_contact_demo/ground.obj";
+  const std::string model_file = "drake/examples/multibody/volumetric_contact_demo/ground_box.obj";
   const std::string obj_model = FindResourceOrThrow(model_file);
   plant->RegisterMeshGeometry(
         plant->world_body(),

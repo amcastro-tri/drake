@@ -1,18 +1,18 @@
-#include "drake/examples/wildmagic/IntersectConvexPolyhedra/ConvexPolyhedron.h"
+#include "drake/multibody/plant/volumetric_contact/wildmagic/ConvexPolyhedron.h"
 
 #include <iostream>
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
 
 int main(int argc, char* argv[]) {
-  ConvexPolyhedronf mWorldPoly0, mWorldPoly1, mIntersection;
+  Wm5::ConvexPolyhedrond mWorldPoly0, mWorldPoly1, mIntersection;
 
   // The first polyhedron is an ellipsoid.
-  ConvexPolyhedronf::CreateEggShape(Vector3f::ZERO, 1.0f, 1.0f, 2.0f, 2.0f,
-                                    4.0f, 4.0f, 3, mWorldPoly0);
+  Wm5::ConvexPolyhedrond::CreateEggShape(Wm5::Vector3d::ZERO, 1.0, 1.0, 2.0, 2.0,
+                                    4.0, 4.0, 3, mWorldPoly0);
 
   // The second polyhedron is egg shaped.
-  ConvexPolyhedronf::CreateEggShape(Vector3f::ZERO, 2.0f, 2.0f, 4.0f, 4.0f,
-                                    5.0f, 3.0f, 4, mWorldPoly1);
+  Wm5::ConvexPolyhedrond::CreateEggShape(Wm5::Vector3d::ZERO, 2.0, 2.0, 4.0, 4.0,
+                                    5.0, 3.0, 4, mWorldPoly1);
 
 
   PRINT_VAR(mWorldPoly0.GetNumVertices());

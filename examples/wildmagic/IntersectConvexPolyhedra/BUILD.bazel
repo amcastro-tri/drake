@@ -68,7 +68,8 @@ drake_cc_binary(
         "-Wno-overloaded-virtual",
         "-Wno-extra",
     ],
-    deps = [":convex_clipper"],
+#    deps = [":convex_clipper"],
+    deps = ["//multibody/plant/volumetric_contact/wildmagic:convex_polyhedra",],
 )
 
 drake_cc_binary(

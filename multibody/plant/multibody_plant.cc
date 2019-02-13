@@ -1784,10 +1784,10 @@ systems::EventStatus MultibodyPlant<double>::WriteMeshes(
 
   // Body (mesh) poses per collision index.
   std::vector<Isometry3<double>> X_WB_list(num_collision_geometries());
-  for (const auto& id_idx_pair : geometry_id_to_body_index_) {
+  for (const auto& id_idx_pair : geometry_id_to_collision_index_) {
     const auto id = id_idx_pair.first;
-    const auto body_index = id_idx_pair.second;
-    const auto collision_index = geometry_id_to_collision_index_.at(id);
+    const auto collision_index = id_idx_pair.second;
+    const BodyIndex body_index = geometry_id_to_body_index_.at(id);    
 
     const auto& X_WB = pc.get_X_WB(get_body(body_index).node_index());
 

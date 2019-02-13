@@ -58,6 +58,7 @@ drake_cc_library(
         "//systems/framework:leaf_system",
     ],
     copts = [
+        "-g",
         "-Wno-old-style-cast",
         "-Wno-error",
         "-Wno-deprecated",

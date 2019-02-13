@@ -35,6 +35,15 @@ struct VolumetricContactPair {
   T volume;
   // The area of the intersection.
   T area;
+
+  struct Detail {
+    // Expensive to save info. Used for debugging.
+    Wm5::ConvexPolyhedron<T> meshA_W;
+    Wm5::ConvexPolyhedron<T> meshB_W;
+    Wm5::ConvexPolyhedron<T> intersection_W;
+  };
+  std::unique_ptr<Detail> detail;
+
 };
 
 template <typename T>
@@ -46,24 +55,7 @@ class VolumetricContactModel {
   
   int num_meshes() const { return static_cast<int>(owned_meshes_.size()); }
 
-  int RegisterGeometry(const std::string& file_name, geometry::GeometryId id, const Vector3<double>& scales) {      
-      std::vector<Wm5::Vector3<double>> points;
-      std::vector<int> faces;
-      LoadObj(file_name, scales, &points, &faces);
-
-      PRINT_VAR(points.size());
-      PRINT_VAR(faces.size());
-
-      auto mesh = std::make_unique<Wm5::ConvexPolyhedron<T>>(points, faces);
-
-      owned_meshes_.push_back(std::move(mesh));
-      geometry_ids_.push_back(id);
-
-      const int index = geometry_id_to_index_.size();
-      geometry_id_to_index_[id] = index;
-
-      return static_cast<int>(geometry_ids_.size());
-  }
+  int RegisterGeometry(const std::string& file_name, geometry::GeometryId id, const Vector3<double>& scales);
 
   bool CalcIntersection(int indexA, const Isometry3<double>& X_WA,
                         int indexB, const Isometry3<double>& X_WB,

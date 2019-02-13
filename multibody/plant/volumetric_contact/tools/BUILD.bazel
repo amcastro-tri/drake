@@ -3,10 +3,11 @@
 
 load(
     "@drake//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
     "drake_cc_googletest",
     "drake_cc_library",
-    "drake_cc_package_library",
 )
+load("//tools/install:install_data.bzl", "install_data")
 load("//tools/lint:lint.bzl", "add_lint_tests")
 
 package(
@@ -14,15 +15,14 @@ package(
 )
 
 drake_cc_library(
-    name = "volumetric_contact_model",
-    srcs = [
-        "volumetric_contact_model.cc",
-    ],
+    name = "wildmagic_tools",
+    srcs = [],
     hdrs = [
-        "volumetric_contact_model.h",
+        "wildmagic_tools.h",
     ],
+    # All the inlined code from Wm5 needs this or we get a build error.
     copts = [
-        "-g",
+        "-g -O0",
         "-Wno-old-style-cast",
         "-Wno-error",
         "-Wno-deprecated",
@@ -31,12 +31,7 @@ drake_cc_library(
         "-Wno-extra",
     ],
     deps = [
-        "//common:default_scalars",
-        "//multibody/plant/volumetric_contact/wildmagic:convex_polyhedra",
-        "//multibody/plant/volumetric_contact/load_objs:load_objs",
-        "//multibody/plant/volumetric_contact/tools:wildmagic_tools",
-        "//geometry:geometry",
-        "@tinyobjloader",
+        "@wildmagic",
     ],
 )
 

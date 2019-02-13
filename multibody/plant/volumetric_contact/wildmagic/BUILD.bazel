@@ -42,6 +42,7 @@ drake_cc_library(
     ],
     # All the inlined code from Wm5 needs this or we get a build error.
     copts = [
+        "-g -O0",
         "-Wno-old-style-cast",
         "-Wno-error",
         "-Wno-deprecated",
@@ -66,6 +67,7 @@ drake_cc_library(
     ],
     # All the inlined code from Wm5 needs this or we get a build error.
     copts = [
+        "-g -O0",
         "-Wno-old-style-cast",
         "-Wno-error",
         "-Wno-deprecated",

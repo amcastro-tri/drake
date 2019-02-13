@@ -1,0 +1,41 @@
+# -*- python -*-
+# This file contains rules for Bazel; see drake/doc/bazel.rst.
+
+load(
+    "@drake//tools/skylark:drake_cc.bzl",
+    "drake_cc_googletest",
+    "drake_cc_library",
+    "drake_cc_package_library",
+)
+load("//tools/lint:lint.bzl", "add_lint_tests")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+drake_cc_library(
+    name = "load_objs",
+    srcs = [
+        "load_objs.cc",
+    ],
+    hdrs = [
+        "load_objs.h",
+    ],
+    copts = [
+        "-g",
+        "-Wno-old-style-cast",
+        "-Wno-error",
+        "-Wno-deprecated",
+        "-Wno-maybe-uninitialized",
+        "-Wno-overloaded-virtual",
+        "-Wno-extra",
+    ],
+    deps = [
+        "//common:default_scalars",
+        "//multibody/plant/volumetric_contact/wildmagic:convex_polyhedra",
+        "//multibody/plant/volumetric_contact/tools:wildmagic_tools",
+        "@tinyobjloader",
+    ],
+)
+
+add_lint_tests()

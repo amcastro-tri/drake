@@ -16,11 +16,10 @@ using drake::multibody::ReExpressConvexPolyhedron;
 namespace drake {  
 
 int do_main() {
-  Wm5::ConvexPolyhedrond poly1_P1, intersection_W;
+  std::string model_file, obj_model;  
 
-  const std::string model_file =
-      "drake/examples/wildmagic/IntersectConvexPolyhedra/cube.obj";
-  const std::string obj_model = drake::FindResourceOrThrow(model_file);
+  model_file = "drake/examples/wildmagic/IntersectConvexPolyhedra/cube.obj";
+  obj_model = drake::FindResourceOrThrow(model_file);
 
   std::unique_ptr<Wm5::ConvexPolyhedron<double>> poly0_P0 =
       LoadConvexPolyhedronFromObj(obj_model, Vector3<double>(0.5, 0.5, 0.5));
@@ -28,38 +27,50 @@ int do_main() {
   // The first polyhedron is an ellipsoid.
   //Wm5::ConvexPolyhedrond::CreateEggShape(Wm5::Vector3d::ZERO, 1.0, 1.0, 2.0, 2.0,
   //                                  4.0, 4.0, 3, poly0_P0);
-
   // The second polyhedron is egg shaped.
-  Wm5::ConvexPolyhedrond::CreateEggShape(Wm5::Vector3d::ZERO,
-                                         1.0, 1.0, // in x
-                                         0.5, 0.5, // in y
-                                         0.8, 0.8, // in z
-                                         4, poly1_P1);
+  //Wm5::ConvexPolyhedrond::CreateEggShape(Wm5::Vector3d::ZERO,
+  //                                       1.0, 1.0, // in x
+   //                                      0.5, 0.5, // in y
+  //                                       0.8, 0.8, // in z
+  //                                       4, poly1_P1);
+
+  model_file =
+      "drake/examples/wildmagic/IntersectConvexPolyhedra/ground_box.obj";
+  obj_model = drake::FindResourceOrThrow(model_file);
+  std::unique_ptr<Wm5::ConvexPolyhedron<double>> poly1_P1 =
+      LoadConvexPolyhedronFromObj(obj_model, Vector3<double>(1.0, 1.0, 1.0));  
 
   PRINT_VAR(poly0_P0->GetNumVertices());
   PRINT_VAR(poly0_P0->GetNumTriangles());
 
-  PRINT_VAR(poly1_P1.GetNumVertices());
-  PRINT_VAR(poly1_P1.GetNumTriangles());
+  PRINT_VAR(poly1_P1->GetNumVertices());
+  PRINT_VAR(poly1_P1->GetNumTriangles());
 
   // Change the pose of poly 0.
-  const RollPitchYaw<double> rpy(0, 0, M_PI/4);
-  const RigidTransform<double> X_WP0(rpy, Vector3<double>(1.45, 0.0, 0.0));
-
+  const RollPitchYaw<double> rpy(M_PI/4, 0, 0);
+  const RigidTransform<double> X_WP0(rpy, Vector3<double>(0, 0.0, 0.5));
   Wm5::ConvexPolyhedrond poly0_W;
   ReExpressConvexPolyhedron(*poly0_P0, X_WP0.GetAsIsometry3(),
                             &poly0_W);
 
+  // Change the pose of poly 1.
+  const RollPitchYaw<double> rpy1(0, 0, 0);
+  const RigidTransform<double> X_WP1(rpy1, Vector3<double>(0, 0.0, 0.0));
+  Wm5::ConvexPolyhedrond poly1_W;
+  ReExpressConvexPolyhedron(*poly1_P1, X_WP1.GetAsIsometry3(),
+                            &poly1_W);                            
+
   // Compute the intersection (if any) in world space.
+  Wm5::ConvexPolyhedrond intersection_W;
   bool hasIntersection = poly0_W.FindIntersection(
-      poly1_P1, intersection_W);
+      poly1_W, intersection_W);
 
   PRINT_VAR(hasIntersection);
   PRINT_VAR(intersection_W.GetNumVertices());
   PRINT_VAR(intersection_W.GetNumTriangles());
 
   poly0_W.PrintObj("poly0_W.obj");
-  poly1_P1.PrintObj("poly1_W.obj");
+  poly1_W.PrintObj("poly1_W.obj");
   if (hasIntersection) intersection_W.PrintObj("intersection_W.obj");
 
   return 0;

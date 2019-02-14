@@ -4,6 +4,7 @@
 #include "drake/multibody/plant/volumetric_contact/wildmagic/ConvexPolyhedron.h"
 #include "drake/multibody/plant/volumetric_contact/load_objs/load_objs.h"
 #include "drake/multibody/plant/volumetric_contact/tools/wildmagic_tools.h"
+#include "drake/multibody/plant/volumetric_contact/vtk_io/vtk_io.h"
 
 #include <iostream>
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
@@ -12,6 +13,8 @@ using drake::math::RigidTransform;
 using drake::math::RollPitchYaw;
 using drake::multibody::LoadConvexPolyhedronFromObj;
 using drake::multibody::ReExpressConvexPolyhedron;
+using drake::multibody::vtk_write_header;
+using drake::multibody::vtk_write_unstructured_grid;
 
 namespace drake {  
 
@@ -74,6 +77,14 @@ int do_main() {
   poly0_W.PrintObj("poly0_W.obj");
   poly1_W.PrintObj("poly1_W.obj");
   if (hasIntersection) intersection_W.PrintObj("intersection_W.obj");
+
+  std::ofstream file("intersection_W.vtk");
+  vtk_write_header(file, "intersection_W");
+  vtk_write_unstructured_grid(file, intersection_W);
+  multibody::vtk_write_cell_data_header(file, intersection_W.GetNumTriangles());
+  multibody::vtk_write_scalar_data(file, "original_mesh", face_color);
+  file.close();
+
 
   return 0;
 }

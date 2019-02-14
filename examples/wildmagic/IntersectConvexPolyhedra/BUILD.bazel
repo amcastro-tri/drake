@@ -75,6 +75,7 @@ drake_cc_binary(
         "//math:geometric_transform",
         "//multibody/plant/volumetric_contact/wildmagic:convex_polyhedra",
         "//multibody/plant/volumetric_contact/load_objs:load_objs",
+        "//multibody/plant/volumetric_contact/vtk_io:vtk_io",
         ],
 )
 

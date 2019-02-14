@@ -30,6 +30,7 @@ int VolumetricContactModel<T>::RegisterGeometry(const std::string& file_name,
   std::vector<int> faces;
   LoadObj(file_name, scales, &points, &faces);
 
+#if 0
   PRINT_VAR(points.size());
   for (const auto& p : points) {
     PRINT_VAR(ToEigenVector3(p).transpose());
@@ -39,6 +40,7 @@ int VolumetricContactModel<T>::RegisterGeometry(const std::string& file_name,
   for (const auto& f : faces) {
     PRINT_VAR(f);
   }
+#endif
 
   auto mesh = std::make_unique<Wm5::ConvexPolyhedron<T>>(points, faces);
   const bool is_convex = mesh->ValidateHalfSpaceProperty(

@@ -250,9 +250,9 @@ std::vector<int> ConvexClipper<Real>::Convert (ConvexPolyhedron<Real>& polyhedro
     std::vector<int> indices;
     std::vector<Plane3<Real> > planes;
     std::vector<int> face_color = GetTriangles(indices, planes);
-    PRINT_VAR(face_color.size());
-    PRINT_VAR(indices.size());
-    PRINT_VAR(planes.size());
+    //PRINT_VAR(face_color.size());
+    //PRINT_VAR(indices.size());
+    //PRINT_VAR(planes.size());
     DRAKE_DEMAND(face_color.size() == (indices.size() / 3));    
 
 
@@ -599,7 +599,7 @@ std::vector<int> ConvexClipper<Real>::GetTriangles (std::vector<int>& indices,
 {
     const int numFaces = (int)mFaces.size();
     std::vector<int> face_color;
-    PRINT_VAR(numFaces);
+    //PRINT_VAR(numFaces);
     for (int f = 0; f < numFaces; ++f)
     {
         Face& face = mFaces[f];
@@ -640,9 +640,9 @@ std::vector<int> ConvexClipper<Real>::GetTriangles (std::vector<int>& indices,
                     face_color.push_back(face.color);
                 }
             }
-            PRINT_VAR(f);
-            PRINT_VAR(planes.size());
-            PRINT_VAR(face_color.size());
+            //PRINT_VAR(f);
+            //PRINT_VAR(planes.size());
+            //PRINT_VAR(face_color.size());
         }
     }
     return face_color;

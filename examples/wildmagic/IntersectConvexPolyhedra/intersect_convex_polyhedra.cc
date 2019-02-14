@@ -37,11 +37,28 @@ int do_main() {
   //                                       0.8, 0.8, // in z
   //                                       4, poly1_P1);
 
+#if 0
   model_file =
       "drake/examples/wildmagic/IntersectConvexPolyhedra/ground_box.obj";
   obj_model = drake::FindResourceOrThrow(model_file);
   std::unique_ptr<Wm5::ConvexPolyhedron<double>> poly1_P1 =
-      LoadConvexPolyhedronFromObj(obj_model, Vector3<double>(1.0, 1.0, 1.0));  
+      LoadConvexPolyhedronFromObj(obj_model, Vector3<double>(1.0, 1.0, 1.0));
+#endif
+  
+#if 0  
+  auto poly1_P1 = std::make_unique<Wm5::ConvexPolyhedrond>();
+  Wm5::ConvexPolyhedrond::CreateEggShape(Wm5::Vector3d::ZERO,
+                                         1.0, 1.0, // in x
+                                         0.5, 0.5, // in y
+                                         0.8, 0.8, // in z
+                                         4, *poly1_P1);
+#endif
+
+  model_file =
+      "drake/examples/wildmagic/IntersectConvexPolyhedra/ground_box.obj";
+  obj_model = drake::FindResourceOrThrow(model_file);
+  std::unique_ptr<Wm5::ConvexPolyhedron<double>> poly1_P1 =
+      LoadConvexPolyhedronFromObj(obj_model, Vector3<double>(1.0, 1.0, 1.0));
 
   PRINT_VAR(poly0_P0->GetNumVertices());
   PRINT_VAR(poly0_P0->GetNumTriangles());

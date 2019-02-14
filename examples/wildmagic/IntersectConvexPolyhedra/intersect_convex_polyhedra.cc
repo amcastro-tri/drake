@@ -62,12 +62,14 @@ int do_main() {
 
   // Compute the intersection (if any) in world space.
   Wm5::ConvexPolyhedrond intersection_W;
+  std::vector<int> face_color;
   bool hasIntersection = poly0_W.FindIntersection(
-      poly1_W, intersection_W);
+      poly1_W, intersection_W, &face_color);
 
   PRINT_VAR(hasIntersection);
   PRINT_VAR(intersection_W.GetNumVertices());
   PRINT_VAR(intersection_W.GetNumTriangles());
+  PRINT_VAR(face_color.size());
 
   poly0_W.PrintObj("poly0_W.obj");
   poly1_W.PrintObj("poly1_W.obj");

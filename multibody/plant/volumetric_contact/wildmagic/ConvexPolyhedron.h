@@ -72,7 +72,7 @@ public:
 
     // Compute the polyhedron of intersection.
     bool FindIntersection (const ConvexPolyhedron& polyhedron,
-        ConvexPolyhedron& intersection) const;
+        ConvexPolyhedron& intersection, std::vector<int>* face_color = nullptr) const;
 
     static void FindAllIntersections (int numPolyhedra,
         ConvexPolyhedron* polyhedra, int& combos,

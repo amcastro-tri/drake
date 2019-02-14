@@ -6,8 +6,12 @@
 //
 // File Version: 5.0.1 (2012/07/08)
 
+#include "drake/common/drake_assert.h"
 #include "drake/multibody/plant/volumetric_contact/wildmagic/ConvexClipper.h"
 #include "drake/multibody/plant/volumetric_contact/wildmagic/ConvexPolyhedron.h"
+
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
 
 namespace Wm5 {
 
@@ -166,6 +170,7 @@ int ConvexClipper<Real>::Clip (const Plane3<Real>& plane)
     mFaces.push_back(Face());
     Face& faceNew = mFaces[fNew];
     faceNew.Plane = plane;
+    faceNew.color = 1;  // marked as originated from clipping.
 
     // Process the faces.
     for (int f = 0; f < fNew; ++f)
@@ -225,7 +230,7 @@ int ConvexClipper<Real>::Clip (const Plane3<Real>& plane)
 }
 //----------------------------------------------------------------------------
 template <typename Real>
-void ConvexClipper<Real>::Convert (ConvexPolyhedron<Real>& polyhedron)
+std::vector<int> ConvexClipper<Real>::Convert (ConvexPolyhedron<Real>& polyhedron)
 {
     // Get visible vertices.
     int numVertices = (int)mVertices.size();
@@ -244,7 +249,12 @@ void ConvexClipper<Real>::Convert (ConvexPolyhedron<Real>& polyhedron)
 
     std::vector<int> indices;
     std::vector<Plane3<Real> > planes;
-    GetTriangles(indices, planes);
+    std::vector<int> face_color = GetTriangles(indices, planes);
+    PRINT_VAR(face_color.size());
+    PRINT_VAR(indices.size());
+    PRINT_VAR(planes.size());
+    DRAKE_DEMAND(face_color.size() == (indices.size() / 3));    
+
 
     // Reorder the indices.
     for (int c = 0; c < (int)indices.size(); ++c)
@@ -260,6 +270,7 @@ void ConvexClipper<Real>::Convert (ConvexPolyhedron<Real>& polyhedron)
     delete1(vMap);
 
     polyhedron.Create(points, indices, planes);
+    return face_color;
 }
 //----------------------------------------------------------------------------
 template <typename Real>
@@ -583,10 +594,12 @@ void ConvexClipper<Real>::OrderVertices (Face& face,
 }
 //----------------------------------------------------------------------------
 template <typename Real>
-void ConvexClipper<Real>::GetTriangles (std::vector<int>& indices,
+std::vector<int> ConvexClipper<Real>::GetTriangles (std::vector<int>& indices,
     std::vector<Plane3<Real> >& planes)
 {
     const int numFaces = (int)mFaces.size();
+    std::vector<int> face_color;
+    PRINT_VAR(numFaces);
     for (int f = 0; f < numFaces; ++f)
     {
         Face& face = mFaces[f];
@@ -612,6 +625,7 @@ void ConvexClipper<Real>::GetTriangles (std::vector<int>& indices,
                     indices.push_back(vOrdered[i + 1]);
                     indices.push_back(vOrdered[i]);
                     planes.push_back(face.Plane);
+                    face_color.push_back(face.color);
                 }
             }
             else
@@ -623,10 +637,15 @@ void ConvexClipper<Real>::GetTriangles (std::vector<int>& indices,
                     indices.push_back(vOrdered[i]);
                     indices.push_back(vOrdered[i + 1]);
                     planes.push_back(face.Plane);
+                    face_color.push_back(face.color);
                 }
             }
+            PRINT_VAR(f);
+            PRINT_VAR(planes.size());
+            PRINT_VAR(face_color.size());
         }
     }
+    return face_color;
 }
 //----------------------------------------------------------------------------
 

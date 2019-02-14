@@ -328,7 +328,7 @@ bool ConvexPolyhedron<Real>::Clip (const Plane3<Real>& plane,
 //----------------------------------------------------------------------------
 template <typename Real>
 bool ConvexPolyhedron<Real>::FindIntersection (
-    const ConvexPolyhedron& polyhedron, ConvexPolyhedron& intersection) const
+    const ConvexPolyhedron& polyhedron, ConvexPolyhedron& intersection, std::vector<int>* face_color) const
 {
     ConvexClipper<Real> clipper(*this);
 
@@ -342,7 +342,9 @@ bool ConvexPolyhedron<Real>::FindIntersection (
         }
     }
 
-    clipper.Convert(intersection);
+    if (face_color != nullptr) {
+      *face_color = clipper.Convert(intersection);
+    }
     return true;
 }
 //----------------------------------------------------------------------------

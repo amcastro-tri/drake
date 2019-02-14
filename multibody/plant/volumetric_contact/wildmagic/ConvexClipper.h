@@ -49,6 +49,10 @@ public:
         Plane3<Real> Plane;
         std::set<int> Edges;
         bool Visible;
+        // This face is flat on original mesh with this color.
+        // color = 0 indicates the mesh this clipper was initialized with.
+        // color = 1 indicates a new plane from clipping.
+        int color{0};        
     };
 
     // Construction.
@@ -61,7 +65,7 @@ public:
     int Clip (const Plane3<Real>& plane);
 
     // Convert back to a convex polyhedron.
-    void Convert (ConvexPolyhedron<Real>& polyhedron);
+    std::vector<int> Convert (ConvexPolyhedron<Real>& polyhedron);
 
     // For debugging.
     bool Print (const char* filename) const;
@@ -85,7 +89,7 @@ protected:
 
     bool GetOpenPolyline (Face& face, int& vStart, int& vFinal);
     void OrderVertices (Face& face, std::vector<int>& vOrdered);
-    void GetTriangles (std::vector<int>& indices,
+    std::vector<int> GetTriangles (std::vector<int>& indices,
         std::vector<Plane3<Real> >& plane);
 
     std::vector<Vertex> mVertices;

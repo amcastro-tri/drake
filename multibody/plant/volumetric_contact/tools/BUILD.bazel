@@ -16,7 +16,9 @@ package(
 
 drake_cc_library(
     name = "wildmagic_tools",
-    srcs = [],
+    srcs = [
+        "wildmagic_tools.cc",
+    ],
     hdrs = [
         "wildmagic_tools.h",
     ],
@@ -31,6 +33,8 @@ drake_cc_library(
         "-Wno-extra",
     ],
     deps = [
+        "//common:default_scalars",
+        "//multibody/plant/volumetric_contact/wildmagic:convex_polyhedra",
         "@wildmagic",
     ],
 )

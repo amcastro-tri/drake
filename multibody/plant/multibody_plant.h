@@ -3267,7 +3267,7 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
   std::vector<CoulombFriction<double>> default_coulomb_friction_;
 
   // Let MBP manage mesh geometries for contact.
-  std::unique_ptr<VolumetricContactModel<T>> volumetric_model_;
+  std::unique_ptr<VolumetricContactModel<double>> volumetric_model_;
 
   // Port handles for geometry:
   systems::InputPortIndex geometry_query_port_;
@@ -3448,6 +3448,9 @@ struct AddMultibodyPlantSceneGraphResult final {
 
 #ifndef DRAKE_DOXYGEN_CXX
 // Forward-declare specializations, prior to DRAKE_DECLARE... below.
+template <>
+MultibodyPlant<double>::MultibodyPlant(double time_step);
+
 template <>
 std::vector<geometry::PenetrationAsPointPair<double>>
 MultibodyPlant<double>::CalcPointPairPenetrations(

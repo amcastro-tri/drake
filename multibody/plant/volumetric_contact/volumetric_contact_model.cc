@@ -26,10 +26,6 @@ template <typename T>
 int VolumetricContactModel<T>::RegisterGeometry(const std::string& file_name,
                                                 geometry::GeometryId id,
                                                 const Vector3<double>& scales) {
-  std::vector<Wm5::Vector3<double>> points;
-  std::vector<int> faces;
-  LoadObj(file_name, scales, &points, &faces);
-
 #if 0
   PRINT_VAR(points.size());
   for (const auto& p : points) {
@@ -42,7 +38,8 @@ int VolumetricContactModel<T>::RegisterGeometry(const std::string& file_name,
   }
 #endif
 
-  auto mesh = std::make_unique<Wm5::ConvexPolyhedron<T>>(points, faces);
+  auto mesh = LoadConvexPolyhedronFromObj(file_name, scales);
+
   const bool is_convex = mesh->ValidateHalfSpaceProperty(
                                  16 * std::numeric_limits<double>::epsilon());
   DRAKE_THROW_UNLESS(!is_convex);

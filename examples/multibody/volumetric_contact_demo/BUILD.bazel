@@ -26,14 +26,7 @@ drake_cc_library(
         "//math:geometric_transform",
         "//multibody/plant",
     ],
-    copts = [
-        "-Wno-old-style-cast",
-        "-Wno-error",
-        "-Wno-deprecated",
-        "-Wno-maybe-uninitialized",
-        "-Wno-overloaded-virtual",
-        "-Wno-extra",
-    ],
+    copts = ["-w"],
 )
 
 drake_cc_googletest(
@@ -43,14 +36,7 @@ drake_cc_googletest(
         "//common/test_utilities:eigen_matrix_compare",
         "//multibody/plant",
     ],
-    copts = [
-        "-Wno-old-style-cast",
-        "-Wno-error",
-        "-Wno-deprecated",
-        "-Wno-maybe-uninitialized",
-        "-Wno-overloaded-virtual",
-        "-Wno-extra",
-    ],
+    copts = ["-w"],
 )
 
 drake_cc_binary(
@@ -85,14 +71,7 @@ drake_cc_binary(
         "//systems/lcm:lcm_pubsub_system",
         "@gflags",
     ],
-    copts = [
-        "-Wno-old-style-cast",
-        "-Wno-error",
-        "-Wno-deprecated",
-        "-Wno-maybe-uninitialized",
-        "-Wno-overloaded-virtual",
-        "-Wno-extra",
-    ],
+    copts = ["-w"],
 )
 
 install_data()

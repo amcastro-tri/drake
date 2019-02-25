@@ -237,11 +237,15 @@ std::string GetScopedName(
 
 }  // namespace
 
+template <>
+MultibodyPlant<double>::MultibodyPlant(double time_step)
+    : MultibodyPlant(nullptr, time_step) {
+    volumetric_model_ = std::make_unique<VolumetricContactModel<double>>();
+}
+
 template <typename T>
 MultibodyPlant<T>::MultibodyPlant(double time_step)
-    : MultibodyPlant(nullptr, time_step) {
-    volumetric_model_ = std::make_unique<VolumetricContactModel<T>>();
-}
+    : MultibodyPlant(nullptr, time_step) {}
 
 template <typename T>
 MultibodyPlant<T>::MultibodyPlant(

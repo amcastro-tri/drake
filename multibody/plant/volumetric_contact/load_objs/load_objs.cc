@@ -152,7 +152,7 @@ std::unique_ptr<Wm5::ConvexPolyhedron<double>> LoadConvexPolyhedronFromObj(
       16 * std::numeric_limits<double>::epsilon());
   DRAKE_THROW_UNLESS(!is_convex);
 
-  return std::move(mesh);
+  return mesh;
 }
 
 }  // namespace multibody

@@ -73,37 +73,40 @@ bool VolumetricContactModel<T>::CalcIntersection(
     int index_B, const Isometry3<double>& X_WB,
     VolumetricContactPair<T>* pair) const {
   // "Allocate" by simply copying.
-  meshA_W_ = *owned_meshes_[index_A];
-  meshB_W_ = *owned_meshes_[index_B];
+  const auto& meshA_A = *owned_meshes_[index_A];
+  const auto& meshB_B = *owned_meshes_[index_B];
 
   // Transform to a common frame, the world.
-  ReExpressMesh(meshA_W_, X_WA, &meshA_W_);
-  ReExpressMesh(meshB_W_, X_WB, &meshB_W_);
+  Wm5::ConvexPolyhedron<T> meshA_W;
+  ReExpressConvexPolyhedron(meshA_A, X_WA, &meshA_W);
+  Wm5::ConvexPolyhedron<T> meshB_W;
+  ReExpressConvexPolyhedron(meshB_B, X_WB, &meshB_W);
 
+  Wm5::ConvexPolyhedron<T> intersection_W;
   const bool has_intersection =
-      meshA_W_.FindIntersection(meshB_W_, intersection_W_);
+      meshA_W.FindIntersection(meshB_W, intersection_W);
 
   if (has_intersection) {
     pair->index_A = index_A;
     pair->index_B = index_B;
-    pair->volume = intersection_W_.GetVolume();
+    pair->volume = intersection_W.GetVolume();
 
     // For now use this approximation.
     // TODO(amcastro): change to computation in terms of normal integral.
-    pair->area = intersection_W_.GetSurfaceArea() / 2.0;
+    pair->area = intersection_W.GetSurfaceArea() / 2.0;
 
     // Only for contact vs plane approximation.
     // TODO(amcastro): change to computation in terms of normal integral.
     pair->nhat_BA_W = Vector3<double>::UnitZ();
 
-    intersection_W_.ComputeCentroid();
-    pair->p_WCo = ToEigenVector3(intersection_W_.GetCentroid());
+    intersection_W.ComputeCentroid();
+    pair->p_WCo = ToEigenVector3(intersection_W.GetCentroid());
 
     // Detailed info.
     pair->detail = std::make_unique<typename VolumetricContactPair<T>::Detail>();
-    pair->detail->meshA_W = meshA_W_;
-    pair->detail->meshB_W = meshB_W_;
-    pair->detail->intersection_W = intersection_W_;
+    pair->detail->meshA_W = meshA_W;
+    pair->detail->meshB_W = meshB_W;
+    pair->detail->intersection_W = intersection_W;
   }
 
   return has_intersection;

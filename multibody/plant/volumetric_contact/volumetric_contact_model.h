@@ -78,9 +78,9 @@ class VolumetricContactModel {
   std::unordered_map<geometry::GeometryId, int> geometry_id_to_index_;
   std::vector<std::unique_ptr<Wm5::ConvexPolyhedron<T>>> owned_meshes_;
 
-  mutable Wm5::ConvexPolyhedron<T> meshA_W_;
-  mutable Wm5::ConvexPolyhedron<T> meshB_W_;
-  mutable Wm5::ConvexPolyhedron<T> intersection_W_;
+  //mutable Wm5::ConvexPolyhedron<T> meshA_W_;
+  //mutable Wm5::ConvexPolyhedron<T> meshB_W_;
+  //mutable Wm5::ConvexPolyhedron<T> intersection_W_;
 };
 
 }  // namespace multibody

@@ -10,6 +10,7 @@
 #include "drake/multibody/benchmarks/inclined_plane/block_on_inclined_plane_plant.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
+#include "drake/multibody/plant/contact_results_to_lcm.h"
 
 namespace drake {
 namespace examples {
@@ -37,6 +38,7 @@ DEFINE_double(penetration_allowance, 1.E-5, "Contact penetration allowance.");
 using geometry::SceneGraph;
 using geometry::SourceId;
 using lcm::DrakeLcm;
+using drake::multibody::ConnectContactResultsToDrakeVisualizer;
 
 using drake::multibody::MultibodyPlant;
 
@@ -75,7 +77,10 @@ int do_main() {
   DRAKE_DEMAND(plant.num_velocities() == 6);
   DRAKE_DEMAND(plant.num_positions() == 7);
 
-  geometry::ConnectDrakeVisualizer(&builder, pair.scene_graph);
+  DrakeLcm lcm;
+  geometry::ConnectDrakeVisualizer(&builder, pair.scene_graph, &lcm);
+  // Publish contact results for visualization.
+  ConnectContactResultsToDrakeVisualizer(&builder, plant, &lcm);
   auto diagram = builder.Build();
 
   // Create a context for this system:

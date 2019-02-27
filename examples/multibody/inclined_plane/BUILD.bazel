@@ -41,6 +41,7 @@ drake_cc_binary(
         "//common:text_logging_gflags",
         "//geometry:geometry_visualization",
         "//multibody/benchmarks/inclined_plane",
+        "//multibody/plant:contact_results_to_lcm",
         "//systems/analysis:simulator",
         "//systems/framework:diagram",
         "@gflags",

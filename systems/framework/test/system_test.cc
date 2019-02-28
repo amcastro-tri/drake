@@ -81,7 +81,7 @@ class TestSystem : public System<double> {
         [](const ContextBase&, AbstractValue*) {});
     // TODO(sherm1) Use implicit_cast when available (from abseil). Several
     // places in this test.
-    auto port = std::make_unique<LeafOutputPort<double>>(
+    auto port = internal::FrameworkFactory::Make<LeafOutputPort<double>>(
         this,  // implicit_cast<const System<T>*>(this)
         this,  // implicit_cast<const SystemBase*>(this)
         "y" + std::to_string(get_num_output_ports()),
@@ -463,7 +463,7 @@ class ValueIOTestSystem : public System<T> {
 
     this->DeclareInputPort(kUseDefaultName, kAbstractValued, 0);
 
-    this->AddOutputPort(std::make_unique<LeafOutputPort<T>>(
+    this->AddOutputPort(internal::FrameworkFactory::Make<LeafOutputPort<T>>(
         this,  // implicit_cast<const System<T>*>(this)
         this,  // implicit_cast<const SystemBase*>(this)
         "absport",
@@ -481,7 +481,7 @@ class ValueIOTestSystem : public System<T> {
                            RandomDistribution::kUniform);
     this->DeclareInputPort("gaussian", kVectorValued, 1,
                            RandomDistribution::kGaussian);
-    this->AddOutputPort(std::make_unique<LeafOutputPort<T>>(
+    this->AddOutputPort(internal::FrameworkFactory::Make<LeafOutputPort<T>>(
         this,  // implicit_cast<const System<T>*>(this)
         this,  // implicit_cast<const SystemBase*>(this)
         "vecport",
@@ -688,8 +688,8 @@ TEST_F(SystemInputErrorTest, CheckMessages) {
 
   DRAKE_EXPECT_THROWS_MESSAGE_IF_ARMED(
       system_.EvalEigenVectorInput(*context_, 1), std::logic_error,
-      ".*EvalEigenVectorInput.*input port\\[1\\].*neither connected nor "
-          "fixed.*");
+      ".*EvalEigenVectorInput.*input port 'u1' .*index 1.* is neither "
+      "connected nor fixed.*");
 
   // Assign values to all ports. All but port 0 are BasicVector ports.
   system_.AllocateFixedInputs(context_.get());

@@ -61,6 +61,7 @@ drake_pybind_library(
     cc_deps = [
         "//bindings/pydrake:documentation_pybind",
         "//bindings/pydrake/common:deprecation_pybind",
+        "//bindings/pydrake/common:drake_optional_pybind",
         "//bindings/pydrake/common:eigen_geometry_pybind",
         "//bindings/pydrake/common:type_safe_index_pybind",
     ],
@@ -152,6 +153,8 @@ PY_LIBRARIES_ATTIC_ALIASES = [
 
 drake_py_library_aliases(
     actual_subdir = "bindings/pydrake/attic/multibody",
+    add_deprecation_warning = 1,
+    deprecation_removal_date = "2019-05-01",
     relative_labels = PY_LIBRARIES_ATTIC_ALIASES,
 )
 
@@ -197,53 +200,6 @@ filegroup(
 )
 
 drake_py_unittest(
-    name = "rigid_body_plant_test",
-    data = ["//examples/pendulum:models"],
-    deps = [
-        ":rigid_body_plant_py",
-        ":rigid_body_tree_py",
-    ],
-)
-
-drake_py_unittest(
-    name = "shapes_test",
-    data = ["//examples/quadrotor:models"],
-    deps = [
-        ":shapes_py",
-    ],
-)
-
-drake_py_unittest(
-    name = "rigid_body_tree_test",
-    data = [
-        "//examples/atlas:models",
-        "//examples/pendulum:models",
-        "//examples/simple_four_bar:models",
-    ],
-    deps = [
-        ":collision_py",
-        ":joints_py",
-        ":parsers_py",
-        ":rigid_body_py",
-        ":rigid_body_tree_py",
-        ":shapes_py",
-    ],
-)
-
-drake_py_unittest(
-    name = "parsers_test",
-    data = [
-        "//examples/acrobot:models",
-        "//examples/atlas:models",
-        "//examples/pr2:models",
-    ],
-    deps = [
-        ":parsers_py",
-        ":rigid_body_tree_py",
-    ],
-)
-
-drake_py_unittest(
     name = "parsing_test",
     data = [
         "//examples/atlas:models",
@@ -256,7 +212,7 @@ drake_py_unittest(
 )
 
 drake_py_unittest(
-    name = "multibody_tree_test",
+    name = "plant_test",
     data = [
         ":models",
         "//examples/double_pendulum:models",
@@ -267,7 +223,15 @@ drake_py_unittest(
     deps = [
         ":benchmarks_py",
         ":multibody_tree_py",
+        ":plant_py",
+        ":tree_py",
+        "//bindings/pydrake/common/test_utilities",
     ],
+)
+
+drake_py_unittest(
+    name = "math_test",
+    deps = [":math_py"],
 )
 
 drake_py_unittest(
@@ -278,6 +242,7 @@ drake_py_unittest(
     deps = [
         ":benchmarks_py",
         ":inverse_kinematics_py",
+        "//bindings/pydrake/common/test_utilities",
     ],
 )
 

@@ -33,14 +33,16 @@
 #include "drake/solvers/decision_variable.h"
 #include "drake/solvers/function.h"
 #include "drake/solvers/indeterminate.h"
-#include "drake/solvers/mathematical_program_solver_interface.h"
 #include "drake/solvers/program_attribute.h"
 #include "drake/solvers/solution_result.h"
+#include "drake/solvers/solver_interface.h"
 #include "drake/solvers/solver_options.h"
 #include "drake/solvers/solver_result.h"
 
 namespace drake {
 namespace solvers {
+
+class SolverInterface;
 
 /** @addtogroup solvers
  * @{
@@ -52,9 +54,8 @@ namespace solvers {
  * objectives, and constraints.  The MathematicalProgram::Solve() method
  * reflects on the accumulated objectives and constraints and will dispatch to
  * the most appropriate solver.  Alternatively, one can invoke specific solver
- * by instantiating its MathematicalProgramSolverInterface and passing the
- * MathematicalProgram directly to the
- * MathematicalProgramSolverInterface::Solve() method.
+ * by instantiating its SolverInterface and passing the MathematicalProgram
+ * directly to the SolverInterface::Solve() method.
  *
  * Our solver coverage still has many gaps, but is under active development.
  *
@@ -2373,22 +2374,19 @@ class MathematicalProgram {
    *
    * @return SolutionResult indicating if the solution was successful.
    */
+  DRAKE_DEPRECATED(
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.  This method "
+      "will be removed on 2019-06-01.")
   SolutionResult Solve();
-  // TODO(naveenoid) : add argument for options
 
-  //    template <typename Derived>
-  //    bool solve(const Eigen::MatrixBase<Derived>& x0);
-
-  //    getCostValue();
-  //    getExitFlag();
-  //    getInfeasibleConstraintNames();
-
-  void PrintSolution() {
-    for (int i = 0; i < num_vars(); ++i) {
-      std::cout << decision_variables_(i).get_name() << " = "
-                << GetSolution(decision_variables_(i)) << std::endl;
-    }
-  }
+  DRAKE_DEPRECATED(
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.  This method "
+      "will be removed on 2019-06-01.")
+  void PrintSolution();
 
   void SetSolverOption(const SolverId& solver_id,
                        const std::string& solver_option, double option_value) {
@@ -2430,7 +2428,12 @@ class MathematicalProgram {
    * Returns the ID of the solver that was used to solve this program.
    * Returns empty if Solve() has not been called.
    */
-  optional<SolverId> GetSolverId() const { return solver_id_; }
+  DRAKE_DEPRECATED(
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.  This method "
+      "will be removed on 2019-06-01.")
+  optional<SolverId> GetSolverId() const;
 
   /**
    * Getter for optimal cost at the solution.
@@ -2442,13 +2445,23 @@ class MathematicalProgram {
    * return some finite value as the optimal cost.
    * Otherwise, the optimal cost is NaN.
    */
-  double GetOptimalCost() const { return optimal_cost_; }
+  DRAKE_DEPRECATED(
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.  This method "
+      "will be removed on 2019-06-01.")
+  double GetOptimalCost() const;
 
   /**
    * Getter for lower bound on optimal cost. Defaults to -Infinity
    * if a lower bound has not been found.
    */
-  double GetLowerBoundCost() const { return lower_bound_cost_; }
+  DRAKE_DEPRECATED(
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.  This method "
+      "will be removed on 2019-06-01.")
+  double GetLowerBoundCost() const;
 
   /**
    * Getter for all callbacks.
@@ -2576,29 +2589,6 @@ class MathematicalProgram {
     return linear_complementarity_constraints_;
   }
 
-  // Base class for solver-specific data.  A solver implementation may derive
-  // a helper class from this for use with getSolverData.
-  struct SolverData {
-    DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(SolverData)
-    SolverData() = default;
-    virtual ~SolverData() = default;
-  };
-
-  // Call from solver implementations to get a persistently-stored
-  // helper structure of type T (derived from SolverData).  If no
-  // data of type T is already stored then a new one will be created
-  // and stored, replacing data from any other solver in this problem
-  // instance.
-  template <typename T>
-  std::shared_ptr<T> GetSolverData() {
-    auto p = std::dynamic_pointer_cast<T>(solver_data_);
-    if (!p) {
-      p = std::make_shared<T>();
-      solver_data_ = p;
-    }
-    return p;
-  }
-
   /** Getter for number of variables in the optimization program */
   int num_vars() const { return decision_variables_.rows(); }
 
@@ -2645,6 +2635,11 @@ class MathematicalProgram {
    * @return The value of the decision variable after solving the problem.
    */
   template <typename Derived>
+  DRAKE_DEPRECATED(
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.  This method "
+      "will be removed on 2019-06-01.")
   typename std::enable_if<
       std::is_same<typename Derived::Scalar, symbolic::Variable>::value,
       Eigen::Matrix<double, Derived::RowsAtCompileTime,
@@ -2655,7 +2650,10 @@ class MathematicalProgram {
         value(var.rows(), var.cols());
     for (int i = 0; i < var.rows(); ++i) {
       for (int j = 0; j < var.cols(); ++j) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
         value(i, j) = GetSolution(var(i, j));
+#pragma GCC diagnostic pop
       }
     }
     return value;
@@ -2664,6 +2662,11 @@ class MathematicalProgram {
   /**
    * Gets the value of a single decision variable.
    */
+  DRAKE_DEPRECATED(
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.  This method "
+      "will be removed on 2019-06-01.")
   double GetSolution(const symbolic::Variable& var) const;
 
   /**
@@ -2676,6 +2679,11 @@ class MathematicalProgram {
    * will be substituted by its solutions in double values, but not the
    * indeterminates.
    */
+  DRAKE_DEPRECATED(
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.  This method "
+      "will be removed on 2019-06-01.")
   symbolic::Expression SubstituteSolution(const symbolic::Expression& e) const;
 
   /**
@@ -2688,6 +2696,11 @@ class MathematicalProgram {
    * will be substituted by its solutions in double values, but not the
    * indeterminates.
    */
+  DRAKE_DEPRECATED(
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.  This method "
+      "will be removed on 2019-06-01.")
   symbolic::Polynomial SubstituteSolution(const symbolic::Polynomial& p) const;
 
   /**
@@ -2793,6 +2806,11 @@ class MathematicalProgram {
    * @return The value of @p binding at the solution value.
    */
   template <typename C>
+  DRAKE_DEPRECATED(
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.  This method "
+      "will be removed on 2019-06-01.")
   Eigen::VectorXd EvalBindingAtSolution(const Binding<C>& binding) const {
     return EvalBinding(binding, x_values_);
   }
@@ -2831,11 +2849,15 @@ class MathematicalProgram {
    * optimization problem stored in MathematicalProgram. The user should NOT
    * call this method.
    */
-  // This method should be called by the derived classes of
-  // MathematicalProgramSolverInterface, which is not a friend class of
-  // MathematicalProgram, as we do not want to leak any of the internal details
-  // of MathematicalProgram.
-  void SetSolverResult(const SolverResult& solver_result);
+  // This method should be called by the derived classes of SolverInterface,
+  // which is not a friend class of MathematicalProgram, as we do not want to
+  // leak any of the internal details of MathematicalProgram.
+  DRAKE_DEPRECATED(
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.  This method "
+      "will be removed on 2019-06-01.")
+  void SetSolverResult(const internal::SolverResult& solver_result);
 
   /// Getter for the required capability on the solver, given the
   /// cost/constraint/variable types in the program.
@@ -2893,7 +2915,6 @@ class MathematicalProgram {
 
   Eigen::VectorXd x_initial_guess_;
   Eigen::VectorXd x_values_;
-  std::shared_ptr<SolverData> solver_data_;
   optional<SolverId> solver_id_;
   double optimal_cost_{};
   // The lower bound of the objective found by the solver, during the
@@ -2905,17 +2926,15 @@ class MathematicalProgram {
 
   ProgramAttributes required_capabilities_{};
 
-  std::unique_ptr<MathematicalProgramSolverInterface> ipopt_solver_;
-  std::unique_ptr<MathematicalProgramSolverInterface> nlopt_solver_;
-  std::unique_ptr<MathematicalProgramSolverInterface> snopt_solver_;
-  std::unique_ptr<MathematicalProgramSolverInterface> moby_lcp_solver_;
-  std::unique_ptr<MathematicalProgramSolverInterface> linear_system_solver_;
-  std::unique_ptr<MathematicalProgramSolverInterface>
-      equality_constrained_qp_solver_;
-  std::unique_ptr<MathematicalProgramSolverInterface> gurobi_solver_;
-  std::unique_ptr<MathematicalProgramSolverInterface> mosek_solver_;
-  std::unique_ptr<MathematicalProgramSolverInterface> osqp_solver_;
-  std::unique_ptr<MathematicalProgramSolverInterface> scs_solver_;
+  // By tradition, our deprecated mutable Solve() method reuses its
+  // SolverInterface objects from one run to the next; doing so might improve
+  // performance if the Solver retains its heap allocations from one run to the
+  // next, for example.  This member field serves to keep that behavior intact
+  // during the transition period where MathematicalProgram still offers the
+  // mutable Solve() method but doesn't directly depend on a specific list of
+  // Solvers anymore.  When this class's Solve() method disappears, this field
+  // should also be removed.
+  std::unique_ptr<SolverInterface> solver_cache_for_deprecated_solve_method_;
 
   template <typename T>
   void NewVariables_impl(

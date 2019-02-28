@@ -28,11 +28,13 @@
 #include "drake/multibody/benchmarks/acrobot/make_acrobot_plant.h"
 #include "drake/multibody/benchmarks/pendulum/make_pendulum_plant.h"
 #include "drake/multibody/parsing/parser.h"
+#include "drake/multibody/plant/externally_applied_spatial_force.h"
 #include "drake/multibody/tree/revolute_joint.h"
 #include "drake/multibody/tree/rigid_body.h"
 #include "drake/systems/framework/context.h"
 #include "drake/systems/framework/continuous_state.h"
 #include "drake/systems/framework/diagram_builder.h"
+#include "drake/systems/primitives/constant_vector_source.h"
 #include "drake/systems/primitives/linear_system.h"
 
 #include <iostream>
@@ -65,8 +67,8 @@ using multibody::benchmarks::acrobot::MakeAcrobotPlant;
 using multibody::benchmarks::pendulum::MakePendulumPlant;
 using multibody::benchmarks::pendulum::PendulumParameters;
 using multibody::Parser;
-using systems::AbstractValue;
 using systems::BasicVector;
+using systems::ConstantVectorSource;
 using systems::Context;
 using systems::ContinuousState;
 using systems::DiagramBuilder;
@@ -308,6 +310,52 @@ GTEST_TEST(MultibodyPlantTest, AddMultibodyPlantSceneGraph) {
   // AddMultibodyPlantSceneGraphResult<double> extra{*plant, *scene_graph};
 }
 
+GTEST_TEST(ActuationPortsTest, CheckActuation) {
+  // Create a MultibodyPlant consisting of two model instances, one actuated
+  // and the other unactuated.
+  MultibodyPlant<double> plant;
+  const std::string acrobot_path = FindResourceOrThrow(
+      "drake/multibody/benchmarks/acrobot/acrobot.sdf");
+  const std::string cylinder_path = FindResourceOrThrow(
+      "drake/multibody/benchmarks/free_body/uniform_solid_cylinder.urdf");
+  auto acrobot_instance = Parser(&plant).AddModelFromFile(acrobot_path);
+  auto cylinder_instance = Parser(&plant).AddModelFromFile(cylinder_path);
+  plant.Finalize();
+
+  // Verify the number of actuators.
+  EXPECT_EQ(plant.num_actuated_dofs(acrobot_instance), 1);
+  EXPECT_EQ(plant.num_actuated_dofs(cylinder_instance), 0);
+
+  // Verify that we can get the actuation input ports.
+  EXPECT_NO_THROW(plant.get_actuation_input_port());
+  EXPECT_NO_THROW(plant.get_actuation_input_port(acrobot_instance));
+  EXPECT_NO_THROW(plant.get_actuation_input_port(cylinder_instance));
+
+  // Try to compute the derivatives without connecting the acrobot_instance
+  // port.
+  std::unique_ptr<Context<double>> context = plant.CreateDefaultContext();
+  std::unique_ptr<ContinuousState<double>> continuous_state = plant.
+      AllocateTimeDerivatives();
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      plant.CalcTimeDerivatives(*context, continuous_state.get()),
+      std::logic_error, "Actuation input port for model instance .* must "
+          "be connected.");
+
+  // Verify that derivatives can be computed after fixing the acrobot actuation
+  // input port.
+  context->FixInputPort(
+      plant.get_actuation_input_port(acrobot_instance).get_index(),
+      Vector1d(0.0));
+  EXPECT_NO_THROW(plant.CalcTimeDerivatives(*context, continuous_state.get()));
+
+  // Verify that derivatives can be computed after fixing the cylinder actuation
+  // input port with an empty vector.
+  context->FixInputPort(
+      plant.get_actuation_input_port(cylinder_instance).get_index(),
+      VectorXd(0));
+  EXPECT_NO_THROW(plant.CalcTimeDerivatives(*context, continuous_state.get()));
+}
+
 // Fixture to perform a number of computational tests on an acrobot model.
 class AcrobotPlantTests : public ::testing::Test {
  public:
@@ -350,11 +398,13 @@ class AcrobotPlantTests : public ::testing::Test {
     elbow_ = &plant_->GetMutableJointByName<RevoluteJoint>(
         parameters_.elbow_joint_name());
 
-    context_ = plant_->CreateDefaultContext();
-    derivatives_ = plant_->AllocateTimeDerivatives();
+    context_ = diagram_->CreateDefaultContext();
+    derivatives_ = diagram_->AllocateTimeDerivatives();
+    plant_context_ = &diagram_->GetMutableSubsystemContext(
+        *plant_, context_.get());
 
     ASSERT_GT(plant_->num_actuators(), 0);
-    input_port_ = &context_->FixInputPort(
+    input_port_ = &plant_context_->FixInputPort(
         plant_->get_actuation_input_port().get_index(), Vector1<double>(0.0));
   }
 
@@ -387,12 +437,12 @@ class AcrobotPlantTests : public ::testing::Test {
     const double kTolerance = 5 * std::numeric_limits<double>::epsilon();
 
     // Set the state:
-    shoulder_->set_angle(context_.get(), theta1);
-    elbow_->set_angle(context_.get(), theta2);
+    shoulder_->set_angle(plant_context_, theta1);
+    elbow_->set_angle(plant_context_, theta2);
 
     // Calculate the generalized forces due to gravity.
     const VectorX<double> tau_g =
-        plant_->CalcGravityGeneralizedForces(*context_);
+        plant_->CalcGravityGeneralizedForces(*plant_context_);
 
     // Calculate a benchmark value.
     const Vector2d tau_g_expected =
@@ -411,16 +461,16 @@ class AcrobotPlantTests : public ::testing::Test {
     const double kTolerance = 5 * std::numeric_limits<double>::epsilon();
 
     // Set the state:
-    shoulder_->set_angle(context_.get(), theta1);
-    elbow_->set_angle(context_.get(), theta2);
-    shoulder_->set_angular_rate(context_.get(), theta1dot);
-    elbow_->set_angular_rate(context_.get(), theta2dot);
+    shoulder_->set_angle(plant_context_, theta1);
+    elbow_->set_angle(plant_context_, theta2);
+    shoulder_->set_angular_rate(plant_context_, theta1dot);
+    elbow_->set_angular_rate(plant_context_, theta2dot);
 
     // Fix input port to a value before computing anything. In this case, zero
     // actuation.
     input_port_->GetMutableVectorData<double>()->SetAtIndex(0, input_torque);
 
-    plant_->CalcTimeDerivatives(*context_, derivatives_.get());
+    diagram_->CalcTimeDerivatives(*context_, derivatives_.get());
     const VectorXd xdot = derivatives_->CopyToVector();
 
     // Now compute inverse dynamics using our benchmark:
@@ -433,8 +483,8 @@ class AcrobotPlantTests : public ::testing::Test {
 
     // Verify the computation of the contribution due to joint damping.
     MultibodyForces<double> forces(*plant_);
-    shoulder_->AddInDamping(*context_, &forces);
-    elbow_->AddInDamping(*context_, &forces);
+    shoulder_->AddInDamping(*plant_context_, &forces);
+    elbow_->AddInDamping(*plant_context_, &forces);
     EXPECT_TRUE(CompareMatrices(forces.generalized_forces(), tau_damping,
                                 kTolerance, MatrixCompareType::relative));
 
@@ -467,10 +517,10 @@ class AcrobotPlantTests : public ::testing::Test {
     const double time_step = discrete_plant_->time_step();
 
     // Set the state for the continuous model:
-    shoulder_->set_angle(context_.get(), theta1);
-    elbow_->set_angle(context_.get(), theta2);
-    shoulder_->set_angular_rate(context_.get(), theta1dot);
-    elbow_->set_angular_rate(context_.get(), theta2dot);
+    shoulder_->set_angle(plant_context_, theta1);
+    elbow_->set_angle(plant_context_, theta2);
+    shoulder_->set_angular_rate(plant_context_, theta1dot);
+    elbow_->set_angular_rate(plant_context_, theta2dot);
 
     // Set the state for the discrete model:
     const RevoluteJoint<double>& discrete_shoulder =
@@ -484,7 +534,7 @@ class AcrobotPlantTests : public ::testing::Test {
     discrete_shoulder.set_angular_rate(discrete_context_.get(), theta1dot);
     discrete_elbow.set_angular_rate(discrete_context_.get(), theta2dot);
 
-    plant_->CalcTimeDerivatives(*context_, derivatives_.get());
+    diagram_->CalcTimeDerivatives(*context_, derivatives_.get());
     auto updates = discrete_plant_->AllocateDiscreteVariables();
     discrete_plant_->CalcDiscreteVariableUpdates(
         *discrete_context_, updates.get());
@@ -520,10 +570,12 @@ class AcrobotPlantTests : public ::testing::Test {
   SceneGraph<double>* scene_graph_{nullptr};
   // The Diagram containing both the MultibodyPlant and the SceneGraph.
   unique_ptr<Diagram<double>> diagram_;
-  // Workspace including context and derivatives vector:
+  // Workspace including diagram context and derivatives vector:
   unique_ptr<Context<double>> context_;
   unique_ptr<Context<double>> discrete_context_;
   unique_ptr<ContinuousState<double>> derivatives_;
+  // Non-owning pointer to the plant context.
+  Context<double>* plant_context_{nullptr};
   // Non-owning pointers to the model's elements:
   const Body<double>* link1_{nullptr};
   const Body<double>* link2_{nullptr};
@@ -676,9 +728,9 @@ TEST_F(AcrobotPlantTests, VisualGeometryRegistration) {
 #endif
 }
 
-TEST_F(AcrobotPlantTests, SetDefaulState) {
-  EXPECT_EQ(shoulder_->get_angle(*context_), 0.0);
-  EXPECT_EQ(elbow_->get_angle(*context_), 0.0);
+TEST_F(AcrobotPlantTests, SetDefaultState) {
+  EXPECT_EQ(shoulder_->get_angle(*plant_context_), 0.0);
+  EXPECT_EQ(elbow_->get_angle(*plant_context_), 0.0);
 
   // Set the default joint angles for the acrobot.
   shoulder_->set_default_angle(0.05);
@@ -692,8 +744,8 @@ TEST_F(AcrobotPlantTests, SetDefaulState) {
   shoulder_->set_default_angle(4.2);
 
   // Calling SetDefaultContext directly works, too.
-  plant_->SetDefaultContext(context_.get());
-  EXPECT_EQ(shoulder_->get_angle(*context_), 4.2);
+  plant_->SetDefaultContext(plant_context_);
+  EXPECT_EQ(shoulder_->get_angle(*plant_context_), 4.2);
 }
 
 TEST_F(AcrobotPlantTests, SetRandomState) {
@@ -866,13 +918,8 @@ class SphereChainScenario {
   std::vector<geometry::PenetrationAsPointPair<double>>
   ComputePointPairPenetration() const {
     // Grab query object to test for collisions.
-    const geometry::QueryObject<double>& query_object =
-        plant_
-            ->EvalAbstractInput(
-                *plant_context_,
-                plant_->get_geometry_query_input_port().get_index())
-            ->GetValue<geometry::QueryObject<double>>();
-
+    const auto& query_object = plant_->get_geometry_query_input_port().
+        Eval<geometry::QueryObject<double>>(*plant_context_);
     return query_object.ComputePointPairPenetration();
   }
 
@@ -1220,7 +1267,11 @@ GTEST_TEST(MultibodyPlantTest, LinearizePendulum) {
   const auto& pin =
       pendulum->GetJointByName<RevoluteJoint>(parameters.pin_joint_name());
   unique_ptr<Context<double>> context = pendulum->CreateDefaultContext();
-  context->FixInputPort(0, Vector1d{0.0});
+  context->FixInputPort(pendulum->get_actuation_input_port().get_index(),
+                        Vector1d{0.0});
+  context->FixInputPort(
+      pendulum->get_applied_generalized_force_input_port().get_index(),
+      Vector1d{0.0});
 
   // First we will linearize about the unstable fixed point with the pendulum
   // in its inverted position.
@@ -2440,7 +2491,7 @@ GTEST_TEST(SetRandomTest, FloatingBodies) {
       plant.GetFreeBodyPose(*context, body);
 
   plant.SetRandomContext(context.get(), &generator);
-  const math::RigidTransform<double> X_WB =
+  math::RigidTransform<double> X_WB =
       plant.GetFreeBodyPose(*context, body);
 
   // Just make sure that the rotation matrices have changed. (Testing that
@@ -2461,6 +2512,21 @@ GTEST_TEST(SetRandomTest, FloatingBodies) {
   // z is drawn from [3, 4).
   EXPECT_GE(X_WB.translation()[2], 3.0);
   EXPECT_LT(X_WB.translation()[2], 4.0);
+
+  // Check that we can set the rotation to a specific distribution (in this
+  // case it's just constant).
+  const math::RotationMatrix<double> X_WB_new(
+      math::RollPitchYaw<double>(0.3, 0.4, 0.5));
+  plant.SetFreeBodyRandomRotationDistribution(
+      body, X_WB_new.cast<symbolic::Expression>().ToQuaternion());
+
+  plant.SetRandomContext(context.get(), &generator);
+  X_WB = plant.GetFreeBodyPose(*context, body);
+
+  const double kTolerance = 5 * std::numeric_limits<double>::epsilon();
+  EXPECT_TRUE(CompareMatrices(
+      X_WB_new.matrix(), X_WB.rotation().matrix(),
+      kTolerance, MatrixCompareType::relative));
 }
 
 }  // namespace

@@ -86,8 +86,26 @@ drake_pybind_library(
 
 drake_pybind_library(
     name = "osqp_py",
-    cc_deps = ["//bindings/pydrake:documentation_pybind"],
+    cc_deps = [
+        "//bindings/pydrake:documentation_pybind",
+        # TODO(jwnimmer-tri) Only for AbstractValue; we should switch this to
+        # depend on on pydrake/common once the Value bindings have moved there.
+        "//bindings/pydrake/systems:systems_pybind",
+    ],
     cc_srcs = ["osqp_py.cc"],
+    package_info = PACKAGE_INFO,
+    py_deps = [
+        ":mathematicalprogram_py",
+        # TODO(jwnimmer-tri) Only for AbstractValue; we should switch this to
+        # depend on on pydrake/common once the Value bindings have moved there.
+        "//bindings/pydrake/systems:framework_py",
+    ],
+)
+
+drake_pybind_library(
+    name = "snopt_py",
+    cc_deps = ["//bindings/pydrake:documentation_pybind"],
+    cc_srcs = ["snopt_py.cc"],
     package_info = PACKAGE_INFO,
     py_deps = [":mathematicalprogram_py"],
 )
@@ -98,6 +116,8 @@ PY_LIBRARIES_ATTIC_ALIASES = [
 
 drake_py_library_aliases(
     actual_subdir = "bindings/pydrake/attic/solvers",
+    add_deprecation_warning = 1,
+    deprecation_removal_date = "2019-05-01",
     relative_labels = PY_LIBRARIES_ATTIC_ALIASES,
 )
 
@@ -107,6 +127,7 @@ PY_LIBRARIES_WITH_INSTALL = [
     ":mathematicalprogram_py",
     ":mosek_py",
     ":osqp_py",
+    ":snopt_py",
 ]
 
 PY_LIBRARIES = PY_LIBRARIES_ATTIC_ALIASES + [
@@ -145,7 +166,10 @@ drake_py_unittest(
         "//tools:no_ipopt": ["TestIpoptSolver.unavailable"],
         "//conditions:default": [],
     }),
-    deps = [":ipopt_py"],
+    deps = [
+        ":ipopt_py",
+        "//bindings/pydrake/common/test_utilities",
+    ],
 )
 
 drake_py_unittest(
@@ -169,29 +193,8 @@ drake_py_unittest(
     deps = [
         ":gurobi_py",
         ":mathematicalprogram_py",
-    ],
-)
-
-drake_py_test(
-    name = "pr2_ik_test",
-    # TODO(jwnimmer-tri) Port this to drake_py_unittest.
-    allow_import_unittest = True,
-    data = ["//examples/pr2:models"],
-    tags = ["snopt"],
-    deps = [
-        ":ik_py",
-        "//bindings/pydrake/multibody:parsers_py",
-        "//bindings/pydrake/multibody:rigid_body_tree_py",
-    ],
-)
-
-drake_py_unittest(
-    name = "rbt_ik_test",
-    data = ["//examples/pendulum:models"],
-    tags = ["snopt"],
-    deps = [
-        ":ik_py",
-        "//bindings/pydrake/multibody:rigid_body_tree_py",
+        ":snopt_py",
+        "//bindings/pydrake/common/test_utilities",
     ],
 )
 

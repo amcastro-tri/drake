@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -187,15 +188,8 @@ namespace multibody {
 ///     Minimal formulation of joint motion for biomechanisms.
 ///     Nonlinear dynamics, 62(1), pp.291-303.
 ///
-/// @tparam T The scalar type. Must be a valid Eigen scalar.
+/// @tparam T Must be one of drake's default scalar types.
 ///
-/// Instantiated templates for the following kinds of T's are provided:
-///
-/// - double
-/// - AutoDiffXd
-///
-/// They are already available to link against in the containing library.
-/// No other values for T are currently supported.
 /// @ingroup systems
 template <typename T>
 class MultibodyPlant : public MultibodyTreeSystem<T> {
@@ -425,6 +419,9 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
         body, V_WB, context, state);
   }
 
+  // TODO(sammy-tri) We should also be able to set the default pose of a free
+  // body.  See https://github.com/RobotLocomotion/drake/issues/10713
+
   /// Sets the distribution used by SetRandomState() to populate the
   /// x-y-z `position` component of the floating-base state.
   /// @throws std::exception if `body` is not a free body in the model.
@@ -436,14 +433,22 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
   }
 
   /// Sets the distribution used by SetRandomState() to populate the
+  /// rotation component of the floating-base state.
+  /// @throws std::exception if `body` is not a free body in the model.
+  /// @throws std::exception if called pre-finalize.
+  void SetFreeBodyRandomRotationDistribution(
+      const Body<T>& body,
+      const Eigen::Quaternion<symbolic::Expression>& rotation) {
+    this->mutable_tree().SetFreeBodyRandomRotationDistributionOrThrow(
+        body, rotation);
+  }
+
+  /// Sets the distribution used by SetRandomState() to populate the
   /// rotation component of the floating-base state using uniformly random
   /// rotations.
   /// @throws std::exception if `body` is not a free body in the model.
   /// @throws std::exception if called pre-finalize.
-  void SetFreeBodyRandomRotationDistributionToUniform(const Body<T>& body) {
-    this->mutable_tree().SetFreeBodyRandomRotationDistributionToUniformOrThrow(
-        body);
-  }
+  void SetFreeBodyRandomRotationDistributionToUniform(const Body<T>& body);
 
   /// Sets all generalized positions and velocities from the given vector
   /// [q; v].
@@ -452,6 +457,7 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
   /// `q_v` is not equal to `num_positions() + num_velocities()`.
   void SetPositionsAndVelocities(
       systems::Context<T>* context, const VectorX<T>& q_v) const {
+    DRAKE_DEMAND(q_v.size() == (num_positions() + num_velocities()));
     internal_tree().GetMutablePositionsAndVelocities(context) = q_v;
   }
 
@@ -1802,6 +1808,81 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
         context, with_respect_to, frame_B, p_BP, frame_A, frame_E, Jw_ABp_E);
   }
 
+  /// Returns a frame B's angular velocity Jacobian in a frame A with respect
+  /// to "speeds" 𝑠, where 𝑠 is either q̇ ≜ [q̇₁ ... q̇ⱼ]ᵀ (time-derivatives of
+  /// generalized positions) or v ≜ [v₁ ... vₖ]ᵀ (generalized velocities).
+  /// When a frame B's angular velocity `w_AB` in a frame A is characterized by
+  /// speeds 𝑠, B's angular velocity Jacobian in A with respect to 𝑠 is
+  /// <pre>
+  ///      Js_w_AB = [ ∂(w_AB)/∂𝑠₁,  ...  ∂(w_AB)/∂𝑠ₙ ]    (n is j or k)
+  /// </pre>
+  /// B's angular velocity in A is linear in 𝑠₁, ... 𝑠ₙ and can be written
+  /// `w_AB = Js_w_AB ⋅ 𝑠`  where 𝑠 is [𝑠₁ ... 𝑠ₙ]ᵀ.
+  ///
+  /// @param[in] context The state of the multibody system.
+  /// @param[in] with_respect_to Enum equal to JacobianWrtVariable::kQDot or
+  /// JacobianWrtVariable::kV, indicating whether the Jacobian `Js_w_AB` is
+  /// partial derivatives with respect to 𝑠 = q̇ (time-derivatives of generalized
+  /// positions) or with respect to 𝑠 = v (generalized velocities).
+  /// @param[in] frame_B The frame B in `w_AB` (B's angular velocity in A).
+  /// @param[in] frame_A The frame A in `w_AB` (B's angular velocity in A).
+  /// @param[in] frame_E The frame in which `w_AB` is expressed on input and
+  /// the frame in which the Jacobian `Js_w_AB` is expressed on output.
+  /// @param[out] Js_w_AB_E Frame B's angular velocity Jacobian in frame A with
+  /// respect to speeds 𝑠 (which is either q̇ or v), expressed in frame E.
+  /// The Jacobian is a function of only generalized positions q (which are
+  /// pulled from the context).  The previous definition shows `Js_w_AB_E` is
+  /// a matrix of size `3 x n`, where n is the number of elements in 𝑠.
+  /// @throws std::exception if `Js_w_AB_E` is nullptr or not of size `3 x n`.
+  void CalcJacobianAngularVelocity(const systems::Context<T>& context,
+                                   const JacobianWrtVariable with_respect_to,
+                                   const Frame<T>& frame_B,
+                                   const Frame<T>& frame_A,
+                                   const Frame<T>& frame_E,
+                                   EigenPtr<MatrixX<T>> Js_w_AB_E) const {
+    return internal_tree().CalcJacobianAngularVelocity(
+        context, with_respect_to, frame_B, frame_A, frame_E, Js_w_AB_E);
+  }
+
+  /// Return a point's translational velocity Jacobian in a frame A with respect
+  /// to "speeds" 𝑠, where 𝑠 is either q̇ ≜ [q̇₁ ... q̇ⱼ]ᵀ (time-derivatives of
+  /// generalized positions) or v ≜ [v₁ ... vₖ]ᵀ (generalized velocities).
+  /// For a point Bp of (fixed/welded to) a frame B whose translational velocity
+  /// `v_ABp` in a frame A is characterized by speeds 𝑠, Bp's velocity Jacobian
+  /// in A with respect to 𝑠 is defined as
+  /// <pre>
+  ///      Js_v_ABp = [ ∂(v_ABp)/∂𝑠₁,  ...  ∂(v_ABp)/∂𝑠ₙ ]    (n is j or k)
+  /// </pre>
+  /// Point Bp's velocity in A is linear in 𝑠₁, ... 𝑠ₙ and can be written
+  /// `v_ABp = Js_v_ABp ⋅ 𝑠`  where 𝑠 is [𝑠₁ ... 𝑠ₙ]ᵀ.
+  ///
+  /// @param[in] context The state of the multibody system.
+  /// @param[in] with_respect_to Enum equal to JacobianWrtVariable::kQDot or
+  /// JacobianWrtVariable::kV, indicating whether the Jacobian `Js_v_ABp` is
+  /// partial derivatives with respect to 𝑠 = q̇ (time-derivatives of generalized
+  /// positions) or with respect to 𝑠 = v (generalized velocities).
+  /// @param[in] frame_B The frame on which point Bp is fixed/welded.
+  /// @param[in] p_BoBp_B The position vector from Bo (frame_B's origin) to
+  ///   point Bp (which is regarded as fixed to B), expressed in frame B.
+  /// @param[in] frame_A The frame that measures `v_ABp` (Bp's velocity in A).
+  /// @param[in] frame_E The frame in which `v_ABp` is expressed on input and
+  /// the frame in which the Jacobian `Js_v_ABp` is expressed on output.
+  /// @param[out] Js_v_ABp_E Point Bp's velocity Jacobian in frame A with
+  /// respect to speeds 𝑠 (which is either q̇ or v), expressed in frame E.
+  /// The Jacobian is a function of only generalized positions q (which are
+  /// pulled from the context).  The previous definition shows `Js_v_ABp_E` is
+  /// a matrix of size `3 x n`, where n is the number of elements in 𝑠.
+  /// @throws std::exception if `Js_v_ABp_E` is nullptr or not of size `3 x n`.
+  void CalcJacobianTranslationalVelocity(
+      const systems::Context<T>& context, JacobianWrtVariable with_respect_to,
+      const Frame<T>& frame_B, const Eigen::Ref<const Vector3<T>>& p_BoBp_B,
+      const Frame<T>& frame_A, const Frame<T>& frame_E,
+      EigenPtr<MatrixX<T>> Js_v_ABp_E) const {
+    return internal_tree().CalcJacobianTranslationalVelocity(
+        context, with_respect_to, frame_B, p_BoBp_B, frame_A, frame_E,
+        Js_v_ABp_E);
+  }
+
   /// Given the state of this model in `context` and a known vector
   /// of generalized accelerations `known_vdot`, this method computes the
   /// spatial acceleration `A_WB` for each body as measured and expressed in the
@@ -2497,11 +2578,25 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
   /// a specific model instance.  This input port is a vector valued port, which
   /// can be set with JointActuator::set_actuation_vector().
   /// @pre Finalize() was already called on `this` plant.
-  /// @throws std::exception if called before Finalize() or if the model
-  /// instance does not contain any actuators.
+  /// @throws std::exception if called before Finalize().
   /// @throws std::exception if the model instance does not exist.
   const systems::InputPort<T>& get_actuation_input_port(
       ModelInstanceIndex model_instance) const;
+
+  /// Returns a constant reference to the vector-valued input port for applied
+  /// generalized forces, and the vector will be added directly into `tau`
+  /// (see @ref equations_of_motion). This vector is ordered using the same
+  /// convention as the plant velocities: you can set the generalized forces
+  /// that will be applied to model instance i using, e.g.,
+  /// `SetVelocitiesInArray(i, model_forces, &force_array)`.
+  /// @throws std::exception if called before Finalize().
+  const systems::InputPort<T>& get_applied_generalized_force_input_port() const;
+
+  /// Returns a constant reference to the input port for applying spatial
+  /// forces to bodies in the plant. The data type for the port is an
+  /// std::vector of ExternallyAppliedSpatialForce; any number of spatial forces
+  /// can be applied to any number of bodies in the plant.
+  const systems::InputPort<T>& get_applied_spatial_force_input_port() const;
 
   /// @}
   // Closes Doxygen section "Actuation input"
@@ -2513,7 +2608,7 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
   /// @{
 
   /// Returns a constant reference to the output port for the full continuous
-  /// state of the model.
+  /// state `x = [q v]` of the model.
   /// @pre Finalize() was already called on `this` plant.
   const systems::OutputPort<T>& get_continuous_state_output_port() const;
 
@@ -2864,6 +2959,19 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
   // MultibodyTree::Finalize() was called.
   void FinalizePlantOnly();
 
+  // MemberSceneGraph is an alias for SceneGraph<T>, except when T = Expression.
+  struct SceneGraphStub;
+  using MemberSceneGraph = typename std::conditional<
+      std::is_same<T, symbolic::Expression>::value,
+      SceneGraphStub, geometry::SceneGraph<T>>::type;
+
+  // Returns the SceneGraph that pre-Finalize geometry operations should
+  // interact with.  In most cases, that will be whatever the user has passed
+  // into RegisterAsSourceForSceneGraph.  However, when T = Expression, the
+  // result will be a stub type instead.  (We can get rid of the stub once
+  // SceneGraph supports symbolic::Expression.)
+  MemberSceneGraph& member_scene_graph();
+
   // Helper to check when a deprecated user-provided `scene_graph` pointer is
   // passed in via public API (aside form `RegisterAsSourceForSceneGraph`).
   // @throws std::logic_error if `scene_graph` is non-null (non-default) and
@@ -2970,6 +3078,9 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
       const Eigen::Ref<const VectorX<T>>& generalized_velocity,
       systems::VectorBase<T>* qdot) const override;
 
+  void AddAppliedExternalSpatialForces(
+      const systems::Context<T>& context, MultibodyForces<T>* forces) const;
+
   // Helper method to register geometry for a given body, either visual or
   // collision. The registration includes:
   // 1. Register a frame for this body if not already done so. The body gets
@@ -2984,8 +3095,7 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
   geometry::GeometryId RegisterGeometry(
       const Body<T>& body, const Isometry3<double>& X_BG,
       const geometry::Shape& shape,
-      const std::string& name,
-      geometry::SceneGraph<T>* scene_graph);
+      const std::string& name);
 
   bool body_has_registered_frame(const Body<T>& body) const {
     return body_index_to_frame_id_.find(body.index()) !=
@@ -3270,13 +3380,18 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
 
   // Input/Output port indexes:
   // A vector containing actuation ports for each model instance indexed by
-  // ModelInstanceIndex.  An invalid value indicates that the model instance has
-  // no actuated dofs.
+  // ModelInstanceIndex.
   std::vector<systems::InputPortIndex> instance_actuation_ports_;
 
   // If only one model instance has actuated dofs, remember it here.  If
   // multiple instances have actuated dofs, this index will not be valid.
   ModelInstanceIndex actuated_instance_;
+
+  // A port for externally applied generalized forces.
+  systems::InputPortIndex applied_generalized_force_input_port_;
+
+  // Port for externally applied spatial forces.
+  systems::InputPortIndex applied_spatial_force_input_port_;
 
   systems::OutputPortIndex continuous_state_output_port_;
   // A vector containing state output ports for each model instance indexed by
@@ -3436,6 +3551,10 @@ struct AddMultibodyPlantSceneGraphResult final {
 
 #ifndef DRAKE_DOXYGEN_CXX
 // Forward-declare specializations, prior to DRAKE_DECLARE... below.
+// See the .cc file for an explanation why we specialize these methods.
+template <>
+typename MultibodyPlant<symbolic::Expression>::SceneGraphStub&
+MultibodyPlant<symbolic::Expression>::member_scene_graph();
 template <>
 std::vector<geometry::PenetrationAsPointPair<double>>
 MultibodyPlant<double>::CalcPointPairPenetrations(
@@ -3445,19 +3564,7 @@ MultibodyPlant<double>::CalcPointPairPenetrations(
 }  // namespace multibody
 }  // namespace drake
 
-// Disable support for symbolic evaluation.
-// TODO(amcastro-tri): Allow symbolic evaluation once MultibodyTree supports it.
-namespace drake {
-namespace systems {
-namespace scalar_conversion {
-template <>
-struct Traits<drake::multibody::MultibodyPlant> :
-    public NonSymbolicTraits {};
-}  // namespace scalar_conversion
-}  // namespace systems
-}  // namespace drake
-
-DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
+DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
     class drake::multibody::MultibodyPlant)
-DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
+DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
     struct drake::multibody::AddMultibodyPlantSceneGraphResult)

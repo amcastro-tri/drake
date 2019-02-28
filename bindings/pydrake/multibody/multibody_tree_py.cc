@@ -32,10 +32,13 @@ void ForwardSymbols(py::module from, py::module m) {
   py::dict vars = m.attr("__dict__");
   py::exec(py::str("from {} import *").format(from.attr("__name__")),
       py::globals(), vars);
-  m.doc() = py::str(
-      "Warning:\n   ``{}`` will soon be deprecated. Please use ``{}`` "
-      "instead")
-                .format(m.attr("__name__"), from.attr("__name__"));
+
+  py::str deprecation = py::str(
+      "``{}`` is deprecated and will be removed on or around "
+      "2019-05-01. Please use ``{}`` instead")
+                            .format(m.attr("__name__"), from.attr("__name__"));
+  WarnDeprecated(deprecation);
+  m.doc() = py::str("Warning:\n    {}").format(deprecation);
 }
 
 // Bind deprecated symbols.
@@ -146,10 +149,10 @@ void init_module(py::module m) {
             cls_doc.SetFreeBodyPoseOrThrow.doc)
         .def("GetPositionsFromArray", &Class::GetPositionsFromArray,
             py::arg("model_instance"), py::arg("q_array"),
-            cls_doc.get_positions_from_array.doc)
+            cls_doc.GetPositionsFromArray.doc)
         .def("GetVelocitiesFromArray", &Class::GetVelocitiesFromArray,
             py::arg("model_instance"), py::arg("v_array"),
-            cls_doc.get_velocities_from_array.doc)
+            cls_doc.GetVelocitiesFromArray.doc)
         .def("SetFreeBodySpatialVelocityOrThrow",
             [](const Class* self, const Body<T>& body,
                 const SpatialVelocity<T>& V_WB, Context<T>* context) {
@@ -222,8 +225,8 @@ void init_parsing_deprecated(py::module m) {
 
   m.doc() =
       "Multibody parsing functionality.\n\n"
-      "Warning:\n   This module will soon be deprecated. Please use "
-      "``pydrake.multibody.parsing`` instead.";
+      "Warning:\n   This module is deprecated, and will be removed on or "
+      "around 2019-05-01. Please use ``pydrake.multibody.parsing`` instead.";
 
   // N.B. This module is deprecated; add all new methods to `parsing_py.cc`.
 
@@ -266,9 +269,10 @@ void init_all(py::module m) {
       "from pydrake.multibody.multibody_tree.multibody_plant import *\n"
       "from pydrake.multibody.multibody_tree.parsing import *\n",
       py::globals(), vars);
+  // N.B. Deprecation will have been emitted by `multibody_tree` module already.
   m.doc() =
-      "Warning:\n   ``pydrake.multibody.multibody_tree.all`` will soon "
-      "be deprecated.";
+      "Warning:\n   ``pydrake.multibody.multibody_tree.all`` is deprecated "
+      "and will be removed on or around 2019-05-01.";
 }
 
 }  // namespace

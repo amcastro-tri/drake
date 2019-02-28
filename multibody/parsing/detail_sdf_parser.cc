@@ -2,6 +2,7 @@
 
 #include <limits>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -48,6 +49,21 @@ RotationalInertia<double> ExtractRotationalInertiaAboutBcmExpressedInBi(
   const ignition::math::Matrix3d I = inertial.MassMatrix().Moi();
   return RotationalInertia<double>(I(0, 0), I(1, 1), I(2, 2),
                                    I(1, 0), I(2, 0), I(2, 1));
+}
+
+// Fails fast if a user attempts to specify `<pose frame='...'/>` in an
+// unsupported location.
+// See https://bitbucket.org/osrf/sdformat/issues/200 (tracked by #10590).
+void ThrowIfPoseFrameSpecified(sdf::ElementPtr element) {
+  if (element->HasElement("pose")) {
+    sdf::ElementPtr pose = element->GetElement("pose");
+    const std::string frame_name = pose->Get<std::string>("frame");
+    if (!frame_name.empty()) {
+      throw std::runtime_error(
+          "<pose frame='{non-empty}'/> is presently not supported outside of "
+          "the <frame/> tag.");
+    }
+  }
 }
 
 // Helper method to extract the SpatialInertia M_BBo_B of body B, about its body
@@ -124,6 +140,7 @@ Vector3d ExtractJointAxis(const sdf::Model& model_spec,
   Vector3d axis_J = ToVector3(axis->Xyz());
   if (axis->UseParentModelFrame()) {
     // Pose of the joint frame J in the frame of the child link C.
+    ThrowIfPoseFrameSpecified(joint_spec.Element());
     const Isometry3d X_CJ = ToIsometry3(joint_spec.Pose());
     // Get the pose of the child link C in the model frame M.
     const Isometry3d X_MC =
@@ -190,12 +207,15 @@ void AddJointActuatorFromSpecification(
   }
 }
 
-// Returns joint limits as the pair (lower_limit, upper_limit).
-// The units of the limits depend on the particular joint type. Units are meters
-// for prismatic joints and radians for revolute joints.
-// This method throws an exception if the joint type is not one of revolute or
-// prismatic.
-std::pair<double, double> ParseJointLimits(const sdf::Joint& joint_spec) {
+// Returns joint limits as the tuple (lower_limit, upper_limit,
+// velocity_limit).  The units of the limits depend on the particular joint
+// type.  For prismatic joints, units are meters for the position limits and
+// m/s for the velocity limit.  For revolute joints, units are radians for the
+// position limits and rad/s for the velocity limit.  The velocity limit is
+// always >= 0.  This method throws an exception if the joint type is not one
+// of revolute or prismatic.
+std::tuple<double, double, double> ParseJointLimits(
+    const sdf::Joint& joint_spec) {
   DRAKE_THROW_UNLESS(joint_spec.Type() == sdf::JointType::REVOLUTE ||
       joint_spec.Type() == sdf::JointType::PRISMATIC);
   // Axis specification.
@@ -220,7 +240,21 @@ std::pair<double, double> ParseJointLimits(const sdf::Joint& joint_spec) {
         "The lower limit must be lower (or equal) than the upper limit for "
         "joint '" + joint_spec.Name() + "'.");
   }
-  return std::make_pair(lower_limit, upper_limit);
+
+  // SDF defaults to -1.0 for joints with no limits, see
+  // http://sdformat.org/spec?ver=1.6&elem=joint#limit_velocity
+  // Drake marks joints with no limits with ±numeric_limits<double>::infinity()
+  // and therefore we make the change here.
+  const double velocity_limit =
+      axis->MaxVelocity() == -1.0 ?
+      std::numeric_limits<double>::infinity() : axis->MaxVelocity();
+  if (velocity_limit < 0) {
+    throw std::runtime_error(
+        "Velocity limit is negative for joint '" + joint_spec.Name() + "'. "
+            "Velocity limit must be a non-negative number.");
+  }
+
+  return std::make_tuple(lower_limit, upper_limit, velocity_limit);
 }
 
 // Helper method to add joints to a MultibodyPlant given an sdf::Joint
@@ -238,19 +272,14 @@ void AddJointFromSpecification(
 
   // Get the pose of frame J in the frame of the child link C, as specified in
   // <joint> <pose> ... </pose></joint>.
-  // TODO(amcastro-tri): Verify sdformat supports frame specifications
+  // TODO(eric.cousineau): Verify sdformat supports frame specifications
   // correctly.
-  // There are many ways by which a joint frame pose can be specified in SDF:
-  //  - <joint> <pose> </pose></joint>.
-  //  - <joint> <pose> <frame/> </pose></joint>.
-  //  - <joint> <frame> <pose> <frame/> </pose> </frame> </joint>.
-  // And combinations of the above?
-  // There is no way to verify at this level which one is supported or not.
-  // Here we trust that no mather how a user specified the file, joint.Pose()
-  // will ALWAYS return X_CJ.
+  ThrowIfPoseFrameSpecified(joint_spec.Element());
   const Isometry3d X_CJ = ToIsometry3(joint_spec.Pose());
 
   // Get the pose of the child link C in the model frame M.
+  // TODO(eric.cousineau): Figure out how to use link poses when they are NOT
+  // connected to a joint.
   const Isometry3d X_MC =
       ToIsometry3(model_spec.LinkByName(joint_spec.ChildLinkName())->Pose());
 
@@ -275,6 +304,11 @@ void AddJointFromSpecification(
   // P directly. We indicate that by passing a nullopt.
   if (X_PJ.value().isApprox(Isometry3d::Identity())) X_PJ = nullopt;
 
+  // These will only be populated for prismatic and revolute joints.
+  double lower_limit = 0;
+  double upper_limit = 0;
+  double velocity_limit = 0;
+
   switch (joint_spec.Type()) {
     case sdf::JointType::FIXED: {
       plant->AddJoint<WeldJoint>(
@@ -287,22 +321,28 @@ void AddJointFromSpecification(
     case sdf::JointType::PRISMATIC: {
       const double damping = ParseJointDamping(joint_spec);
       Vector3d axis_J = ExtractJointAxis(model_spec, joint_spec);
-      const std::pair<double, double> limits = ParseJointLimits(joint_spec);
+      std::tie(lower_limit, upper_limit, velocity_limit) =
+          ParseJointLimits(joint_spec);
       const auto& joint = plant->AddJoint<PrismaticJoint>(
           joint_spec.Name(),
           parent_body, X_PJ,
-          child_body, X_CJ, axis_J, limits.first, limits.second, damping);
+          child_body, X_CJ, axis_J, lower_limit, upper_limit, damping);
+      plant->get_mutable_joint(joint.index()).set_velocity_limits(
+          Vector1d(-velocity_limit), Vector1d(velocity_limit));
       AddJointActuatorFromSpecification(joint_spec, joint, plant);
       break;
     }
     case sdf::JointType::REVOLUTE: {
       const double damping = ParseJointDamping(joint_spec);
       Vector3d axis_J = ExtractJointAxis(model_spec, joint_spec);
-      const std::pair<double, double> limits = ParseJointLimits(joint_spec);
+      std::tie(lower_limit, upper_limit, velocity_limit) =
+          ParseJointLimits(joint_spec);
       const auto& joint = plant->AddJoint<RevoluteJoint>(
           joint_spec.Name(),
           parent_body, X_PJ,
-          child_body, X_CJ, axis_J, limits.first, limits.second, damping);
+          child_body, X_CJ, axis_J, lower_limit, upper_limit, damping);
+      plant->get_mutable_joint(joint.index()).set_velocity_limits(
+          Vector1d(-velocity_limit), Vector1d(velocity_limit));
       AddJointActuatorFromSpecification(joint_spec, joint, plant);
       break;
     }
@@ -357,12 +397,18 @@ void AddLinksFromSpecification(
   for (uint64_t link_index = 0; link_index < model.LinkCount(); ++link_index) {
     const sdf::Link& link = *model.LinkByIndex(link_index);
 
+    // Fail fast for `<pose frame='...'/>`.
+    ThrowIfPoseFrameSpecified(link.Element());
+
     // Get the link's inertia relative to the Bcm frame.
     // sdf::Link::Inertial() provides a representation for the SpatialInertia
     // M_Bcm_Bi of body B, about its center of mass Bcm, and expressed in an
     // inertial frame Bi as defined in <inertial> <pose></pose> </inertial>.
     // Per SDF specification, Bi's origin is at the COM Bcm, but Bi is not
     // necessarily aligned with B.
+    if (link.Element()->HasElement("inertial")) {
+      ThrowIfPoseFrameSpecified(link.Element()->GetElement("inertial"));
+    }
     const ignition::math::Inertiald& Inertial_Bcm_Bi = link.Inertial();
 
     const SpatialInertia<double> M_BBo_B =
@@ -379,6 +425,7 @@ void AddLinksFromSpecification(
             *link.VisualByIndex(visual_index), package_map, root_dir);
         unique_ptr<GeometryInstance> geometry_instance =
             MakeGeometryInstanceFromSdfVisual(sdf_visual);
+        ThrowIfPoseFrameSpecified(sdf_visual.Element());
         // We check for nullptr in case someone decided to specify an SDF
         // <empty/> geometry.
         if (geometry_instance) {
@@ -399,6 +446,7 @@ void AddLinksFromSpecification(
         const sdf::Collision& sdf_collision =
             *link.CollisionByIndex(collision_index);
         const sdf::Geometry& sdf_geometry = *sdf_collision.Geom();
+        ThrowIfPoseFrameSpecified(sdf_collision.Element());
         if (sdf_geometry.Type() != sdf::GeometryType::EMPTY) {
           const Isometry3d X_LG =
               MakeGeometryPoseFromSdfCollision(sdf_collision);
@@ -475,6 +523,7 @@ ModelInstanceIndex AddModelFromSpecification(
   // TODO(eric.cousineau): Ensure this generalizes to cases when the parent
   // frame is not the world. At present, we assume the parent frame is the
   // world.
+  ThrowIfPoseFrameSpecified(model.Element());
   const Isometry3d X_WM = ToIsometry3(model.Pose());
   // Add the SDF "model frame" given the model name so that way any frames added
   // to the plant are associated with this current model instance.

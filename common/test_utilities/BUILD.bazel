@@ -96,7 +96,7 @@ drake_cc_library(
 
 drake_cc_library(
     name = "disable_malloc",
-    testonly = 1,
+    #testonly = 1,
     srcs = ["disable_malloc.cc"],
     hdrs = ["disable_malloc.h"],
     tags = [

@@ -17,6 +17,8 @@
 #include "drake/multibody/tree/rigid_body.h"
 #include "drake/multibody/tree/spatial_inertia.h"
 
+#include "drake/common/test_utilities/disable_malloc.h"
+
 namespace drake {
 namespace multibody {
 namespace internal {
@@ -659,14 +661,16 @@ VectorX<T> MultibodyTree<T>::CalcInverseDynamics(
   // Temporary storage used in the computation of inverse dynamics.
   std::vector<SpatialAcceleration<T>> A_WB(num_bodies());
   std::vector<SpatialForce<T>> F_BMo_W(num_bodies());
-
   const auto& pc = EvalPositionKinematics(context);
   const auto& vc = EvalVelocityKinematics(context);
   VectorX<T> tau(num_velocities());
+  {
+  //test::DisableMalloc guard;
   CalcInverseDynamics(
       context, pc, vc, known_vdot,
       external_forces.body_forces(), external_forces.generalized_forces(),
       &A_WB, &F_BMo_W, &tau);
+  }
   return tau;
 }
 

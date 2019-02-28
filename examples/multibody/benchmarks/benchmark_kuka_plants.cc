@@ -5,6 +5,7 @@
 #include <gflags/gflags.h>
 
 #include "drake/common/find_resource.h"
+#include "drake/common/test_utilities/disable_malloc.h"
 #include "drake/multibody/joints/floating_base_types.h"
 #include "drake/multibody/parsers/urdf_parser.h"
 #include "drake/multibody/rigid_body_plant/drake_visualizer.h"
@@ -243,8 +244,11 @@ int do_main() {
       x = Eigen::VectorXd::Constant(2 * nq, i);
       desired_vdot = Eigen::VectorXd::Constant(nq, i);
       multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);
-      multibody_plant.CalcInverseDynamics(*multibody_context, desired_vdot,
-                                          external_forces);
+      {
+        //test::DisableMalloc guard;
+        multibody_plant.CalcInverseDynamics(*multibody_context, desired_vdot,
+                                            external_forces);
+      }
     }
     auto stop = my_clock::now();
     auto duration =

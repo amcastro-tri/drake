@@ -132,11 +132,11 @@ void MultibodyTreeSystem<T>::Finalize() {
   auto& spatial_inertia_in_world_cache_entry = this->DeclareCacheEntry(
       std::string("spatial inertia in world (M_B_W)"),
       [tree = tree_.get()]() {
-        return systems::AbstractValue::Make(
+        return AbstractValue::Make(
             std::vector<SpatialInertia<T>>(tree->num_bodies()));
       },
       [tree = tree_.get()](const systems::ContextBase& context_base,
-                           systems::AbstractValue* cache_value) {
+                           AbstractValue* cache_value) {
         auto& context = dynamic_cast<const Context<T>&>(context_base);
         auto& spatial_inertia_in_world_cache =
             cache_value->GetMutableValue<std::vector<SpatialInertia<T>>>();
@@ -172,11 +172,11 @@ void MultibodyTreeSystem<T>::Finalize() {
   auto& dynamic_bias_cache_entry = this->DeclareCacheEntry(
       std::string("dynamic bias (b_Bo_W)"),
       [tree = tree_.get()]() {
-        return systems::AbstractValue::Make(
+        return AbstractValue::Make(
             std::vector<SpatialForce<T>>(tree->num_bodies()));
       },
       [tree = tree_.get()](const systems::ContextBase& context_base,
-                           systems::AbstractValue* cache_value) {
+                           AbstractValue* cache_value) {
         auto& context = dynamic_cast<const Context<T>&>(context_base);
         auto& dynamic_bias_cache =
             cache_value->GetMutableValue<std::vector<SpatialForce<T>>>();

@@ -638,8 +638,8 @@ void MultibodyTree<T>::CalcSpatialAccelerationsFromVdot(
 template <typename T>
 void MultibodyTree<T>::CalcAccelerationKinematicsCache(
     const systems::Context<T>& context,
-    const PositionKinematicsCache<T>& pc,
-    const VelocityKinematicsCache<T>& vc,
+    const PositionKinematicsCache<T>&,
+    const VelocityKinematicsCache<T>&,
     const VectorX<T>& known_vdot,
     AccelerationKinematicsCache<T>* ac) const {
   DRAKE_DEMAND(ac != nullptr);

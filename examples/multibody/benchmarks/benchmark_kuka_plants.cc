@@ -8,6 +8,7 @@
 #include "drake/common/test_utilities/disable_malloc.h"
 #include "drake/multibody/joints/floating_base_types.h"
 #include "drake/multibody/parsers/urdf_parser.h"
+#include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/rigid_body_plant/drake_visualizer.h"
 #include "drake/multibody/rigid_body_tree.h"
 #include "drake/systems/framework/diagram.h"
@@ -26,6 +27,9 @@
 //using drake::solvers::SolutionResult;
 using drake::multibody::MultibodyPlant;
 using drake::geometry::SceneGraph;
+using drake::multibody::SpatialAcceleration;
+using drake::multibody::SpatialForce;
+using drake::multibody::SpatialVelocity;
 
 DEFINE_bool(rbt_inertia, false, "Compute M with RBT.");
 DEFINE_bool(mbp_inertia, false, "Compute M with MBP.");
@@ -42,7 +46,7 @@ typedef std::chrono::steady_clock my_clock;
 
 int do_main() {
   const int nq = 7;
-  const int num_reps = 10000;
+  const int num_reps = 100000;
   //const int num_autodiff_reps = 50;
 
   // Build and test RigidBodyPlant
@@ -234,31 +238,63 @@ int do_main() {
   // ===========================================================================
   // MBP INVERSE DYNAMICS
   // ===========================================================================
-  CALLGRIND_START_INSTRUMENTATION;
   if (FLAGS_mbp_inverse_dyn) {
     Eigen::VectorXd x = Eigen::VectorXd::Zero(2 * nq);
     Eigen::VectorXd desired_vdot(nq);
     multibody::MultibodyForces<double> external_forces(multibody_plant);
-    auto start =  my_clock::now();
+    std::vector<SpatialAcceleration<double>> A_WB_array(
+        multibody_plant.num_bodies());
+    // Creates problems with drake::SpatialForce in eigen_types.h!!
+    std::vector<drake::multibody::SpatialForce<double>> F_BMo_W_array(
+        multibody_plant.num_bodies());
+    VectorX<double> tau_id(multibody_plant.num_velocities());
+
+    //CALLGRIND_START_INSTRUMENTATION;
+    ///////////////////////////////////
+    // ID does NO heap allocation.
+    auto start = my_clock::now();
     for (int i = 0; i < num_reps; i++) {
       x = Eigen::VectorXd::Constant(2 * nq, i);
       desired_vdot = Eigen::VectorXd::Constant(nq, i);
       multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);
       {
-        //test::DisableMalloc guard;
+        // I only put this as proof that no heap allocation is being done.
+        test::DisableMalloc guard;
         multibody_plant.CalcInverseDynamics(*multibody_context, desired_vdot,
-                                            external_forces);
+                                            external_forces, &A_WB_array,
+                                            &F_BMo_W_array, &tau_id);
       }
     }
     auto stop = my_clock::now();
     auto duration =
         std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    std::cout << "(multibody_plant)" << std::to_string(num_reps)
-              << "xinverse dynamics calculations took " <<
-              duration.count() << " milliseconds." << std::endl;
+    std::cout << "(multibody_plant (no heap))" << std::to_string(num_reps)
+              << "x inverse dynamics calculations took " << duration.count()
+              << " milliseconds." << std::endl;
+    //CALLGRIND_STOP_INSTRUMENTATION;
+    //CALLGRIND_DUMP_STATS;
+
+    ///////////////////////////////////
+    // ID WITH heap allocation.
+    start = my_clock::now();
+    for (int i = 0; i < num_reps; i++) {
+      x = Eigen::VectorXd::Constant(2 * nq, i);
+      desired_vdot = Eigen::VectorXd::Constant(nq, i);
+      multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);
+      {
+        // test::DisableMalloc guard; // This guard would not pass.
+        multibody_plant.CalcInverseDynamics(*multibody_context, desired_vdot,
+                                            external_forces);
+      }
+    }
+    stop = my_clock::now();
+    duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+    std::cout << "(multibody_plant (with heap))" << std::to_string(num_reps)
+              << "x inverse dynamics calculations took " << duration.count()
+              << " milliseconds." << std::endl;
   }
-  CALLGRIND_STOP_INSTRUMENTATION;
-  CALLGRIND_DUMP_STATS;
+
 #if 0
   start =  my_clock::now();
   multibody::MultibodyForces<AutoDiffXd> external_forces_autodiff(

@@ -1949,6 +1949,19 @@ class MultibodyPlant : public MultibodyTreeSystem<T> {
         context, known_vdot, external_forces);
   }
 
+  void CalcInverseDynamics(const systems::Context<T>& context,
+                           const VectorX<T>& known_vdot,
+                           const MultibodyForces<T>& external_forces,
+                           std::vector<SpatialAcceleration<T>>* A_WB_array,
+                           std::vector<SpatialForce<T>>* F_BMo_W_array,
+                           EigenPtr<VectorX<T>> tau_array) const {
+    internal_tree().CalcInverseDynamics(
+        context, EvalPositionKinematics(context),
+        EvalVelocityKinematics(context), known_vdot,
+        external_forces.body_forces(), external_forces.generalized_forces(),
+        A_WB_array, F_BMo_W_array, tau_array);
+  }
+
   /// Computes the combined force contribution of ForceElement objects in the
   /// model. A ForceElement can apply forces as a spatial force per body or as
   /// generalized forces, depending on the ForceElement model.

@@ -609,8 +609,9 @@ void MultibodyTree<T>::CalcSpatialAccelerationsFromVdot(
 
   DRAKE_DEMAND(known_vdot.size() == topology_.num_velocities());
 
-  const auto& pc = this->EvalPositionKinematics(context);
-  const auto& vc = this->EvalVelocityKinematics(context);
+  const auto& pc = EvalPositionKinematics(context);
+  const VelocityKinematicsCache<T>* vc =
+      zero_velocities ? nullptr : &EvalVelocityKinematics(context);
 
   // TODO(amcastro-tri): Loop over bodies to compute acceleration kinematics
   // updates corresponding to flexible bodies.
@@ -629,7 +630,7 @@ void MultibodyTree<T>::CalcSpatialAccelerationsFromVdot(
 
       // Update per-node kinematics.
       node.CalcSpatialAcceleration_BaseToTip(
-          context, pc, vc, known_vdot, zero_velocities, A_WB_array);
+          context, pc, vc, known_vdot, A_WB_array);
     }
   }
 }
@@ -732,9 +733,8 @@ void MultibodyTree<T>::CalcInverseDynamics(
   SpatialForce<T> Fapplied_Bo_W = SpatialForce<T>::Zero();
 
   const auto& pc = EvalPositionKinematics(context);
-  const auto& vc = zero_velocities ?
-      VelocityKinematicsCache<T>() : // empty cache. It won't get used.
-          EvalVelocityKinematics(context);
+  const VelocityKinematicsCache<T>* vc =
+      zero_velocities ? nullptr : &EvalVelocityKinematics(context);
 
   const std::vector<SpatialInertia<T>>& spatial_inertia_in_world_cache =
       EvalSpatialInertiaInWorldCache(context);
@@ -742,8 +742,9 @@ void MultibodyTree<T>::CalcInverseDynamics(
   //CalcSpatialInertiaInWorldCache(context,
     //  &spatial_inertia_in_world_cache);
 
-  const std::vector<SpatialForce<T>>& dynamic_bias_cache =
-      EvalDynamicBiasCache(context);
+  // b_Bo_W = 0 if v = 0.
+  const std::vector<SpatialForce<T>>* dynamic_bias_cache =
+      zero_velocities ? nullptr : &EvalDynamicBiasCache(context);
   //std::vector<SpatialForce<T>> dynamic_bias_cache;
   //CalcDynamicBiasCache(context, &dynamic_bias_cache);
 
@@ -780,7 +781,6 @@ void MultibodyTree<T>::CalcInverseDynamics(
       node.CalcInverseDynamics_TipToBase(
           context, pc, vc,
           spatial_inertia_in_world_cache, dynamic_bias_cache,
-          zero_velocities,
           *A_WB_array,
           Fapplied_Bo_W, tau_applied_mobilizer,
           F_BMo_W_array, tau_array);

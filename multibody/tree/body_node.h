@@ -432,9 +432,8 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
   void CalcSpatialAcceleration_BaseToTip(
       const systems::Context<T>& context,
       const PositionKinematicsCache<T>& pc,
-      const VelocityKinematicsCache<T>& vc,
+      const VelocityKinematicsCache<T>* vc,
       const VectorX<T>& mbt_vdot,
-      bool zero_velocities,
       std::vector<SpatialAcceleration<T>>* A_WB_array_ptr) const {
     // This method must not be called for the "world" body node.
     DRAKE_DEMAND(topology_.body != world_index());
@@ -508,17 +507,17 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     SpatialVelocity<T> V_WP = SpatialVelocity<T>::Zero();
     SpatialVelocity<T> V_PB_W = SpatialVelocity<T>::Zero();
     SpatialVelocity<T> V_FM = SpatialVelocity<T>::Zero();
-    if (!zero_velocities) {
+    if (vc != nullptr) {
       // Since we are in a base-to-tip recursion the parent body P's spatial
       // velocity is already available in the cache.
-      V_WP = get_V_WP(vc);
+      V_WP = get_V_WP(*vc);
 
       // For body B, only the spatial velocity V_PB_W is already available in the
       // cache. The acceleration A_PB_W was computed above.
-      V_PB_W = get_V_PB_W(vc);
+      V_PB_W = get_V_PB_W(*vc);
 
       // Across mobilizer velocity is available from the velocity kinematics.
-      V_FM = get_V_FM(vc);
+      V_FM = get_V_FM(*vc);
     }
 
     // =========================================================================
@@ -641,10 +640,9 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
   void CalcInverseDynamics_TipToBase(
       const systems::Context<T>& context,
       const PositionKinematicsCache<T>& pc,
-      const VelocityKinematicsCache<T>& vc,
+      const VelocityKinematicsCache<T>*,
       const std::vector<SpatialInertia<T>>& M_B_W_cache,
-      const std::vector<SpatialForce<T>>& b_Bo_W_cache,
-      bool zero_velocities,
+      const std::vector<SpatialForce<T>>* b_Bo_W_cache,
       const std::vector<SpatialAcceleration<T>>& A_WB_array,
       const SpatialForce<T>& Fapplied_Bo_W,
       const Eigen::Ref<const VectorX<T>>& tau_applied,
@@ -714,8 +712,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // Total spatial force on body B producing acceleration A_WB.
     SpatialForce<T> Ftot_BBo_W;
     CalcBodySpatialForceGivenItsSpatialAcceleration(
-        context,
-        zero_velocities, M_B_W_cache, b_Bo_W_cache, A_WB, &Ftot_BBo_W);
+        context, M_B_W_cache, b_Bo_W_cache, A_WB, &Ftot_BBo_W);
 
     // Retrieve position kinematics cached quantities for this node.
     const Vector3<T>& p_BoMo_W = get_p_BoMo_W(pc);
@@ -1433,9 +1430,8 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
   //   3. b_Bo.translational() = 0 when Bo = Bcm (p_BoBcm = 0).
   void CalcBodySpatialForceGivenItsSpatialAcceleration(
       const systems::Context<T>& context,
-      bool zero_velocities,
       const std::vector<SpatialInertia<T>>& M_B_W_cache,
-      const std::vector<SpatialForce<T>>& b_Bo_W_cache,
+      const std::vector<SpatialForce<T>>* b_Bo_W_cache,
       const SpatialAcceleration<T>& A_WB, SpatialForce<T>* Ftot_BBo_W_ptr)
   const {
     DRAKE_DEMAND(Ftot_BBo_W_ptr != nullptr);
@@ -1456,9 +1452,10 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // to Eq. 2.26 (p. 27) in A. Jain's book.
     Ftot_BBo_W = M_B_W * A_WB;
 
-    if (!zero_velocities) {
+    // If velocities are zero, thus b_Bo_W is zero and does not contribute.
+    if (b_Bo_W_cache != nullptr) {
       // Dynamic bias for body B.
-      const SpatialForce<T>& b_Bo_W = b_Bo_W_cache[body_B.node_index()];
+      const SpatialForce<T>& b_Bo_W = (*b_Bo_W_cache)[body_B.node_index()];
       Ftot_BBo_W += b_Bo_W;
     }
   }

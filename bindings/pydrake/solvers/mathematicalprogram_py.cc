@@ -294,7 +294,38 @@ PYBIND11_MODULE(mathematicalprogram, m) {
             return self.GetSolution(var);
           },
           doc.MathematicalProgramResult.GetSolution
-              .doc_1args_constEigenMatrixBase);
+              .doc_1args_constEigenMatrixBase)
+      .def("GetSuboptimalSolution",
+          [](const MathematicalProgramResult& self,
+              const symbolic::Variable& var, int solution_number) {
+            return self.GetSuboptimalSolution(var, solution_number);
+          },
+          doc.MathematicalProgramResult.GetSuboptimalSolution
+              .doc_2args_var_solution_number)
+      .def("GetSuboptimalSolution",
+          [](const MathematicalProgramResult& self,
+              const VectorXDecisionVariable& var, int solution_number) {
+            return self.GetSuboptimalSolution(var, solution_number);
+          },
+          doc.MathematicalProgramResult.GetSuboptimalSolution
+              .doc_2args_constEigenMatrixBase_int)
+      .def("GetSuboptimalSolution",
+          [](const MathematicalProgramResult& self,
+              const MatrixXDecisionVariable& var, int solution_number) {
+            return self.GetSuboptimalSolution(var, solution_number);
+          },
+          doc.MathematicalProgramResult.GetSuboptimalSolution
+              .doc_2args_constEigenMatrixBase_int)
+      .def("num_suboptimal_solution()",
+          [](const MathematicalProgramResult& self) {
+            return self.num_suboptimal_solution();
+          },
+          doc.MathematicalProgramResult.num_suboptimal_solution.doc)
+      .def("get_suboptimal_objective",
+          [](const MathematicalProgramResult& self, int solution_number) {
+            return self.get_suboptimal_objective(solution_number);
+          },
+          doc.MathematicalProgramResult.get_suboptimal_objective.doc);
 
   py::class_<MathematicalProgram> prog_cls(
       m, "MathematicalProgram", doc.MathematicalProgram.doc);
@@ -695,6 +726,34 @@ PYBIND11_MODULE(mathematicalprogram, m) {
             prog.SetInitialGuessForAllVariables(x0);
           },
           doc.MathematicalProgram.SetInitialGuessForAllVariables.doc)
+      .def("SetDecisionVariableValueInVector",
+          [](const MathematicalProgram& prog,
+              const symbolic::Variable& decision_variable,
+              double decision_variable_new_value,
+              Eigen::Ref<Eigen::VectorXd> values) {
+            prog.SetDecisionVariableValueInVector(
+                decision_variable, decision_variable_new_value, &values);
+          },
+          py::arg("decision_variable"), py::arg("decision_variable_new_value"),
+          py::arg("values"),
+          doc.MathematicalProgram.SetDecisionVariableValueInVector
+              .doc_3args_decision_variable_decision_variable_new_value_values)
+      .def("SetDecisionVariableValueInVector",
+          [](const MathematicalProgram& prog,
+              const Eigen::Ref<const MatrixXDecisionVariable>&
+                  decision_variables,
+              const Eigen::Ref<const Eigen::MatrixXd>&
+                  decision_variables_new_values,
+              Eigen::Ref<Eigen::VectorXd> values) {
+            prog.SetDecisionVariableValueInVector(
+                decision_variables, decision_variables_new_values, &values);
+          },
+          py::arg("decision_variables"),
+          py::arg("decision_variables_new_values"), py::arg("values"),
+          doc.MathematicalProgram
+              .SetDecisionVariableValueInVector
+              // NOLINTNEXTLINE(whitespace/line_length)
+              .doc_3args_decision_variables_decision_variables_new_values_values)
       .def("SetSolverOption", &SetSolverOptionBySolverType<double>,
           doc.MathematicalProgram.SetSolverOption.doc)
       .def("SetSolverOption", &SetSolverOptionBySolverType<int>,

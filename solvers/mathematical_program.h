@@ -1491,7 +1491,7 @@ class MathematicalProgram {
    * Example: to add two equality constraints which only depend on two of the
    * elements of x, you could use
    * @code{.cc}
-   *   auto x = prog.NewContinuousDecisionVariable(6,"myvar");
+   *   auto x = prog.NewContinuousVariables(6,"myvar");
    *   Eigen::Matrix2d Aeq;
    *   Aeq << -1, 2,
    *           1, 1;
@@ -1521,7 +1521,7 @@ class MathematicalProgram {
    * Example: to add two equality constraints which only depend on two of the
    * elements of x, you could use
    * @code{.cc}
-   *   auto x = prog.NewContinuousDecisionVariable(6,"myvar");
+   *   auto x = prog.NewContinuousVariables(6,"myvar");
    *   Eigen::Matrix2d Aeq;
    *   Aeq << -1, 2,
    *           1, 1;
@@ -1594,8 +1594,8 @@ class MathematicalProgram {
    * Example
    * \code{.cc}
    * MathematicalProgram prog;
-   * auto x = prog.NewContinuousDecisionVariables<2>("x");
-   * auto y = prog.NewContinuousDecisionVariables<1>("y");
+   * auto x = prog.NewContinuousVariables<2>("x");
+   * auto y = prog.NewContinuousVariables<1>("y");
    * Eigen::Vector3d lb(0, 1, 2);
    * Eigen::Vector3d ub(1, 2, 3);
    * // Imposes the constraint
@@ -2334,6 +2334,7 @@ class MathematicalProgram {
 
   /**
    * Sets the initial guess for a single variable @p decision_variable.
+   * The guess is stored as part of this program.
    * @pre decision_variable is a registered decision variable in the program.
    * @throws std::runtime_error if precondition is not satisfied.
    */
@@ -2342,8 +2343,8 @@ class MathematicalProgram {
 
   /**
    * Sets the initial guess for the decision variables stored in
-   * @p decision_variable_mat to be @p x0. Variables begin with a default
-   * initial guess of NaN to indicate that no guess is available.
+   * @p decision_variable_mat to be @p x0.
+   * The guess is stored as part of this program.
    */
   template <typename DerivedA, typename DerivedB>
   void SetInitialGuess(const Eigen::MatrixBase<DerivedA>& decision_variable_mat,
@@ -2368,6 +2369,33 @@ class MathematicalProgram {
     DRAKE_ASSERT(x0.rows() == num_vars() && x0.cols() == 1);
     x_initial_guess_ = x0;
   }
+
+  /**
+   * Updates the value of a single @p decision_variable inside the @p values
+   * vector to be @p decision_variable_new_value.
+   * The other decision variables' values in @p values are unchanged.
+   * @param decision_variable a registered decision variable in this program.
+   * @param decision_variable_new_value the variable's new values.
+   * @param[in,out] values The vector to be tweaked; must be of size num_vars().
+   */
+  void SetDecisionVariableValueInVector(
+      const symbolic::Variable& decision_variable,
+      double decision_variable_new_value,
+      EigenPtr<Eigen::VectorXd> values) const;
+
+  /**
+   * Updates the values of some @p decision_variables inside the @p values
+   * vector to be @p decision_variables_new_values.
+   * The other decision variables' values in @p values are unchanged.
+   * @param decision_variables registered decision variables in this program.
+   * @param decision_variables_new_values the variables' respective new values;
+   *   must have the same rows() and cols() sizes and @p decision_variables.
+   * @param[in,out] values The vector to be tweaked; must be of size num_vars().
+   */
+  void SetDecisionVariableValueInVector(
+      const Eigen::Ref<const MatrixXDecisionVariable>& decision_variables,
+      const Eigen::Ref<const Eigen::MatrixXd>& decision_variables_new_values,
+      EigenPtr<Eigen::VectorXd> values) const;
 
   /**
    * Solve the MathematicalProgram.

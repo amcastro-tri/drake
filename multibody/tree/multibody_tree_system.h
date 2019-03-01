@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "drake/common/default_scalars.h"
-#include "drake/common/drake_deprecated.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/tree/position_kinematics_cache.h"
 #include "drake/multibody/tree/spatial_inertia.h"
@@ -75,11 +74,6 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   ~MultibodyTreeSystem() override;
 
   bool is_discrete() const { return is_discrete_; }
-
-  DRAKE_DEPRECATED("Please use MultibodyPlant methods directly.")
-  const internal::MultibodyTree<T>& tree() const {
-    return internal_tree();
-  }
 
   /** Returns a reference to the up to date PositionKinematicsCache in the
   given Context, recalculating it first if necessary. */
@@ -217,14 +211,6 @@ const MultibodyTree<T>& GetInternalTree(const MultibodyTreeSystem<T>& system) {
 }
 
 }  // namespace internal
-
-/// WARNING: This will be removed on or around 2019/03/01.
-template <typename T>
-using MultibodyTreeSystem
-DRAKE_DEPRECATED(
-    "This public alias is deprecated, and will be removed around 2019/03/01.")
-    = internal::MultibodyTreeSystem<T>;
-
 }  // namespace multibody
 }  // namespace drake
 

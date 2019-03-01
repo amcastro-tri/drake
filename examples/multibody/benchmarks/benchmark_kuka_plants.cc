@@ -46,8 +46,9 @@ typedef std::chrono::steady_clock my_clock;
 
 int do_main() {
   const int nq = 7;
-  const int num_reps = 100000;
+  const int num_reps = 10000;
   //const int num_autodiff_reps = 50;
+  const int id_num_reps = 10 * num_reps;
 
   // Build and test RigidBodyPlant
   auto tree = std::make_unique<RigidBodyTree<double>>();
@@ -197,7 +198,7 @@ int do_main() {
     auto start = my_clock::now();
     RigidBodyTree<double>::BodyToWrenchMap external_wrenches;
 
-    for (int i = 0; i < num_reps; i++) {
+    for (int i = 0; i < id_num_reps; i++) {
       x = Eigen::VectorXd::Constant(2 * nq, i);
       desired_vdot = Eigen::VectorXd::Constant(nq, i);
       auto cache =
@@ -210,7 +211,7 @@ int do_main() {
     auto stop = my_clock::now();
     auto duration =
         std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    std::cout << "(rigid_body_plant)" << std::to_string(num_reps) <<
+    std::cout << "(rigid_body_plant)" << std::to_string(id_num_reps) <<
               "x inverse dynamics calculations took " <<
               duration.count() << " milliseconds." << std::endl;
   }
@@ -253,7 +254,7 @@ int do_main() {
     ///////////////////////////////////
     // ID does NO heap allocation.
     auto start = my_clock::now();
-    for (int i = 0; i < num_reps; i++) {
+    for (int i = 0; i < id_num_reps; i++) {
       x = Eigen::VectorXd::Constant(2 * nq, i);
       desired_vdot = Eigen::VectorXd::Constant(nq, i);
       multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);
@@ -268,7 +269,7 @@ int do_main() {
     auto stop = my_clock::now();
     auto duration =
         std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    std::cout << "(multibody_plant (no heap))" << std::to_string(num_reps)
+    std::cout << "(multibody_plant (no heap))" << std::to_string(id_num_reps)
               << "x inverse dynamics calculations took " << duration.count()
               << " milliseconds." << std::endl;
     //CALLGRIND_STOP_INSTRUMENTATION;
@@ -277,7 +278,7 @@ int do_main() {
     ///////////////////////////////////
     // ID WITH heap allocation.
     start = my_clock::now();
-    for (int i = 0; i < num_reps; i++) {
+    for (int i = 0; i < id_num_reps; i++) {
       x = Eigen::VectorXd::Constant(2 * nq, i);
       desired_vdot = Eigen::VectorXd::Constant(nq, i);
       multibody_context->get_mutable_continuous_state_vector().SetFromVector(x);
@@ -290,7 +291,7 @@ int do_main() {
     stop = my_clock::now();
     duration =
         std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    std::cout << "(multibody_plant (with heap))" << std::to_string(num_reps)
+    std::cout << "(multibody_plant (with heap))" << std::to_string(id_num_reps)
               << "x inverse dynamics calculations took " << duration.count()
               << " milliseconds." << std::endl;
   }

@@ -1,0 +1,37 @@
+# -*- python -*-
+
+load(
+    "@drake//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
+    "drake_cc_googletest",
+    "drake_cc_library",
+)
+load("//tools/install:install_data.bzl", "install_data")
+load(
+    "@drake//tools/vector_gen:vector_gen.bzl",
+    "drake_cc_vector_gen_library",
+)
+load("//tools/lint:lint.bzl", "add_lint_tests")
+
+package(default_visibility = ["//visibility:private"])
+
+drake_cc_binary(
+    name = "performance_measures",
+    srcs = ["performance_measures.cc"],
+    #add_test_rule = 1,
+    data = ["//manipulation/models/iiwa_description:models"],
+    #test_rule_args = [
+    #    "-simulation_sec=1.0",
+    #    "-realtime_factor=0.0",
+    #],
+    deps = [    
+        "//common:find_resource",
+        "//multibody/parsing:parser",
+        "//multibody/plant",
+        "@gflags",
+    ],
+)
+
+install_data()
+
+add_lint_tests()

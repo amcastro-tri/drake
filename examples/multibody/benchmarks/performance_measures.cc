@@ -96,7 +96,7 @@ double MultiplicationTime() {
   std::cout << "MultiplicationTime: " << duration.count() << " ms.\n";
   return mulRes;
 }
-
+#if 0
 double DoNothing(double, double) {
   return 0;
 }
@@ -112,6 +112,7 @@ double DoMultiplication(double a, double b) {
 double DoSqrt(double a, double b) {
   return std::sqrt(b);
 }
+#endif
 
 class OperationsTest {
  public:
@@ -254,14 +255,17 @@ class OperationsTest {
   }
 
  private:
-  static std::vector<double> GenerateSamples() {
+  static constexpr int half_samples_ = 8;
+  static constexpr int num_samples_ = 2 * half_samples_;
+  static std::array<double, num_samples_> GenerateSamples() {
     unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
     std::default_random_engine generator(seed);
     std::uniform_real_distribution<double> distribution(0.0, 1.0);
 
-    const int half_samples = 1;
+    // This must fit in cache or else it'll affect performance measurements.
+    const int half_samples = half_samples_;
     const int num_samples = 2 * half_samples;
-    std::vector<double> samples(num_samples);
+    std::array<double, num_samples_> samples;
     for (int i = 0; i < num_samples; i+=2) {
       double s = distribution(generator);
       samples[i] = s;
@@ -269,10 +273,11 @@ class OperationsTest {
     }
     return samples;
   }
-  const int num_reps_;
-  const std::vector<double> samples_;
+  const int num_reps_;  
+  const std::array<double, num_samples_> samples_;
 };
 
+#if 0
 double OperationTest(const std::string& name,
                      double(*op)(double, double)) {
   unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
@@ -319,6 +324,7 @@ double OperationTest(const std::string& name,
 
   return result;
 }
+#endif
 
 int do_main()
 {
@@ -360,13 +366,13 @@ int do_main()
     std::cout << MultiplicationTime() << std::endl;
 
     OperationsTest(1e9).RunTests();
+#if 0
 
   (void) DoNothing;
   (void) DoAddition;
   (void)DoSqrt;
   (void)OperationTest;
   (void)DoMultiplication;
-#if 0
     //std::cout << OperationTest("NoOp",
     //                           [](double a, double b) { return 0; }) << std::endl;
     std::cout << OperationTest("DoNothing", DoNothing) << std::endl;

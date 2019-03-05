@@ -841,11 +841,9 @@ class RollingCylinder : public ::testing::Test {
     // Initial penetration of O(dt), in tests below we use dt = 1.0e-3.
     x0_(0) = 1.0e-3;
     stiffness_(0) = m_ * g_ / penetration_allowance;
-    const double omega = sqrt(stiffness_(0) / m_);
-    const double time_scale = 1.0 / omega;
+    const double critical_damping = 2.0 * sqrt(stiffness_(0) * m_);
     const double damping_ratio = 1.0;
-    const double dissipation =
-        damping_ratio * time_scale / penetration_allowance;
+    const double dissipation = damping_ratio * critical_damping;
     dissipation_(0) = dissipation;
 
     solver_.SetTwoWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &x0_,

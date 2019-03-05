@@ -26,13 +26,10 @@ VectorX<U> CalcNormalForces(
     const VectorX<double>& stiffness, const VectorX<double>& dissipation,
     double dt, const VectorX<U>& vn) {
   int nc = x.size();
-
   // Compute normal force at t^{n+1}
-  const VectorX<U> k_vn =
-      stiffness * (VectorX<U>::Ones(nc) - dissipation.asDiagonal() * vn);
-  const VectorX<U> k_vn_clamped = k_vn.template cwiseMax(VectorX<U>::Zero(nc));
-  const VectorX<U> x_clamped = x.cwiseMax(VectorX<U>::Zero(nc));
-  const VectorX<U> fn = k_vn_clamped.asDiagonal() * x_clamped;
+  const VectorX<U> fn =
+      (stiffness.asDiagonal() * x - dissipation.asDiagonal() * vn)
+          .cwiseMax(VectorX<U>::Zero(nc));
   return fn;
 }
 

@@ -886,21 +886,23 @@ void MultibodyPlant<T>::set_penetration_allowance(
   // We first estimate the stiffness based on static equilibrium.
   const double stiffness = mass * g / penetration_allowance;
   // Frequency associated with the stiffness above.
-  const double omega = sqrt(stiffness / mass);
+  const double omega = std::sqrt(stiffness / mass);
+
+  const double critical_damping = 2.0 * std::sqrt(stiffness * mass);
 
   // Estimated contact time scale. The relative velocity of objects coming into
   // contact goes to zero in this time scale.
-  const double time_scale = 1.0 / omega;
+  const double time_scale = 1.0 / (2.0 * M_PI * omega);
 
   // Damping ratio for a critically damped model. We could allow users to set
   // this. Right now, critically damp the normal direction.
   // This corresponds to a non-penetraion constraint in the limit for
   // contact_penetration_allowance_ goint to zero (no bounce off).
-  const double damping_ratio = 1.0;
+  const double damping_ratio = 0.5;
   // We form the damping (with units of 1/velocity) using dimensional analysis.
   // Thus we use 1/omega for the time scale and penetration_allowance for the
   // length scale. We then scale it by the damping ratio.
-  const double damping = damping_ratio * time_scale / penetration_allowance;
+  const double damping = damping_ratio * critical_damping;
 
   // Final parameters used in the penalty method:
   penalty_method_contact_parameters_.stiffness = stiffness;
@@ -1500,6 +1502,15 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
       num_contacts, penalty_method_contact_parameters_.stiffness);
   VectorX<T> damping = VectorX<T>::Constant(
       num_contacts, penalty_method_contact_parameters_.damping);
+
+  if (num_contacts > 0) {
+    const double w0 = 2.0 * M_PI / (20 * dt);
+    const double damping_ratio = 1.0;
+    const MatrixX<T> Wnn = Jn * M0.ldlt().solve(Jn.transpose());
+    const VectorX<T> mtilde = Wnn.diagonal().cwiseInverse();    
+    stiffness = w0 * w0 * mtilde;
+    damping = 2.0 * sqrt(stiffness.array() * damping.array()) * damping_ratio;
+  }    
 
   // Solve for v and the contact forces.
   ImplicitStribeckSolverResult info{

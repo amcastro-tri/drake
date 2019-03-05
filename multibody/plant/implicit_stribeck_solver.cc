@@ -473,35 +473,24 @@ void ImplicitStribeckSolver<T>::CalcNormalForces(
   const auto& stiffness = problem_data_aliases_.stiffness();
   const auto& dissipation = problem_data_aliases_.dissipation();
 
-  VectorX<T> x_capped(nc);  // = x₊
-  VectorX<T> H_x(nc);  // = H(x), with H the Heaviside function.
-  VectorX<T> k_vn_capped(nc);  // = k(vₙ)₊ = k (1 − d vₙ)₊
-  VectorX<T> H_k_vn(nc);  // = H(k(vₙ)).
+  VectorX<T> dfn_dvn(nc);  // = dfₙ/dvₙ.
 
   auto& fn = *fn_ptr;
   for (int ic = 0; ic < nc; ++ic) {
-    // Stiffness as a function of vn, k(vₙ) = k (1 − d vₙ)₊
-    // where x₊ = max(x, 0).
-    T k_vn = stiffness(ic) * (1.0 - dissipation(ic) * vn(ic));
+    const auto& k = stiffness(ic);
+    const auto& d = dissipation(ic);
+    
+    const auto signed_fn = k * x(ic) - d * vn(ic);
 
-    k_vn_capped(ic) = max(0.0, k_vn);
-    x_capped(ic) = max(0.0, x(ic));
-    // fₙ = k(vₙ)₊ x₊
-    fn(ic) = k_vn_capped(ic) * x_capped(ic);
-    // Factors in the derivatives of x₊ and k(vₙ)₊
-    H_x(ic) = x(ic) > 0 ? 1.0 : 0.0;
-    H_k_vn(ic) = k_vn > 0 ? 1.0 : 0.0;
+    // fₙ = (k⋅x + d⋅ẋ)₊
+    fn(ic) = max(0.0, signed_fn);
+    
+    // Factors in the derivatives of fn
+    const auto H_fn = signed_fn > 0 ? 1.0 : 0.0;
+
+    // dfₙ/dvₙ = -H(k⋅x + d⋅ẋ) * (dt * k + d).
+    dfn_dvn(ic) = -H_fn * (dt * k + d);
   }
-
-  // ∇ᵥxˢ⁺¹₊ = −δt diag(H(xˢ⁺¹)) Jₙ, with xˢ⁺¹ = xˢ − δt vₙˢ⁺¹.
-  // of size nc x nv.
-  MatrixX<T> nabla_x_capped = -dt * H_x.asDiagonal() * Jn;
-
-  // ∇ᵥk(vₙˢ⁺¹)₊ = −diag(H(k(vₙˢ⁺¹))) diag(k) diag(d) Jₙ
-  // of size nc x nv.
-  MatrixX<T> nabla_k_vn_capped = -(
-      (H_k_vn.array() *
-          stiffness.array() * dissipation.array()).matrix().asDiagonal() * Jn);
 
   auto& Gn = *Gn_ptr;
 
@@ -509,8 +498,7 @@ void ImplicitStribeckSolver<T>::CalcNormalForces(
   // Gn = ∇ᵥfₙ(xˢ⁺¹, vₙˢ⁺¹) =
   //        diag(x₊) ∇ᵥk(vₙˢ⁺¹)₊ + diag(k(vₙ)₊) ∇ᵥxˢ⁺¹₊
   // Gn is of size nc x nv.
-  Gn = x_capped.asDiagonal() * nabla_k_vn_capped +
-      k_vn_capped.asDiagonal() * nabla_x_capped;
+  Gn = dfn_dvn.asDiagonal() * Jn;
 }
 
 template <typename T>
@@ -681,7 +669,6 @@ ImplicitStribeckSolverResult ImplicitStribeckSolver<T>::SolveWithGuess(
     }
 
     CalcNormalForces(x, vn, Jn, dt, &fn, &Gn);
-
 
     // Update v_slip, t_hat, mus and ft as a function of vt and fn.
     CalcFrictionForces(vt, fn, &v_slip, &t_hat, &mu_vt, &ft);

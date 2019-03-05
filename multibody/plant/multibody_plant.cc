@@ -1360,6 +1360,14 @@ ImplicitStribeckSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
   VectorX<T> v0_substep = v0;
   VectorX<T> phi0_substep = phi0;
 
+  const double w0 = 2.0 * M_PI / (20 * dt_substep);
+  const double damping_ratio = 1.0;
+  const MatrixX<T> Wnn = Jn * M0.ldlt().solve(Jn.transpose());
+  const VectorX<T> mtilde = Wnn.diagonal().cwiseInverse();
+  const VectorX<T> kk = w0 * w0 * mtilde;
+  const VectorX<T> dd =
+      2.0 * sqrt(stiffness.array() * mtilde.array()) * damping_ratio;
+
   // Initialize info to an unsuccessful result.
   ImplicitStribeckSolverResult info{
       ImplicitStribeckSolverResult::kMaxIterationsReached};
@@ -1374,7 +1382,7 @@ ImplicitStribeckSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
     implicit_stribeck_solver_->SetTwoWayCoupledProblemData(
         &M0, &Jn, &Jt,
         &p_star_substep, &phi0_substep,
-        &stiffness, &damping, &mu);
+        &kk, &dd, &mu);
 
     info = implicit_stribeck_solver_->SolveWithGuess(dt_substep,
                                                      v0_substep);
@@ -1490,15 +1498,6 @@ void MultibodyPlant<T>::CalcImplicitStribeckResults(
       num_contacts, penalty_method_contact_parameters_.stiffness);
   VectorX<T> damping = VectorX<T>::Constant(
       num_contacts, penalty_method_contact_parameters_.damping);
-
-  if (num_contacts > 0) {
-    const double w0 = 2.0 * M_PI / (20 * dt);
-    const double damping_ratio = 1.0;
-    const MatrixX<T> Wnn = Jn * M0.ldlt().solve(Jn.transpose());
-    const VectorX<T> mtilde = Wnn.diagonal().cwiseInverse();    
-    stiffness = w0 * w0 * mtilde;
-    damping = 2.0 * sqrt(stiffness.array() * damping.array()) * damping_ratio;
-  }    
 
   // Solve for v and the contact forces.
   ImplicitStribeckSolverResult info{

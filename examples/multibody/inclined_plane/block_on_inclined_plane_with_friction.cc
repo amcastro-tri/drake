@@ -1,4 +1,5 @@
 #include <memory>
+#include <iostream>
 
 #include <gflags/gflags.h>
 
@@ -11,6 +12,8 @@
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
+
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
 
 namespace drake {
 namespace examples {
@@ -29,10 +32,10 @@ DEFINE_double(time_step, 1.0e-3,
 DEFINE_double(integration_accuracy, 1.0e-6,
               "Integration accuracy when the plant is modeled as a continuous "
               "system. Not used if time_step > 0.");
-DEFINE_double(muS_block, 0.5, "Block static friction coefficient.");
-DEFINE_double(muK_block, 0.3, "Block kinetic friction coefficient.");
-DEFINE_double(muS_inclined_plane, 0.5, "Inclined plane static friction coef.");
-DEFINE_double(muK_inclined_plane, 0.3, "Inclined plane kinetic friction coef.");
+DEFINE_double(friction_coefficient, 0.5, "Friction coefficient.");
+DEFINE_double(plane_slope, 15.0, "Slope.");
+DEFINE_double(slope, 15.0, "Slope.");
+DEFINE_double(z_pos, 0.0, "Initial z position, in world frame.");
 DEFINE_double(penetration_allowance, 1.E-5, "Contact penetration allowance.");
 
 using geometry::SceneGraph;
@@ -48,13 +51,10 @@ int do_main() {
   const double Lz = 0.04;       // Block length in z-direction (meters).
   const double mass = 0.1;      // Block's mass (kg).
   const double gravity = 9.81;  // Earth's gravitational acceleration (m/s^2).
-  const double slope = 15.0 / 180 * M_PI;  // Slope of incline plane (radian).
-  const drake::multibody::CoulombFriction<double>
-      coefficient_friction_block(FLAGS_muS_block,
-                                 FLAGS_muK_block);
-  const drake::multibody::CoulombFriction<double>
-      coefficient_friction_inclined_plane(FLAGS_muS_inclined_plane,
-                                          FLAGS_muK_inclined_plane);
+  const double plane_slope = FLAGS_plane_slope / 180 * M_PI;  // Slope of incline plane (radian).
+  const double slope = FLAGS_slope / 180 * M_PI;  // Slope of incline plane (radian).
+  const drake::multibody::CoulombFriction<double> friction_coefficient(
+      FLAGS_friction_coefficient, FLAGS_friction_coefficient);
 
   // Build the multibody plant.
   systems::DiagramBuilder<double> builder;
@@ -63,15 +63,17 @@ int do_main() {
   MultibodyPlant<double>& plant = pair.plant;
   drake::multibody::benchmarks::block_on_inclined_plane::
       AddBlockAndInclinedPlaneToPlant(
-          Lx, Ly, Lz, mass, slope, gravity, coefficient_friction_block,
-          coefficient_friction_inclined_plane, &plant);
+          Lx, Ly, Lz, mass, plane_slope, gravity, friction_coefficient,
+          friction_coefficient, &plant);
   plant.Finalize();
 
   // Set the block to inclined-plane allowable penetration (in meters).
   plant.set_penetration_allowance(FLAGS_penetration_allowance);
-
   // Set the stiction tolerance for the underlying Stribeck friction model.
   plant.set_stiction_tolerance(1.0E-5);
+
+  PRINT_VAR(plant.get_contact_penalty_method_time_scale());
+  PRINT_VAR(plant.get_contact_penalty_method_time_scale() / FLAGS_time_step);    
 
   // Do a reality check that block is a free-flying rigid body.
   DRAKE_DEMAND(plant.num_velocities() == 6);
@@ -98,8 +100,9 @@ int do_main() {
 
   // Set the block's initial value so it is above the inclined plane.
   const drake::multibody::Body<double>& block = plant.GetBodyByName("Block");
-  const Vector3<double> p_WoBo_W(0, 0, 0.2);
-  const math::RigidTransform<double> X_WB(p_WoBo_W);
+  const Vector3<double> p_WoBo_W(0, 0, FLAGS_z_pos);
+  const math::RollPitchYaw<double> R_WB(0.0, slope, 0.0);
+  const math::RigidTransform<double> X_WB(R_WB, p_WoBo_W);
   plant.SetFreeBodyPoseInWorldFrame(&plant_context, block,
                                     X_WB.GetAsIsometry3());
 
@@ -109,7 +112,7 @@ int do_main() {
       simulator.get_mutable_integrator();
   integrator->set_target_accuracy(FLAGS_integration_accuracy);
 
-  simulator.set_publish_every_time_step(false);
+  simulator.set_publish_every_time_step(true);
   simulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
   simulator.Initialize();
   simulator.StepTo(FLAGS_simulation_time);

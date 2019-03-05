@@ -1,5 +1,6 @@
 #include "drake/geometry/proximity_engine.h"
 
+#include <iostream>
 #include <utility>
 #include <vector>
 
@@ -12,6 +13,9 @@
 #include "drake/geometry/shape_specification.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/math/rotation_matrix.h"
+
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
 
 namespace drake {
 namespace geometry {
@@ -2485,6 +2489,125 @@ TEST_F(BoxPenetrationTest, TangentConvex1) {
 TEST_F(BoxPenetrationTest, TangentConvex2) {
   // TODO(DamrongGuoy): We should check why we cannot use a smaller tolerance.
   TestCollision2(TangentConvex, 1e-3);
+}
+
+class BoxInclinedPlanePenetrationTest : public ::testing::Test {
+ protected:
+  void SetUp() {    
+  }
+
+  // Perform the collision test against the indicated shape and confirm the
+  // results to the given tolerance.
+  void TestCollision(double plane_slope, double box_z_W, double box_pitch) {
+    RigidTransformd X_WP = MakePlanePose(plane_slope);
+    GeometryIndex plane_index(0);
+    ProximityIndex anchored = engine_.AddAnchoredGeometry(
+        plane_, X_WP.GetAsIsometry3(), plane_index);
+    GeometryId plane_id = GeometryId::get_new_id();
+    geometry_map_.push_back(plane_id);
+
+    GeometryIndex box_index(1);
+    ProximityIndex dynamic = engine_.AddDynamicGeometry(box_, box_index);
+    GeometryId box_id = GeometryId::get_new_id();
+    geometry_map_.push_back(box_id);
+
+    // Confirm that there are no other geometries interfering.
+    EXPECT_EQ(anchored, 0);
+    EXPECT_EQ(dynamic, 0);
+    ASSERT_EQ(engine_.num_dynamic(), 1);
+    ASSERT_EQ(engine_.num_anchored(), 1);
+    ASSERT_EQ(engine_.num_geometries(), 2);
+    ASSERT_EQ(geometry_map_.size(), 2);
+
+    // Update the poses of the box
+    const Vector3d p_WoBo_W(0, 0, box_z_W);
+    const RollPitchYawd R_WB(0.0, box_pitch, 0.0);
+    const RigidTransformd X_WB(R_WB, p_WoBo_W);
+    std::vector<Isometry3d> poses{X_WP.GetAsIsometry3(), X_WB.GetAsIsometry3()};
+    // NOTE: indeces points to entries in poses!!
+    std::vector<GeometryIndex> indices({box_index});
+    //std::iota(indices.begin(), indices.end(), GeometryIndex(0));
+    engine_.UpdateWorldPoses(poses, indices);
+    std::vector<PenetrationAsPointPair<double>> results =
+        engine_.ComputePointPairPenetration(geometry_map_);
+
+    PRINT_VARn(X_WP.GetAsMatrix4());    
+    PRINT_VARn(X_WB.GetAsMatrix4());
+
+    PRINT_VAR(results.size());
+  }
+
+  RigidTransformd MakePlanePose(double slope) const {
+    // Orient the inclined plane frame P with its unit vector Py = Wy (World y)
+    // and unit vector Pz is outward normal to the plane and Px points downhill.
+    const math::RotationMatrix<double> R_WP =
+        math::RotationMatrix<double>::MakeYRotation(slope);
+
+    // Express unit vector Pz (fixed in P) in terms of World Wx, Wy, Wz.
+    const Vector3<double> Pz_W = R_WP.matrix().col(2);
+    // Offset the inclined plane P so that when the block B's origin position in
+    // World, expressed in World is p_WoBo_W = [0, 0, 0], the block's bottom
+    // rectangular surface is in contact with the inclined plane's top surface.
+    const Vector3<double> p_BoContact_W = -0.5 * Lz * Pz_W;
+
+    // The inclined plane P's collision geometry is a half-space.
+    const math::RigidTransform<double> X_WP(R_WP, p_BoContact_W);
+
+    return X_WP;
+  }
+
+ private:
+  ProximityEngine<double> engine_;
+  std::vector<GeometryId> geometry_map_;
+
+  const double Lx = 0.4;   // Block length in x-direction (meters).
+  const double Ly = 0.2;   // Block length in y-direction (meters).
+  const double Lz = 0.04;  // Block length in z-direction (meters).
+
+  // The various geometries used in the collision test.
+  const Box box_{Lx, Ly, Lz};
+  const HalfSpace plane_;  // Default construct the z = 0 plane.
+};
+
+// In the "reference configuration" the box is located at (0,0,0) and the plane
+// sits below at -Lz/2 so that the box "kisses" the plane's surface.
+TEST_F(BoxInclinedPlanePenetrationTest, ReferenceConfiguration) {
+  const double pitch_degs = 0;
+  // Slightly below the plane surface so that we do get contact.
+  const double box_z_W = -10 * std::numeric_limits<double>::epsilon();
+  const double pitch =
+      pitch_degs / 180.0 * M_PI;  // Slope of incline plane (radian).
+  const double plane_slope = 0.0;
+  TestCollision(plane_slope, box_z_W, pitch);
+}
+
+// In this case the plane is inclined by 15 degrees. The plane pose is set so
+// that if the box's pitch was also 15 degrees (it is not), it would kiss the
+// plane as in the reference configuration when located at (0, 0, 0).
+// Now, for this configuration the box has zero degrees pitch (so it has no
+// rotation) and it is located above the plane at z = 0.04. At this
+// configuration the back corner of the box it is very well inside the plane.
+// However, we do not get contact!!
+TEST_F(BoxInclinedPlanePenetrationTest, BuggyCase) {
+  const double pitch_degs = 0;
+  const double box_z_W = 0.04;
+  const double pitch =
+      pitch_degs / 180.0 * M_PI;  // Slope of incline plane (radian).
+  const double plane_slope =
+      15.0 / 180.0 * M_PI;  // Slope of incline plane (radian).
+  TestCollision(plane_slope, box_z_W, pitch);
+}
+
+// This is a small variation from BuggyCase for which the box has a very small
+// pitch angle of 0.01 degrees. In this case, we do get penetration as expected.
+TEST_F(BoxInclinedPlanePenetrationTest, SmallDiffFromBuggyCase) {
+  const double pitch_degs = 0.01;
+  const double box_z_W = 0.04;
+  const double pitch =
+      pitch_degs / 180.0 * M_PI;  // Slope of incline plane (radian).
+  const double plane_slope =
+      15.0 / 180.0 * M_PI;  // Slope of incline plane (radian).
+  TestCollision(plane_slope, box_z_W, pitch);
 }
 
 // Attempting to add a dynamic Mesh should cause an abort.

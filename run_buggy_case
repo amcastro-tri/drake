@@ -1,0 +1,1 @@
+bazel-bin/examples/multibody/inclined_plane/block_on_inclined_plane_with_friction  --target_realtime_rate=1e-2 --friction_coefficient=0.5 --slope=0.00 --z_pos=0.04 --penetration_allowance=1e-5 --time_step=1e-5 --simulation_time=1e-5

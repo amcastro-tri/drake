@@ -9,11 +9,14 @@
 #include "drake/geometry/scene_graph.h"
 #include "drake/lcm/drake_lcm.h"
 #include "drake/multibody/benchmarks/inclined_plane/block_on_inclined_plane_plant.h"
+#include "drake/multibody/plant/contact_results.h"
+#include "drake/multibody/plant/contact_info.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
 
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
 
 namespace drake {
 namespace examples {
@@ -44,6 +47,8 @@ using lcm::DrakeLcm;
 using drake::multibody::ConnectContactResultsToDrakeVisualizer;
 
 using drake::multibody::MultibodyPlant;
+using drake::multibody::ContactResults;
+using drake::multibody::PointPairContactInfo;
 
 int do_main() {
   const double Lx = 0.4;        // Block length in x-direction (meters).
@@ -88,6 +93,7 @@ int do_main() {
   // Create a context for this system:
   std::unique_ptr<systems::Context<double>> diagram_context =
       diagram->CreateDefaultContext();
+  diagram_context->EnableCaching();    
   diagram->SetDefaultContext(diagram_context.get());
   systems::Context<double>& plant_context =
       diagram->GetMutableSubsystemContext(plant, diagram_context.get());
@@ -106,6 +112,31 @@ int do_main() {
   plant.SetFreeBodyPoseInWorldFrame(&plant_context, block,
                                     X_WB.GetAsIsometry3());
 
+  // Print poses to reproduce the case.
+  PRINT_VARn(block.EvalPoseInWorld(plant_context).matrix());
+
+  // ===========================================================================
+  // Evaluate contact in the initial condition.                                 
+  // We evaluate the contact results output port in order to verify the
+  // simulation results.
+  const ContactResults<double>& contact_results =
+      plant.get_contact_results_output_port().Eval<ContactResults<double>>(
+          plant_context);
+
+  DRAKE_DEMAND(contact_results.num_contacts() <= 1);  // only one contact pair.
+  if (contact_results.num_contacts() == 1) {
+    const PointPairContactInfo<double>& contact_info =
+        contact_results.contact_info(0);
+
+    PRINT_VAR(plant.get_body(contact_info.bodyA_index()).name());
+    PRINT_VAR(plant.get_body(contact_info.bodyB_index()).name());
+    PRINT_VAR(contact_info.contact_point().transpose());
+    PRINT_VAR(contact_info.point_pair().nhat_BA_W.transpose());
+    PRINT_VAR(contact_info.point_pair().depth);    
+  }
+
+  // ===========================================================================
+  // Start simulation.
   systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
 
   systems::IntegratorBase<double>* integrator =

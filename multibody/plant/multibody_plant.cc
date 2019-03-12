@@ -486,9 +486,9 @@ void MultibodyPlant<T>::CalcSpatialAccelerationsFromVdot(
     std::vector<SpatialAcceleration<T>>* A_WB_array) const {
   DRAKE_THROW_UNLESS(A_WB_array != nullptr);
   DRAKE_THROW_UNLESS(static_cast<int>(A_WB_array->size()) == num_bodies());
+  const bool zero_velocities = false;
   internal_tree().CalcSpatialAccelerationsFromVdot(
-      context, internal_tree().EvalPositionKinematics(context),
-      internal_tree().EvalVelocityKinematics(context), known_vdot, A_WB_array);
+      context, known_vdot, zero_velocities, A_WB_array);
   // Permute BodyNodeIndex -> BodyIndex.
   // TODO(eric.cousineau): Remove dynamic allocations. Making this in-place
   // still required dynamic allocation for recording permutation indices.

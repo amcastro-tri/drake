@@ -1428,11 +1428,19 @@ TEST_F(SplitPendulum, MassMatrix) {
   const double theta = M_PI / 3;
 
   MatrixX<double> M(1, 1);
+  context_->DisableCaching();
   pin_->set_angle(context_.get(), theta);
   plant_.CalcMassMatrixViaInverseDynamics(*context_, &M);
 
   // We can only expect values within the precision specified in the sdf file.
   EXPECT_NEAR(M(0, 0), Io, 1.0e-6);
+
+  // Perform the same computation with caching enabled.
+  MatrixX<double> M_wcaching(1, 1);
+  context_->EnableCaching();
+  plant_.CalcMassMatrixViaInverseDynamics(*context_, &M_wcaching);
+
+  EXPECT_NEAR(M(0, 0), M_wcaching(0,0), std::numeric_limits<double>::epsilon());
 }
 
 // Verifies we can parse link collision geometries and surface friction.

@@ -1343,6 +1343,14 @@ class MultibodyTree {
       const PositionKinematicsCache<T>& pc,
       VelocityKinematicsCache<T>* vc) const;
 
+  void CalcSpatialInertiaInWorldCache(
+      const systems::Context<T>& context,
+      std::vector<SpatialInertia<T>>* M_B_W_cache) const;
+
+  void CalcDynamicBiasCache(
+      const systems::Context<T>& context,
+      std::vector<SpatialForce<T>>* b_Bo_W_cache) const;    
+
   /// Computes all the kinematic quantities that depend on the generalized
   /// accelerations that is, the generalized velocities' time derivatives, and
   /// stores them in the acceleration kinematics cache `ac`.
@@ -1381,9 +1389,8 @@ class MultibodyTree {
   /// while MultibodyPlant's method returns accelerations indexed by BodyIndex.
   void CalcSpatialAccelerationsFromVdot(
       const systems::Context<T>& context,
-      const PositionKinematicsCache<T>& pc,
-      const VelocityKinematicsCache<T>& vc,
       const VectorX<T>& known_vdot,
+      bool zero_velocities,
       std::vector<SpatialAcceleration<T>>* A_WB_array) const;
 
   /// See MultibodyPlant method.
@@ -1498,15 +1505,26 @@ class MultibodyTree {
   /// @pre The velocity kinematics `vc` must have been previously updated with a
   /// call to CalcVelocityKinematicsCache().
   void CalcInverseDynamics(
+      const systems::Context<T>& context, const VectorX<T>& known_vdot,
+      const std::vector<SpatialForce<T>>& Fapplied_Bo_W_array,
+      const Eigen::Ref<const VectorX<T>>& tau_applied_array,
+      bool zero_velocities,
+      std::vector<SpatialAcceleration<T>>* A_WB_array,
+      std::vector<SpatialForce<T>>* F_BMo_W_array,
+      EigenPtr<VectorX<T>> tau_array) const;
+
+  // (Advanced) API only provided for backwards compatibility. Use the API only
+  // taking a context as input (no cache entries provided).
+  void CalcInverseDynamics(
       const systems::Context<T>& context,
       const PositionKinematicsCache<T>& pc,
       const VelocityKinematicsCache<T>& vc,
       const VectorX<T>& known_vdot,
       const std::vector<SpatialForce<T>>& Fapplied_Bo_W_array,
-  const Eigen::Ref<const VectorX<T>>& tau_applied_array,
+      const Eigen::Ref<const VectorX<T>>& tau_applied_array,
       std::vector<SpatialAcceleration<T>>* A_WB_array,
-  std::vector<SpatialForce<T>>* F_BMo_W_array,
-  EigenPtr<VectorX<T>> tau_array) const;
+      std::vector<SpatialForce<T>>* F_BMo_W_array,
+      EigenPtr<VectorX<T>> tau_array) const;  
 
   /// See MultibodyPlant method.
   void CalcForceElementsContribution(
@@ -2044,6 +2062,23 @@ class MultibodyTree {
   // that the error message can include that detail.
   void ThrowIfNotFinalized(const char* source_method) const;
 
+  /// Evaluates the cache entry stored in context for the spatial inertias
+  /// M_Bo_W of each body in the system.
+  /// @param context
+  ///   A Context whose spatial inertias cache will be updated and returned.
+  /// @return Reference to the cache for spatial inertias stored in context.
+  const std::vector<SpatialInertia<T>>& EvalSpatialInertiaInWorldCache(
+      const systems::Context<T>& context) const {
+    DRAKE_ASSERT(tree_system_ != nullptr);
+    return tree_system_->EvalSpatialInertiaInWorldCache(context);
+  }
+
+  const std::vector<SpatialForce<T>>& EvalDynamicBiasCache(
+      const systems::Context<T>& context) const {
+    DRAKE_ASSERT(tree_system_ != nullptr);
+    return tree_system_->EvalDynamicBiasCache(context);
+  }  
+
   // Helper method to compute the rotational part of the frame Jacobian Jr_WFq
   // and the translational part of the frame Jacobian Jt_WFq for a list of
   // points Q which instantaneously move with frame F that is, the position
@@ -2114,31 +2149,6 @@ class MultibodyTree {
       const Eigen::Ref<const MatrixX<T>>& p_WQ_list,
       JacobianWrtVariable with_respect_to,
       EigenPtr<MatrixX<T>> Jr_WFq, EigenPtr<MatrixX<T>> Jt_WFq) const;
-
-  // Implementation for CalcMassMatrixViaInverseDynamics().
-  // It assumes:
-  //  - The position kinematics cache object is already updated to be in sync
-  //    with `context`.
-  //  - H is not nullptr.
-  //  - H has storage for a square matrix of size num_velocities().
-  void DoCalcMassMatrixViaInverseDynamics(
-      const systems::Context<T>& context,
-      const PositionKinematicsCache<T>& pc,
-      EigenPtr<MatrixX<T>> H) const;
-
-  // Implementation of CalcBiasTerm().
-  // It assumes:
-  //  - The position kinematics cache object is already updated to be in sync
-  //    with `context`.
-  //  - The velocity kinematics cache object is already updated to be in sync
-  //    with `context`.
-  //  - Cv is not nullptr.
-  //  - Cv has storage for a vector of size num_velocities().
-  void DoCalcBiasTerm(
-      const systems::Context<T>& context,
-      const PositionKinematicsCache<T>& pc,
-      const VelocityKinematicsCache<T>& vc,
-      EigenPtr<VectorX<T>> Cv) const;
 
   // Helper method to apply forces due to damping at the joints.
   // MultibodyTree treats damping forces separately from other ForceElement

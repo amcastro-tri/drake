@@ -118,6 +118,8 @@ TEST_F(CartPoleTest, MassMatrix) {
   // cart. Therefore we only need the angle of the pole.
   const double theta = M_PI / 3;
 
+  // Perform test with no caching enabled.
+  context_->DisableCaching();
   Matrix2<double> M;
   pole_pin_->set_angle(context_.get(), theta);
   cart_pole_.CalcMassMatrixViaInverseDynamics(*context_, &M);
@@ -127,6 +129,14 @@ TEST_F(CartPoleTest, MassMatrix) {
   const double kTolerance = 10 * std::numeric_limits<double>::epsilon();
   EXPECT_TRUE(CompareMatrices(M, M_expected,
                   kTolerance, MatrixCompareType::relative));
+
+  // Perform same test with caching enabled.
+  context_->EnableCaching();
+  Matrix2<double> M_wcaching;
+  cart_pole_.CalcMassMatrixViaInverseDynamics(*context_, &M_wcaching);
+  EXPECT_TRUE(CompareMatrices(M_wcaching, M,
+                              std::numeric_limits<double>::epsilon(),
+                              MatrixCompareType::relative));
 }
 
 // Tests that the hand-derived dynamics matches that computed with a

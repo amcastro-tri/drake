@@ -102,6 +102,26 @@ class PositionKinematicsCache {
     return X_FM_pool_[body_node_index];
   }
 
+  const Vector3<T>& get_p_BoMo_W(BodyNodeIndex body_node_index) const {
+    DRAKE_ASSERT(0 <= body_node_index && body_node_index < num_nodes_);
+    return p_BoMo_W_pool_[body_node_index];
+  }
+
+  Vector3<T>& get_mutable_p_BoMo_W(BodyNodeIndex body_node_index) {
+    DRAKE_ASSERT(0 <= body_node_index && body_node_index < num_nodes_);
+    return p_BoMo_W_pool_[body_node_index];
+  }
+
+  const Vector3<T>& get_p_PoBo_W(BodyNodeIndex body_node_index) const {
+    DRAKE_ASSERT(0 <= body_node_index && body_node_index < num_nodes_);
+    return p_PoBo_W_pool_[body_node_index];
+  }
+
+  Vector3<T>& get_mutable_p_PoBo_W(BodyNodeIndex body_node_index) {
+    DRAKE_ASSERT(0 <= body_node_index && body_node_index < num_nodes_);
+    return p_PoBo_W_pool_[body_node_index];
+  }
+
  private:
   // Pool types:
   // Pools store entries in the same order multibody tree nodes are
@@ -111,6 +131,19 @@ class PositionKinematicsCache {
 
   // The type of pools for storing poses.
   typedef eigen_aligned_std_vector<Isometry3<T>> X_PoolType;
+  typedef eigen_aligned_std_vector<Vector3<T>> Vector3_PoolType;
+
+  // Helper method for NaN initialization.
+  static constexpr T nan() {
+    return std::numeric_limits<
+        typename Eigen::NumTraits<T>::Literal>::quiet_NaN();
+  }
+
+  // Helper method to initialize poses to NaN.
+  static Isometry3<T> NaNPose() {
+    return Isometry3<T>(
+        Matrix4<T>::Constant(Eigen::NumTraits<double>::quiet_NaN()));
+  }
 
   // Allocates resources for this position kinematics cache.
   void Allocate() {
@@ -125,20 +158,25 @@ class PositionKinematicsCache {
 
     X_MB_pool_.resize(num_nodes_);
     X_MB_pool_[world_index()] = NaNPose();  // It should never be used.
-  }
 
-  // Helper method to initialize poses to NaN.
-  static Isometry3<T> NaNPose() {
-    return Isometry3<T>(
-        Matrix4<T>::Constant(Eigen::NumTraits<double>::quiet_NaN()));
-  }
+    p_BoMo_W_pool_.resize(num_nodes_);
+    // It should never be used.
+    p_BoMo_W_pool_[world_index()].setConstant(nan());
+
+    p_PoBo_W_pool_.resize(num_nodes_);
+    // It should never be used.
+    p_PoBo_W_pool_[world_index()].setConstant(nan());
+  }  
 
   // Number of body nodes in the corresponding MultibodyTree.
   int num_nodes_{0};
-  X_PoolType X_WB_pool_;  // Indexed by BodyNodeIndex.
-  X_PoolType X_PB_pool_;  // Indexed by BodyNodeIndex.
-  X_PoolType X_FM_pool_;  // Indexed by BodyNodeIndex.
-  X_PoolType X_MB_pool_;  // Indexed by BodyNodeIndex.
+  // Pools indexed by BodyNodeIndex.
+  X_PoolType X_WB_pool_;
+  X_PoolType X_PB_pool_;
+  X_PoolType X_FM_pool_;
+  X_PoolType X_MB_pool_;
+  Vector3_PoolType p_BoMo_W_pool_;
+  Vector3_PoolType p_PoBo_W_pool_;
 };
 
 DRAKE_DEFINE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN_T(PositionKinematicsCache)

@@ -8,6 +8,7 @@
 #include "drake/common/default_scalars.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/tree/position_kinematics_cache.h"
+#include "drake/multibody/tree/spatial_inertia.h"
 #include "drake/multibody/tree/velocity_kinematics_cache.h"
 #include "drake/systems/framework/cache_entry.h"
 #include "drake/systems/framework/context.h"
@@ -78,7 +79,8 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   given Context, recalculating it first if necessary. */
   const PositionKinematicsCache<T>& EvalPositionKinematics(
       const systems::Context<T>& context) const {
-    return this->get_cache_entry(position_kinematics_cache_index_)
+    return this
+        ->get_cache_entry(cache_indexes_.position_kinematics_cache_index_)
         .template Eval<PositionKinematicsCache<T>>(context);
   }
 
@@ -87,8 +89,22 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   PositionKinematicsCache will be recalculated as well. */
   const VelocityKinematicsCache<T>& EvalVelocityKinematics(
       const systems::Context<T>& context) const {
-    return this->get_cache_entry(velocity_kinematics_cache_index_)
+    return this
+        ->get_cache_entry(cache_indexes_.velocity_kinematics_cache_index_)
         .template Eval<VelocityKinematicsCache<T>>(context);
+  }
+
+  const std::vector<SpatialInertia<T>>& EvalSpatialInertiaInWorldCache(
+      const systems::Context<T>& context) const {
+    return this
+        ->get_cache_entry(cache_indexes_.spatial_inertia_in_world_cache_index_)
+        .template Eval<std::vector<SpatialInertia<T>>>(context);
+  }
+
+  const std::vector<SpatialForce<T>>& EvalDynamicBiasCache(
+      const systems::Context<T>& context) const {
+    return this->get_cache_entry(cache_indexes_.dynamic_bias_cache_index_)
+        .template Eval<std::vector<SpatialForce<T>>>(context);
   }
 
   /** Returns a reference to the up to date cached value for the
@@ -107,7 +123,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   const std::vector<Vector6<T>>&
   EvalAcrossNodeGeometricJacobianExpressedInWorld(
       const systems::Context<T> &context) const {
-    return this->get_cache_entry(H_PB_W_cache_index_)
+    return this->get_cache_entry(cache_indexes_.H_PB_W_cache_index_)
         .template Eval<std::vector<Vector6<T>>>(context);
   }
 
@@ -167,6 +183,16 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   template <typename U>
   friend class MultibodyTreeSystem;
 
+  // This struct stores in one single place all indexes related to
+  // MultibodyTreeSystem specific cache entries.
+  struct CacheIndexes {
+    systems::CacheIndex dynamic_bias_cache_index_;
+    systems::CacheIndex position_kinematics_cache_index_;
+    systems::CacheIndex spatial_inertia_in_world_cache_index_;
+    systems::CacheIndex velocity_kinematics_cache_index_;
+    systems::CacheIndex H_PB_W_cache_index_;
+  };
+
   // This is the one real constructor. From the public API, a null tree is
   // illegal and gets an error message. From the protected API, a null tree
   // means we allocate an empty one and leave it un-finalized. In either case,
@@ -181,9 +207,9 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   bool is_discrete_{false};
 
   std::unique_ptr<drake::multibody::internal::MultibodyTree<T>> tree_;
-  systems::CacheIndex position_kinematics_cache_index_;
-  systems::CacheIndex velocity_kinematics_cache_index_;
-  systems::CacheIndex H_PB_W_cache_index_;
+
+  // All MultibodyTreeSystem cache indexes are stored in cache_indexes_.
+  CacheIndexes cache_indexes_;
 
   // Used to enforce "finalize once" restriction for protected-API users.
   bool already_finalized_{false};

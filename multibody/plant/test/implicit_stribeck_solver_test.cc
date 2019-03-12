@@ -62,9 +62,14 @@ class ImplicitStribeckSolverTester {
     // t_hat and v_slip.
     solver.CalcFrictionForcesGradient(fn, mus, t_hat, v_slip, &dft_dvt);
 
+    const auto& M_ldlt = M.ldlt();
+    const MatrixX<double> Mi_x_JnT = M_ldlt.solve(Jn.transpose());
+    const MatrixX<double> Mi_x_JtT = M_ldlt.solve(Jt.transpose());
+
     // Newton-Raphson Jacobian, J = ∇ᵥR, as a function of M, dft_dvt, Jt, dt.
     MatrixX<double> J(nv, nv);
-    solver.CalcJacobian(M, Jn, Jt, Gn, dft_dvt, t_hat, mus, dt, &J);
+    solver.CalcJacobian(M, Jn, Jt, Gn, dft_dvt, t_hat, mus, dt, Mi_x_JnT,
+                        Mi_x_JtT, &J);
 
     return J;
   }
@@ -529,7 +534,7 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
   solver_.set_solver_parameters(parameters);
 
   ImplicitStribeckSolverResult info = solver_.SolveWithGuess(dt, v0);
-  ASSERT_EQ(info, ImplicitStribeckSolverResult::kSuccess);
+  EXPECT_EQ(info, ImplicitStribeckSolverResult::kSuccess);
 
   VectorX<double> tau_f = solver_.get_generalized_friction_forces();
 
@@ -869,7 +874,7 @@ class RollingCylinder : public ::testing::Test {
   // vx_transition =  μ (1 + m R²/I) pn/m as described in the documentation of
   // this test fixture.
   const double m_{1.0};   // Mass of the cylinder, kg.
-  const double R_{1.0};   // Radius of the cylinder, m.
+  const double R_{1.5};   // Radius of the cylinder, m.
   const double g_{9.0};   // Acceleration of gravity, m/s².
   // For a thin cylindrical shell the moment of inertia is I = m R². We use this
   // inertia so that numbers are simpler for debugging purposes

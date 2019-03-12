@@ -849,7 +849,7 @@ class ImplicitStribeckSolver {
   class FixedSizeWorkspace {
    public:
     // Constructs a workspace with size only dependent on nv.
-    explicit FixedSizeWorkspace(int nv) : J_ldlt_(nv), J_lu_(nv) {
+    explicit FixedSizeWorkspace(int nv) : J_ldlt_(nv), J_lu_(nv), M_ldlt_(nv) {
       J_ldlt_.setZero();
       v_.setZero(nv);
       residual_.setZero(nv);
@@ -866,6 +866,9 @@ class ImplicitStribeckSolver {
     VectorX<T>& mutable_tau() { return tau_; }
     Eigen::LDLT<MatrixX<T>>& mutable_J_ldlt() { return J_ldlt_; }
     Eigen::PartialPivLU<MatrixX<T>>& mutable_J_lu() { return J_lu_; }
+
+    const Eigen::LDLT<MatrixX<T>>& M_ldlt() const { return M_ldlt_; }
+    Eigen::LDLT<MatrixX<T>>& mutable_M_ldlt() { return M_ldlt_; }    
 
    private:
     // Vector of generalized velocities.
@@ -886,6 +889,8 @@ class ImplicitStribeckSolver {
     // LU Factorization of the Newton-Raphson Jacobian J. Only used for
     // two-way coupled problems with non-symmetric Jacobian.
     Eigen::PartialPivLU<MatrixX<T>> J_lu_;
+
+    Eigen::LDLT<MatrixX<T>> M_ldlt_;
   };
 
   // The variables in this workspace can change size with each invocation of
@@ -1100,6 +1105,8 @@ class ImplicitStribeckSolver {
       const std::vector<Matrix2<T>>& dft_dvt,
       const Eigen::Ref<const VectorX<T>>& t_hat,
       const Eigen::Ref<const VectorX<T>>& mu_vt, double dt,
+      const Eigen::Ref<const MatrixX<T>>& Mi_x_JnT,
+      const Eigen::Ref<const MatrixX<T>>& Mi_x_JtT,
       EigenPtr<MatrixX<T>> J) const;
 
   // Limit the per-iteration angle change between vₜᵏ⁺¹ and vₜᵏ for
@@ -1140,6 +1147,9 @@ class ImplicitStribeckSolver {
   ProblemDataAliases problem_data_aliases_;
   mutable FixedSizeWorkspace fixed_size_workspace_;
   mutable VariableSizeWorkspace variable_size_workspace_;
+
+  std::function<MatrixX<T>(const Eigen::Ref<const MatrixX<T>>&)>
+      forward_dynamics_;
 
   // Precomputed value of cos(theta_max), used by DirectionChangeLimiter.
   double cos_theta_max_{std::cos(parameters_.theta_max)};

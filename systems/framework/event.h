@@ -565,8 +565,8 @@ class UnrestrictedUpdateEvent final : public Event<T> {
   #endif
 
   /**
-   * Calls the optional callback function, if one exists, with @p context,
-   * `this` and @p discrete_state.
+   * Calls the optional callback function, if one exists, with `context`,
+   * `this`, and `discrete_state`.
    */
   void handle(const Context<T>& context, State<T>* state) const {
     if (callback_ != nullptr) callback_(context, *this, state);
@@ -601,7 +601,8 @@ UnrestrictedUpdateEvent<T>::UnrestrictedUpdateEvent(
 /**
  * This class represents a raw Context update event. It has an optional
  * callback function to do custom handling of this event given a Context pointer
- * and a const RawContextUpdateEvent object reference.
+ * and a const RawContextUpdateEvent object reference. See strong warnings about
+ * raw updates to the Context in System::CalcRawContextUpdate().
  */
 template <typename T>
 class RawContextUpdateEvent final : public Event<T> {
@@ -612,7 +613,7 @@ class RawContextUpdateEvent final : public Event<T> {
   bool is_discrete_update() const override { return false; }
 
   /**
-   * Callback function that processes an unrestricted update event.
+   * Callback function that processes a raw Context update event.
    */
   typedef std::function<void(Context<T>*, const RawContextUpdateEvent<T>&)>
       RawContextUpdateCallback;
@@ -634,7 +635,7 @@ class RawContextUpdateEvent final : public Event<T> {
                         const RawContextUpdateCallback& callback)
       : Event<T>(trigger_type), callback_(callback) {}
 
-  // Makes an UnrestrictedUpateEvent with @p trigger_type, no optional data, and
+  // Makes a RawContextUpateEvent with `trigger_type`, no optional data, and
   // no callback function.
   explicit RawContextUpdateEvent(
       const TriggerType& trigger_type)
@@ -642,8 +643,8 @@ class RawContextUpdateEvent final : public Event<T> {
   #endif
 
   /**
-   * Calls the optional callback function, if one exists, with @p context,
-   * `this` and @p discrete_state.
+   * Calls the optional callback function, if one exists, with `context`,
+   * and `this`.
    */
   void handle(Context<T>* context) const {
     if (callback_ != nullptr) callback_(context, *this);

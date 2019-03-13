@@ -1525,6 +1525,12 @@ class MultibodyTree {
   /// See MultibodyPlant method.
   void CalcMassMatrixViaInverseDynamics(
       const systems::Context<T>& context, EigenPtr<MatrixX<T>> H) const;
+  
+  /// See MultibodyPlant method.
+  void MultiplyByMassMatrixInverse(
+    const systems::Context<T>& context,
+    const Eigen::Ref<const VectorX<T>>& b, 
+    EigenPtr<VectorX<T>> x) const;
 
   /// See MultibodyPlant method.
   void CalcBiasTerm(

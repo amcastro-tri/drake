@@ -1589,6 +1589,56 @@ void MultibodyTree<T>::CalcForwardDynamics(
 }
 
 template <typename T>
+void MultibodyTree<T>::MultiplyByMassMatrixInverse(
+    const systems::Context<T>& context,
+    const Eigen::Ref<const VectorX<T>>& b, 
+    EigenPtr<VectorX<T>> x) const {
+  DRAKE_DEMAND(x != nullptr);
+
+  // Get position and velocity kinematics from cache.
+  const PositionKinematicsCache<T>& pc = EvalPositionKinematics(context);
+
+  // Pass a nullptr to signal to ignore velocity terms?
+  VelocityKinematicsCache<T> vc(this->get_topology());
+  vc.InitializeToZero();
+
+  const std::vector<Vector6<T>>& H_PB_W_cache =
+      tree_system_->EvalAcrossNodeGeometricJacobianExpressedInWorld(context);
+
+  // Compute articulated body inertia cache.
+  ArticulatedBodyInertiaCache<T> abic(this->topology_);
+  CalcArticulatedBodyInertiaCache(context, pc, &abic);
+
+  // Calculate force element contribution and add in applied forces.
+  // TODO: this is zero and should not even be here.
+  MultibodyForces<T> forces(*this);
+  forces.mutable_generalized_forces() = b;
+
+  // Compute articulated body algorithm cache.
+  ArticulatedBodyAlgorithmCache<T> abac(this->topology_);
+  CalcArticulatedBodyAlgorithmCache(context, pc, vc, abic, forces, &abac);
+
+  AccelerationKinematicsCache<T> ac(this->get_topology());
+
+  // Perform base-to-tip recursion, skipping the world.
+  for (int depth = 1; depth < tree_height(); depth++) {
+    for (BodyNodeIndex body_node_index : body_node_levels_[depth]) {
+      const BodyNode<T>& node = *body_nodes_[body_node_index];
+
+      // Get hinge mapping matrix.
+      const MatrixUpTo6<T> H_PB_W = node.GetJacobianFromArray(H_PB_W_cache);
+
+      // Apparently A_WB in ac is a secondary product of this computation.
+      // Verify if possible to avoid to make it even faster.
+      node.CalcForwardDynamics_BaseToTip(
+          context, pc, abic, abac, H_PB_W, &ac);
+    }
+  }
+
+  *x = ac.get_vdot();
+}
+
+template <typename T>
 MatrixX<double> MultibodyTree<T>::MakeStateSelectorMatrix(
     const std::vector<JointIndex>& user_to_joint_index_map) const {
   DRAKE_MBT_THROW_IF_NOT_FINALIZED();

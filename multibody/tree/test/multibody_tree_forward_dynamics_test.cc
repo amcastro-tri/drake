@@ -151,6 +151,30 @@ class KukaIiwaModelForwardDynamicsTests : public ::testing::Test {
         vdot, vdot_expected, kTolerance, MatrixCompareType::relative));
   }
 
+  void VerifyMultiplyByMassMatrixInverse(
+      const Eigen::Ref<const VectorX<double>>& q,
+      const Eigen::Ref<const VectorX<double>>& v) {
+    SetConfiguration(q, v);
+
+    // Get model parameters.
+    const int nv = tree().num_velocities();
+
+    // Construct M, the mass matrix.
+    MatrixX<double> M(nv, nv);
+    tree().CalcMassMatrixViaInverseDynamics(*context_, &M);
+
+    VectorX<double> x_expected(nv);
+    x_expected << 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0;
+    // Compute b for the known x
+    const VectorX<double> b = M * x_expected; 
+
+    VectorX<double> x(nv);
+    tree().MultiplyByMassMatrixInverse(*context_, b, &x);
+    const double kTolerance = 50 * kEpsilon;
+    EXPECT_TRUE(CompareMatrices(
+        x, x_expected, kTolerance, MatrixCompareType::relative));
+  }
+
   // Acceleration of gravity:
   const double gravity_{9.81};
   // The model:
@@ -193,6 +217,37 @@ TEST_F(KukaIiwaModelForwardDynamicsTests, ForwardDynamicsTest) {
   q << q30, q45, q60, -q30, -q45, -q60, 0;
   qdot << 0.3, -0.1, 0.4, -0.1, 0.5, -0.9, 0.2;
   CompareForwardDynamics(q, qdot);
+}
+
+TEST_F(KukaIiwaModelForwardDynamicsTests, VerifyMultiplyByMassMatrixInverse) {
+  // State variables and helper angles.
+  Vector7d q, qdot;
+  double q30 = M_PI / 6, q45 = M_PI / 4, q60 = M_PI / 3;
+
+  // Test 1: Static configuration.
+  q << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+  qdot << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+  VerifyMultiplyByMassMatrixInverse(q, qdot);
+
+  // Test 2: Another static configuration.
+  q << q30, -q45, q60, -q30, q45, -q60, q30;
+  qdot << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+  VerifyMultiplyByMassMatrixInverse(q, qdot);
+
+  // Test 3: Non-static configuration.
+  q << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+  qdot << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7;
+  VerifyMultiplyByMassMatrixInverse(q, qdot);
+
+  // Test 4: Another non-static configuration.
+  q << -q45, q60, -q30, q45, -q60, q30, -q45;
+  qdot << 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1;
+  VerifyMultiplyByMassMatrixInverse(q, qdot);
+
+  // Test 5: Another non-static configuration.
+  q << q30, q45, q60, -q30, -q45, -q60, 0;
+  qdot << 0.3, -0.1, 0.4, -0.1, 0.5, -0.9, 0.2;
+  VerifyMultiplyByMassMatrixInverse(q, qdot);
 }
 
 }  // namespace

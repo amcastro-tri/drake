@@ -2,15 +2,17 @@
 
 #include <vector>
 
+#include "drake/common/default_scalars.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/multibody_tree/math/spatial_acceleration.h"
-#include "drake/multibody/multibody_tree/math/spatial_force.h"
-#include "drake/multibody/multibody_tree/multibody_tree_indexes.h"
-#include "drake/multibody/multibody_tree/multibody_tree_topology.h"
+#include "drake/multibody/math/spatial_acceleration.h"
+#include "drake/multibody/math/spatial_force.h"
+#include "drake/multibody/tree/multibody_tree_indexes.h"
+#include "drake/multibody/tree/multibody_tree_topology.h"
 
 namespace drake {
 namespace multibody {
+namespace internal {  
 
 /// This class is one of the cache entries in MultibodyTreeContext. It holds the
 /// results of computations that are used in the recursive implementation of the
@@ -112,5 +114,9 @@ class ArticulatedBodyAlgorithmCache {
   VectorUpTo6_PoolType e_B_{};
 };
 
+}  // namespace internal
 }  // namespace multibody
 }  // namespace drake
+
+DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
+    class ::drake::multibody::internal::ArticulatedBodyAlgorithmCache)

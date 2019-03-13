@@ -2,8 +2,8 @@
 
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/multibody/benchmarks/kuka_iiwa_robot/make_kuka_iiwa_model.h"
-#include "drake/multibody/multibody_tree/joints/revolute_joint.h"
-#include "drake/multibody/multibody_tree/multibody_tree.h"
+#include "drake/multibody/tree/joints/revolute_joint.h"
+#include "drake/multibody/tree/multibody_tree.h"
 #include "drake/systems/framework/context.h"
 
 namespace drake {

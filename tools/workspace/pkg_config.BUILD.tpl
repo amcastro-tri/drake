@@ -1,5 +1,9 @@
 # -*- python -*-
 
+# %{topcomment}
+
+licenses(%{licenses})
+
 package(default_visibility = ["//visibility:public"])
 
 cc_library(
@@ -12,3 +16,5 @@ cc_library(
     linkopts = %{linkopts},
     deps = %{deps},
 )
+
+%{build_epilog}

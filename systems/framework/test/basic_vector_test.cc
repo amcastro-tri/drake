@@ -10,17 +10,41 @@
 #include "drake/common/eigen_types.h"
 #include "drake/common/symbolic.h"
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
+#include "drake/systems/framework/test_utilities/my_vector.h"
 
 namespace drake {
 namespace systems {
 namespace {
 
+// Tests the initializer_list functionality.
+GTEST_TEST(BasicVectorTest, InitializerList) {
+  const BasicVector<double> empty1;  // Default constructor.
+  const BasicVector<double> empty2{};  // Initializer list.
+  EXPECT_EQ(0, empty1.size());
+  EXPECT_EQ(0, empty2.size());
+
+  const BasicVector<double> pair{1.0, 2.0};
+  ASSERT_EQ(2, pair.size());
+  EXPECT_EQ(1.0, pair[0]);
+  EXPECT_EQ(2.0, pair[1]);
+
+  const BasicVector<double> from_floats{3.0f, 4.0f, 5.0f};
+  ASSERT_EQ(3, from_floats.size());
+  EXPECT_EQ(3.0, from_floats[0]);
+  EXPECT_EQ(4.0, from_floats[1]);
+  EXPECT_EQ(5.0, from_floats[2]);
+
+  const BasicVector<AutoDiffXd> autodiff{22.0};
+  ASSERT_EQ(1, autodiff.size());
+  EXPECT_EQ(22.0, autodiff[0].value());
+}
+
 // Tests SetZero functionality.
 GTEST_TEST(BasicVectorTest, SetZero) {
-  auto vec = BasicVector<double>::Make(1.0, 2.0, 3.0);
-  EXPECT_EQ(Eigen::Vector3d(1.0, 2.0, 3.0), vec->get_value());
-  vec->SetZero();
-  EXPECT_EQ(Eigen::Vector3d(0, 0, 0), vec->get_value());
+  BasicVector<double> vec{1.0, 2.0, 3.0};
+  EXPECT_EQ(Eigen::Vector3d(1.0, 2.0, 3.0), vec.get_value());
+  vec.SetZero();
+  EXPECT_EQ(Eigen::Vector3d(0, 0, 0), vec.get_value());
 }
 
 // Tests that the BasicVector<double> is initialized to NaN.
@@ -44,6 +68,14 @@ GTEST_TEST(BasicVectorTest, AutodiffInitiallyNaN) {
 GTEST_TEST(BasicVectorTest, SymbolicInitiallyNaN) {
   BasicVector<symbolic::Expression> vec(1);
   EXPECT_TRUE(symbolic::is_nan(vec.get_value()[0]));
+}
+
+// Tests BasicVector<T>::Make.
+GTEST_TEST(BasicVectorTest, Make) {
+  auto dut1 = BasicVector<double>::Make(1.0, 2.0);
+  auto dut2 = BasicVector<double>::Make({3.0, 4.0});
+  EXPECT_TRUE(CompareMatrices(dut1->get_value(), Eigen::Vector2d(1.0, 2.0)));
+  EXPECT_TRUE(CompareMatrices(dut2->get_value(), Eigen::Vector2d(3.0, 4.0)));
 }
 
 // Tests that BasicVector<symbolic::Expression>::Make does what it says on
@@ -119,13 +151,18 @@ GTEST_TEST(BasicVectorTest, ReinitializeInvalid) {
 
 // Tests the infinity norm computation
 GTEST_TEST(BasicVectorTest, NormInf) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   BasicVector<double> vec(2);
   vec.get_mutable_value() << 3, -4;
   EXPECT_EQ(vec.NormInf(), 4);
+#pragma GCC diagnostic pop
 }
 
 // Tests the infinity norm for an autodiff type.
 GTEST_TEST(BasicVectorTest, NormInfAutodiff) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   // Set up the device under test ("dut").
   // The DUT is a vector with two values [-11.5, 22.5].
   // The ∂/∂t of DUT is [1.5, 3.5] (where t is some arbitrary variable).
@@ -135,7 +172,7 @@ GTEST_TEST(BasicVectorTest, NormInfAutodiff) {
   AutoDiffXd element1;
   element1.value() = 22.5;
   element1.derivatives() = Vector1d(3.5);
-  auto dut = BasicVector<AutoDiffXd>::Make({element0, element1});
+  BasicVector<AutoDiffXd> dut{element0, element1};
 
   // The norminf(DUT) is 22.5 and the ∂/∂t of norminf(DUT) is 3.5.
   // The element1 has the max absolute value of the AutoDiffScalar's scalar.
@@ -143,18 +180,19 @@ GTEST_TEST(BasicVectorTest, NormInfAutodiff) {
   AutoDiffXd expected_norminf;
   expected_norminf.value() = 22.5;
   expected_norminf.derivatives() = Vector1d(3.5);
-  EXPECT_EQ(dut->NormInf().value(), expected_norminf.value());
-  EXPECT_EQ(dut->NormInf().derivatives(), expected_norminf.derivatives());
+  EXPECT_EQ(dut.NormInf().value(), expected_norminf.value());
+  EXPECT_EQ(dut.NormInf().derivatives(), expected_norminf.derivatives());
 
   // We change the DUT to two values [-11.5, -33.5] with ∂/∂t of [1.5, 3.5].
   // The norminf(DUT) is now 33.5 and the ∂/∂t of norminf(DUT) is -3.5.
   // The element0 has the max absolute value of the AutoDiffScalar's scalar.
   // It is negative, so the sign of its derivatives gets flipped.
-  dut->GetAtIndex(0).value() = -33.5;
+  dut.GetAtIndex(0).value() = -33.5;
   expected_norminf.value() = 33.5;
   expected_norminf.derivatives() = Vector1d(-1.5);
-  EXPECT_EQ(dut->NormInf().value(), expected_norminf.value());
-  EXPECT_EQ(dut->NormInf().derivatives(), expected_norminf.derivatives());
+  EXPECT_EQ(dut.NormInf().value(), expected_norminf.value());
+  EXPECT_EQ(dut.NormInf().derivatives(), expected_norminf.derivatives());
+#pragma GCC diagnostic pop
 }
 
 // Tests all += * operations for BasicVector.
@@ -214,15 +252,37 @@ GTEST_TEST(BasicVectorTest, ZeroLengthStringStream) {
   EXPECT_EQ(s.str(), "foo [] bar");
 }
 
-
-// Tests the default set of inequality constraints (empty).
+// Tests the default set of bounds (empty).
 GTEST_TEST(BasicVectorTest, DefaultCalcInequalityConstraint) {
   VectorX<double> value = VectorX<double>::Ones(22);
   BasicVector<double> vec(1);
-  vec.CalcInequalityConstraint(&value);
-  EXPECT_EQ(value.size(), 0);
+  Eigen::VectorXd lower, upper;
+  // Deliberately set lower/upper to size 2, to check if GetElementBounds will
+  // resize the bounds to empty size.
+  lower.resize(2);
+  upper.resize(2);
+  vec.GetElementBounds(&lower, &upper);
+  EXPECT_EQ(lower.size(), 0);
+  EXPECT_EQ(upper.size(), 0);
 }
 
+// Tests the protected `::values()` methods.
+GTEST_TEST(BasicVectorTest, ValuesAccess) {
+  MyVector2d dut;
+  dut[0] = 11.0;
+  dut[1] = 22.0;
+
+  // Values are as expected.
+  ASSERT_EQ(dut.values().size(), 2);
+  EXPECT_EQ(dut.values()[0], 11.0);
+  EXPECT_EQ(dut.values()[1], 22.0);
+  dut.values()[0] = 33.0;
+
+  // The const overload is the same.
+  const auto& const_dut = dut;
+  EXPECT_EQ(&dut.values(), &const_dut.values());
+  EXPECT_EQ(const_dut.values()[0], 33.0);
+}
 
 }  // namespace
 }  // namespace systems

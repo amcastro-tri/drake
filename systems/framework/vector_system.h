@@ -4,6 +4,7 @@
 #include <utility>
 #include <vector>
 
+#include "drake/common/default_scalars.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/drake_throw.h"
@@ -33,7 +34,7 @@ class VectorSystem : public LeafSystem<T> {
   ~VectorSystem() override = default;
 
   /// Returns the sole input port.
-  const InputPortDescriptor<T>& get_input_port() const {
+  const InputPort<T>& get_input_port() const {
     DRAKE_DEMAND(this->get_num_input_ports() == 1);
     return LeafSystem<T>::get_input_port(0);
   }
@@ -49,31 +50,6 @@ class VectorSystem : public LeafSystem<T> {
 
   // Don't use the indexed get_output_port when calling this system directly.
   void get_output_port(int) = delete;
-
-  // Confirms the VectorSystem invariants when allocating the context.
-  std::unique_ptr<Context<T>> AllocateContext() const final {
-    auto result = LeafSystem<T>::AllocateContext();
-
-    // N.B. The DRAKE_THROW_UNLESS conditions can be triggered by subclass
-    // mistakes, so are part of our unit tests.  The DRAKE_DEMAND conditions
-    // should be invariants guaranteed by the framework, so are asserted.
-
-    // Exactly one input and output.
-    DRAKE_THROW_UNLESS(this->get_num_input_ports() <= 1);
-    DRAKE_THROW_UNLESS(this->get_num_output_ports() <= 1);
-    DRAKE_DEMAND(result->get_num_input_ports() <= 1);
-
-    // At most one of either continuous xor discrete state.
-    DRAKE_THROW_UNLESS(result->get_num_abstract_states() == 0);
-    const int continuous_size = result->get_continuous_state().size();
-    const int num_discrete_groups = result->get_num_discrete_state_groups();
-    DRAKE_DEMAND(continuous_size >= 0);
-    DRAKE_DEMAND(num_discrete_groups >= 0);
-    DRAKE_THROW_UNLESS(num_discrete_groups <= 1);
-    DRAKE_THROW_UNLESS((continuous_size == 0) || (num_discrete_groups == 0));
-
-    return result;
-  }
 
  protected:
   /// Creates a system with one input port and one output port of the given
@@ -117,7 +93,7 @@ class VectorSystem : public LeafSystem<T> {
       const Context<T>& context) const {
     // Obtain the block form of u (or the empty vector).
     if (this->get_num_input_ports() > 0) {
-      return this->EvalEigenVectorInput(context, 0);
+      return this->get_input_port().Eval(context);
     }
     static const never_destroyed<VectorX<T>> empty_vector(0);
     return empty_vector.access().segment(0, 0);
@@ -208,11 +184,50 @@ class VectorSystem : public LeafSystem<T> {
     // Should only get here if we've declared an output.
     DRAKE_ASSERT(this->get_num_output_ports() > 0);
 
+    // Decide whether we should evaluate our input port and pass its value to
+    // our subclass's DoCalcVectorOutput method.  When should_eval_input is
+    // false, we will pass an empty vector instead of pulling on our input.
+    bool should_eval_input = false;
+    if (this->get_num_input_ports() > 0) {
+      // We have an input port, but when our subclass's DoCalcVectorOutput is
+      // not direct-feedthrough, then evaluating the input port might cause a
+      // computational loop.  We should only evaluate the input when this
+      // System is declared to be direct-feedthrough (i.e., by asking a System
+      // base class method such as HasAnyDirectFeedthrough).
+      //
+      // However, there is a Catch-22: our LeafSystem base class contains a
+      // default implementation of feedthrough reporting that uses the
+      // SystemSymbolicInspector to infer sparsity.  The inspector fixes the
+      // input port to be a symbolic Variable, and then evaluates the output.
+      // If during that output calculation, this method *again* asked to
+      // compute the feedthrough, we would re-enter the inspection code and
+      // cause infinite recursion.  We would have a Calc -> HasAny -> Calc ...
+      // infinite loop.
+      //
+      // To break that recursion, we avoid HasAnyDirectFeedthrough when our
+      // scalar type is a symbolic expression and the input port is fixed.  We
+      // know the inspector must always used a fixed input port (it has no
+      // diagram that it could use), so this will always bottom out the
+      // recursion.  Even if not being evaluated by the symbolic inspector, if
+      // the input port is fixed to a symbolic expression then it is no harm to
+      // evaluate the input, even if the system is not supposed to have
+      // feedthrough -- it is merely providing extra ignored data to the
+      // DoCalcVectorOutput helper.
+      constexpr bool is_symbolic = std::is_same<T, symbolic::Expression>::value;
+      const bool is_fixed_input =
+          (context.MaybeGetFixedInputPortValue(0) != nullptr);
+      if (is_symbolic && is_fixed_input) {
+        should_eval_input = true;
+      } else {
+        should_eval_input = this->HasAnyDirectFeedthrough();
+      }
+    }
+
     // Only provide input when direct feedthrough occurs; otherwise, we might
     // create a computational loop.
     static const never_destroyed<VectorX<T>> empty_vector(0);
     Eigen::VectorBlock<const VectorX<T>> input_block =
-        this->HasAnyDirectFeedthrough() ? EvalVectorInput(context) :
+        should_eval_input ? EvalVectorInput(context) :
         empty_vector.access().segment(0, 0);
 
     // Obtain the block form of xc or xd.
@@ -289,7 +304,33 @@ class VectorSystem : public LeafSystem<T> {
     unused(context, input, state);
     DRAKE_THROW_UNLESS(next_state->size() == 0);
   }
+
+ private:
+  // Confirms the VectorSystem invariants when allocating the context.
+  void DoValidateAllocatedLeafContext(
+      const LeafContext<T>& context) const final {
+    // N.B. The DRAKE_THROW_UNLESS conditions can be triggered by subclass
+    // mistakes, so are part of our unit tests.  The DRAKE_DEMAND conditions
+    // should be invariants guaranteed by the framework, so are asserted.
+
+    // Exactly one input and output.
+    DRAKE_THROW_UNLESS(this->get_num_input_ports() <= 1);
+    DRAKE_THROW_UNLESS(this->get_num_output_ports() <= 1);
+    DRAKE_DEMAND(context.get_num_input_ports() <= 1);
+
+    // At most one of either continuous or discrete state.
+    DRAKE_THROW_UNLESS(context.get_num_abstract_states() == 0);
+    const int continuous_size = context.get_continuous_state().size();
+    const int num_discrete_groups = context.get_num_discrete_state_groups();
+    DRAKE_DEMAND(continuous_size >= 0);
+    DRAKE_DEMAND(num_discrete_groups >= 0);
+    DRAKE_THROW_UNLESS(num_discrete_groups <= 1);
+    DRAKE_THROW_UNLESS((continuous_size == 0) || (num_discrete_groups == 0));
+  }
 };
 
 }  // namespace systems
 }  // namespace drake
+
+DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
+    class ::drake::systems::VectorSystem)

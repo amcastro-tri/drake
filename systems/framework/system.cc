@@ -4,8 +4,6 @@
 #include <ios>
 #include <regex>
 
-#include "drake/common/default_scalars.h"
-
 namespace drake {
 namespace systems {
 
@@ -19,7 +17,8 @@ std::string SystemImpl::GetMemoryObjectName(
   const std::string type_name_without_templates = std::regex_replace(
       nice_type_name, std::regex("<.*>$"), std::string());
 
-  // Replace "::" with "/" because ":" is the System::GetPath separator.
+  // Replace "::" with "/" because ":" is System::GetSystemPathname's separator.
+  // TODO(sherm1) Change the separator to "/" and avoid this!
   const std::string default_name = std::regex_replace(
       type_name_without_templates, std::regex(":+"), std::string("/"));
 

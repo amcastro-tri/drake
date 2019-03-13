@@ -23,14 +23,16 @@ namespace van_der_pol {
 /// @tparam T The vector element type, which must be a valid Eigen scalar.
 ///
 /// Instantiated templates for the following kinds of T's are provided:
+///
 /// - double
 /// - AutoDiffXd
 /// - symbolic::Expression
 template <typename T>
-class VanDerPolOscillator : public systems::LeafSystem<T> {
+class VanDerPolOscillator final : public systems::LeafSystem<T> {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(VanDerPolOscillator)
 
+  /// Constructs a default oscillator.
   VanDerPolOscillator();
 
   /// Scalar-converting copy constructor.

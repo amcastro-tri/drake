@@ -11,6 +11,7 @@
 #include <unordered_map>
 
 #include "drake/common/drake_copyable.h"
+#include "drake/common/random.h"
 #include "drake/common/symbolic.h"
 
 namespace drake {
@@ -69,12 +70,26 @@ class Environment {
   Environment() = default;
 
   /** List constructor. Constructs an environment from a list of (Variable *
-   * double). */
+   * double).
+   *
+   * @throws std::runtime_error if @p init include a dummy variable or a NaN
+   * value.
+   */
   Environment(std::initializer_list<value_type> init);
 
   /** List constructor. Constructs an environment from a list of
-   * Variable. Initializes the variables with 0.0. */
+   * Variable. Initializes the variables with 0.0.
+   *
+   * @throws std::runtime_error if @p vars include a dummy variable.
+   */
   Environment(std::initializer_list<key_type> vars);
+
+  /** Constructs an environment from @p m (of `map` type, which is
+   * `std::unordered_map`).
+   *
+   * @throws std::runtime_error if @p m include a dummy variable or a NaN value.
+   */
+  explicit Environment(map m);
 
   /** Returns an iterator to the beginning. */
   iterator begin() { return map_.begin(); }
@@ -121,5 +136,11 @@ class Environment {
  private:
   map map_;
 };
+
+/** Populates the environment @p env by sampling values for the unassigned
+ *  random variables in @p variables using @p random_generator. */
+Environment PopulateRandomVariables(Environment env, const Variables& variables,
+                                    RandomGenerator* random_generator);
+
 }  // namespace symbolic
 }  // namespace drake

@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "drake/common/drake_copyable.h"
+#include "drake/common/drake_deprecated.h"
 #include "drake/solvers/constraint.h"
 #include "drake/systems/framework/context.h"
 #include "drake/systems/framework/system.h"
@@ -51,13 +52,25 @@ class DirectCollocation : public MultipleShooting {
 
   ~DirectCollocation() override {}
 
-  /// Get the input trajectory at the solution as a
-  /// %PiecewisePolynomialTrajectory%.
-  PiecewisePolynomialTrajectory ReconstructInputTrajectory() const override;
+  DRAKE_DEPRECATED("2019-06-01",
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.")
+  trajectories::PiecewisePolynomial<double> ReconstructInputTrajectory()
+  const override;
 
-  /// Get the state trajectory at the solution as a
-  /// %PiecewisePolynomialTrajectory%.
-  PiecewisePolynomialTrajectory ReconstructStateTrajectory() const override;
+  DRAKE_DEPRECATED("2019-06-01",
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.")
+  trajectories::PiecewisePolynomial<double> ReconstructStateTrajectory()
+  const override;
+
+  trajectories::PiecewisePolynomial<double> ReconstructInputTrajectory(
+      const solvers::MathematicalProgramResult& result) const override;
+
+  trajectories::PiecewisePolynomial<double> ReconstructStateTrajectory(
+      const solvers::MathematicalProgramResult& result) const override;
 
  private:
   // Implements a running cost at all timesteps using trapezoidal integration.
@@ -68,8 +81,68 @@ class DirectCollocation : public MultipleShooting {
   const System<double>* system_{nullptr};
   const std::unique_ptr<Context<double>> context_{nullptr};
   const std::unique_ptr<ContinuousState<double>> continuous_state_{nullptr};
-  FreestandingInputPortValue* input_port_value_{nullptr};
+  FixedInputPortValue* input_port_value_{nullptr};
 };
+
+/// Implements the direct collocation constraints for a first-order hold on
+/// the input and a cubic polynomial representation of the state trajectories.
+///
+/// Note that the DirectCollocation implementation allocates only ONE of
+/// these constraints, but binds that constraint multiple times (with
+/// different decision variables, along the trajectory).
+class DirectCollocationConstraint : public solvers::Constraint {
+ public:
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(DirectCollocationConstraint)
+
+ public:
+  DirectCollocationConstraint(const System<double>& system,
+                              const Context<double>& context);
+
+  ~DirectCollocationConstraint() override = default;
+
+  int num_states() const { return num_states_; }
+  int num_inputs() const { return num_inputs_; }
+
+ protected:
+  void DoEval(const Eigen::Ref<const Eigen::VectorXd>& x,
+              Eigen::VectorXd* y) const override;
+
+  void DoEval(const Eigen::Ref<const AutoDiffVecXd>& x,
+              AutoDiffVecXd* y) const override;
+
+  void DoEval(const Eigen::Ref<const VectorX<symbolic::Variable>>& x,
+              VectorX<symbolic::Expression>* y) const override;
+
+ private:
+  DirectCollocationConstraint(const System<double>& system,
+                              const Context<double>& context, int num_states,
+                              int num_inputs);
+
+  void dynamics(const AutoDiffVecXd& state, const AutoDiffVecXd& input,
+                AutoDiffVecXd* xdot) const;
+
+  std::unique_ptr<System<AutoDiffXd>> system_;
+  std::unique_ptr<Context<AutoDiffXd>> context_;
+  FixedInputPortValue* input_port_value_{nullptr};
+  std::unique_ptr<ContinuousState<AutoDiffXd>> derivatives_;
+
+  const int num_states_{0};
+  const int num_inputs_{0};
+};
+
+// Note: The order of arguments is a compromise between GSG and the desire to
+// match the AddConstraint interfaces in MathematicalProgram.
+/// Helper method to add a DirectCollocationConstraint to the @p prog,
+/// ensuring that the order of variables in the binding matches the order
+/// expected by the constraint.
+solvers::Binding<solvers::Constraint> AddDirectCollocationConstraint(
+    std::shared_ptr<DirectCollocationConstraint> constraint,
+    const Eigen::Ref<const solvers::VectorXDecisionVariable>& timestep,
+    const Eigen::Ref<const solvers::VectorXDecisionVariable>& state,
+    const Eigen::Ref<const solvers::VectorXDecisionVariable>& next_state,
+    const Eigen::Ref<const solvers::VectorXDecisionVariable>& input,
+    const Eigen::Ref<const solvers::VectorXDecisionVariable>& next_input,
+    solvers::MathematicalProgram* prog);
 
 }  // namespace trajectory_optimization
 }  // namespace systems

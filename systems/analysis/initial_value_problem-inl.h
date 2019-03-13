@@ -1,7 +1,10 @@
 #pragma once
 
+#include <algorithm>
+#include <limits>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "drake/systems/analysis/initial_value_problem.h"
 #include "drake/systems/analysis/runge_kutta3_integrator-inl.h"
@@ -96,7 +99,7 @@ void ODESystem<T>::DoCalcTimeDerivatives(
 }  // namespace detail
 
 template<typename T>
-const T InitialValueProblem<T>::kDefaultAccuracy = static_cast<T>(1e-4);
+const double InitialValueProblem<T>::kDefaultAccuracy = 1e-4;
 
 template<typename T>
 const T InitialValueProblem<T>::kInitialStepSize = static_cast<T>(1e-4);
@@ -106,23 +109,28 @@ const T InitialValueProblem<T>::kMaxStepSize = static_cast<T>(1e-1);
 
 template <typename T>
 InitialValueProblem<T>::InitialValueProblem(
-    const typename InitialValueProblem<T>::ODEFunction& ode_function,
-    const T& default_initial_time, const VectorX<T>& default_initial_state,
-    const VectorX<T>& default_parameters)
-    : default_initial_time_(default_initial_time),
-      default_initial_state_(default_initial_state),
-      default_parameters_(default_parameters),
-      current_initial_time_(default_initial_time),
-      current_initial_state_(default_initial_state),
-      current_parameters_(default_parameters) {
+    const ODEFunction& ode_function,
+    const SpecifiedValues& default_values)
+    : default_values_(default_values),
+      current_values_(default_values) {
+  // Checks that preconditions are met.
+  if (!default_values_.t0) {
+    throw std::logic_error("No default initial time t0 was given.");
+  }
+  if (!default_values_.x0) {
+    throw std::logic_error("No default initial state x0 was given.");
+  }
+  if (!default_values_.k) {
+    throw std::logic_error("No default parameters vector k was given.");
+  }
   // Instantiates the system using the given defaults as models.
   system_ = std::make_unique<detail::ODESystem<T>>(
-      ode_function, default_initial_state_, default_parameters_);
+      ode_function, default_values_.x0.value(), default_values_.k.value());
 
   // Allocates a new default integration context with the
   // given default initial time.
   context_ = system_->CreateDefaultContext();
-  context_->set_time(default_initial_time_);
+  context_->set_time(default_values_.t0.value());
 
   // Instantiates an explicit RK3 integrator by default.
   integrator_ = std::make_unique<RungeKutta3Integrator<T>>(
@@ -139,65 +147,13 @@ InitialValueProblem<T>::InitialValueProblem(
 
 template <typename T>
 VectorX<T> InitialValueProblem<T>::Solve(
-    const T& initial_time, const VectorX<T>& initial_state,
-    const T& time, const VectorX<T>& parameters) const {
-  if (time < initial_time) {
-    throw std::logic_error("Cannot solve IVP for a time"
-                           " before the initial condition.");
-  }
-  if (initial_state.size() != default_initial_state_.size()) {
-    throw std::logic_error("IVP initial state vector is"
-                           "of the wrong dimension.");
-  }
-  if (parameters.size() != default_parameters_.size()) {
-    throw std::logic_error("IVP parameters vector is "
-                           "of the wrong dimension");
-  }
-  // Performs cache invalidation and re-initializes both
-  // integrator and integration context if necessary.
-  if (initial_time != current_initial_time_
-      || initial_state != current_initial_state_
-      || parameters != current_parameters_
-      || time < context_->get_time()) {
-    // Sets context (initial) time.
-    context_->set_time(initial_time);
+    const T& tf, const SpecifiedValues& values) const {
+  // Gets all values to solve with, either given or default, while
+  // checking that all preconditions hold.
+  const SpecifiedValues safe_values = SanitizeValuesOrThrow(tf, values);
 
-    // Sets context (initial) state. This cast is safe because the
-    // ContinuousState<T> of a LeafSystem<T> is flat i.e. it is just
-    // a BasicVector<T>, and the implementation deals with LeafSystem<T>
-    // instances only by design.
-    BasicVector<T>& state_vector = dynamic_cast<BasicVector<T>&>(
-        context_->get_mutable_continuous_state_vector());
-    state_vector.set_value(initial_state);
-
-    // Sets context parameters.
-    BasicVector<T>& parameter_vector =
-        context_->get_mutable_numeric_parameter(0);
-    parameter_vector.set_value(parameters);
-
-    // Keeps track of current step size and accuracy settings (regardless
-    // of whether these are actually used by the integrator instance or not).
-    const T max_step_size = integrator_->get_maximum_step_size();
-    const T initial_step_size = integrator_->get_initial_step_size_target();
-    const T target_accuracy = integrator_->get_target_accuracy();
-
-    // Resets the integrator internal state.
-    integrator_->Reset();
-
-    // Sets integrator settings again.
-    integrator_->set_maximum_step_size(max_step_size);
-    if (integrator_->supports_error_estimation()) {
-      // Specifies initial step and accuracy setting only if necessary.
-      integrator_->request_initial_step_size_target(initial_step_size);
-      integrator_->set_target_accuracy(target_accuracy);
-    }
-
-    // Keeps track of the current initial conditions and parameters
-    // for future cache invalidation.
-    current_initial_time_ = initial_time;
-    current_initial_state_ = initial_state;
-    current_parameters_ = parameters;
-  }
+  // Potentially invalidates the cache.
+  ResetCachedStateIfNecessary(tf, safe_values);
 
   // Initializes integrator if necessary.
   if (!integrator_->is_initialized()) {
@@ -205,16 +161,116 @@ VectorX<T> InitialValueProblem<T>::Solve(
   }
 
   // Integrates up to the requested time.
-  integrator_->IntegrateWithMultipleSteps(
-      time - context_->get_time());
+  integrator_->IntegrateWithMultipleStepsToTime(tf);
 
-  // Retrieves the system's state vector. This cast is safe because the
+  // Retrieves the state vector. This cast is safe because the
   // ContinuousState<T> of a LeafSystem<T> is flat i.e. it is just
   // a BasicVector<T>, and the implementation deals with LeafSystem<T>
   // instances only by design.
   const BasicVector<T>& state_vector = dynamic_cast<const BasicVector<T>&>(
       context_->get_continuous_state_vector());
   return state_vector.get_value();
+}
+
+template <typename T>
+void InitialValueProblem<T>::ResetCachedState(
+    const SpecifiedValues& values) const {
+  // Sets context (initial) time.
+  context_->set_time(values.t0.value());
+
+  // Sets context (initial) state. This cast is safe because the
+  // ContinuousState<T> of a LeafSystem<T> is flat i.e. it is just
+  // a BasicVector<T>, and the implementation deals with LeafSystem<T>
+  // instances only by design.
+  BasicVector<T>& state_vector = dynamic_cast<BasicVector<T>&>(
+      context_->get_mutable_continuous_state_vector());
+  state_vector.set_value(values.x0.value());
+
+  // Sets context parameters.
+  BasicVector<T>& parameter_vector =
+      context_->get_mutable_numeric_parameter(0);
+  parameter_vector.set_value(values.k.value());
+
+  // Keeps track of current step size and accuracy settings (regardless
+  // of whether these are actually used by the integrator instance or not).
+  const T max_step_size = integrator_->get_maximum_step_size();
+  const T initial_step_size = integrator_->get_initial_step_size_target();
+  const double target_accuracy = integrator_->get_target_accuracy();
+
+  // Resets the integrator internal state.
+  integrator_->Reset();
+
+  // Sets integrator settings again.
+  integrator_->set_maximum_step_size(max_step_size);
+  if (integrator_->supports_error_estimation()) {
+    // Specifies initial step and accuracy setting only if necessary.
+    integrator_->request_initial_step_size_target(initial_step_size);
+    integrator_->set_target_accuracy(target_accuracy);
+  }
+  // Keeps track of the current initial conditions and parameters
+  // for future cache invalidation.
+  current_values_ = values;
+}
+
+template <typename T>
+void InitialValueProblem<T>::ResetCachedStateIfNecessary(
+    const T& tf, const SpecifiedValues& values) const {
+  // Only resets cache if necessary, i.e. if either initial
+  // conditions or parameters have changed or if the time
+  // the IVP is to be solved for is in the past with respect
+  // to the integration context time.
+  if (values != current_values_ || tf < context_->get_time()) {
+    ResetCachedState(values);
+  }
+}
+
+template <typename T>
+typename InitialValueProblem<T>::SpecifiedValues
+InitialValueProblem<T>::SanitizeValuesOrThrow(
+    const T& tf, const SpecifiedValues& values) const {
+  SpecifiedValues safe_values;
+  safe_values.t0 = values.t0.has_value() ? values.t0 : default_values_.t0;
+  if (tf < safe_values.t0.value()) {
+    throw std::logic_error("Cannot solve IVP for a time"
+                           " before the initial condition.");
+  }
+  safe_values.x0 = values.x0.has_value() ? values.x0 : default_values_.x0;
+  if (safe_values.x0.value().size() != default_values_.x0.value().size()) {
+    throw std::logic_error("IVP initial state vector x0 is"
+                           " of the wrong dimension.");
+  }
+  safe_values.k = values.k.has_value() ? values.k : default_values_.k;
+  if (safe_values.k.value().size() != default_values_.k.value().size()) {
+    throw std::logic_error("IVP parameters vector k is "
+                           " of the wrong dimension");
+  }
+  return safe_values;
+}
+
+template <typename T>
+std::unique_ptr<DenseOutput<T>> InitialValueProblem<T>::DenseSolve(
+    const T& tf, const SpecifiedValues& values) const {
+  // Gets all values to solve with, either given or default, while
+  // checking that all preconditions hold.
+  const SpecifiedValues safe_values = SanitizeValuesOrThrow(tf, values);
+
+  // Unconditionally invalidates the cache. All integration steps that
+  // take the IVP forward in time up to tf are necessary to build a
+  // DenseOutput.
+  ResetCachedState(safe_values);
+
+  // Re-initialize integrator after cache invalidation.
+  integrator_->Initialize();
+
+  // Starts dense integration to build a dense output.
+  integrator_->StartDenseIntegration();
+
+  // Steps the integrator through the entire interval.
+  integrator_->IntegrateWithMultipleStepsToTime(tf);
+
+  // Stops dense integration to prevent future updates to
+  // the dense output just built and yields it to the caller.
+  return integrator_->StopDenseIntegration();
 }
 
 }  // namespace systems

@@ -147,6 +147,13 @@ GTEST_TEST(NiceTypeNameTest, Enum) {
             "drake::nice_type_name_test::ForTesting::MyEnumClass");
 }
 
+// Test the type_info form of NiceTypeName::Get().
+GTEST_TEST(NiceTypeNameTest, FromTypeInfo) {
+  EXPECT_EQ(NiceTypeName::Get(typeid(int)), "int");
+  EXPECT_EQ(NiceTypeName::Get(typeid(nice_type_name_test::Derived)),
+            "drake::nice_type_name_test::Derived");
+}
+
 // Test the expression-accepting form of NiceTypeName::Get().
 GTEST_TEST(NiceTypeNameTest, Expressions) {
   using nice_type_name_test::Derived;
@@ -180,6 +187,27 @@ GTEST_TEST(NiceTypeNameTest, Expressions) {
   // and runtime type are the same.
   EXPECT_EQ(NiceTypeName::Get<decltype(base_uptr)>(),
             NiceTypeName::Get(base_uptr));
+}
+
+GTEST_TEST(NiceTypeNameTest, RemoveNamespaces) {
+  EXPECT_EQ(NiceTypeName::RemoveNamespaces("JustAPlainType"), "JustAPlainType");
+  EXPECT_EQ(
+      NiceTypeName::RemoveNamespaces("drake::nice_type_name_test::Derived"),
+      "Derived");
+  // Should ignore nested namespaces.
+  EXPECT_EQ(NiceTypeName::RemoveNamespaces(
+                "std::vector<std::string,std::allocator<std::string>>"),
+            "vector<std::string,std::allocator<std::string>>");
+  // Should stop at the first templatized segment.
+  EXPECT_EQ(NiceTypeName::RemoveNamespaces(
+                "drake::systems::sensors::RgbdRenderer<T>::Impl"),
+            "RgbdRenderer<T>::Impl");
+
+  // Check behavior in odd cases.
+  EXPECT_EQ(NiceTypeName::RemoveNamespaces(""), "");
+  EXPECT_EQ(NiceTypeName::RemoveNamespaces("::"), "::");
+  // No final type segment -- should leave unprocessed.
+  EXPECT_EQ(NiceTypeName::RemoveNamespaces("blah::blah2::"), "blah::blah2::");
 }
 
 }  // namespace

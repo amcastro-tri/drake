@@ -17,7 +17,7 @@ namespace systems {
 namespace rendering {
 
 // TODO(david-german-tri, SeanCurtis-TRI): Subsume this functionality into
-// GeometrySystem when it becomes available.
+// SceneGraph when it becomes available.
 
 // TODO(david-german-tri): Consider renaming this to FrameKinematicsBundle,
 // since it contains both poses and velocities.
@@ -30,6 +30,7 @@ namespace rendering {
 ///
 /// This class is explicitly instantiated for the following scalar types. No
 /// other scalar types are supported.
+///
 /// - double
 /// - AutoDiffXd
 /// - symbolic::Expression
@@ -41,7 +42,7 @@ class PoseBundle {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(PoseBundle)
 
-  explicit PoseBundle(int num_poses);
+  explicit PoseBundle(int num_poses = 0);
   ~PoseBundle();
 
   int get_num_poses() const;

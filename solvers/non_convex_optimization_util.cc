@@ -4,6 +4,7 @@
 
 #include "drake/math/quadratic_form.h"
 #include "drake/solvers/mathematical_program.h"
+#include "drake/solvers/solve.h"
 
 namespace drake {
 namespace solvers {
@@ -37,16 +38,16 @@ std::pair<Eigen::MatrixXd, Eigen::MatrixXd> DecomposeNonConvexQuadraticForm(
   prog.AddLinearConstraint(symbolic::Expression(s) >=
                            Q2.cast<symbolic::Expression>().trace());
   prog.AddCost(s);
-  SolutionResult result = prog.Solve();
+  const MathematicalProgramResult result = Solve(prog);
   // This problem should always be feasible, since we can choose Q1 to a large
   // diagonal matrix, and Q2 will also have large diagonal entries. Both Q1 and
   // Q2 are diagonally dominant, thus they are both positive definite.
   // Due to positive definiteness, both trace(Q1) and trace(Q2) are
   // non-negative, so min(max(trace(Q1), trace(Q2)) is lower bounded. Hence,
   // this optimal cost is not un-bounded.
-  DRAKE_DEMAND(result == SolutionResult::kSolutionFound);
-  auto Q1_sol = prog.GetSolution(Q1);
-  auto Q2_sol = prog.GetSolution(Q2);
+  DRAKE_DEMAND(result.is_success());
+  auto Q1_sol = result.GetSolution(Q1);
+  auto Q2_sol = result.GetSolution(Q2);
   return std::make_pair(Q1_sol, Q2_sol);
 }
 
@@ -120,8 +121,9 @@ AddRelaxNonConvexQuadraticConstraintInTrustRegion(
                               upper_bound);
     Vector2<symbolic::Expression> linear_expr(2 * x0.dot(nonzero_Q * x) - z(0),
                                               p.dot(y) + z_coeff * z(0));
-    Binding<LinearConstraint> linear_constraint = prog->AddConstraint(
-        internal::ParseLinearConstraint(linear_expr, linear_lb, linear_ub));
+    Binding<LinearConstraint> linear_constraint =
+        prog->AddConstraint(internal::BindingDynamicCast<LinearConstraint>(
+            internal::ParseConstraint(linear_expr, linear_lb, linear_ub)));
     std::vector<Binding<RotatedLorentzConeConstraint>> lorentz_cones{
         {lorentz_cone1}};
     return std::make_tuple(linear_constraint, lorentz_cones, z);
@@ -139,8 +141,8 @@ AddRelaxNonConvexQuadraticConstraintInTrustRegion(
                                   -x0.dot(Q1 * x0) + trust_region_gap,
                                   -x0.dot(Q2 * x0) + trust_region_gap);
   Binding<LinearConstraint> linear_constraint =
-      prog->AddConstraint(internal::ParseLinearConstraint(
-          linear_expressions, linear_lb, linear_ub));
+      prog->AddConstraint(internal::BindingDynamicCast<LinearConstraint>(
+          internal::ParseConstraint(linear_expressions, linear_lb, linear_ub)));
 
   const Eigen::MatrixXd A1 =
       math::DecomposePSDmatrixIntoXtransposeTimesX(Q1, psd_tol);

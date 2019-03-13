@@ -4,6 +4,7 @@
 #include <cmath>
 #include <sstream>
 
+#include "drake/common/symbolic.h"
 #include "drake/math/quadratic_form.h"
 #include "drake/solvers/symbolic_extraction.h"
 
@@ -24,7 +25,9 @@ using std::vector;
 
 using symbolic::Expression;
 using symbolic::Formula;
+using symbolic::Polynomial;
 using symbolic::Variable;
+using symbolic::Variables;
 
 using internal::DecomposeLinearExpression;
 using internal::DecomposeQuadraticPolynomial;
@@ -32,11 +35,34 @@ using internal::ExtractAndAppendVariablesFromExpression;
 using internal::ExtractVariablesFromExpression;
 using internal::SymbolicError;
 
-Binding<LinearConstraint> ParseLinearConstraint(
+
+Binding<Constraint> ParseConstraint(
     const Eigen::Ref<const VectorX<Expression>>& v,
     const Eigen::Ref<const Eigen::VectorXd>& lb,
     const Eigen::Ref<const Eigen::VectorXd>& ub) {
   DRAKE_ASSERT(v.rows() == lb.rows() && v.rows() == ub.rows());
+
+  bool is_linear = true;
+  // Check that all elements are linear.
+  for (int i = 0; i < v.size(); ++i) {
+    if (!v(i).is_polynomial()) {
+      is_linear = false;
+      break;
+    }
+    const Polynomial p{v(i)};
+    if (p.TotalDegree() > 1) {
+      is_linear = false;
+      break;
+    }
+  }
+  if (!is_linear) {
+    auto constraint = make_shared<ExpressionConstraint>(v, lb, ub);
+    return CreateBinding(constraint, constraint->vars());
+  }  // else, continue on to linear-specific version below.
+
+  if ((ub-lb).isZero()) {
+    return ParseLinearEqualityConstraint(v, lb);
+  }
 
   // Setup map_var_to_index and var_vec.
   // such that map_var_to_index[var(i)] = i
@@ -62,7 +88,7 @@ Binding<LinearConstraint> ParseLinearConstraint(
       // Unsatisfiable constraint with no variables, such as 1 <= 0 <= 2
       throw SymbolicError(v(i), lb(i), ub(i),
                           "unsatisfiable but called with"
-                          " ParseLinearConstraint");
+                          " ParseConstraint");
 
     } else {
       new_lb(i) = lb(i) - constant_term;
@@ -101,9 +127,80 @@ Binding<LinearConstraint> ParseLinearConstraint(
     }
     return CreateBinding(make_shared<BoundingBoxConstraint>(new_lb, new_ub),
                          bounding_box_x);
+  }
+
+  return CreateBinding(make_shared<LinearConstraint>(A, new_lb, new_ub), vars);
+}
+
+std::unique_ptr<Binding<Constraint>> MaybeParseLinearConstraint(
+    const symbolic::Expression& e, double lb, double ub) {
+  if (!e.is_polynomial()) {
+    return std::unique_ptr<Binding<Constraint>>{nullptr};
+  }
+  const Polynomial p{e};
+  if (p.TotalDegree() > 1) {
+    return std::unique_ptr<Binding<Constraint>>{nullptr};
+  }
+  // If p only has one indeterminates, then we can always return a bounding box
+  // constraint.
+  if (p.indeterminates().size() == 1) {
+    // We decompose the polynomial `p` into `constant_term + coeff * var`.
+    double coeff = 0;
+    double constant_term = 0;
+    for (const auto& term : p.monomial_to_coefficient_map()) {
+      if (term.first.total_degree() == 0) {
+        constant_term += get_constant_value(term.second);
+      } else {
+        coeff += get_constant_value(term.second);
+      }
+    }
+    // coeff should not be 0. The symbolic polynomial should be able to detect
+    // when the coefficient is 0, and remove it from
+    // monomial_to_coefficient_map.
+    DRAKE_DEMAND(coeff != 0);
+    double var_lower{}, var_upper{};
+    if (coeff > 0) {
+      var_lower = (lb - constant_term) / coeff;
+      var_upper = (ub - constant_term) / coeff;
+    } else {
+      var_lower = (ub - constant_term) / coeff;
+      var_upper = (lb - constant_term) / coeff;
+    }
+    return std::make_unique<Binding<Constraint>>(
+        std::make_shared<BoundingBoxConstraint>(Vector1d(var_lower),
+                                                Vector1d(var_upper)),
+        Vector1<symbolic::Variable>(*(p.indeterminates().begin())));
+  }
+  VectorX<symbolic::Variable> bound_variables(p.indeterminates().size());
+  std::unordered_map<symbolic::Variable::Id, int> map_var_to_index;
+  int index = 0;
+  for (const auto& var : p.indeterminates()) {
+    bound_variables(index) = var;
+    map_var_to_index.emplace(var.get_id(), index++);
+  }
+  Eigen::RowVectorXd a(p.indeterminates().size());
+  a.setZero();
+  double lower = lb;
+  double upper = ub;
+  for (const auto& term : p.monomial_to_coefficient_map()) {
+    if (term.first.total_degree() == 0) {
+      const double coeff = get_constant_value(term.second);
+      lower -= coeff;
+      upper -= coeff;
+    } else {
+      const int var_index =
+          map_var_to_index.at(term.first.GetVariables().begin()->get_id());
+      a(var_index) = get_constant_value(term.second);
+    }
+  }
+  if (lower == upper) {
+    return std::make_unique<Binding<Constraint>>(
+        std::make_shared<LinearEqualityConstraint>(a, Vector1d(lower)),
+        bound_variables);
   } else {
-    return CreateBinding(make_shared<LinearConstraint>(A, new_lb, new_ub),
-                         vars);
+    return std::make_unique<Binding<Constraint>>(
+        std::make_shared<LinearConstraint>(a, Vector1d(lower), Vector1d(upper)),
+        bound_variables);
   }
 }
 
@@ -220,7 +317,7 @@ void FindBound(const Expression& e1, const Expression& e2, Expression* const e,
 }
 }  // namespace
 
-Binding<LinearConstraint> ParseLinearConstraint(const set<Formula>& formulas) {
+Binding<Constraint> ParseConstraint(const set<Formula>& formulas) {
   const auto n = formulas.size();
 
   // Decomposes a set of formulas into a 1D-vector of expressions, `v`, and two
@@ -233,6 +330,7 @@ Binding<LinearConstraint> ParseLinearConstraint(const set<Formula>& formulas) {
   // if `are_all_formulas_equal` is still true. Otherwise, we call
   // `ParseLinearConstraint`.  on the value of this Boolean flag.
   bool are_all_formulas_equal{true};
+  bool is_linear{true};
   for (const Formula& f : formulas) {
     if (is_equal_to(f)) {
       // f := (lhs == rhs)
@@ -256,28 +354,40 @@ Binding<LinearConstraint> ParseLinearConstraint(const set<Formula>& formulas) {
       are_all_formulas_equal = false;
     } else {
       ostringstream oss;
-      oss << "ParseLinearConstraint(const set<Formula>& "
+      oss << "ParseConstraint(const set<Formula>& "
           << "formulas) is called while its argument 'formulas' includes "
           << "a formula " << f
           << " which is not a relational formula using one of {==, <=, >=} "
           << "operators.";
       throw runtime_error(oss.str());
     }
+
+    // Check that elements are linear.
+    if (is_linear) {
+      if (!v(i).is_polynomial()) {
+        is_linear = false;
+      } else {
+        const Polynomial p{v(i)};
+        if (p.TotalDegree() > 1) {
+          is_linear = false;
+        }
+      }
+    }
     ++i;
   }
-  if (are_all_formulas_equal) {
+  if (are_all_formulas_equal && is_linear) {
     return ParseLinearEqualityConstraint(v, lb);
   } else {
-    return ParseLinearConstraint(v, lb, ub);
+    return ParseConstraint(v, lb, ub);
   }
 }
 
-Binding<LinearConstraint> ParseLinearConstraint(const Formula& f) {
+Binding<Constraint> ParseConstraint(const Formula& f) {
   if (is_equal_to(f)) {
     // e1 == e2
     const Expression& e1{get_lhs_expression(f)};
     const Expression& e2{get_rhs_expression(f)};
-    return ParseLinearEqualityConstraint(e1 - e2, 0.0);
+    return ParseConstraint(e1 - e2, 0.0, 0.0);
   } else if (is_greater_than_or_equal_to(f)) {
     // e1 >= e2
     const Expression& e1{get_lhs_expression(f)};
@@ -285,7 +395,7 @@ Binding<LinearConstraint> ParseLinearConstraint(const Formula& f) {
     Expression e;
     double ub = 0.0;
     FindBound(e2, e1, &e, &ub);
-    return ParseLinearConstraint(e, -numeric_limits<double>::infinity(), ub);
+    return ParseConstraint(e, -numeric_limits<double>::infinity(), ub);
   } else if (is_less_than_or_equal_to(f)) {
     // e1 <= e2
     const Expression& e1{get_lhs_expression(f)};
@@ -293,13 +403,13 @@ Binding<LinearConstraint> ParseLinearConstraint(const Formula& f) {
     Expression e;
     double ub = 0.0;
     FindBound(e1, e2, &e, &ub);
-    return ParseLinearConstraint(e, -numeric_limits<double>::infinity(), ub);
+    return ParseConstraint(e, -numeric_limits<double>::infinity(), ub);
   }
   if (is_conjunction(f)) {
-    return ParseLinearConstraint(get_operands(f));
+    return ParseConstraint(get_operands(f));
   }
   ostringstream oss;
-  oss << "ParseLinearConstraint is called with a formula " << f
+  oss << "ParseConstraint is called with a formula " << f
       << " which is neither a relational formula using one of {==, <=, >=} "
          "operators nor a conjunction of those relational formulas.";
   throw runtime_error(oss.str());
@@ -415,14 +525,13 @@ shared_ptr<Constraint> MakePolynomialConstraint(
         if (monomial.terms.size() == 0) {
           linear_constraint_lb[poly_num] -= monomial.coefficient;
           linear_constraint_ub[poly_num] -= monomial.coefficient;
-        } else if (monomial.terms.size() == 1) {
+        } else {
+          DRAKE_DEMAND(monomial.terms.size() == 1);  // Because isAffine().
           const Polynomiald::VarType term_var = monomial.terms[0].var;
           int var_num = (find(poly_vars.begin(), poly_vars.end(), term_var) -
                          poly_vars.begin());
           DRAKE_ASSERT(var_num < static_cast<int>(poly_vars.size()));
           linear_constraint_matrix(poly_num, var_num) = monomial.coefficient;
-        } else {
-          DRAKE_ABORT();  // Can't happen (unless isAffine() lied to us).
         }
       }
     }

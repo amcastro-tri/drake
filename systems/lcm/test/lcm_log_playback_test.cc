@@ -4,6 +4,7 @@
 #include "drake/lcmt_drake_signal.hpp"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
+#include "drake/systems/lcm/lcm_log_playback_system.h"
 #include "drake/systems/lcm/lcm_publisher_system.h"
 #include "drake/systems/lcm/lcm_subscriber_system.h"
 
@@ -30,9 +31,9 @@ class DummySys : public LeafSystem<double> {
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(DummySys)
 
   DummySys() {
-    DeclareAbstractInputPort();
-    DeclarePerStepEvent<PublishEvent<double>>(
-        PublishEvent<double>(Event<double>::TriggerType::kPerStep));
+    DeclareAbstractInputPort("lcmt_drake_signal", Value<lcmt_drake_signal>());
+    DeclarePeriodicPublishEvent(1.0 / publish_freq_, 0.0 /* no time offset */,
+        &DummySys::SaveMessage);
   }
 
   const std::vector<lcmt_drake_signal>& get_received_msgs() const {
@@ -48,29 +49,41 @@ class DummySys : public LeafSystem<double> {
   }
 
  private:
-  void DoPublish(const Context<double>& context,
-                 const std::vector<const systems::PublishEvent<double>*>&
-                     events) const override {
-    const lcmt_drake_signal* msg =
-        EvalInputValue<lcmt_drake_signal>(context, 0);
+  EventStatus SaveMessage(const Context<double>& context) const {
+    const lcmt_drake_signal& msg =
+        this->get_input_port(0).Eval<lcmt_drake_signal>(context);
 
     bool is_new_msg = false;
-    if (received_msgs_.empty() && msg->timestamp != 0) is_new_msg = true;
+    if (received_msgs_.empty() && msg.timestamp != 0) is_new_msg = true;
     if (!received_msgs_.empty() &&
-        (msg->timestamp != received_msgs_.back().timestamp)) {
+        (msg.timestamp != received_msgs_.back().timestamp)) {
       is_new_msg = true;
     }
 
     if (is_new_msg) {
-      received_msgs_.push_back(*msg);
-      received_time_.push_back(context.get_time());
+      received_msgs_.push_back(msg);
+
+      // The diagram that this system is embedded in works the following way:
+      // The LCM Subscriber system receives a message and then requests an
+      // unrestricted update. The unrestricted update causes the input to this
+      // system (DummySys) to change on its next publish operation, which
+      // happens exactly one "tick" after the unrestricted update (Simulator
+      // docs indicate that the sequence of simulation actions is unrestricted
+      // event, discrete update event, continuous state update [integration],
+      // publish, meaning that time is advanced between the unrestricted update
+      // and the publish). Therefore, publish times are expected to be one
+      // "tick" behind.
+      received_time_.push_back(context.get_time() - 1.0 / publish_freq_);
     }
+    return EventStatus::Succeeded();
   }
 
+  const double publish_freq_{100.0};  // In Hz.
   mutable std::vector<lcmt_drake_signal> received_msgs_;
   mutable std::vector<double> received_time_{0};
 };
 
+// Generates the log file and populates it using LCM outputs.
 void GenerateLog() {
   drake::lcm::DrakeLcmLog w_log("test.log", true);
   auto pub0 = LcmPublisherSystem::Make<lcmt_drake_signal>("Ch0", &w_log);
@@ -120,10 +133,7 @@ void CheckLog(const std::vector<double>& expected_times,
 
     // msg.timestamp is generated with the shifted time.
     EXPECT_NEAR(msg.timestamp, expected_times[i] * 1e6, 1e-12);
-    // Note: this needs to match how we schedule event processing
-    // (DoCalcNextUpdateTime) in LcmSubscriberSystem.
-    // TODO(siyuan): fix this together with #5725.
-    EXPECT_NEAR(times[i], expected_times[i] + 0.0001, 1e-12);
+    EXPECT_NEAR(times[i], expected_times[i], 1e-12);
   }
 }
 
@@ -133,6 +143,7 @@ void CheckLog() {
   drake::lcm::DrakeLcmLog r_log("test.log", false);
 
   DiagramBuilder<double> builder;
+  builder.AddSystem<LcmLogPlaybackSystem>(&r_log);
   auto sub0 = builder.AddSystem(
       LcmSubscriberSystem::Make<lcmt_drake_signal>("Ch0", &r_log));
   sub0->set_name("sub0");

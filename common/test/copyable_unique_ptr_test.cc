@@ -24,18 +24,6 @@ using std::unique_ptr;
 template <typename T>
 using cup = copyable_unique_ptr<T>;
 
-// Helper macro for "expecting" an exception but *also* testing the error
-// message against the provided regular expression.
-#define EXPECT_ERROR_MESSAGE(expression, exception, reg_exp) \
-try { \
-  expression; \
-  GTEST_FAIL(); \
-} catch (const exception& err) { \
-  auto matcher = [](const char* s, const char* re) { \
-    return regex_match(s, regex(re)); }; \
-  EXPECT_PRED2(matcher, err.what(), reg_exp); \
-}
-
 // -------------------- copy functionality tests ------------------------
 // These tests cover the actual copyable semantics. Confirming that the
 // protocol selecting between Clone and copy constructor is consistent with the
@@ -421,7 +409,7 @@ GTEST_TEST(CopyableUniquePtrTest, CopyConstructFromCopyable) {
   EXPECT_EQ(u_ptr2.get(), co_ptr);
   EXPECT_TRUE(is_dynamic_castable<CloneOnlyChildWithClone>(u_ptr2.get()));
   // Copy constructor on copyable_unique-ptr of same specialized class, but
-  // contains derived clas.
+  // contains derived class.
   cup<CloneOnly> cup_ptr2(u_ptr2);
   EXPECT_EQ(u_ptr2.get(), co_ptr);
   EXPECT_NE(cup_ptr2.get(), co_ptr);
@@ -462,7 +450,7 @@ GTEST_TEST(CopyableUniquePtrTest, CopyConstructFromUniquePtr) {
   EXPECT_EQ(u_ptr2.get(), co_ptr);
   EXPECT_TRUE(is_dynamic_castable<CloneOnlyChildWithClone>(u_ptr2.get()));
   // Copy constructor on copyable_unique-ptr of same specialized class, but
-  // contains derived clas.
+  // contains derived class.
   cup<CloneOnly> cup_ptr2(u_ptr2);
   EXPECT_EQ(u_ptr2.get(), co_ptr);
   EXPECT_NE(cup_ptr2.get(), co_ptr);
@@ -502,7 +490,7 @@ GTEST_TEST(CopyableUniquePtrTest, MoveConstructFromCopyable) {
   EXPECT_EQ(u_ptr2.get(), co_ptr);
   EXPECT_TRUE(is_dynamic_castable<CloneOnlyChildWithClone>(u_ptr2.get()));
   // Copy constructor on copyable_unique-ptr of same specialized class, but
-  // contains derived clas.
+  // contains derived class.
   cup<CloneOnly> cup_ptr2(move(u_ptr2));
   EXPECT_EQ(u_ptr2.get(), nullptr);
   EXPECT_EQ(cup_ptr2.get(), co_ptr);
@@ -537,7 +525,7 @@ GTEST_TEST(CopyableUniquePtrTest, MoveConstructFromUnique) {
   EXPECT_EQ(u_ptr2.get(), co_ptr);
   EXPECT_TRUE(is_dynamic_castable<CloneOnlyChildWithClone>(u_ptr2.get()));
   // Copy constructor on copyable_unique-ptr of same specialized class, but
-  // contains derived clas.
+  // contains derived class.
   cup<CloneOnly> cup_ptr2(move(u_ptr2));
   EXPECT_EQ(u_ptr2.get(), nullptr);
   EXPECT_EQ(cup_ptr2.get(), co_ptr);

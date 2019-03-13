@@ -13,6 +13,7 @@
 #include "drake/multibody/joints/floating_base_types.h"
 #include "drake/multibody/parsers/urdf_parser.h"
 #include "drake/multibody/rigid_body_plant/drake_visualizer.h"
+#include "drake/solvers/solve.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram.h"
 #include "drake/systems/framework/diagram_builder.h"
@@ -21,11 +22,13 @@
 
 using drake::solvers::SolutionResult;
 
-typedef PiecewisePolynomial<double> PiecewisePolynomialType;
 
 namespace drake {
 namespace examples {
 namespace acrobot {
+
+typedef trajectories::PiecewisePolynomial<double> PiecewisePolynomialType;
+
 namespace {
 DEFINE_double(realtime_factor, 1.0,
               "Playback speed.  See documentation for "
@@ -64,14 +67,14 @@ int do_main() {
   auto traj_init_x =
       PiecewisePolynomialType::FirstOrderHold({0, timespan_init}, {x0, xG});
   dircol.SetInitialTrajectory(PiecewisePolynomialType(), traj_init_x);
-  SolutionResult result = dircol.Solve();
-  if (result != SolutionResult::kSolutionFound) {
+  const auto result = solvers::Solve(dircol);
+  if (!result.is_success()) {
     std::cerr << "No solution found.\n";
     return 1;
   }
 
-  const PiecewisePolynomialTrajectory pp_xtraj =
-      dircol.ReconstructStateTrajectory();
+  const trajectories::PiecewisePolynomial<double> pp_xtraj =
+      dircol.ReconstructStateTrajectory(result);
   auto state_source = builder.AddSystem<systems::TrajectorySource>(pp_xtraj);
 
   lcm::DrakeLcm lcm;
@@ -98,7 +101,7 @@ int do_main() {
 
   simulator.set_target_realtime_rate(FLAGS_realtime_factor);
   simulator.Initialize();
-  simulator.StepTo(pp_xtraj.get_end_time());
+  simulator.StepTo(pp_xtraj.end_time());
   return 0;
 }
 

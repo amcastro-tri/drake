@@ -1,9 +1,7 @@
 #include "drake/manipulation/util/bot_core_lcm_encode_decode.h"
 
 #include "drake/math/quaternion.h"
-#include "drake/math/rotation_matrix.h"
-
-using Eigen::Isometry3d;
+#include "drake/math/rigid_transform.h"
 
 void EncodeVector3d(const Eigen::Ref<const Eigen::Vector3d>& vec,
                     // NOLINTNEXTLINE(runtime/references)
@@ -17,13 +15,13 @@ Eigen::Vector3d DecodeVector3d(const bot_core::vector_3d_t& msg) {
   return Eigen::Vector3d(msg.x, msg.y, msg.z);
 }
 
-void EncodeQuaternion(const Eigen::Ref<const Eigen::Vector4d>& vec,
+void EncodeQuaternion(const Eigen::Quaterniond& q,
                       // NOLINTNEXTLINE(runtime/references)
                       bot_core::quaternion_t& msg) {
-  msg.w = vec[0];
-  msg.x = vec[1];
-  msg.y = vec[2];
-  msg.z = vec[3];
+  msg.w = q.w();
+  msg.x = q.x();
+  msg.y = q.y();
+  msg.z = q.z();
 }
 
 Eigen::Vector4d DecodeQuaternion(const bot_core::quaternion_t& msg) {
@@ -33,18 +31,18 @@ Eigen::Vector4d DecodeQuaternion(const bot_core::quaternion_t& msg) {
 void EncodePose(const Eigen::Isometry3d& pose,
                 // NOLINTNEXTLINE(runtime/references)
                 bot_core::position_3d_t& msg) {
-  auto rotation = drake::math::rotmat2quat(pose.linear());
-  EncodeQuaternion(rotation, msg.rotation);
+  const Eigen::Quaterniond q =
+      drake::math::RotationMatrix<double>::ToQuaternion(pose.linear());
+  EncodeQuaternion(q, msg.rotation);
   EncodeVector3d(pose.translation(), msg.translation);
 }
 
 Eigen::Isometry3d DecodePose(const bot_core::position_3d_t& msg) {
-  Isometry3d ret;
-  ret.translation() = DecodeVector3d(msg.translation);
-  auto quaternion = DecodeQuaternion(msg.rotation);
-  ret.linear() = drake::math::quat2rotmat(quaternion);
-  ret.makeAffine();
-  return ret;
+  const Eigen::Vector3d position = DecodeVector3d(msg.translation);
+  const Eigen::Vector4d wxyz = DecodeQuaternion(msg.rotation);
+  const Eigen::Quaterniond quat(wxyz(0), wxyz(1), wxyz(2), wxyz(3));
+  const drake::math::RigidTransformd X(quat, position);
+  return X.GetAsIsometry3();
 }
 
 void EncodeTwist(const Eigen::Ref<const drake::TwistVector<double>>& twist,

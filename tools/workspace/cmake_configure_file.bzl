@@ -1,19 +1,27 @@
 # -*- python -*-
 
+load(
+    "@drake//tools/skylark:python_env.bzl",
+    "hermetic_python_env",
+)
+
 # Defines the implementation actions to cmake_configure_file.
 def _cmake_configure_file_impl(ctx):
     arguments = [
-        "--input", ctx.file.src.path,
-        "--output", ctx.outputs.out.path,
+        "--input",
+        ctx.file.src.path,
+        "--output",
+        ctx.outputs.out.path,
     ]
     for item in ctx.attr.defines:
         arguments += ["-D" + item]
     for item in ctx.files.cmakelists:
         arguments += ["--cmakelists", item.path]
-    ctx.action(
+    ctx.actions.run(
         inputs = [ctx.file.src] + ctx.files.cmakelists,
         outputs = [ctx.outputs.out],
         arguments = arguments,
+        env = ctx.attr.env,
         executable = ctx.executable.cmake_configure_file_py,
     )
     return struct()
@@ -32,6 +40,10 @@ _cmake_configure_file_gen = rule(
             cfg = "host",
             executable = True,
             default = Label("//tools/workspace:cmake_configure_file"),
+        ),
+        "env": attr.string_dict(
+            mandatory = True,
+            allow_empty = True,
         ),
     },
     output_to_genfiles = True,
@@ -69,4 +81,6 @@ def cmake_configure_file(
         out = out,
         defines = defines,
         cmakelists = cmakelists,
-        **kwargs)
+        env = hermetic_python_env(),
+        **kwargs
+    )

@@ -4,10 +4,15 @@
 #include <utility>
 #include <vector>
 
+#include "drake/common/default_scalars.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
+#include "drake/common/drake_deprecated.h"
+#include "drake/common/drake_throw.h"
+#include "drake/common/value.h"
 #include "drake/systems/framework/basic_vector.h"
-#include "drake/systems/framework/value.h"
+#include "drake/systems/framework/framework_common.h"
+#include "drake/systems/framework/scalar_conversion_traits.h"
 
 namespace drake {
 namespace systems {
@@ -34,7 +39,7 @@ class DiscreteValues {
   // DiscreteValues is not copyable or moveable.
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(DiscreteValues)
 
-  /// Constructs an empty %DiscreteValues.
+  /// Constructs an empty %DiscreteValues object containing no groups.
   DiscreteValues() {}
 
   /// Constructs a %DiscreteValues that does not own the underlying @p data.
@@ -63,10 +68,21 @@ class DiscreteValues {
   /// Constructs a one-group %DiscreteValues object that owns a single @p datum
   /// vector which may not be null.
   explicit DiscreteValues(std::unique_ptr<BasicVector<T>> datum) {
-    if (datum == nullptr)
-      throw std::logic_error("DiscreteValues: null groups not allowed");
+    AppendGroup(std::move(datum));
+  }
+
+  /// Adds an additional group that owns the given @p datum, which must be
+  /// non-null. Returns the assigned group number, counting up from 0 for the
+  /// first group.
+  int AppendGroup(std::unique_ptr<BasicVector<T>> datum) {
+    if (datum == nullptr) {
+      throw std::logic_error(
+          "DiscreteValues::AppendGroup(): null groups not allowed");
+    }
+    const int group_num = static_cast<int>(data_.size());
     data_.push_back(datum.get());
     owned_data_.push_back(std::move(datum));
+    return group_num;
   }
 
   virtual ~DiscreteValues() {}
@@ -130,47 +146,59 @@ class DiscreteValues {
     return *data_[index];
   }
 
-  /// Writes the values from @p other into this DiscreteValues, possibly
-  /// writing through to unowned data. Asserts if the dimensions don't match.
-  void CopyFrom(const DiscreteValues<T>& other) { SetFromGeneric(other); }
+  DRAKE_DEPRECATED("2019-06-01",
+      "Use SetFrom instead of CopyFrom.")
+  void CopyFrom(const DiscreteValues<T>& other) { SetFrom(other); }
 
   /// Resets the values in this DiscreteValues from the values in @p other,
   /// possibly writing through to unowned data. Asserts if the dimensions don't
   /// match.
-  void SetFrom(const DiscreteValues<double>& other) { SetFromGeneric(other); }
-
-  /// Returns a deep copy of all the data in this DiscreteValues. The clone
-  /// will own its own data. This is true regardless of whether the values being
-  /// cloned had ownership of its data or not.
-  // TODO(sherm1) This slices DiagramDiscreteVariables and needs to be reworked.
-  std::unique_ptr<DiscreteValues> Clone() const {
-    std::vector<std::unique_ptr<BasicVector<T>>> cloned_data;
-    cloned_data.reserve(data_.size());
-    for (const BasicVector<T>* datum : data_) {
-      cloned_data.push_back(datum->Clone());
+  template <typename U>
+  void SetFrom(const DiscreteValues<U>& other) {
+    DRAKE_THROW_UNLESS(num_groups() == other.num_groups());
+    for (int i = 0; i < num_groups(); i++) {
+      DRAKE_THROW_UNLESS(data_[i] != nullptr);
+      data_[i]->set_value(
+          other.get_vector(i).get_value().unaryExpr(
+              scalar_conversion::ValueConverter<T, U>{}));
     }
-    return std::make_unique<DiscreteValues>(std::move(cloned_data));
+  }
+
+  /// Creates a deep copy of this object with the same substructure but with all
+  /// data owned by the copy. That is, if the original was a
+  /// DiagramDiscreteValues object that maintains a tree of substates, the clone
+  /// will not include any references to the original substates and is thus
+  /// decoupled from the Context containing the original. The concrete type of
+  /// the BasicVector underlying each leaf DiscreteValue is preserved.
+  std::unique_ptr<DiscreteValues<T>> Clone() const {
+    return std::unique_ptr<DiscreteValues<T>>(DoClone());
   }
 
  private:
+  // DiagramDiscreteValues must override this to maintain the necessary
+  // internal substructure, and to perform a deep copy so that the result
+  // owns all its own data. The default implementation here requires that this
+  // is a leaf DiscreteValues object so that we need only clone BasicVectors.
+  virtual std::unique_ptr<DiscreteValues<T>> DoClone() const {
+    std::vector<std::unique_ptr<BasicVector<T>>> cloned_data;
+    // Make deep copies regardless of previous ownership.
+    cloned_data.reserve(data_.size());
+    for (const BasicVector<T>* datum : data_)
+      cloned_data.push_back(datum->Clone());
+    return std::make_unique<DiscreteValues<T>>(std::move(cloned_data));
+  }
+
   // Pointers to the data comprising the values. If the data is owned, these
   // pointers are equal to the pointers in owned_data_.
   std::vector<BasicVector<T>*> data_;
   // Owned pointers to the data comprising the values. The only purpose of these
-  // pointers is to maintain ownership. They may be populated at construction
-  // time, and are never accessed thereafter.
+  // pointers is to maintain ownership in leaf DiscreteValues. They may be
+  // populated at construction time, and are never accessed thereafter.
   std::vector<std::unique_ptr<BasicVector<T>>> owned_data_;
-
-  template <typename U>
-  void SetFromGeneric(const DiscreteValues<U>& other) {
-    DRAKE_ASSERT(num_groups() == other.num_groups());
-    for (int i = 0; i < num_groups(); i++) {
-      DRAKE_ASSERT(data_[i] != nullptr);
-      data_[i]->set_value(
-          other.get_vector(i).get_value().template cast<T>());
-    }
-  }
 };
+
+DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
+    class ::drake::systems::DiscreteValues)
 
 }  // namespace systems
 }  // namespace drake

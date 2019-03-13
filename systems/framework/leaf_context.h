@@ -2,15 +2,15 @@
 
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "drake/common/drake_copyable.h"
+#include "drake/common/default_scalars.h"
 #include "drake/systems/framework/basic_vector.h"
 #include "drake/systems/framework/cache.h"
 #include "drake/systems/framework/context.h"
-#include "drake/systems/framework/input_port_evaluator_interface.h"
-#include "drake/systems/framework/input_port_value.h"
+#include "drake/systems/framework/fixed_input_port_value.h"
 #include "drake/systems/framework/parameters.h"
 #include "drake/systems/framework/state.h"
 #include "drake/systems/framework/vector_base.h"
@@ -18,101 +18,59 @@
 namespace drake {
 namespace systems {
 
-/// %LeafContext is a container for all of the data necessary to uniquely
-/// determine the computations performed by a leaf System. Specifically, a
-/// %LeafContext contains and owns the State, and also contains (but does not
-/// own) pointers to the value sources for Inputs, as well as the simulation
-/// time and the cache.
-///
-/// @tparam T The mathematical type of the context, which must be a valid Eigen
-///           scalar.
-// TODO(david-german-tri): Manage cache invalidation.
+/** %LeafContext contains all prerequisite data necessary to uniquely determine
+the results of computations performed by the associated LeafSystem.
+@see Context for more information.
+
+@tparam T The mathematical type of the context, which must be a valid Eigen
+          scalar. */
 template <typename T>
 class LeafContext : public Context<T> {
  public:
-  // LeafContext objects are neither copyable nor moveable.
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(LeafContext)
+  /// @name  Does not allow copy, move, or assignment.
+  //@{
+  // Copy constructor is protected for use in implementing Clone().
+  LeafContext(LeafContext&&) = delete;
+  LeafContext& operator=(const LeafContext&) = delete;
+  LeafContext& operator=(LeafContext&&) = delete;
+  //@}
 
   LeafContext()
-      : state_(std::make_unique<State<T>>()),
-        parameters_(std::make_unique<Parameters<T>>()) {}
+      : state_(std::make_unique<State<T>>()) {}
   ~LeafContext() override {}
 
-  /// Removes all the input ports, and deregisters them from the output ports
-  /// on which they depend.
-  void ClearInputPorts() { input_values_.clear(); }
-
-  /// Clears the input ports and allocates @p n new input ports, not connected
-  /// to anything.
-  void SetNumInputPorts(int n) {
-    ClearInputPorts();
-    input_values_.resize(n);
-  }
-
-  int get_num_input_ports() const override {
-    return static_cast<int>(input_values_.size());
-  }
-
-  const State<T>& get_state() const final {
-    DRAKE_ASSERT(state_ != nullptr);
-    return *state_;
-  }
-
-  State<T>& get_mutable_state() final {
-    DRAKE_ASSERT(state_ != nullptr);
-    return *state_.get();
-  }
-
-  // =========================================================================
-  // Accessors and Mutators for Parameters.
-
-  /// Sets the parameters to @p params, deleting whatever was there before.
-  void set_parameters(std::unique_ptr<Parameters<T>> params) {
-    parameters_ = std::move(params);
-  }
-
-  /// Returns the entire Parameters object.
-  const Parameters<T>& get_parameters() const final {
-    return *parameters_;
-  }
-
-  /// Returns the entire Parameters object.
-  Parameters<T>& get_mutable_parameters() final {
-    return *parameters_;
-  }
+#ifndef DRAKE_DOXYGEN_CXX
+  // Temporarily promoting these to public so that LeafSystem and testing code
+  // can construct a LeafContext with state & parameters. Users should never
+  // call these because state & parameters should not be resized once allocated
+  // (or at least should be done under Framework control so that dependency
+  // tracking can be correctly revised).
+  // TODO(sherm1) Make these inaccessible to users. See discussion in PR #9029.
+  using Context<T>::init_continuous_state;
+  using Context<T>::init_discrete_state;
+  using Context<T>::init_abstract_state;
+  using Context<T>::init_parameters;
+#endif
 
  protected:
-  /// The caller owns the returned memory.
-  Context<T>* DoClone() const override {
-    LeafContext<T>* clone = new LeafContext<T>();
-
+  /// Protected copy constructor takes care of the local data members and
+  /// all base class members, but doesn't update base class pointers so is
+  /// not a complete copy.
+  LeafContext(const LeafContext& source) : Context<T>(source) {
     // Make a deep copy of the state.
-    clone->state_ = this->CloneState();
+    state_ = source.CloneState();
 
-    // Make deep copies of the parameters.
-    clone->set_parameters(parameters_->Clone());
-
-    // Make deep copies of the inputs into FreestandingInputPortValues.
-    // TODO(david-german-tri): Preserve version numbers as well.
-    for (const auto& port : this->input_values_) {
-      if (port == nullptr) {
-        clone->input_values_.emplace_back(nullptr);
-      } else {
-        clone->input_values_.emplace_back(new FreestandingInputPortValue(
-            port->template get_abstract_data()->Clone()));
-      }
-    }
-
-    // Make deep copies of everything else using the default copy constructors.
-    *clone->get_mutable_step_info() = this->get_step_info();
-    clone->set_accuracy(this->get_accuracy());
-    clone->cache_ = this->cache_;
-    return clone;
+    // Everything else was handled by the Context<T> copy constructor.
   }
 
-  /// The caller owns the returned memory.
-  State<T>* DoCloneState() const override {
-    State<T>* clone = new State<T>();
+  /// Derived classes should reimplement and replace this; don't recursively
+  /// invoke it.
+  std::unique_ptr<ContextBase> DoCloneWithoutPointers() const override {
+    return std::unique_ptr<ContextBase>(new LeafContext<T>(*this));
+  }
+
+  std::unique_ptr<State<T>> DoCloneState() const override {
+    auto clone = std::make_unique<State<T>>();
 
     // Make a deep copy of the continuous state using BasicVector::Clone().
     const ContinuousState<T>& xc = this->get_continuous_state();
@@ -125,38 +83,91 @@ class LeafContext : public Context<T> {
         xc_vector.Clone(), num_q, num_v, num_z));
 
     // Make deep copies of the discrete and abstract states.
-    clone->set_discrete_state(get_state().get_discrete_state().Clone());
-    clone->set_abstract_state(get_state().get_abstract_state().Clone());
+    clone->set_discrete_state(state_->get_discrete_state().Clone());
+    clone->set_abstract_state(state_->get_abstract_state().Clone());
 
     return clone;
   }
 
-  const InputPortValue* GetInputPortValue(int index) const override {
-    DRAKE_ASSERT(index >= 0 && index < get_num_input_ports());
-    return input_values_[index].get();
-  }
-
  private:
-  void SetInputPortValue(int index,
-                         std::unique_ptr<InputPortValue> port) final {
-    DRAKE_DEMAND(index >= 0 && index < get_num_input_ports());
-    input_values_[index] = std::move(port);
+  friend class LeafContextTest;
+  using ContextBase::AddInputPort;    // For LeafContextTest.
+  using ContextBase::AddOutputPort;
+  using ContextBase::AddDiscreteStateTicket;
+  using ContextBase::AddAbstractStateTicket;
+  using ContextBase::AddNumericParameterTicket;
+  using ContextBase::AddAbstractParameterTicket;
+
+  const State<T>& do_access_state() const final {
+    DRAKE_ASSERT(state_ != nullptr);
+    return *state_;
   }
 
-  // The external inputs to the System.
-  std::vector<std::unique_ptr<InputPortValue>> input_values_;
+  State<T>& do_access_mutable_state() final {
+    DRAKE_ASSERT(state_ != nullptr);
+    return *state_;
+  }
 
-  // The internal state of the System.
+  /// Returns a partial textual description of the Context, intended to be
+  /// human-readable.  It is not guaranteed to be unambiguous nor complete.
+  std::string do_to_string() const final {
+    std::ostringstream os;
+
+    os << this->GetSystemPathname() << " Context\n";
+    os << std::string(this->GetSystemPathname().size() + 9, '-') << "\n";
+    os << "Time: " << this->get_time() << "\n";
+
+    if (this->get_continuous_state().size() ||
+        this->get_num_discrete_state_groups() ||
+        this->get_num_abstract_states()) {
+      os << "States:\n";
+      if (this->get_continuous_state().size()) {
+        os << "  " << this->get_continuous_state().size()
+           << " continuous states\n";
+        os << "    " << this->get_continuous_state_vector() << "\n";
+      }
+      if (this->get_num_discrete_state_groups()) {
+        os << "  " << this->get_num_discrete_state_groups()
+           << " discrete state groups with\n";
+        for (int i = 0; i < this->get_num_discrete_state_groups(); i++) {
+          os << "     " << this->get_discrete_state(i).size() << " states\n";
+          os << "       " << this->get_discrete_state(i) << "\n";
+        }
+      }
+      if (this->get_num_abstract_states()) {
+        os << "  " << this->get_num_abstract_states() << " abstract states\n";
+      }
+      os << "\n";
+    }
+
+    if (this->num_numeric_parameter_groups() ||
+        this->num_abstract_parameters()) {
+      os << "Parameters:\n";
+      if (this->num_numeric_parameter_groups()) {
+        os << "  " << this->num_numeric_parameter_groups()
+           << " numeric parameter groups";
+        os << " with\n";
+        for (int i = 0; i < this->num_numeric_parameter_groups(); i++) {
+          os << "     " << this->get_numeric_parameter(i).size()
+             << " parameters\n";
+          os << "       " << this->get_numeric_parameter(i) << "\n";
+        }
+      }
+      if (this->num_abstract_parameters()) {
+        os << "  " << this->num_abstract_parameters()
+           << " abstract parameters\n";
+      }
+    }
+    return os.str();
+  }
+
+
+  // The state values (x) for this LeafContext; this is never null.
   std::unique_ptr<State<T>> state_;
-
-  // The parameters of the system.
-  std::unique_ptr<Parameters<T>> parameters_;
-
-  // The cache. The System may insert arbitrary key-value pairs, and configure
-  // invalidation on a per-entry basis.
-  // TODO(sherm1) This is non-functional here. Fix that!
-  mutable Cache cache_;
 };
 
 }  // namespace systems
 }  // namespace drake
+
+DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
+    class ::drake::systems::LeafContext)

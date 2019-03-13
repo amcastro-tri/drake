@@ -1,7 +1,5 @@
 # -*- python -*-
 
-load("//tools/skylark:6996.bzl", "adjust_labels_for_drake_hoist")
-
 MainClassInfo = provider()
 
 # Generate a launcher file to run installed java binaries
@@ -12,8 +10,8 @@ def _drake_java_binary_install_launcher_impl(ctx):
             main_class = ctx.attr.main_class,
             classpath = classpath,
             filename = ctx.attr.filename,
-            jvm_flags = ctx.attr.jvm_flags
-        )
+            jvm_flags = ctx.attr.jvm_flags,
+        ),
     ]
 
 _drake_java_binary_install_launcher = rule(
@@ -35,7 +33,6 @@ _drake_java_binary_install_launcher = rule(
 def drake_java_binary(
         name,
         main_class,
-        runtime_deps = [],
         **kwargs):
     """Creates a rule to declare a java binary and a MainClassInfo Provider
 
@@ -49,18 +46,20 @@ def drake_java_binary(
     name of the java binary".
     """
     vkwargs = {
-        key: value for key, value in kwargs.items()
+        key: value
+        for key, value in kwargs.items()
         if key == "visibility" or key == "jvm_flags"
     }
     native.java_binary(
         name = name,
         main_class = main_class,
-        runtime_deps = adjust_labels_for_drake_hoist(runtime_deps),
-        **kwargs)
+        **kwargs
+    )
     launcher_name = name + "-launcher"
     _drake_java_binary_install_launcher(
         name = launcher_name,
         main_class = main_class,
         target = ":" + name,
         filename = launcher_name + ".sh",
-        **vkwargs)
+        **vkwargs
+    )

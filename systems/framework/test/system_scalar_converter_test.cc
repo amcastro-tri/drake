@@ -49,7 +49,7 @@ class NonSymbolicSystem : public LeafSystem<T> {
     this->DeclareVectorOutputPort(
         BasicVector<T>(1),
         [this](const Context<T>& context, BasicVector<T>* output) {
-          const BasicVector<T>& input = *(this->EvalVectorInput(context, 0));
+          const auto& input = this->get_input_port(0).Eval(context);
           (*output)[0] = test::copysign_int_to_non_symbolic_scalar(
               this->magic(), input[0]);
         });
@@ -144,6 +144,13 @@ void TestConversionFail() {
 
   // Confirm that nothing came out.
   EXPECT_TRUE(converted == nullptr);
+}
+
+GTEST_TEST(SystemScalarConverterTest, Empty) {
+  const SystemScalarConverter dut1;
+  const SystemScalarConverter dut2(SystemTypeTag<AnyToAnySystem>{});
+  EXPECT_TRUE(dut1.empty());
+  EXPECT_FALSE(dut2.empty());
 }
 
 GTEST_TEST(SystemScalarConverterTest, DefaualtConstructor) {

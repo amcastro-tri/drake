@@ -8,9 +8,9 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
+#include "drake/common/drake_deprecated.h"
 #include "drake/common/symbolic.h"
 #include "drake/common/trajectories/piecewise_polynomial.h"
-#include "drake/common/trajectories/piecewise_polynomial_trajectory.h"
 #include "drake/solvers/mathematical_program.h"
 #include "drake/systems/framework/context.h"
 #include "drake/systems/framework/system.h"
@@ -107,7 +107,8 @@ class MultipleShooting : public solvers::MathematicalProgram {
   /// index @p index.
   Eigen::VectorBlock<const solvers::VectorXDecisionVariable> input(
       int index) const {
-    DRAKE_DEMAND(index >= 0 && index < N_);
+    DRAKE_DEMAND(index >= 0);
+    DRAKE_DEMAND(index < N_);
     return u_vars_.segment(index * num_inputs_, num_inputs_);
   }
 
@@ -137,7 +138,7 @@ class MultipleShooting : public solvers::MathematicalProgram {
       // For now, non-linear constraints can be added by users by simply adding
       // the constraint manually for each
       // time index in a loop.
-      AddLinearConstraint(SubstitutePlaceholderVariables(f, i));
+      AddConstraint(SubstitutePlaceholderVariables(f, i));
     }
   }
 
@@ -178,10 +179,49 @@ class MultipleShooting : public solvers::MathematicalProgram {
   /// Note: Derived classes will need to type
   ///    using MultipleShooting::AddFinalCost;
   /// to "unhide" this method.
-  void AddFinalCost(const Eigen::Ref<const MatrixX<symbolic::Expression>>& e) {
-    DRAKE_DEMAND(e.rows() == 1 && e.cols() == 1);
-    AddFinalCost(e(0, 0));
+  void AddFinalCost(
+      const Eigen::Ref<const MatrixX<symbolic::Expression>>& matrix) {
+    DRAKE_DEMAND(matrix.rows() == 1 && matrix.cols() == 1);
+    AddFinalCost(matrix(0, 0));
   }
+
+  typedef std::function<
+      void(const Eigen::Ref<const Eigen::VectorXd>& sample_times,
+           const Eigen::Ref<const Eigen::MatrixXd>& values)> TrajectoryCallback;
+
+  /**
+   * Adds a callback method to visualize intermediate results of the
+   * trajectory optimization.  The callback should be of the form
+   *   MyVisualization(sample_times, values),
+   * where breaks is a N-by-1 VectorXd of sample times, and values is a
+   * num_inputs-by-N MatrixXd representing the current (intermediate) value of
+   * the input trajectory at the break points in each column.
+   *
+   * Note: Just like other costs/constraints, not all solvers support callbacks.
+   * Adding a callback here will force MathematicalProgram::Solve to select a
+   * solver that support callbacks.  For instance, adding a visualization
+   * callback to a quadratic programming problem may result in using a nonlinear
+   * programming solver as the default solver.
+   */
+  solvers::Binding<solvers::VisualizationCallback>
+  AddInputTrajectoryCallback(const TrajectoryCallback& callback);
+
+  /**
+   * Adds a callback method to visualize intermediate results of the
+   * trajectory optimization.  The callback should be of the form
+   *   MyVisualization(sample_times, values),
+   * where sample_times is a N-by-1 VectorXd of sample times, and values is a
+   * num_states-by-N MatrixXd representing the current (intermediate) value of
+   * the state trajectory at the break points in each column.
+   *
+   * Note: Just like other costs/constraints, not all solvers support callbacks.
+   * Adding a callback here will force MathematicalProgram::Solve to select a
+   * solver that support callbacks.  For instance, adding a visualization
+   * callback to a quadratic programming problem may result in using a nonlinear
+   * programming solver as the default solver.
+   */
+  solvers::Binding<solvers::VisualizationCallback>
+  AddStateTrajectoryCallback(const TrajectoryCallback& callback);
 
   /// Set the initial guess for the trajectory decision variables.
   ///
@@ -197,34 +237,104 @@ class MultipleShooting : public solvers::MathematicalProgram {
   ///
   /// If time steps are decision variables, then the initial guess for
   /// the time steps are evenly distributed to match the duration of the
-  /// @p traj_init_u and @p traj_init_x. Throws std::runtime_error if
-  /// @p traj_init_u and @p traj_init_x are both empty, or if
-  /// @p traj_init_u and @p traj_init_x are both non-empty, and have
-  /// different start and end times.
+  /// @p traj_init_u and @p traj_init_x.
+  /// @throws std::runtime_error if @p traj_init_u and @p traj_init_x are both
+  /// empty, or if @p traj_init_u and @p traj_init_x are both non-empty, and
+  /// have different start and end times.
   // TODO(russt): Consider taking the actual breakpoints from
   // traj_init_{u,x} iff they match the number of sample times.
-  void SetInitialTrajectory(const PiecewisePolynomial<double>& traj_init_u,
-                            const PiecewisePolynomial<double>& traj_init_x);
+  void SetInitialTrajectory(
+      const trajectories::PiecewisePolynomial<double>& traj_init_u,
+      const trajectories::PiecewisePolynomial<double>& traj_init_x);
+
+  /// Returns a vector containing the elapsed time at each knot point.
+  Eigen::VectorXd GetSampleTimes(
+      const Eigen::Ref<const Eigen::VectorXd>& h_var_values) const;
 
   /// Returns a vector containing the elapsed time at each knot point at the
   /// solution.
-  Eigen::VectorXd GetSampleTimes() const;
+  DRAKE_DEPRECATED("2019-06-01",
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.")
+  Eigen::VectorXd GetSampleTimes() const {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    return GetSampleTimes(this->GetSolution(h_vars_));
+#pragma GCC diagnostic pop
+  }
+
+  Eigen::VectorXd GetSampleTimes(
+      const solvers::MathematicalProgramResult& result) const {
+    return GetSampleTimes(result.GetSolution(h_vars_));
+  }
 
   /// Returns a matrix containing the input values (arranged in columns) at
   /// each knot point at the solution.
+  DRAKE_DEPRECATED("2019-06-01",
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.")
   Eigen::MatrixXd GetInputSamples() const;
+
+  /// Returns a matrix containing the input values (arranged in columns) at
+  /// each knot point at the solution.
+  Eigen::MatrixXd GetInputSamples(
+      const solvers::MathematicalProgramResult& result) const;
 
   /// Returns a matrix containing the state values (arranged in columns) at
   /// each knot point at the solution.
+  DRAKE_DEPRECATED("2019-06-01",
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.")
   Eigen::MatrixXd GetStateSamples() const;
 
-  /// Gets the input trajectory at the solution as a
-  /// %PiecewisePolynomialTrajectory%.
-  virtual PiecewisePolynomialTrajectory ReconstructInputTrajectory() const = 0;
+  /// Returns a matrix containing the state values (arranged in columns) at
+  /// each knot point at the solution.
+  Eigen::MatrixXd GetStateSamples(
+      const solvers::MathematicalProgramResult& result) const;
 
-  /// Gets the state trajectory at the solution as a
-  /// %PiecewisePolynomialTrajectory%.
-  virtual PiecewisePolynomialTrajectory ReconstructStateTrajectory() const = 0;
+  /// Get the input trajectory at the solution as a PiecewisePolynomial.  The
+  /// order of the trajectory will be determined by the integrator used in
+  /// the dynamic constraints.  Requires that the system has at least one input
+  /// port.
+  DRAKE_DEPRECATED("2019-06-01",
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.")
+  virtual trajectories::PiecewisePolynomial<double>
+  ReconstructInputTrajectory() const = 0;
+
+  virtual trajectories::PiecewisePolynomial<double> ReconstructInputTrajectory(
+      const solvers::MathematicalProgramResult&) const {
+    // TODO(hongkai.dai): make this function an abstract virtual function, when
+    // we deprecate ReconstructInputTrajectory(). Currently I throw this error
+    // so that the derived classes in Drake can override it, and we do not break
+    // the derived class outside of drake master.
+    throw std::runtime_error(
+        "The derived class has to override this function.");
+  }
+
+  /// Get the state trajectory at the solution as a PiecewisePolynomial.  The
+  /// order of the trajectory will be determined by the integrator used in
+  /// the dynamic constraints.
+  DRAKE_DEPRECATED("2019-06-01",
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.")
+  virtual trajectories::PiecewisePolynomial<double>
+  ReconstructStateTrajectory() const = 0;
+
+  virtual trajectories::PiecewisePolynomial<double> ReconstructStateTrajectory(
+      const solvers::MathematicalProgramResult&) const {
+    // TODO(hongkai.dai): make this function an abstract virtual function, when
+    // we deprecate ReconstructStateTrajectory(). Currently I throw this error
+    // so that the derived classes in Drake can override it, and we do not break
+    // the derived class outside of drake master.
+    throw std::runtime_error(
+        "The derived class has to override this function.");
+  }
 
   double fixed_timestep() const {
     DRAKE_THROW_UNLESS(!timesteps_are_decision_variables_);
@@ -292,9 +402,8 @@ class MultipleShooting : public solvers::MathematicalProgram {
   const double fixed_timestep_{0.0};
 
   solvers::VectorXDecisionVariable h_vars_;  // Time deltas between each
-  // input/state sample or the
-  // empty vector (if timesteps
-  // are fixed).
+                                             // input/state sample or the empty
+                                             // vector (if timesteps are fixed).
   const solvers::VectorXDecisionVariable x_vars_;
   const solvers::VectorXDecisionVariable u_vars_;
 

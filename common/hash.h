@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "drake/common/drake_assert.h"
+#include "drake/common/drake_optional.h"
 #include "drake/common/drake_throw.h"
 
 /// @defgroup hash_append hash_append generic hashing
@@ -44,6 +45,7 @@
 /// @endcode
 ///
 /// Checklist for reviewing a `hash_append` implementation:
+///
 /// - The function cites `@ref hash_append` in its Doxygen comment.
 /// - The function is marked `noexcept`.
 ///
@@ -125,6 +127,29 @@ void hash_append(
   hash_append(hasher, item.second);
 }
 
+/// Provides @ref hash_append for drake::optional.
+///
+/// Note that `std::hash<std::optional<T>>` provides the peculiar invariant
+/// that the hash of an `optional` bearing a value `v` shall evaluate to the
+/// same hash as that of the value `v` itself.  Hash operations implemented
+/// with this `hash_append` do *not* provide that invariant.
+//
+// NB:  In general, implementations of `hash_append` for drake types belong
+//      with the definitions of their respective drake types, not here.
+//
+//      However, since `drake::optional` is more or less an alias for an
+//      STL type, and in particular since `drake_optional.h` is included
+//      in the ":essential" library, and `hash.h` is not, this is the
+//      better location for this definition.
+template <class HashAlgorithm, class T>
+void hash_append(
+    HashAlgorithm& hasher, const drake::optional<T>& item) noexcept {
+  if (item) {
+    hash_append(hasher, *item);
+  }
+  hash_append(hasher, item.has_value());
+};
+
 /// Provides @ref hash_append for a range, as given by two iterators.
 template <class HashAlgorithm, class Iter>
 void hash_append_range(
@@ -187,34 +212,42 @@ struct uhash {
   }
 };
 
-namespace detail {
+namespace internal {
 /// The FNV1a hash algorithm, used for @ref hash_append.
 /// https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
 class FNV1aHasher {
  public:
   using result_type = size_t;
 
+  /// Feeds a block of memory into this hash.
   void operator()(const void* data, size_t length) noexcept {
     const uint8_t* const begin = static_cast<const uint8_t*>(data);
     const uint8_t* const end = begin + length;
     for (const uint8_t* iter = begin; iter < end; ++iter) {
-      hash_ = (hash_ ^ *iter) * 1099511628211u;
+      hash_ = (hash_ ^ *iter) * kFnvPrime;
     }
   }
 
-  explicit operator size_t() noexcept {
+  /// Feeds a single byte into this hash.
+  constexpr void add_byte(uint8_t byte) noexcept {
+    hash_ = (hash_ ^ byte) * kFnvPrime;
+  }
+
+  /// Returns the hash.
+  explicit constexpr operator size_t() noexcept {
     return hash_;
   }
 
  private:
   static_assert(sizeof(result_type) == (64 / 8), "We require a 64-bit size_t");
   result_type hash_{0xcbf29ce484222325u};
+  static constexpr size_t kFnvPrime = 1099511628211u;
 };
-}  // namespace detail
+}  // namespace internal
 
 /// The default HashAlgorithm concept implementation across Drake.  This is
 /// guaranteed to have a result_type of size_t to be compatible with std::hash.
-using DefaultHasher = detail::FNV1aHasher;
+using DefaultHasher = internal::FNV1aHasher;
 
 /// The default hashing functor, akin to std::hash.
 using DefaultHash = drake::uhash<DefaultHasher>;

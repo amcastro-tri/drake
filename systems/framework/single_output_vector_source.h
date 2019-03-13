@@ -1,7 +1,9 @@
 #pragma once
 
 #include <memory>
+#include <utility>
 
+#include "drake/common/default_scalars.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
@@ -29,7 +31,7 @@ class SingleOutputVectorSource : public LeafSystem<T> {
   /// vector to the single-argument constructor of `const BasicVector<T>&`.
   SingleOutputVectorSource() = delete;
 
-  ~SingleOutputVectorSource() override = default;
+  ~SingleOutputVectorSource() override;
 
   /// Returns the sole output port.
   const OutputPort<T>& get_output_port() const {
@@ -39,20 +41,43 @@ class SingleOutputVectorSource : public LeafSystem<T> {
   // Don't use the indexed get_output_port when calling this system directly.
   void get_output_port(int) = delete;
 
-  // Confirms the single-output invariant when allocating the context.
-  std::unique_ptr<Context<T>> AllocateContext() const override {
-    DRAKE_DEMAND(this->get_num_input_ports() == 0);
-    DRAKE_DEMAND(this->get_num_output_ports() == 1);
-    return LeafSystem<T>::AllocateContext();
-  }
-
  protected:
   /// Creates a source with the given sole output port configuration.
+  ///
+  /// @note Objects created using this constructor overload do not support
+  /// system scalar conversion.  See @ref system_scalar_conversion.  Use a
+  /// different constructor overload if such conversion is desired.
   explicit SingleOutputVectorSource(int size)
-      : SingleOutputVectorSource(BasicVector<T>(size)) {}
+      : SingleOutputVectorSource({}, size) {}
 
   /// Creates a source with output type and dimension of the @p model_vector.
-  explicit SingleOutputVectorSource(const BasicVector<T>& model_vector) {
+  ///
+  /// @note Objects created using this constructor overload do not support
+  /// system scalar conversion.  See @ref system_scalar_conversion.  Use a
+  /// different constructor overload if such conversion is desired.
+  explicit SingleOutputVectorSource(const BasicVector<T>& model_vector)
+      : SingleOutputVectorSource({}, model_vector) {}
+
+  /// Creates a source with the given sole output port configuration.
+  ///
+  /// @note objects created using this constructor may support system scalar
+  /// conversion. See @ref system_scalar_conversion.
+  ///
+  /// @param converter is per LeafSystem::LeafSystem constructor documentation;
+  /// see that function documentation for details.
+  SingleOutputVectorSource(SystemScalarConverter converter, int size)
+      : SingleOutputVectorSource(std::move(converter), BasicVector<T>(size)) {}
+
+  /// Creates a source with output type and dimension of the @p model_vector.
+  ///
+  /// @note objects created using this constructor may support system scalar
+  /// conversion. See @ref system_scalar_conversion.
+  ///
+  /// @param converter is per LeafSystem::LeafSystem constructor documentation;
+  /// see that function documentation for details.
+  SingleOutputVectorSource(
+      SystemScalarConverter converter, const BasicVector<T>& model_vector)
+      : LeafSystem<T>(std::move(converter)) {
     this->DeclareVectorOutputPort(
         model_vector,
         &SingleOutputVectorSource<T>::CalcVectorOutput);
@@ -67,6 +92,12 @@ class SingleOutputVectorSource : public LeafSystem<T> {
       Eigen::VectorBlock<VectorX<T>>* output) const = 0;
 
  private:
+  // Confirms the single-output invariant when allocating the context.
+  void DoValidateAllocatedLeafContext(const LeafContext<T>&) const final {
+    DRAKE_DEMAND(this->get_num_input_ports() == 0);
+    DRAKE_DEMAND(this->get_num_output_ports() == 1);
+  }
+
   // Converts the parameters to Eigen::VectorBlock form, then delegates to
   // DoCalcVectorOutput().
   void CalcVectorOutput(const Context<T>& context,
@@ -76,5 +107,14 @@ class SingleOutputVectorSource : public LeafSystem<T> {
   }
 };
 
+// Workaround for https://gcc.gnu.org/bugzilla/show_bug.cgi?id=57728 which
+// should be moved back into the class definition once we no longer need to
+// support GCC versions prior to 6.3.
+template <typename T>
+SingleOutputVectorSource<T>::~SingleOutputVectorSource() = default;
+
 }  // namespace systems
 }  // namespace drake
+
+DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
+    class ::drake::systems::SingleOutputVectorSource)

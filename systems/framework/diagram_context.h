@@ -4,16 +4,17 @@
 #include <memory>
 #include <set>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "drake/common/default_scalars.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/systems/framework/basic_vector.h"
 #include "drake/systems/framework/context.h"
 #include "drake/systems/framework/diagram_continuous_state.h"
-#include "drake/systems/framework/input_port_evaluator_interface.h"
-#include "drake/systems/framework/input_port_value.h"
-#include "drake/systems/framework/output_port_value.h"
+#include "drake/systems/framework/fixed_input_port_value.h"
+#include "drake/systems/framework/framework_common.h"
 #include "drake/systems/framework/parameters.h"
 #include "drake/systems/framework/state.h"
 #include "drake/systems/framework/supervector.h"
@@ -21,6 +22,7 @@
 namespace drake {
 namespace systems {
 
+// TODO(sherm1) This should be in its own file.
 /// DiagramState is a State, annotated with pointers to all the mutable
 /// substates that it spans.
 template <typename T>
@@ -106,8 +108,8 @@ class DiagramState : public State<T> {
 
 /// The DiagramContext is a container for all of the data necessary to uniquely
 /// determine the computations performed by a Diagram. Specifically, a
-/// DiagramContext contains contexts and outputs for all the constituent
-/// Systems, wired up as specified by calls to `DiagramContext::Connect`.
+/// DiagramContext contains Context objects for all its constituent Systems.
+/// @see Context for more information.
 ///
 /// In general, users should not need to interact with a DiagramContext
 /// directly. Use the accessors on Diagram instead.
@@ -115,230 +117,278 @@ class DiagramState : public State<T> {
 /// @tparam T The mathematical type of the context, which must be a valid Eigen
 ///           scalar.
 template <typename T>
-class DiagramContext : public Context<T> {
+class DiagramContext final : public Context<T> {
  public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(DiagramContext)
+  /// @name  Does not allow copy, move, or assignment.
+  //@{
+  // Copy constructor is protected for use in implementing Clone().
+  DiagramContext(DiagramContext&&) = delete;
+  DiagramContext& operator=(const DiagramContext&) = delete;
+  DiagramContext& operator=(DiagramContext&&) = delete;
+  //@}
 
-  typedef int SystemIndex;
-  typedef int PortIndex;
-  typedef std::pair<SystemIndex, PortIndex> PortIdentifier;
+  /// Identifies a child subsystem's input port.
+  using InputPortIdentifier = std::pair<SubsystemIndex, InputPortIndex>;
+  /// Identifies a child subsystem's output port.
+  using OutputPortIdentifier = std::pair<SubsystemIndex, OutputPortIndex>;
 
-  /// Constructs a DiagramContext with the given @p num_subsystems, which is
-  /// final: you cannot resize a DiagramContext after construction.
-  explicit DiagramContext(int num_subsystems)
-      : outputs_(num_subsystems), contexts_(num_subsystems),
-        state_(std::make_unique<DiagramState<T>>(num_subsystems)) {}
+  /// Constructs a DiagramContext with the given @p num_subcontexts, which is
+  /// final: you cannot resize a DiagramContext after construction. The
+  /// number and ordering of subcontexts is identical to the number and
+  /// ordering of subsystems in the corresponding Diagram.
+  explicit DiagramContext(int num_subcontexts)
+      : contexts_(num_subcontexts),
+        state_(std::make_unique<DiagramState<T>>(num_subcontexts)) {}
 
   /// Declares a new subsystem in the DiagramContext. Subsystems are identified
   /// by number. If the subsystem has already been declared, aborts.
   ///
   /// User code should not call this method. It is for use during Diagram
   /// context allocation only.
-  void AddSystem(SystemIndex index, std::unique_ptr<Context<T>> context,
-                 std::unique_ptr<SystemOutput<T>> output) {
-    DRAKE_DEMAND(index >= 0 && index < num_subsystems());
+  void AddSystem(SubsystemIndex index, std::unique_ptr<Context<T>> context) {
+    DRAKE_DEMAND(index >= 0 && index < num_subcontexts());
     DRAKE_DEMAND(contexts_[index] == nullptr);
-    DRAKE_DEMAND(outputs_[index] == nullptr);
-    context->set_parent(this);
+    ContextBase::set_parent(context.get(), this);
     contexts_[index] = std::move(context);
-    outputs_[index] = std::move(output);
   }
 
-  /// Declares that a particular input port of a particular subsystem is an
-  /// input to the entire Diagram that allocates this Context. Aborts if the
-  /// subsystem has not been added to the DiagramContext.
+  /// (Internal use only) Declares that a particular input port of a child
+  /// subsystem is an input to the entire Diagram that allocates this Context.
+  /// Sets up tracking of the child port's dependency on the parent
+  /// port. Aborts if the subsystem has not been added to the DiagramContext.
   ///
   /// User code should not call this method. It is for use during Diagram
   /// context allocation only.
-  void ExportInput(const PortIdentifier& id) {
-    const SystemIndex system_index = id.first;
-    DRAKE_DEMAND(contexts_[system_index] != nullptr);
-    input_ids_.emplace_back(id);
+  void SubscribeExportedInputPortToDiagramPort(
+      InputPortIndex input_port_index,
+      const InputPortIdentifier& subsystem_input_port) {
+    // Identify and validate the destination input port.
+    const SubsystemIndex subsystem_index = subsystem_input_port.first;
+    const InputPortIndex subsystem_iport_index = subsystem_input_port.second;
+    Context<T>& subcontext = GetMutableSubsystemContext(subsystem_index);
+    DRAKE_DEMAND(0 <= subsystem_iport_index &&
+                 subsystem_iport_index < subcontext.get_num_input_ports());
+
+    // Get this Diagram's input port that serves as the source.
+    const DependencyTicket iport_ticket =
+        this->input_port_ticket(input_port_index);
+    DependencyTracker& iport_tracker = this->get_mutable_tracker(iport_ticket);
+    const DependencyTicket subcontext_iport_ticket =
+        subcontext.input_port_ticket(subsystem_iport_index);
+    DependencyTracker& subcontext_iport_tracker =
+        subcontext.get_mutable_tracker(subcontext_iport_ticket);
+    subcontext_iport_tracker.SubscribeToPrerequisite(&iport_tracker);
   }
 
-  /// Declares that the output port specified by @p src is connected to the
-  /// input port specified by @p dest.
+  /// (Internal use only) Declares that a particular output port of this
+  /// diagram is simply forwarded from an output port of one of its child
+  /// subsystems. Sets up tracking of the diagram port's dependency on the child
+  /// port. Aborts if the subsystem has not been added to the DiagramContext.
   ///
   /// User code should not call this method. It is for use during Diagram
   /// context allocation only.
-  void Connect(const PortIdentifier& src, const PortIdentifier& dest) {
-    // Identify and validate the source port.
-    SystemIndex src_system_index = src.first;
-    PortIndex src_port_index = src.second;
-    SystemOutput<T>* src_ports = GetSubsystemOutput(src_system_index);
-    DRAKE_DEMAND(src_port_index >= 0);
-    DRAKE_DEMAND(src_port_index < src_ports->get_num_ports());
-    OutputPortValue* output_port_value =
-        src_ports->get_mutable_port_value(src_port_index);
+  void SubscribeDiagramPortToExportedOutputPort(
+      OutputPortIndex output_port_index,
+      const OutputPortIdentifier& subsystem_output_port) {
+    // Identify and validate the source output port.
+    const SubsystemIndex subsystem_index = subsystem_output_port.first;
+    const OutputPortIndex subsystem_oport_index = subsystem_output_port.second;
+    Context<T>& subcontext = GetMutableSubsystemContext(subsystem_index);
+    DRAKE_DEMAND(0 <= subsystem_oport_index &&
+                 subsystem_oport_index < subcontext.get_num_output_ports());
 
-    // Identify and validate the destination port.
-    SystemIndex dest_system_index = dest.first;
-    PortIndex dest_port_index = dest.second;
-    Context<T>& dest_context = GetMutableSubsystemContext(dest_system_index);
-    DRAKE_DEMAND(dest_port_index >= 0);
-    DRAKE_DEMAND(dest_port_index < dest_context.get_num_input_ports());
+    // Get the child subsystem's output port tracker that serves as the source.
+    const DependencyTicket subcontext_oport_ticket =
+        subcontext.output_port_ticket(subsystem_oport_index);
+    DependencyTracker& subcontext_oport_tracker =
+        subcontext.get_mutable_tracker(subcontext_oport_ticket);
 
-    // Construct and install the destination port.
-    auto input_port =
-        std::make_unique<DependentInputPortValue>(output_port_value);
-    Context<T>::SetInputPortValue(&dest_context, dest_port_index,
-                                  std::move(input_port));
+    // Get the diagram's output port tracker that is the destination.
+    const DependencyTicket oport_ticket =
+        this->output_port_ticket(output_port_index);
+    DependencyTracker& oport_tracker = this->get_mutable_tracker(oport_ticket);
 
-    // Remember the graph structure. We need it in DoClone().
-    dependency_graph_[dest] = src;
+    oport_tracker.SubscribeToPrerequisite(&subcontext_oport_tracker);
   }
 
-  /// Generates the state vector for the entire diagram by wrapping the states
-  /// of all the constituent diagrams.
+  /// (Internal use only) Declares that a connection exists between a peer
+  /// output port and input port in this Diagram, and registers the input port's
+  /// dependency tracker with the output port's dependency tracker. By "peer"
+  /// we mean that both ports belong to immediate child subsystems of this
+  /// Diagram (it is also possible for both ports to belong to the same
+  /// subsystem).
   ///
   /// User code should not call this method. It is for use during Diagram
   /// context allocation only.
+  void SubscribeInputPortToOutputPort(const OutputPortIdentifier& output_port,
+                                      const InputPortIdentifier& input_port) {
+    // Identify and validate the source output port.
+    const SubsystemIndex oport_system_index = output_port.first;
+    const OutputPortIndex oport_index = output_port.second;
+    Context<T>& oport_context = GetMutableSubsystemContext(oport_system_index);
+    DRAKE_DEMAND(oport_index >= 0);
+    DRAKE_DEMAND(oport_index < oport_context.get_num_output_ports());
+
+    // Identify and validate the destination input port.
+    const SubsystemIndex iport_system_index = input_port.first;
+    const InputPortIndex iport_index = input_port.second;
+    Context<T>& iport_context = GetMutableSubsystemContext(iport_system_index);
+    DRAKE_DEMAND(iport_index >= 0);
+    DRAKE_DEMAND(iport_index < iport_context.get_num_input_ports());
+
+    // Dig out the dependency trackers for both ports so we can subscribe the
+    // input port tracker to the output port tracker.
+    const DependencyTicket oport_ticket =
+        oport_context.output_port_ticket(oport_index);
+    const DependencyTicket iport_ticket =
+        iport_context.input_port_ticket(iport_index);
+    DependencyTracker& oport_tracker =
+        oport_context.get_mutable_tracker(oport_ticket);
+    DependencyTracker& iport_tracker =
+        iport_context.get_mutable_tracker(iport_ticket);
+    iport_tracker.SubscribeToPrerequisite(&oport_tracker);
+  }
+
+  /// (Internal use only) Makes the diagram state, parameter, and composite
+  /// cache entry trackers subscribe to the corresponding constituent trackers
+  /// in the child subcontexts.
+  // Diagrams don't provide diagram-level tickets for individual
+  // discrete or abstract state or individual numerical or abstract parameters.
+  // That means we need only subscribe the aggregate trackers xd, xa, pn, pa
+  // to their children's xd, xa, pn, pa, resp.
+  void SubscribeDiagramCompositeTrackersToChildrens() {
+    std::vector<internal::BuiltInTicketNumbers> composites{
+        internal::kQTicket,  // Value sources.
+        internal::kVTicket,
+        internal::kZTicket,
+        internal::kXdTicket,
+        internal::kXaTicket,
+        internal::kPnTicket,
+        internal::kPaTicket,
+        internal::kXcdotTicket,  // Cache entries.
+        internal::kPeTicket,
+        internal::kKeTicket,
+        internal::kPcTicket,
+        internal::kPncTicket};
+
+    // Validate the claim above that Diagrams do not have tickets for individual
+    // variables and parameters.
+    DRAKE_DEMAND(!this->owns_any_variables_or_parameters());
+
+    // Collect the diagram trackers for each composite item above.
+    DependencyGraph& graph = this->get_mutable_dependency_graph();
+    std::vector<DependencyTracker*> diagram_trackers;
+    for (auto ticket : composites) {
+      diagram_trackers.push_back(
+          &graph.get_mutable_tracker(DependencyTicket(ticket)));
+    }
+
+    // Subscribe those trackers to the corresponding subcontext trackers.
+    for (auto& subcontext : contexts_) {
+      DependencyGraph& subgraph = subcontext->get_mutable_dependency_graph();
+      for (size_t i = 0; i < composites.size(); ++i) {
+        auto& sub_tracker =
+            subgraph.get_mutable_tracker(DependencyTicket(composites[i]));
+        diagram_trackers[i]->SubscribeToPrerequisite(&sub_tracker);
+      }
+    }
+  }
+
+  /// (Internal use only) Generates the state vector for the entire diagram by
+  /// wrapping the states of all the constituent diagrams.
   void MakeState() {
-    auto state = std::make_unique<DiagramState<T>>(num_subsystems());
-    for (int i = 0; i < num_subsystems(); ++i) {
-      Context<T>* context = contexts_[i].get();
-      state->set_substate(i, &context->get_mutable_state());
+    auto state = std::make_unique<DiagramState<T>>(num_subcontexts());
+    for (SubsystemIndex i(0); i < num_subcontexts(); ++i) {
+      Context<T>& subcontext = *contexts_[i].get();
+      // Using `access` here to avoid sending invalidations.
+      state->set_substate(i, &Context<T>::access_mutable_state(&subcontext));
     }
     state->Finalize();
     state_ = std::move(state);
   }
 
-  /// Generates the parameters for the entire diagram by wrapping the parameters
-  /// of all the constituent Systems. The wrapper simply holds pointers to the
-  /// parameters in the subsystem Contexts.  It does not make a copy, or take
-  /// ownership.
-  ///
-  /// User code should not call this method. It is for use during Diagram
-  /// context allocation only.
+  /// (Internal use only) Generates the parameters for the entire diagram by
+  /// wrapping the parameters of all the constituent Systems. The wrapper simply
+  /// holds pointers to the parameters in the subsystem Contexts. It does not
+  /// make a copy, or take ownership.
   void MakeParameters() {
     std::vector<BasicVector<T>*> numeric_params;
     std::vector<AbstractValue*> abstract_params;
     for (auto& subcontext : contexts_) {
-      Parameters<T>& subparams = subcontext->get_mutable_parameters();
-      for (int i = 0; i < subparams.num_numeric_parameters(); ++i) {
+      // Using `access` here to avoid sending invalidations.
+      Parameters<T>& subparams =
+          Context<T>::access_mutable_parameters(&*subcontext);
+      for (int i = 0; i < subparams.num_numeric_parameter_groups(); ++i) {
         numeric_params.push_back(&subparams.get_mutable_numeric_parameter(i));
       }
       for (int i = 0; i < subparams.num_abstract_parameters(); ++i) {
-        abstract_params.push_back(
-            &subparams.get_mutable_abstract_parameter(i));
+        abstract_params.push_back(&subparams.get_mutable_abstract_parameter(i));
       }
     }
-    parameters_ = std::make_unique<Parameters<T>>();
-    parameters_->set_numeric_parameters(
+    auto params = std::make_unique<Parameters<T>>();
+    params->set_numeric_parameters(
         std::make_unique<DiscreteValues<T>>(numeric_params));
-    parameters_->set_abstract_parameters(
+    params->set_abstract_parameters(
         std::make_unique<AbstractValues>(abstract_params));
+    this->init_parameters(std::move(params));
   }
 
-  /// Returns the output structure for a given constituent system at @p index.
-  /// Aborts if @p index is out of bounds, or if no system has been added to the
-  /// DiagramContext at that index.
-  SystemOutput<T>* GetSubsystemOutput(SystemIndex index) const {
-    DRAKE_DEMAND(index >= 0 && index < num_subsystems());
-    DRAKE_DEMAND(outputs_[index] != nullptr);
-    return outputs_[index].get();
-  }
-
+  // TODO(david-german-tri): Rename to get_subsystem_context.
   /// Returns the context structure for a given constituent system @p index.
   /// Aborts if @p index is out of bounds, or if no system has been added to the
   /// DiagramContext at that index.
-  /// TODO(david-german-tri): Rename to get_subsystem_context.
-  const Context<T>& GetSubsystemContext(SystemIndex index) const {
-    DRAKE_DEMAND(index >= 0 && index < num_subsystems());
+  const Context<T>& GetSubsystemContext(SubsystemIndex index) const {
+    DRAKE_DEMAND(index >= 0 && index < num_subcontexts());
     DRAKE_DEMAND(contexts_[index] != nullptr);
     return *contexts_[index].get();
   }
 
+  // TODO(david-german-tri): Rename to get_mutable_subsystem_context.
   /// Returns the context structure for a given subsystem @p index.
   /// Aborts if @p index is out of bounds, or if no system has been added to the
   /// DiagramContext at that index.
-  /// TODO(david-german-tri): Rename to get_mutable_subsystem_context.
-  Context<T>& GetMutableSubsystemContext(SystemIndex index) {
-    DRAKE_DEMAND(index >= 0 && index < num_subsystems());
+  Context<T>& GetMutableSubsystemContext(SubsystemIndex index) {
+    DRAKE_DEMAND(index >= 0 && index < num_subcontexts());
     DRAKE_DEMAND(contexts_[index] != nullptr);
     return *contexts_[index].get();
   }
 
-  /// Recursively sets the time on this context and all subcontexts.
-  void set_time(const T& time_sec) override {
-    Context<T>::set_time(time_sec);
-    for (auto& subcontext : contexts_) {
-      if (subcontext != nullptr) {
-        subcontext->set_time(time_sec);
-      }
-    }
-  }
-
-  int get_num_input_ports() const override {
-    return static_cast<int>(input_ids_.size());
-  }
-
-  const State<T>& get_state() const final {
-    DRAKE_ASSERT(state_ != nullptr);
-    return *state_;
-  }
-
-  State<T>& get_mutable_state() final {
-    DRAKE_ASSERT(state_ != nullptr);
-    return *state_;
-  }
-
-  const Parameters<T>& get_parameters() const final {
-    return *parameters_;
-  }
-
-  Parameters<T>& get_mutable_parameters() final {
-    return *parameters_;
-  }
-
  protected:
-  /// The caller owns the returned memory.
-  DiagramContext<T>* DoClone() const override {
-    DRAKE_ASSERT(contexts_.size() == outputs_.size());
-    DiagramContext<T>* clone = new DiagramContext(num_subsystems());
-
-    // Clone all the subsystem contexts and outputs.
-    for (int i = 0; i < num_subsystems(); ++i) {
-      DRAKE_DEMAND(contexts_[i] != nullptr);
-      DRAKE_DEMAND(outputs_[i] != nullptr);
-      // When a leaf context is cloned, it will clone the data that currently
-      // appears on each of its input ports into a FreestandingInputPortValue.
-      clone->AddSystem(i, contexts_[i]->Clone(), outputs_[i]->Clone());
+  /// Protected copy constructor takes care of the local data members and
+  /// all base class members, but doesn't update base class pointers so is
+  /// not a complete copy.
+  DiagramContext(const DiagramContext& source)
+      : Context<T>(source),
+        contexts_(source.num_subcontexts()),
+        state_(std::make_unique<DiagramState<T>>(source.num_subcontexts())) {
+    // Clone all the subsystem contexts.
+    for (SubsystemIndex i(0); i < num_subcontexts(); ++i) {
+      DRAKE_DEMAND(source.contexts_[i] != nullptr);
+      AddSystem(i, Context<T>::CloneWithoutPointers(*source.contexts_[i]));
     }
 
     // Build a superstate over the subsystem contexts.
-    clone->MakeState();
+    MakeState();
 
-    // Build a superparameters over the subsystem contexts.
-    clone->MakeParameters();
+    // Build superparameters over the subsystem contexts.
+    MakeParameters();
 
-    // Clone the internal graph structure. After this is done, the clone will
-    // still have FreestandingInputPortValues at the inputs to the Diagram
-    // itself, but all of the intermediate nodes will have
-    // DependentInputPortValues.
-    for (const auto& connection : dependency_graph_) {
-      const PortIdentifier& src = connection.second;
-      const PortIdentifier& dest = connection.first;
-      clone->Connect(src, dest);
-    }
-
-    // Clone the external input structure.
-    for (const PortIdentifier& id : input_ids_) {
-      clone->ExportInput(id);
-    }
-
-    // Make deep copies of everything else using the default copy constructors.
-    clone->set_accuracy(this->get_accuracy());
-    *clone->get_mutable_step_info() = this->get_step_info();
-
-    return clone;
+    // Everything else was handled by the Context<T> copy constructor.
   }
 
-  /// The caller owns the returned memory.
-  State<T>* DoCloneState() const override {
-    DiagramState<T>* clone = new DiagramState<T>(num_subsystems());
+ private:
+  friend class DiagramContextTest;
+  using ContextBase::AddInputPort;    // For DiagramContextTest.
+  using ContextBase::AddOutputPort;
 
-    for (int i = 0; i < num_subsystems(); i++) {
+  std::unique_ptr<ContextBase> DoCloneWithoutPointers() const final {
+    return std::unique_ptr<ContextBase>(new DiagramContext<T>(*this));
+  }
+
+  std::unique_ptr<State<T>> DoCloneState() const final {
+    auto clone = std::make_unique<DiagramState<T>>(num_subcontexts());
+
+    for (SubsystemIndex i(0); i < num_subcontexts(); i++) {
       Context<T>* context = contexts_[i].get();
       clone->set_and_own_substate(i, context->CloneState());
     }
@@ -347,52 +397,141 @@ class DiagramContext : public Context<T> {
     return clone;
   }
 
-  /// Returns the input port at the given @p index, which of course belongs
-  /// to the subsystem whose input was exposed at that index.
-  const InputPortValue* GetInputPortValue(int index) const override {
-    DRAKE_ASSERT(index >= 0 && index < get_num_input_ports());
-    const PortIdentifier& id = input_ids_[index];
-    SystemIndex system_index = id.first;
-    PortIndex port_index = id.second;
-    return Context<T>::GetInputPortValue(GetSubsystemContext(system_index),
-                                         port_index);
+  // Print summary information for the diagram context and recurse into
+  // the (non-empty) subcontexts.
+  std::string do_to_string() const final {
+    std::ostringstream os;
+
+    os << this->GetSystemPathname() << " Context (of a Diagram)\n";
+    os << std::string(this->GetSystemPathname().size() + 24, '-') << "\n";
+    if (this->get_continuous_state().size())
+      os << this->get_continuous_state().size() << " total continuous states\n";
+    if (this->get_num_discrete_state_groups()) {
+      int num_discrete_states = 0;
+      for (int i = 0; i < this->get_num_discrete_state_groups(); i++) {
+        num_discrete_states += this->get_discrete_state(i).size();
+      }
+      os << num_discrete_states << " total discrete states in "
+         << this->get_num_discrete_state_groups() << " groups\n";
+    }
+    if (this->get_num_abstract_states())
+      os << this->get_num_abstract_states() << " total abstract states\n";
+
+    if (this->num_numeric_parameter_groups()) {
+      int num_numeric_parameters = 0;
+      for (int i = 0; i < this->num_numeric_parameter_groups(); i++) {
+        num_numeric_parameters += this->get_numeric_parameter(i).size();
+      }
+      os << num_numeric_parameters << " total numeric parameters in "
+         << this->num_numeric_parameter_groups() << " groups\n";
+    }
+    if (this->num_abstract_parameters())
+      os << this->num_abstract_parameters() << " total abstract parameters\n";
+
+    for (systems::SubsystemIndex i{0}; i < num_subcontexts(); i++) {
+      const Context<T>& subcontext = this->GetSubsystemContext(i);
+      // Only print this context if it has something useful to print.
+      if (subcontext.get_continuous_state_vector().size() ||
+          subcontext.get_num_discrete_state_groups() ||
+          subcontext.get_num_abstract_states() ||
+          subcontext.num_numeric_parameter_groups() ||
+          subcontext.num_abstract_parameters()) {
+        os << "\n" << subcontext.to_string();
+      }
+    }
+
+    return os.str();
   }
 
- private:
-  int num_subsystems() const {
-    DRAKE_ASSERT(contexts_.size() == outputs_.size());
+  // Returns the number of immediate child subcontexts in this DiagramContext.
+  int num_subcontexts() const {
     return static_cast<int>(contexts_.size());
   }
 
-  void SetInputPortValue(int index,
-                         std::unique_ptr<InputPortValue> port) final {
-    DRAKE_DEMAND(index >= 0 && index < get_num_input_ports());
-    const PortIdentifier& id = input_ids_[index];
-    SystemIndex system_index = id.first;
-    PortIndex port_index = id.second;
-    Context<T>::SetInputPortValue(&GetMutableSubsystemContext(system_index),
-                                  port_index, std::move(port));
+  const State<T>& do_access_state() const final {
+    DRAKE_ASSERT(state_ != nullptr);
+    return *state_;
   }
 
-  std::vector<PortIdentifier> input_ids_;
+  State<T>& do_access_mutable_state() final {
+    DRAKE_ASSERT(state_ != nullptr);
+    return *state_;
+  }
 
-  // The outputs are stored in SystemIndex order, and outputs_ is equal in
-  // length to the number of subsystems specified at construction time.
-  std::vector<std::unique_ptr<SystemOutput<T>>> outputs_;
-  // The contexts are stored in SystemIndex order, and contexts_ is equal in
+  // Recursively sets the time on all subcontexts.
+  void DoPropagateTimeChange(const T& time_sec, int64_t change_event) final {
+    for (auto& subcontext : contexts_) {
+      DRAKE_ASSERT(subcontext != nullptr);
+      Context<T>::PropagateTimeChange(&*subcontext, time_sec, change_event);
+    }
+  }
+
+  // Recursively sets the accuracy on all subcontexts.
+  void DoPropagateAccuracyChange(const optional<double>& accuracy,
+                                 int64_t change_event) final {
+    for (auto& subcontext : contexts_) {
+      DRAKE_ASSERT(subcontext != nullptr);
+      Context<T>::PropagateAccuracyChange(&*subcontext, accuracy, change_event);
+    }
+  }
+
+  // Recursively notifies subcontexts of bulk changes.
+  void DoPropagateBulkChange(
+      int64_t change_event,
+      void (ContextBase::*note_bulk_change)(int64_t change_event)) final {
+    for (auto& subcontext : contexts_) {
+      DRAKE_ASSERT(subcontext != nullptr);
+      ContextBase::PropagateBulkChange(&*subcontext, change_event,
+                                       note_bulk_change);
+    }
+  }
+
+  // Recursively notifies subcontexts of some caching behavior change.
+  void DoPropagateCachingChange(
+      void (Cache::*caching_change)()) const final {
+    for (auto& subcontext : contexts_) {
+      DRAKE_ASSERT(subcontext != nullptr);
+      ContextBase::PropagateCachingChange(*subcontext, caching_change);
+    }
+  }
+
+  // For this method `this` is the source being copied into `clone`.
+  void DoPropagateBuildTrackerPointerMap(
+      const ContextBase& clone,
+      DependencyTracker::PointerMap* tracker_map) const final {
+    auto& clone_diagram = dynamic_cast<const DiagramContext<T>&>(clone);
+    DRAKE_DEMAND(clone_diagram.contexts_.size() == contexts_.size());
+    for (SubsystemIndex i(0); i < num_subcontexts(); ++i) {
+      ContextBase::BuildTrackerPointerMap(
+          *contexts_[i], *clone_diagram.contexts_[i], &*tracker_map);
+    }
+  }
+
+  // For this method, `this` is the clone copied from `source`.
+  void DoPropagateFixContextPointers(
+      const ContextBase& source,
+      const DependencyTracker::PointerMap& tracker_map) final {
+    auto& source_diagram = dynamic_cast<const DiagramContext<T>&>(source);
+    DRAKE_DEMAND(contexts_.size() == source_diagram.contexts_.size());
+    for (SubsystemIndex i(0); i < num_subcontexts(); ++i) {
+      ContextBase::FixContextPointers(*source_diagram.contexts_[i], tracker_map,
+                                      &*contexts_[i]);
+    }
+  }
+
+  // The contexts are stored in SubsystemIndex order, and contexts_ is equal in
   // length to the number of subsystems specified at construction time.
   std::vector<std::unique_ptr<Context<T>>> contexts_;
 
-  // A map from the input ports of constituent systems, to the output ports of
-  // the systems on which they depend.
-  std::map<PortIdentifier, PortIdentifier> dependency_graph_;
-
   // The internal state of the Diagram, which includes all its subsystem states.
   std::unique_ptr<DiagramState<T>> state_;
-
-  // The parameters of the Diagram, which includes all subsystem parameters.
-  std::unique_ptr<Parameters<T>> parameters_;
 };
 
 }  // namespace systems
 }  // namespace drake
+
+DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
+    class ::drake::systems::DiagramState)
+
+DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
+    class ::drake::systems::DiagramContext)

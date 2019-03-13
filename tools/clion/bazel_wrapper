@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python2
 
 import os
 import re
@@ -10,6 +10,16 @@ import sys
 # (more or less) just forwarding the output of our bazel subprocess.
 def _write_stderr(bytes):
     os.write(2, bytes)
+
+def gdb_compatible_strings(args):
+    '''Examine the args and conditionally inject the compiler argument for the
+    benefit of non-GCC compilers to to compile gdb-friendly STL symbols.
+    Modifies the args in place.'''
+    if 'dbg' in args:
+        # Place the compiler argument after the dbg command.
+        insert_point = args.index('dbg') + 1
+        args.insert(insert_point, '--copt=-D_GLIBCXX_DEBUG')
+
 
 def main(argv, execvp, write_stderr, popen):
     # Find the WORKSPACE file.  Bail out if its not Drake's workspace.  (Note
@@ -30,6 +40,8 @@ def main(argv, execvp, write_stderr, popen):
 
     # Copy args for modification.
     args = argv[1:]
+
+    gdb_compatible_strings(args)
 
     # If this magic argument is found and we're in Drake's workspace, then
     # replace it with Drake's hooks instead.
@@ -62,7 +74,7 @@ def main(argv, execvp, write_stderr, popen):
     # Read until EOF.
     while True:
         line = bazel.stderr.readline()
-        if line == b"":
+        if len(line) == 0:
             break
         match = prog1.match(line) or prog2.match(line)
         if match is not None:

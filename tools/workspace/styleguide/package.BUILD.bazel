@@ -1,5 +1,7 @@
 # -*- python -*-
 
+licenses(["notice"])  # BSD-3-Clause
+
 package(default_visibility = ["//visibility:public"])
 
 # We can't set name="cpplint" here because that's the directory name so the
@@ -26,5 +28,3 @@ py_test(
         ":cpplint_py",
     ],
 )
-
-exports_files(["cpplint/cpplint_test_header.h"])

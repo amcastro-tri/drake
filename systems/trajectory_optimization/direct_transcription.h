@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "drake/common/drake_copyable.h"
+#include "drake/common/drake_deprecated.h"
 #include "drake/systems/framework/context.h"
 #include "drake/systems/framework/system.h"
 #include "drake/systems/primitives/linear_system.h"
@@ -37,7 +38,6 @@ class DirectTranscription : public MultipleShooting {
   ///    context after calling this method will NOT impact the trajectory
   ///    optimization.
   /// @param num_time_samples The number of knot points in the trajectory.
-  /// @throws std::runtime_error If the system is not discrete time (only).
   DirectTranscription(const System<double>* system,
                       const Context<double>& context, int num_time_samples);
 
@@ -45,17 +45,16 @@ class DirectTranscription : public MultipleShooting {
   /// This version of the constructor is only for *linear* discrete-time systems
   /// (with a single periodic timestep update).
   ///
-  /// @param system A linear system to be used in the dynamic constraints.
-  ///    Note that this is aliased for the lifetime of this object.
+  /// @param linear_system A linear system to be used in the dynamic
+  ///    constraints.  Note that this is aliased for the lifetime of this
+  ///    object.
   /// @param context Required to describe any parameters of the system.  The
   ///    values of the state in this context do not have any effect.  This
   ///    context will also be "cloned" by the optimization; changes to the
   ///    context after calling this method will NOT impact the trajectory
   ///    optimization.
   /// @param num_time_samples The number of knot points in the trajectory.
-  /// @throws std::runtime_error If the system is not discrete time (only).
-
-  DirectTranscription(const LinearSystem<double>* system,
+  DirectTranscription(const LinearSystem<double>* linear_system,
                       const Context<double>& context, int num_time_samples);
 
   /// Constructs the MathematicalProgram and adds the dynamic constraints.  This
@@ -70,7 +69,11 @@ class DirectTranscription : public MultipleShooting {
   ///    context after calling this method will NOT impact the trajectory
   ///    optimization.
   /// @param num_time_samples The number of knot points in the trajectory.
-  /// @throws std::runtime_error If the system is not discrete time (only).
+  ///
+  /// @exclude_from_pydrake_mkdoc{This overload is not bound in pydrake.  When
+  /// we do bind it, we should probably rename `system` to tv_linear_system` or
+  /// similar, so that kwargs determine which overload is suggested, instead of
+  /// hoping that type checking does the right thing.}
   DirectTranscription(const TimeVaryingLinearSystem<double>* system,
                       const Context<double>& context, int num_time_samples);
 
@@ -79,15 +82,31 @@ class DirectTranscription : public MultipleShooting {
 
   ~DirectTranscription() override {}
 
-  /// Get the input trajectory at the solution as a
-  /// PiecewisePolynomialTrajectory.  The order of the trajectory
-  /// will be determined by the integrator used in the dynamic constraints.
-  PiecewisePolynomialTrajectory ReconstructInputTrajectory() const override;
+  /// Get the input trajectory at the solution as a PiecewisePolynomial.  The
+  /// order of the trajectory will be determined by the integrator used in
+  /// the dynamic constraints.
+  DRAKE_DEPRECATED("2019-06-01",
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.")
+  trajectories::PiecewisePolynomial<double> ReconstructInputTrajectory()
+  const override;
 
-  /// Get the state trajectory at the solution as a
-  /// PiecewisePolynomialTrajectory.  The order of the trajectory
-  /// will be determined by the integrator used in the dynamic constraints.
-  PiecewisePolynomialTrajectory ReconstructStateTrajectory() const override;
+  trajectories::PiecewisePolynomial<double> ReconstructInputTrajectory(
+      const solvers::MathematicalProgramResult& result) const override;
+
+  /// Get the state trajectory at the solution as a PiecewisePolynomial.  The
+  /// order of the trajectory will be determined by the integrator used in
+  /// the dynamic constraints.
+  DRAKE_DEPRECATED("2019-06-01",
+      "MathematicalProgram methods that assume the solution is stored inside "
+      "the program are deprecated; for details and porting advice, see "
+      "https://github.com/RobotLocomotion/drake/issues/9633.")
+  trajectories::PiecewisePolynomial<double> ReconstructStateTrajectory()
+  const override;
+
+  trajectories::PiecewisePolynomial<double> ReconstructStateTrajectory(
+      const solvers::MathematicalProgramResult& result) const override;
 
  private:
   // Implements a running cost at all timesteps.
@@ -126,8 +145,7 @@ class DirectTranscription : public MultipleShooting {
   std::unique_ptr<const System<AutoDiffXd>> system_;
   std::unique_ptr<Context<AutoDiffXd>> context_;
   std::unique_ptr<DiscreteValues<AutoDiffXd>> discrete_state_;
-  FreestandingInputPortValue* input_port_value_{
-      nullptr};  // Owned by the context.
+  FixedInputPortValue* input_port_value_{nullptr};  // Owned by the context.
 
   const bool discrete_time_system_{false};
 };

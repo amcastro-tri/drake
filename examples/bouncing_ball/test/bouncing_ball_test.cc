@@ -6,6 +6,7 @@
 
 #include "drake/systems/analysis/runge_kutta3_integrator.h"
 #include "drake/systems/analysis/simulator.h"
+#include "drake/systems/framework/test_utilities/scalar_conversion.h"
 
 namespace drake {
 namespace bouncing_ball {
@@ -39,31 +40,27 @@ std::pair<double, double> CalcClosedFormHeightAndVelocity(double g,
       // Ball has hit the ground.
       return std::make_pair(0.0, 0.0);
     }
-  } else {
-    if (e == 1.0) {
-      // Get the number of phases that have passed.
-      int num_phases = static_cast<int>(std::floor(tf / drop_time));
-
-      // Get the time within the phase.
-      const double t = tf - num_phases*drop_time;
-
-      // Even phases mean that the ball is falling, odd phases mean that it is
-      // rising.
-      if ((num_phases & 1) == 0) {
-        return std::make_pair(g*t*t/2 + x0, g*t);
-      } else {
-        // Get the ball velocity at the time of impact.
-        const double vf = g*drop_time;
-        return std::make_pair(g*t*t/2 - vf*t, g*t - vf);
-      }
-    } else {
-      throw std::logic_error("Invalid restitution coefficient!");
-    }
-
-    // Should never reach here.
-    DRAKE_ABORT();
-    return std::make_pair(0.0, 0.0);
   }
+
+  if (e == 1.0) {
+    // Get the number of phases that have passed.
+    int num_phases = static_cast<int>(std::floor(tf / drop_time));
+
+    // Get the time within the phase.
+    const double t = tf - num_phases*drop_time;
+
+    // Even phases mean that the ball is falling, odd phases mean that it is
+    // rising.
+    if ((num_phases & 1) == 0) {
+      return std::make_pair(g*t*t/2 + x0, g*t);
+    } else {
+      // Get the ball velocity at the time of impact.
+      const double vf = g*drop_time;
+      return std::make_pair(g*t*t/2 - vf*t, g*t - vf);
+    }
+  }
+
+  throw std::logic_error("Invalid restitution coefficient!");
 }
 
 class BouncingBallTest : public ::testing::Test {
@@ -71,7 +68,7 @@ class BouncingBallTest : public ::testing::Test {
   void SetUp() override {
     dut_ = std::make_unique<BouncingBall<double>>();
     context_ = dut_->CreateDefaultContext();
-    output_ = dut_->AllocateOutput(*context_);
+    output_ = dut_->AllocateOutput();
     derivatives_ = dut_->AllocateTimeDerivatives();
   }
 
@@ -92,6 +89,15 @@ class BouncingBallTest : public ::testing::Test {
   std::unique_ptr<systems::SystemOutput<double>> output_;
   std::unique_ptr<systems::ContinuousState<double>> derivatives_;
 };
+
+GTEST_TEST(BouncingBall, AutoDiff) {
+  BouncingBall<AutoDiffXd> ad_plant;
+}
+
+TEST_F(BouncingBallTest, Transmogrification) {
+  ASSERT_TRUE(systems::is_autodiffxd_convertible(*dut_));
+  ASSERT_TRUE(systems::is_symbolic_convertible(*dut_));
+}
 
 TEST_F(BouncingBallTest, Topology) {
   ASSERT_EQ(0, dut_->get_num_input_ports());

@@ -1,14 +1,15 @@
 #include "drake/systems/lcm/lcm_subscriber_system.h"
 
 #include <array>
+#include <future>
 
 #include <gtest/gtest.h>
 
 #include "drake/lcm/drake_mock_lcm.h"
 #include "drake/lcm/lcmt_drake_signal_utils.h"
 #include "drake/lcmt_drake_signal.hpp"
-#include "drake/systems/framework/test_utilities/my_vector.h"
 #include "drake/systems/lcm/lcmt_drake_signal_translator.h"
+#include "drake/systems/lcm/test/custom_drake_signal_translator.h"
 
 using drake::lcm::CompareLcmtDrakeSignalMessages;
 
@@ -37,7 +38,7 @@ void EvalOutputHelper(const LcmSubscriberSystem& sub, Context<double>* context,
     } else {
       DRAKE_DEMAND(false);
     }
-    context->get_mutable_state().CopyFrom(*tmp_state);
+    context->get_mutable_state().SetFrom(*tmp_state);
   }
   sub.CalcOutput(*context, output);
 }
@@ -47,7 +48,7 @@ void TestSubscriber(drake::lcm::DrakeMockLcm* lcm,
   EXPECT_EQ(dut->get_name(), "LcmSubscriberSystem(" + channel_name + ")");
 
   std::unique_ptr<Context<double>> context = dut->CreateDefaultContext();
-  std::unique_ptr<SystemOutput<double>> output = dut->AllocateOutput(*context);
+  std::unique_ptr<SystemOutput<double>> output = dut->AllocateOutput();
 
   drake::lcmt_drake_signal message;
   message.dim = kDim;
@@ -75,8 +76,19 @@ void TestSubscriber(drake::lcm::DrakeMockLcm* lcm,
   for (int i = 0; i < kDim; ++i) {
     EXPECT_EQ(value[i], i);
   }
+
+  // Confirm that the unit test sugar used by pydrake is another equally-valid
+  // way to read messages.
+  auto new_context = dut->CreateDefaultContext();
+  dut->CopyLatestMessageInto(&new_context->get_mutable_state());
+  const auto& new_y = dut->get_output_port().Eval(*new_context);
+  for (int i = 0; i < kDim; ++i) {
+    EXPECT_EQ(new_y[i], i);
+  }
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 // Tests the functionality of LcmSubscriberSystem.
 GTEST_TEST(LcmSubscriberSystemTest, ReceiveTest) {
   // Instantiates LCM.
@@ -97,10 +109,12 @@ GTEST_TEST(LcmSubscriberSystemTest, ReceiveTest) {
   // "device under test".
   LcmSubscriberSystem dut(channel_name, translator, &lcm);
 
-  lcm.StartReceiveThread();
   TestSubscriber(&lcm, channel_name, &dut);
 }
+#pragma GCC diagnostic pop
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 // Tests the functionality of LcmSubscriberSystem.
 GTEST_TEST(LcmSubscriberSystemTest, ReceiveTestUsingDictionary) {
   // Instantiates LCM.
@@ -125,9 +139,21 @@ GTEST_TEST(LcmSubscriberSystemTest, ReceiveTestUsingDictionary) {
   // "device under test".
   LcmSubscriberSystem dut(channel_name, dictionary, &lcm);
 
-  lcm.StartReceiveThread();
   TestSubscriber(&lcm, channel_name, &dut);
 }
+#pragma GCC diagnostic pop
+
+struct SampleData {
+  lcmt_drake_signal value{2, {1.0, 2.0}, {"x", "y"}, 12345};
+
+  void MockPublish(
+      drake::lcm::DrakeMockLcm* lcm, const std::string& channel_name) const {
+    const int num_bytes = value.getEncodedSize();
+    std::vector<uint8_t> buffer(num_bytes);
+    value.encode(buffer.data(), 0, num_bytes);
+    lcm->InduceSubscriberCallback(channel_name, buffer.data(), num_bytes);
+  }
+};
 
 // Tests LcmSubscriberSystem using a Serializer.
 GTEST_TEST(LcmSubscriberSystemTest, SerializerTest) {
@@ -139,110 +165,115 @@ GTEST_TEST(LcmSubscriberSystemTest, SerializerTest) {
 
   // Establishes the context and output for the dut.
   std::unique_ptr<Context<double>> context = dut->CreateDefaultContext();
-  std::unique_ptr<SystemOutput<double>> output = dut->AllocateOutput(*context);
+  std::unique_ptr<SystemOutput<double>> output = dut->AllocateOutput();
 
   // MockLcm produces a sample message.
-  lcm.StartReceiveThread();
-  const lcmt_drake_signal sample_data{
-      2,
-      {
-          1.0, 2.0,
-      },
-      {
-          "x", "y",
-      },
-      12345,
-  };
-  const int num_bytes = sample_data.getEncodedSize();
-  std::vector<uint8_t> buffer(num_bytes);
-  sample_data.encode(buffer.data(), 0, num_bytes);
-  lcm.InduceSubscriberCallback(channel_name, buffer.data(), num_bytes);
+  SampleData sample_data;
+  sample_data.MockPublish(&lcm, channel_name);
 
   // Verifies that the dut produces the output message.
   EvalOutputHelper(*dut, context.get(), output.get());
 
   const AbstractValue* abstract_value = output->get_data(0);
   ASSERT_NE(abstract_value, nullptr);
-  const auto& value = abstract_value->GetValueOrThrow<lcmt_drake_signal>();
-  EXPECT_TRUE(CompareLcmtDrakeSignalMessages(value, sample_data));
+  auto value = abstract_value->get_value<lcmt_drake_signal>();
+  EXPECT_TRUE(CompareLcmtDrakeSignalMessages(value, sample_data.value));
 }
 
-// A lcmt_drake_signal translator that preserves coordinate names.
-class CustomDrakeSignalTranslator : public LcmAndVectorBaseTranslator {
- public:
-  // An output vector type that tests that subscribers permit non-default
-  // types.
-  using CustomVector = MyVector<kDim, double>;
+// Tests LcmSubscriberSystem using a fixed-size Serializer.
+GTEST_TEST(LcmSubscriberSystemTest, FixedSizeSerializerTest) {
+  drake::lcm::DrakeMockLcm lcm;
+  const std::string channel_name = "channel_name";
+  const SampleData sample_data;
 
-  CustomDrakeSignalTranslator() : LcmAndVectorBaseTranslator(kDim) {}
+  // The "device under test".
+  auto dut = LcmSubscriberSystem::MakeFixedSize(
+      sample_data.value, channel_name, &lcm);
 
-  std::unique_ptr<BasicVector<double>> AllocateOutputVector() const override {
-    return std::make_unique<CustomVector>();
-  }
+  // Establishes the context and output for the dut.
+  std::unique_ptr<Context<double>> context = dut->CreateDefaultContext();
+  std::unique_ptr<SystemOutput<double>> output = dut->AllocateOutput();
 
-  static std::string NameFor(int index) {
-    return std::to_string(index) + "_name";
-  }
+  // MockLcm produces a sample message.
+  sample_data.MockPublish(&lcm, channel_name);
 
-  void Deserialize(const void* lcm_message_bytes, int lcm_message_length,
-                   VectorBase<double>* vector_base) const override {
-    CustomVector* const custom_vector =
-        dynamic_cast<CustomVector*>(vector_base);
-    ASSERT_NE(nullptr, custom_vector);
+  // Verifies that the dut produces the output message.
+  EvalOutputHelper(*dut, context.get(), output.get());
 
-    // Decode the LCM message.
-    drake::lcmt_drake_signal message;
-    int status = message.decode(lcm_message_bytes, 0, lcm_message_length);
-    ASSERT_GE(status, 0);
-    ASSERT_EQ(kDim, message.dim);
+  const AbstractValue* abstract_value = output->get_data(0);
+  ASSERT_NE(abstract_value, nullptr);
+  auto value = abstract_value->get_value<lcmt_drake_signal>();
+  EXPECT_TRUE(CompareLcmtDrakeSignalMessages(value, sample_data.value));
 
-    // Copy message into our custom_vector.
-    for (int i = 0; i < kDim; ++i) {
-      EXPECT_EQ(message.coord[i], NameFor(i));
-      custom_vector->SetAtIndex(i, message.val[i]);
-    }
-  }
+  // Smaller messages should also work.
+  SampleData smaller_data;
+  smaller_data.value = lcmt_drake_signal{1, {1.0}, {"x"}, 12345};
+  smaller_data.MockPublish(&lcm, channel_name);
+  EvalOutputHelper(*dut, context.get(), output.get());
+  const AbstractValue* small_abstract_value = output->get_data(0);
+  ASSERT_NE(small_abstract_value, nullptr);
+  auto small_value = small_abstract_value->get_value<lcmt_drake_signal>();
+  EXPECT_TRUE(CompareLcmtDrakeSignalMessages(small_value, smaller_data.value));
+}
 
-  void Serialize(double time, const VectorBase<double>& vector_base,
-                 std::vector<uint8_t>* lcm_message_bytes) const override {
-    const CustomVector* const custom_vector =
-        dynamic_cast<const CustomVector*>(&vector_base);
-    ASSERT_NE(nullptr, custom_vector);
-    ASSERT_NE(nullptr, lcm_message_bytes);
+GTEST_TEST(LcmSubscriberSystemTest, WaitTest) {
+  // Ensure that `WaitForMessage` works as expected.
+  drake::lcm::DrakeMockLcm lcm;
+  const std::string channel_name = "channel_name";
 
-    // Copy custom_vector into the message.
-    drake::lcmt_drake_signal message;
-    message.dim = kDim;
-    message.val.resize(kDim);
-    message.coord.resize(kDim);
-    message.timestamp = static_cast<int64_t>(time * 1000);
+  // Start device under test, with background LCM thread running.
+  auto dut = LcmSubscriberSystem::Make<lcmt_drake_signal>(channel_name, &lcm);
 
-    for (int i = 0; i < kDim; ++i) {
-      message.val.at(i) = custom_vector->GetAtIndex(i);
-      message.coord.at(i) = NameFor(i);
-    }
+  SampleData sample_data;
 
-    // Encode the LCM message.
-    const int lcm_message_length = message.getEncodedSize();
-    lcm_message_bytes->resize(lcm_message_length);
-    message.encode(lcm_message_bytes->data(), 0, lcm_message_length);
-  }
-};
+  // Use simple atomic rather than condition variables, as it simplifies this
+  // implementation.
+  std::atomic<bool> started{};
+  auto wait = [&]() {
+    while (!started.load()) {}
+  };
 
+  // Test explicit value.
+  started = false;
+  auto future_count = std::async(std::launch::async, [&]() {
+    EXPECT_EQ(dut->GetInternalMessageCount(), 0);
+    started = true;
+    return dut->WaitForMessage(0);
+  });
+  wait();
+  sample_data.MockPublish(&lcm, channel_name);
+  EXPECT_GE(future_count.get(), 1);
+
+  // Test implicit value, retrieving message as well.
+  started = false;
+  auto future_message = std::async(std::launch::async, [&]() {
+    int old_count = dut->GetInternalMessageCount();
+    started = true;
+    Value<lcmt_drake_signal> message;
+    dut->WaitForMessage(old_count, &message);
+    return message.get_value();
+  });
+  wait();
+  sample_data.MockPublish(&lcm, channel_name);
+  EXPECT_TRUE(CompareLcmtDrakeSignalMessages(
+      future_message.get(), sample_data.value));
+}
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 // Subscribe and output a custom VectorBase type.
 GTEST_TEST(LcmSubscriberSystemTest, CustomVectorBaseTest) {
   const std::string kChannelName = "dummy";
 
   // The "device under test" and its prerequisites.
-  CustomDrakeSignalTranslator translator;
+  test::CustomDrakeSignalTranslator translator;
   drake::lcm::DrakeMockLcm lcm;
   LcmSubscriberSystem dut(kChannelName, translator, &lcm);
-  lcm.StartReceiveThread();
 
   // Create a data-filled vector.
-  typedef CustomDrakeSignalTranslator::CustomVector CustomVector;
+  using CustomVector = test::CustomDrakeSignalTranslator::CustomVector;
   CustomVector sample_vector;
-  for (int i = 0; i < kDim; ++i) {
+  for (int i = 0; i < sample_vector.size(); ++i) {
     sample_vector.SetAtIndex(i, i);
   }
 
@@ -255,7 +286,7 @@ GTEST_TEST(LcmSubscriberSystemTest, CustomVectorBaseTest) {
 
   // Read back the vector via CalcOutput.
   auto context = dut.CreateDefaultContext();
-  auto output = dut.AllocateOutput(*context);
+  auto output = dut.AllocateOutput();
   EvalOutputHelper(dut, context.get(), output.get());
   const VectorBase<double>* const output_vector = output->get_vector_data(0);
   ASSERT_NE(nullptr, output_vector);
@@ -264,10 +295,11 @@ GTEST_TEST(LcmSubscriberSystemTest, CustomVectorBaseTest) {
   const CustomVector* const custom_output =
       dynamic_cast<const CustomVector*>(output_vector);
   ASSERT_NE(nullptr, custom_output);
-  for (int i = 0; i < kDim; ++i) {
+  for (int i = 0; i < sample_vector.size(); ++i) {
     EXPECT_EQ(sample_vector.GetAtIndex(i), custom_output->GetAtIndex(i));
   }
 }
+#pragma GCC diagnostic pop
 
 }  // namespace
 }  // namespace lcm

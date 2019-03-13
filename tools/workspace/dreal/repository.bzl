@@ -37,33 +37,52 @@ def _impl(repo_ctx):
         fail(os_result.error)
     if os_result.is_macos:
         result = setup_pkg_config_repository(repo_ctx)
-    else:
-        result = setup_new_deb_archive(repo_ctx)
-        # Avoid using upstream library names for our custom build.
-        _rename_so(
-            repo_ctx,
-            "opt/libibex/{}/lib".format(IBEX_VERSION),
-            "libibex.so",
-        )
-        _rename_so(
-            repo_ctx,
-            "opt/dreal/{}/lib".format(DREAL_VERSION),
-            "libdreal.so",
-        )
-        # Our BUILD file declares this dependency with the revised spelling.
-        execute_or_fail(repo_ctx, [
-            "patchelf", "--remove-needed", "libibex.so",
-            "opt/dreal/{}/lib/libdrake_dreal.so".format(DREAL_VERSION),
-        ])
+        if result.error != None:
+            fail("Unable to complete setup for @{} repository: {}".format(
+                # (forced line break)
+                repo_ctx.name,
+                result.error,
+            ))
+        return
+    result = setup_new_deb_archive(repo_ctx)
     if result.error != None:
-        fail("Unable to complete setup for @{} repository: {}".
-             format(repo_ctx.name, result.error))
+        fail("Unable to complete setup for @{} repository: {}".format(
+            # (forced line break)
+            repo_ctx.name,
+            result.error,
+        ))
+
+    # Avoid using upstream library names for our custom build.
+    _rename_so(
+        repo_ctx,
+        "opt/libibex/{}/lib".format(IBEX_VERSION),
+        "libibex.so",
+    )
+    _rename_so(
+        repo_ctx,
+        "opt/dreal/{}/lib".format(DREAL_VERSION),
+        "libdreal.so",
+    )
+    execute_or_fail(repo_ctx, [
+        "chmod",
+        "a+w",
+        "opt/dreal/{}/lib/libdrake_dreal.so".format(DREAL_VERSION),
+    ])
+
+    # Our BUILD file declares this dependency with the revised spelling.
+    execute_or_fail(repo_ctx, [
+        "patchelf",
+        "--remove-needed",
+        "libibex.so",
+        "opt/dreal/{}/lib/libdrake_dreal.so".format(DREAL_VERSION),
+    ])
 
 dreal_repository = repository_rule(
+    # TODO(jamiesnape): Pass down licenses to setup_pkg_config_repository.
     attrs = {
         "modname": attr.string(default = "dreal"),
-        # This attribute is only used for macOS.  It is documented in the
-        # pkg_config_repository rule.
+        # The next two attributes are only used for macOS.  They are documented
+        # in the pkg_config_repository rule.
         "pkg_config_paths": attr.string_list(
             default = [
                 "/usr/local/opt/clp/lib/pkgconfig",
@@ -73,23 +92,29 @@ dreal_repository = repository_rule(
                 "/usr/local/opt/nlopt/lib/pkgconfig",
             ],
         ),
+        # On macOS we are using dReal from homebrew, so Drake's installation
+        # script doesn't need to do anything extra.
+        "build_epilog": attr.string(
+            default = "filegroup(name = \"install\")  # Nothing.",
+        ),
         # All of the below attributes are only used for Ubuntu.  They are
         # documented in the new_deb_archive rule.
         "mirrors": attr.string_list(
             default = [
-                "https://drake-apt.csail.mit.edu/pool/main",
+                "https://drake-apt.csail.mit.edu/xenial/pool/main",
+                "https://s3.amazonaws.com/drake-apt/xenial/pool/main",
             ],
         ),
         "filenames": attr.string_list(
             default = [
                 "d/dreal/dreal_{}_amd64.deb".format(DREAL_VERSION),
-                "libi/libibex-dev/libibex-dev_{}.20180211084215.gitd1419538b4d818ed1cf21a01896bc5eaae5d1d57~16.04_amd64.deb".format(IBEX_VERSION),  # noqa
+                "libi/libibex-dev/libibex-dev_{}.20181130120337.git65fc3b6c28ea49cb2da7e9b693add6ba7c5fc4ae~16.04_amd64.deb".format(IBEX_VERSION),  # noqa
             ],
         ),
         "sha256s": attr.string_list(
             default = [
-                "53e530a7df9efe1afe5222e025a4339b9a33508f1b4f4434f7bd7763d44a6c11",  # noqa
-                "1285a64aa5c7ddbefa650232dbd5b309414fce94fd25b160689336f20672494b",  # noqa
+                "7e751c5fb0039361d5cc19f730cbf234e07a75fd8e0dc320e0f13f55e37c8075",  # noqa
+                "865db247f0a4fd97d41da07abf917faea444c91647178c17fc4fdb9a9b15d3b2",  # noqa
             ],
         ),
         "build_file": attr.label(

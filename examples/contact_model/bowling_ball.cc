@@ -30,10 +30,8 @@
 
 #include "drake/common/eigen_types.h"
 #include "drake/common/find_resource.h"
-#include "drake/geometry/geometry_system.h"
 #include "drake/geometry/geometry_visualization.h"
 #include "drake/lcm/drake_lcm.h"
-#include "drake/lcmt_viewer_draw.hpp"
 #include "drake/multibody/parsers/urdf_parser.h"
 #include "drake/multibody/rigid_body_plant/rigid_body_plant.h"
 #include "drake/multibody/rigid_body_plant/rigid_body_plant_bridge.h"
@@ -41,20 +39,14 @@
 #include "drake/systems/analysis/runge_kutta2_integrator.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
-#include "drake/systems/lcm/lcm_publisher_system.h"
-#include "drake/systems/lcm/serializer.h"
-#include "drake/systems/rendering/pose_bundle_to_draw_message.h"
 
 namespace drake {
 namespace systems {
 
 using drake::lcm::DrakeLcm;
-using drake::multibody::joints::kQuaternion;
+using multibody::joints::kQuaternion;
 using Eigen::VectorXd;
 using std::make_unique;
-using systems::lcm::LcmPublisherSystem;
-using systems::lcm::Serializer;
-using systems::rendering::PoseBundleToDrawMessage;
 
 // Simulation parameters.
 DEFINE_double(v, 12, "The ball's initial linear speed down the lane (m/s)");
@@ -71,11 +63,11 @@ DEFINE_double(contact_radius, 1e-3,
               "The characteristic scale of radius (m) of the contact area");
 DEFINE_double(sim_duration, 3, "The simulation duration (s)");
 DEFINE_int32(pin_count, 10, "The number of pins -- in the range [0, 10]");
-DEFINE_string(simulation_type, "compliant", "The type of simulation to use: "
-              "'compliant' or 'timestepping'");
+DEFINE_string(system_type, "continuous", "The type of system to use: "
+              "'continuous' or 'discretized'");
 DEFINE_double(dt, 1e-3, "The step size to use for "
-              "'simulation_type=timestepping' (ignored for "
-              "'simulation_type=compliant'");
+              "'system_type=discretized' (ignored for "
+              "'system_type=continuous'");
 
 // Bowling ball rolled down a conceptual lane to strike pins.
 int main() {
@@ -115,7 +107,7 @@ int main() {
   multibody::AddFlatTerrainToWorld(tree_ptr.get(), 100., 10.);
 
   // Instantiate a RigidBodyPlant from the RigidBodyTree.
-  if (FLAGS_simulation_type != "timestepping")
+  if (FLAGS_system_type != "discretized")
     FLAGS_dt = 0.0;
   auto& plant = *builder.AddSystem<RigidBodyPlant<double>>(
       move(tree_ptr), FLAGS_dt);
@@ -135,52 +127,28 @@ int main() {
 
   const auto& tree = plant.get_rigid_body_tree();
 
-  // TODO(SeanCurtis-TRI): This should be wrapped up into a sugar diagram so
-  // this can be done more concisely. Perhaps bundle a GeometrySystem in with
-  // all the others and called (something like) GeometrySystemWithLcmVisuals.
-  auto geometry_system = builder.AddSystem<geometry::GeometrySystem<double>>();
-  geometry_system->set_name("geometry_system");
+  auto scene_graph = builder.AddSystem<geometry::SceneGraph<double>>();
+  scene_graph->set_name("scene_graph");
 
-  auto rbt_gs_bridge =
-      builder.AddSystem<systems::RigidBodyPlantBridge<double>>(
-          &tree, geometry_system);
-
-  DrakeLcm lcm;
-
-  PoseBundleToDrawMessage* converter =
-      builder.template AddSystem<PoseBundleToDrawMessage>();
-  LcmPublisherSystem* publisher =
-      builder.template AddSystem<LcmPublisherSystem>(
-          "DRAKE_VIEWER_DRAW",
-  std::make_unique<Serializer<drake::lcmt_viewer_draw>>(), &lcm);
-  publisher->set_publish_period(1 / 60.0);
+  auto rbt_sg_bridge = builder.AddSystem<systems::RigidBodyPlantBridge<double>>(
+      &tree, scene_graph);
 
   builder.Connect(plant.state_output_port(),
-                  rbt_gs_bridge->rigid_body_plant_state_input_port());
+                  rbt_sg_bridge->rigid_body_plant_state_input_port());
 
   builder.Connect(
-      rbt_gs_bridge->geometry_id_output_port(),
-      geometry_system->get_source_frame_id_port(rbt_gs_bridge->source_id()));
-  builder.Connect(
-      rbt_gs_bridge->geometry_pose_output_port(),
-      geometry_system->get_source_pose_port(rbt_gs_bridge->source_id()));
+      rbt_sg_bridge->geometry_pose_output_port(),
+      scene_graph->get_source_pose_port(rbt_sg_bridge->source_id()));
 
-  builder.Connect(geometry_system->get_pose_bundle_output_port(),
-                  converter->get_input_port(0));
-  builder.Connect(*converter, *publisher);
-
-  // Last thing before building the diagram; dispatch the message to load
-  // geometry.
-  geometry::DispatchLoadMessage(*geometry_system);
-
+  geometry::ConnectDrakeVisualizer(&builder, *scene_graph);
   auto diagram = builder.Build();
 
   // Create simulator.
-  auto simulator = std::make_unique<Simulator<double>>(*diagram);
-  Context<double>& context = simulator->get_mutable_context();
-  simulator->reset_integrator<RungeKutta2Integrator<double>>(*diagram,
-                                                             FLAGS_timestep,
-                                                             &context);
+  Simulator<double> simulator(*diagram);
+  Context<double>& context = simulator.get_mutable_context();
+  simulator.reset_integrator<RungeKutta2Integrator<double>>(*diagram,
+                                                            FLAGS_timestep,
+                                                            &context);
   // Set initial state.
   Context<double>& plant_context =
       diagram->GetMutableSubsystemContext(plant, &context);
@@ -234,7 +202,7 @@ int main() {
 
   plant.set_state_vector(&plant_context, initial_state);
 
-  simulator->StepTo(FLAGS_sim_duration);
+  simulator.StepTo(FLAGS_sim_duration);
 
   return 0;
 }

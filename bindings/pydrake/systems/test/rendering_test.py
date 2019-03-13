@@ -2,6 +2,7 @@
 
 from pydrake.systems.rendering import (
     FrameVelocity,
+    MultibodyPositionToGeometryPose,
     PoseBundle,
     PoseAggregator,
     PoseVector,
@@ -11,15 +12,19 @@ import copy
 import unittest
 import numpy as np
 
-from pydrake.multibody.multibody_tree.math import (
+from pydrake.common import FindResourceOrThrow
+from pydrake.geometry import SceneGraph
+from pydrake.multibody.plant import MultibodyPlant
+from pydrake.multibody.math import (
     SpatialVelocity,
 )
+from pydrake.multibody.parsing import Parser
 from pydrake.systems.framework import (
     AbstractValue,
     BasicVector,
     PortDataType,
 )
-from pydrake.util.eigen_geometry import (
+from pydrake.common.eigen_geometry import (
     Isometry3,
     Quaternion,
 )
@@ -35,7 +40,7 @@ class TestRendering(unittest.TestCase):
         self.assertTrue(isinstance(value, BasicVector))
         self.assertTrue(isinstance(copy.copy(value), PoseVector))
         self.assertTrue(isinstance(value.Clone(), PoseVector))
-        self.assertEquals(value.size(), PoseVector.kSize)
+        self.assertEqual(value.size(), PoseVector.kSize)
         # - Accessors.
         self.assertTrue(isinstance(
             value.get_isometry(), Isometry3))
@@ -68,7 +73,7 @@ class TestRendering(unittest.TestCase):
         self.assertTrue(isinstance(frame_velocity, BasicVector))
         self.assertTrue(isinstance(copy.copy(frame_velocity), FrameVelocity))
         self.assertTrue(isinstance(frame_velocity.Clone(), FrameVelocity))
-        self.assertEquals(frame_velocity.size(), FrameVelocity.kSize)
+        self.assertEqual(frame_velocity.size(), FrameVelocity.kSize)
         # - Accessors.
         self.assertTrue(isinstance(
             frame_velocity.get_velocity(), SpatialVelocity))
@@ -134,19 +139,22 @@ class TestRendering(unittest.TestCase):
         instance_id2 = 42  # Supply another random, but unique, id.
         ports2 = aggregator.AddSinglePoseAndVelocityInput(
             "pose_and_velocity", instance_id2)
-        self.assertEqual(
-            ports2[0].get_data_type(), PortDataType.kVectorValued)
-        self.assertEqual(ports2[0].size(), PoseVector.kSize)
-        self.assertEqual(
-            ports2[1].get_data_type(), PortDataType.kVectorValued)
-        self.assertEqual(ports2[1].size(), FrameVelocity.kSize)
+        self.assertEqual(ports2.pose_input_port.get_data_type(),
+                         PortDataType.kVectorValued)
+        self.assertEqual(ports2.pose_input_port.size(), PoseVector.kSize)
+        self.assertEqual(ports2.velocity_input_port.get_data_type(),
+                         PortDataType.kVectorValued)
+        self.assertEqual(ports2.velocity_input_port.size(),
+                         FrameVelocity.kSize)
         num_poses = 1
         port3 = aggregator.AddBundleInput("pose_bundle", num_poses)
         self.assertEqual(port3.get_data_type(), PortDataType.kAbstractValued)
 
         # - CalcOutput.
+        self.assertEqual(aggregator.get_output_port(0).get_data_type(),
+                         PortDataType.kAbstractValued)
         context = aggregator.CreateDefaultContext()
-        output = aggregator.AllocateOutput(context)
+        output = aggregator.AllocateOutput()
 
         p1 = [0, 1, 2]
         pose1 = PoseVector()
@@ -186,3 +194,21 @@ class TestRendering(unittest.TestCase):
         self.assertTrue(np.allclose(vel_actual.translational(), v))
         self.assertTrue(
             (value.get_pose(2).matrix() == Isometry3(q3, p3).matrix()).all())
+
+    def testMultibodyPositionToGeometryPose(self):
+        file_name = FindResourceOrThrow(
+            "drake/multibody/benchmarks/acrobot/acrobot.sdf")
+        plant = MultibodyPlant(time_step=0.01)
+        model_instance = Parser(plant).AddModelFromFile(file_name)
+        scene_graph = SceneGraph()
+        plant.RegisterAsSourceForSceneGraph(scene_graph)
+        plant.Finalize()
+
+        to_pose = MultibodyPositionToGeometryPose(plant)
+
+        # Check the size of the input.
+        self.assertEqual(to_pose.get_input_port().size(), 2)
+
+        # Just check the spelling of the output port (size is not meaningful
+        # for Abstract-valued ports).
+        to_pose.get_output_port()

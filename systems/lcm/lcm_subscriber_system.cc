@@ -34,16 +34,20 @@ constexpr int kStateIndexMessageCount = 1;
 LcmSubscriberSystem::LcmSubscriberSystem(
     const std::string& channel, const LcmAndVectorBaseTranslator* translator,
     std::unique_ptr<SerializerInterface> serializer,
-    drake::lcm::DrakeLcmInterface* lcm)
+    drake::lcm::DrakeLcmInterface* lcm,
+    int fixed_encoded_size)
     : channel_(channel),
       translator_(translator),
       serializer_(std::move(serializer)),
-      lcm_interface_(lcm) {
+      fixed_encoded_size_(fixed_encoded_size) {
   DRAKE_DEMAND((translator_ != nullptr) != (serializer_ != nullptr));
   DRAKE_DEMAND(lcm);
 
-  lcm->Subscribe(channel_, this);
+  lcm->Subscribe(channel_, [this](const void* buffer, int size) {
+      this->HandleMessage(buffer, size);
+    });
 
+  // Declare the single output port.
   if (translator_ != nullptr) {
     // Invoke the translator allocate method once to provide a model value.
     DeclareVectorOutputPort(*AllocateTranslatorOutputValue(),
@@ -52,12 +56,30 @@ LcmSubscriberSystem::LcmSubscriberSystem(
     // Use the "advanced" method to construct explicit non-member functors
     // to deal with the unusual methods we have available.
     DeclareAbstractOutputPort(
-        [this](const Context<double>&) {
+        [this]() {
           return this->AllocateSerializerOutputValue();
         },
         [this](const Context<double>& context, AbstractValue* out) {
           this->CalcSerializerOutputValue(context, out);
         });
+  }
+
+  // Declare our two states (message_value, message_count).
+  if (is_abstract_state()) {
+    static_assert(kStateIndexMessage == 0, "");
+    this->DeclareAbstractState(AllocateSerializerOutputValue());
+    static_assert(kStateIndexMessageCount == 1, "");
+    this->DeclareAbstractState(AbstractValue::Make<int>(0));
+  } else {
+    DRAKE_DEMAND(is_discrete_state());
+    static_assert(kStateIndexMessage == 0, "");
+    if (translator_) {
+      this->DeclareDiscreteState(*AllocateTranslatorOutputValue());
+    } else {
+      this->DeclareDiscreteState(1 + fixed_encoded_size_);
+    }
+    static_assert(kStateIndexMessageCount == 1, "");
+    this->DeclareDiscreteState(1 /* size */);
   }
 
   set_name(make_name(channel_));
@@ -73,22 +95,22 @@ LcmSubscriberSystem::LcmSubscriberSystem(
     DrakeLcmInterface* lcm)
     : LcmSubscriberSystem(channel, &translator, nullptr, lcm) {}
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 LcmSubscriberSystem::LcmSubscriberSystem(
     const std::string& channel,
     const LcmTranslatorDictionary& translator_dictionary,
     DrakeLcmInterface* lcm)
     : LcmSubscriberSystem(channel, translator_dictionary.GetTranslator(channel),
                           lcm) {}
+#pragma GCC diagnostic pop
 
 LcmSubscriberSystem::~LcmSubscriberSystem() {}
 
-void LcmSubscriberSystem::SetDefaultState(const Context<double>&,
-                                          State<double>* state) const {
-  if (translator_ != nullptr) {
-    DRAKE_DEMAND(serializer_ == nullptr);
+void LcmSubscriberSystem::CopyLatestMessageInto(State<double>* state) const {
+  if (is_discrete_state()) {
     ProcessMessageAndStoreToDiscreteState(&state->get_mutable_discrete_state());
   } else {
-    DRAKE_DEMAND(translator_ == nullptr);
     ProcessMessageAndStoreToAbstractState(&state->get_mutable_abstract_state());
   }
 }
@@ -99,14 +121,28 @@ void LcmSubscriberSystem::SetDefaultState(const Context<double>&,
 // implemented and in place. Same for ProcessMessageAndStoreToAbstractState()
 void LcmSubscriberSystem::ProcessMessageAndStoreToDiscreteState(
     DiscreteValues<double>* discrete_state) const {
-  DRAKE_ASSERT(translator_ != nullptr);
-  DRAKE_ASSERT(serializer_ == nullptr);
+  DRAKE_ASSERT(is_discrete_state());
 
   std::lock_guard<std::mutex> lock(received_message_mutex_);
   if (!received_message_.empty()) {
-    translator_->Deserialize(
-        received_message_.data(), received_message_.size(),
-        &discrete_state->get_mutable_vector(kStateIndexMessage));
+    if (translator_) {
+      translator_->Deserialize(
+          received_message_.data(), received_message_.size(),
+          &discrete_state->get_mutable_vector(kStateIndexMessage));
+    } else {
+      const int received_size = static_cast<int>(received_message_.size());
+      if (received_size > fixed_encoded_size_) {
+        throw std::runtime_error(fmt::format(
+            "LcmSubscriberSystem: Received {} message was {} bytes, not the "
+            "at-most-{} bytes that was promised to our constructor", channel_,
+            received_size, fixed_encoded_size_));
+      }
+      auto& xd = discrete_state->get_mutable_vector(kStateIndexMessage);
+      xd[0] = received_size;
+      for (int i = 0; i < received_size; ++i) {
+        xd[i + 1] = received_message_[i];
+      }
+    }
   }
   discrete_state->get_mutable_vector(kStateIndexMessageCount)
       .SetAtIndex(0, received_message_count_);
@@ -114,7 +150,7 @@ void LcmSubscriberSystem::ProcessMessageAndStoreToDiscreteState(
 
 void LcmSubscriberSystem::ProcessMessageAndStoreToAbstractState(
     AbstractValues* abstract_state) const {
-  DRAKE_ASSERT(translator_ == nullptr);
+  DRAKE_ASSERT(is_abstract_state());
   DRAKE_ASSERT(serializer_ != nullptr);
 
   std::lock_guard<std::mutex> lock(received_message_mutex_);
@@ -124,18 +160,16 @@ void LcmSubscriberSystem::ProcessMessageAndStoreToAbstractState(
         &abstract_state->get_mutable_value(kStateIndexMessage));
   }
   abstract_state->get_mutable_value(kStateIndexMessageCount)
-      .GetMutableValue<int>() = received_message_count_;
+      .get_mutable_value<int>() = received_message_count_;
 }
 
 int LcmSubscriberSystem::GetMessageCount(const Context<double>& context) const {
   // Gets the last message count from either abstract state or discrete state.
   int last_message_count;
-  if (translator_ == nullptr) {
-    DRAKE_ASSERT(serializer_ != nullptr);
+  if (is_abstract_state()) {
     last_message_count =
         context.get_abstract_state<int>(kStateIndexMessageCount);
   } else {
-    DRAKE_ASSERT(serializer_ == nullptr);
     last_message_count = static_cast<int>(
         context.get_discrete_state(kStateIndexMessageCount).GetAtIndex(0));
   }
@@ -145,96 +179,36 @@ int LcmSubscriberSystem::GetMessageCount(const Context<double>& context) const {
 void LcmSubscriberSystem::DoCalcNextUpdateTime(
     const Context<double>& context,
     systems::CompositeEventCollection<double>* events, double* time) const {
-  const int last_message_count = GetMessageCount(context);
+  // We do not support events other than our own message timing events.
+  LeafSystem<double>::DoCalcNextUpdateTime(context, events, time);
+  DRAKE_THROW_UNLESS(events->HasEvents() == false);
+  DRAKE_THROW_UNLESS(std::isinf(*time));
 
+  // Do nothing unless we have a new message.
+  const int last_message_count = GetMessageCount(context);
   const int received_message_count = [this]() {
     std::unique_lock<std::mutex> lock(received_message_mutex_);
     return received_message_count_;
   }();
+  if (last_message_count == received_message_count) {
+    return;
+  }
 
-  // Has a new message. Schedule an update event.
-  if (last_message_count != received_message_count) {
-    // TODO(siyuan): should be context.get_time() once #5725 is resolved.
-    *time = context.get_time() + 0.0001;
-    if (translator_ == nullptr) {
-      EventCollection<UnrestrictedUpdateEvent<double>>& uu_events =
-          events->get_mutable_unrestricted_update_events();
-      uu_events.add_event(
-          std::make_unique<systems::UnrestrictedUpdateEvent<double>>(
-              Event<double>::TriggerType::kTimed));
-    } else {
-      EventCollection<DiscreteUpdateEvent<double>>& du_events =
-          events->get_mutable_discrete_update_events();
-      du_events.add_event(
-          std::make_unique<systems::DiscreteUpdateEvent<double>>(
-              Event<double>::TriggerType::kTimed));
-    }
+  // Schedule an update event at the current time.
+  *time = context.get_time();
+  if (is_abstract_state()) {
+    EventCollection<UnrestrictedUpdateEvent<double>>& uu_events =
+        events->get_mutable_unrestricted_update_events();
+    uu_events.add_event(
+        std::make_unique<systems::UnrestrictedUpdateEvent<double>>(
+            TriggerType::kTimed));
   } else {
-    // Special code to support LCM log playback. For the normal and mock LCM
-    // interfaces, this always returns inf and returns.
-    *time = lcm_interface_->GetNextMessageTime();
-    DRAKE_DEMAND(*time > context.get_time());
-    if (std::isinf(*time)) {
-      return;
-    }
-
-    // Schedule a publish event at the next message time. We use a publish
-    // event here because we only want to generate a side effect to dispatch
-    // the message properly to all the subscribers, not mutating this system's
-    // context.)
-    // Note that for every LCM subscriber in the diagram, they will all schedule
-    // this event for themselves. However, only the first subscriber executing
-    // the callback will advance the log and do the message dispatch. This is
-    // because once the first callback is executed, the front of the log will
-    // have a different timestamp than the context's time (scheduled callback
-    // time).
-    EventCollection<PublishEvent<double>>& pub_events =
-        events->get_mutable_publish_events();
-
-    PublishEvent<double>::PublishCallback callback = [this](
-        const Context<double>& c, const PublishEvent<double>&) {
-      // Want to keep polling from the message queue, if they happen
-      // to be occur at the exact same time.
-      while (lcm_interface_->GetNextMessageTime() == c.get_time()) {
-        lcm_interface_->DispatchMessageAndAdvanceLog(c.get_time());
-      }
-    };
-
-    pub_events.add_event(std::make_unique<systems::PublishEvent<double>>(
-        Event<double>::TriggerType::kTimed, callback));
+    EventCollection<DiscreteUpdateEvent<double>>& du_events =
+        events->get_mutable_discrete_update_events();
+    du_events.add_event(
+        std::make_unique<systems::DiscreteUpdateEvent<double>>(
+            TriggerType::kTimed));
   }
-}
-
-std::unique_ptr<DiscreteValues<double>>
-LcmSubscriberSystem::AllocateDiscreteState() const {
-  // Only make discrete states if we are outputting vector values.
-  if (translator_ != nullptr) {
-    DRAKE_DEMAND(serializer_ == nullptr);
-    std::vector<std::unique_ptr<BasicVector<double>>> discrete_state_vec(2);
-    discrete_state_vec[kStateIndexMessage] =
-        this->LcmSubscriberSystem::AllocateTranslatorOutputValue();
-    discrete_state_vec[kStateIndexMessageCount] =
-        std::make_unique<BasicVector<double>>(1);
-    return std::make_unique<DiscreteValues<double>>(
-        std::move(discrete_state_vec));
-  }
-  DRAKE_DEMAND(serializer_ != nullptr);
-  return LeafSystem<double>::AllocateDiscreteState();
-}
-
-std::unique_ptr<AbstractValues> LcmSubscriberSystem::AllocateAbstractState()
-    const {
-  // Only make abstract states if we are outputting abstract message.
-  if (serializer_ != nullptr) {
-    DRAKE_DEMAND(translator_ == nullptr);
-    std::vector<std::unique_ptr<systems::AbstractValue>> abstract_vals(2);
-    abstract_vals[kStateIndexMessage] =
-        this->LcmSubscriberSystem::AllocateSerializerOutputValue();
-    abstract_vals[kStateIndexMessageCount] = AbstractValue::Make<int>(0);
-    return std::make_unique<systems::AbstractValues>(std::move(abstract_vals));
-  }
-  DRAKE_DEMAND(translator_ != nullptr);
-  return LeafSystem<double>::AllocateAbstractState();
 }
 
 std::string LcmSubscriberSystem::make_name(const std::string& channel) {
@@ -249,7 +223,7 @@ const std::string& LcmSubscriberSystem::get_channel_name() const {
 // using a translator.
 std::unique_ptr<BasicVector<double>>
 LcmSubscriberSystem::AllocateTranslatorOutputValue() const {
-  DRAKE_DEMAND(translator_ != nullptr && serializer_ == nullptr);
+  DRAKE_DEMAND(translator_ != nullptr);
   auto result = translator_->AllocateOutputVector();
   if (result) {
     return result;
@@ -259,49 +233,54 @@ LcmSubscriberSystem::AllocateTranslatorOutputValue() const {
 
 void LcmSubscriberSystem::CalcTranslatorOutputValue(
     const Context<double>& context, BasicVector<double>* output_vector) const {
-  DRAKE_DEMAND(translator_ != nullptr && serializer_ == nullptr);
+  DRAKE_DEMAND(is_discrete_state());
   output_vector->SetFrom(context.get_discrete_state(kStateIndexMessage));
 }
 
 // This is only called if our output port is abstract-valued, because we are
 // using a serializer.
-std::unique_ptr<systems::AbstractValue>
+std::unique_ptr<AbstractValue>
 LcmSubscriberSystem::AllocateSerializerOutputValue() const {
-  DRAKE_DEMAND(translator_ == nullptr && serializer_ != nullptr);
+  DRAKE_DEMAND(serializer_ != nullptr);
   return serializer_->CreateDefaultValue();
 }
 
 void LcmSubscriberSystem::CalcSerializerOutputValue(
     const Context<double>& context, AbstractValue* output_value) const {
-  DRAKE_DEMAND(serializer_.get() != nullptr);
-  output_value->SetFrom(
-      context.get_abstract_state().get_value(kStateIndexMessage));
-}
-
-void LcmSubscriberSystem::HandleMessage(const std::string& channel,
-                                        const void* message_buffer,
-                                        int message_size) {
-  SPDLOG_TRACE(drake::log(), "Receiving LCM {} message", channel);
-
-  if (channel == channel_) {
-    const uint8_t* const rbuf_begin =
-        static_cast<const uint8_t*>(message_buffer);
-    const uint8_t* const rbuf_end = rbuf_begin + message_size;
-    std::lock_guard<std::mutex> lock(received_message_mutex_);
-    received_message_.clear();
-    received_message_.insert(received_message_.begin(), rbuf_begin, rbuf_end);
-
-    received_message_count_++;
-    received_message_condition_variable_.notify_all();
+  DRAKE_DEMAND(serializer_ != nullptr);
+  if (is_abstract_state()) {
+    output_value->SetFrom(
+        context.get_abstract_state().get_value(kStateIndexMessage));
   } else {
-    std::cerr << "LcmSubscriberSystem: HandleMessage: WARNING: Received a "
-              << "message for channel \"" << channel
-              << "\" instead of channel \"" << channel_ << "\". Ignoring it."
-              << std::endl;
+    if (GetMessageCount(context) > 0) {
+      const auto& xd = context.get_discrete_state(kStateIndexMessage);
+      const int size = xd[0];
+      std::vector<uint8_t> buffer;
+      buffer.resize(size);
+      for (int i = 0; i < size; ++i) {
+        buffer[i] = xd[i + 1];
+      }
+      serializer_->Deserialize(buffer.data(), size, output_value);
+    }
   }
 }
 
-int LcmSubscriberSystem::WaitForMessage(int old_message_count) const {
+void LcmSubscriberSystem::HandleMessage(const void* buffer, int size) {
+  SPDLOG_TRACE(drake::log(), "Receiving LCM {} message", channel_);
+
+  const uint8_t* const rbuf_begin = static_cast<const uint8_t*>(buffer);
+  const uint8_t* const rbuf_end = rbuf_begin + size;
+  std::lock_guard<std::mutex> lock(received_message_mutex_);
+  received_message_.clear();
+  received_message_.insert(received_message_.begin(), rbuf_begin, rbuf_end);
+  received_message_count_++;
+  received_message_condition_variable_.notify_all();
+}
+
+int LcmSubscriberSystem::WaitForMessage(
+    int old_message_count, AbstractValue* message) const {
+  DRAKE_ASSERT(serializer_ != nullptr);
+
   // The message buffer and counter are updated in HandleMessage(), which is
   // a callback function invoked by a different thread owned by the
   // drake::lcm::DrakeLcmInterface instance passed to the constructor. Thus,
@@ -310,14 +289,24 @@ int LcmSubscriberSystem::WaitForMessage(int old_message_count) const {
 
   // This while loop is necessary to guard for spurious wakeup:
   // https://en.wikipedia.org/wiki/Spurious_wakeup
-  while (old_message_count == received_message_count_)
+  while (old_message_count >= received_message_count_) {
     // When wait returns, lock is atomically acquired. So it's thread safe to
     // read received_message_count_.
     received_message_condition_variable_.wait(lock);
+  }
   int new_message_count = received_message_count_;
+  if (message) {
+      serializer_->Deserialize(
+          received_message_.data(), received_message_.size(), message);
+  }
   lock.unlock();
 
   return new_message_count;
+}
+
+int LcmSubscriberSystem::GetInternalMessageCount() const {
+  std::unique_lock<std::mutex> lock(received_message_mutex_);
+  return received_message_count_;
 }
 
 const LcmAndVectorBaseTranslator& LcmSubscriberSystem::get_translator() const {
@@ -328,3 +317,4 @@ const LcmAndVectorBaseTranslator& LcmSubscriberSystem::get_translator() const {
 }  // namespace lcm
 }  // namespace systems
 }  // namespace drake
+

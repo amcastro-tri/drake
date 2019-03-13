@@ -2,9 +2,11 @@
 #include <cmath>
 #include <initializer_list>
 #include <iostream>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "drake/common/symbolic.h"
 
@@ -12,11 +14,12 @@ namespace drake {
 namespace symbolic {
 
 using std::endl;
+using std::initializer_list;
+using std::move;
 using std::ostream;
 using std::ostringstream;
 using std::runtime_error;
 using std::string;
-using std::initializer_list;
 
 namespace {
 void throw_if_dummy(const Variable& var) {
@@ -35,19 +38,29 @@ void throw_if_nan(const double v) {
     throw runtime_error(oss.str());
   }
 }
-}  // anonymous namespace
 
-Environment::Environment(const initializer_list<value_type> init) : map_(init) {
-  for (const auto& p : init) {
-    throw_if_dummy(p.first);
-    throw_if_nan(p.second);
+// Given a list of variables, @p vars, builds an Environment::map which maps a
+// Variable to its double value. All values are set to 0.0.
+Environment::map BuildMap(const initializer_list<Environment::key_type> vars) {
+  Environment::map m;
+  for (const Environment::key_type& var : vars) {
+    m.emplace(var, 0.0);
   }
+  return m;
 }
 
-Environment::Environment(const initializer_list<key_type> vars) {
-  for (const auto& var : vars) {
-    throw_if_dummy(var);
-    map_.emplace(var, 0.0);
+}  // anonymous namespace
+
+Environment::Environment(const std::initializer_list<value_type> init)
+    : Environment{map(init)} {}
+
+Environment::Environment(const std::initializer_list<key_type> vars)
+    : Environment{BuildMap(vars)} {}
+
+Environment::Environment(map m) : map_{move(m)} {
+  for (const auto& p : map_) {
+    throw_if_dummy(p.first);
+    throw_if_nan(p.second);
   }
 }
 
@@ -102,5 +115,39 @@ ostream& operator<<(ostream& os, const Environment& env) {
   }
   return os;
 }
+
+Environment PopulateRandomVariables(Environment env, const Variables& variables,
+                                    RandomGenerator* const random_generator) {
+  DRAKE_DEMAND(random_generator != nullptr);
+  for (const Variable& var : variables) {
+    const auto it = env.find(var);
+    if (it != env.end()) {
+      // The variable is already assigned by env, no need to sample.
+      continue;
+    }
+    switch (var.get_type()) {
+      case Variable::Type::CONTINUOUS:
+      case Variable::Type::BINARY:
+      case Variable::Type::BOOLEAN:
+      case Variable::Type::INTEGER:
+        // Do nothing for non-random variables.
+        break;
+      case Variable::Type::RANDOM_UNIFORM:
+        env.insert(var, std::uniform_real_distribution<double>{
+                            0.0, 1.0}(*random_generator));
+        break;
+      case Variable::Type::RANDOM_GAUSSIAN:
+        env.insert(
+            var, std::normal_distribution<double>{0.0, 1.0}(*random_generator));
+        break;
+      case Variable::Type::RANDOM_EXPONENTIAL:
+        env.insert(
+            var, std::exponential_distribution<double>{1.0}(*random_generator));
+        break;
+    }
+  }
+  return env;
+}
+
 }  // namespace symbolic
 }  // namespace drake

@@ -16,6 +16,50 @@ namespace drake {
 namespace common {
 namespace {
 
+// Test nominal behavior of `AutoDiff`, checking implicit and explicit casting.
+GTEST_TEST(AutodiffOverloadsTest, Casting) {
+  VectorXd dx(3);
+  dx << 0, 1, 2;
+  VectorXd dx0(3);
+  dx0.setZero();
+
+  // No derivatives supplied.
+  AutoDiffXd x(1);
+  EXPECT_EQ(x.value(), 1);
+  EXPECT_EQ(x.derivatives().size(), 0);
+  // Persists.
+  x = 2;
+  EXPECT_EQ(x.value(), 2);
+  EXPECT_EQ(x.derivatives().size(), 0);
+  // Update derivative.
+  x.derivatives() = dx;
+  EXPECT_EQ(x.value(), 2);
+  EXPECT_EQ(x.derivatives(), dx);
+  // Implicitly castable, resets derivatives to zero.
+  x = 10;
+  EXPECT_EQ(x.value(), 10);
+  EXPECT_EQ(x.derivatives(), dx0);
+  // Resets derivative size.
+  x = AutoDiffXd(10);
+  EXPECT_EQ(x.value(), 10);
+  EXPECT_EQ(x.derivatives().size(), 0);
+
+  // Only explicitly castable to double.
+  double xs = x.value();
+  EXPECT_EQ(xs, 10);
+
+  // Can mix zero-size derivatives: interpreted as constants.
+  x = AutoDiffXd(2, dx);
+  AutoDiffXd y(3);
+  AutoDiffXd z = x * y;
+  EXPECT_EQ(z.value(), 6);
+  EXPECT_EQ(z.derivatives().size(), 3);
+
+  // The following causes failure, because of mixed derivative size.
+  // y.derivatives() = VectorXd::Zero(2);
+  // EXPECT_EQ((x * y).value(), 10);
+}
+
 // Tests ExtractDoubleOrThrow on autodiff.
 GTEST_TEST(AutodiffOverloadsTest, ExtractDouble) {
   // On autodiff.
@@ -28,12 +72,34 @@ GTEST_TEST(AutodiffOverloadsTest, ExtractDouble) {
   EXPECT_EQ(ExtractDoubleOrThrow(y), 1.0);
 }
 
+// Tests correctness of nexttoward.
+GTEST_TEST(AutodiffOverloadsTest, NextToward) {
+  const long double inf = std::numeric_limits<long double>::infinity();
+  const double eps = std::numeric_limits<double>::epsilon();
+  Eigen::AutoDiffScalar<Eigen::Vector2d> x;
+  x.value() = 1.0;
+  EXPECT_EQ(nexttoward(x, inf) - 1, eps);
+}
+
+// Tests correctness of isfinite.
+GTEST_TEST(AutodiffOverloadsTest, IsFinite) {
+  Eigen::AutoDiffScalar<Eigen::Vector2d> x;
+  x.value() = 1.0 / 0.0;
+  EXPECT_EQ(isfinite(x), false);
+  x.value() = 0.0;
+  EXPECT_EQ(isfinite(x), true);
+  x.derivatives()[0] = 1.0 / 0.0;  // The derivatives() are ignored.
+  EXPECT_EQ(isfinite(x), true);
+}
+
 // Tests correctness of isinf.
 GTEST_TEST(AutodiffOverloadsTest, IsInf) {
   Eigen::AutoDiffScalar<Eigen::Vector2d> x;
   x.value() = 1.0 / 0.0;
   EXPECT_EQ(isinf(x), true);
   x.value() = 0.0;
+  EXPECT_EQ(isinf(x), false);
+  x.derivatives()[0] = 1.0 / 0.0;  // The derivatives() are ignored.
   EXPECT_EQ(isinf(x), false);
 }
 

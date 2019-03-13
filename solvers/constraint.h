@@ -6,6 +6,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -16,12 +17,19 @@
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
 #include "drake/common/polynomial.h"
+#include "drake/common/symbolic.h"
+#include "drake/solvers/decision_variable.h"
 #include "drake/solvers/evaluator_base.h"
 #include "drake/solvers/function.h"
 
 namespace drake {
 namespace solvers {
 
+// TODO(eric.cousineau): Consider enabling the constraint class directly to
+// specify new slack variables.
+// TODO(eric.cousineau): Consider parameterized constraints:  e.g. the
+// acceleration constraints in the rigid body dynamics are constraints
+// on vdot and f, but are "parameterized" by q and v.
 /**
  * A constraint is a function + lower and upper bounds.
  *
@@ -32,11 +40,6 @@ namespace solvers {
  * It should support evaluating the constraint, and adding it to an optimization
  * problem.
  */
-// TODO(eric.cousineau): Consider enabling the constraint class directly to
-// specify new slack variables.
-// TODO(eric.cousineau): Consider parameterized constraints:  e.g. the
-// acceleration constraints in the rigid body dynamics are constraints
-// on vdot and f, but are "parameterized" by q and v.
 class Constraint : public EvaluatorBase {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(Constraint)
@@ -95,6 +98,12 @@ class Constraint : public EvaluatorBase {
     return DoCheckSatisfied(x, tol);
   }
 
+  symbolic::Formula CheckSatisfied(
+      const Eigen::Ref<const VectorX<symbolic::Variable>>& x) const {
+    DRAKE_ASSERT(x.rows() == num_vars() || num_vars() == Eigen::Dynamic);
+    return DoCheckSatisfied(x);
+  }
+
   const Eigen::VectorXd& lower_bound() const { return lower_bound_; }
   const Eigen::VectorXd& upper_bound() const { return upper_bound_; }
 
@@ -104,20 +113,24 @@ class Constraint : public EvaluatorBase {
  protected:
   /** Updates the lower bound.
    * @note if the users want to expose this method in a sub-class, do
-   * using Constraint::set_bounds, as in LinearConstraint.
+   * using Constraint::UpdateLowerBound, as in LinearConstraint.
    */
-  template <typename Derived>
-  void UpdateLowerBound(const Eigen::MatrixBase<Derived>& new_lb) {
-    set_bounds(new_lb, upper_bound_);
+  void UpdateLowerBound(const Eigen::Ref<const Eigen::VectorXd>& new_lb) {
+    if (new_lb.rows() != num_constraints()) {
+      throw std::logic_error("Lower bound has invalid dimension.");
+    }
+    lower_bound_ = new_lb;
   }
 
   /** Updates the upper bound.
    * @note if the users want to expose this method in a sub-class, do
-   * using Constraint::set_bounds, as in LinearConstraint.
+   * using Constraint::UpdateUpperBound, as in LinearConstraint.
    */
-  template <typename Derived>
-  void UpdateUpperBound(const Eigen::MatrixBase<Derived>& new_ub) {
-    set_bounds(lower_bound_, new_ub);
+  void UpdateUpperBound(const Eigen::Ref<const Eigen::VectorXd>& new_ub) {
+    if (new_ub.rows() != num_constraints()) {
+      throw std::logic_error("Upper bound has invalid dimension.");
+    }
+    upper_bound_ = new_ub;
   }
 
   /**
@@ -127,23 +140,16 @@ class Constraint : public EvaluatorBase {
    * @note If the users want to expose this method in a sub-class, do
    * using Constraint::set_bounds, as in LinearConstraint.
    */
-  template <typename DerivedL, typename DerivedU>
-  void set_bounds(const Eigen::MatrixBase<DerivedL>& lower_bound,
-                  const Eigen::MatrixBase<DerivedU>& upper_bound) {
-    if (lower_bound.rows() != num_constraints() ||
-        upper_bound.rows() != num_constraints() || lower_bound.cols() != 1 ||
-        upper_bound.cols() != 1) {
-      throw std::runtime_error("New constraints have invalid dimensions.");
-    }
-
-    lower_bound_ = lower_bound;
-    upper_bound_ = upper_bound;
+  void set_bounds(const Eigen::Ref<const Eigen::VectorXd>& lower_bound,
+                  const Eigen::Ref<const Eigen::VectorXd>& upper_bound) {
+    UpdateLowerBound(lower_bound);
+    UpdateUpperBound(upper_bound);
   }
 
   virtual bool DoCheckSatisfied(const Eigen::Ref<const Eigen::VectorXd>& x,
                                 const double tol) const {
     Eigen::VectorXd y(num_constraints());
-    DoEval(x, y);
+    DoEval(x, &y);
     return (y.array() >= lower_bound_.array() - tol).all() &&
            (y.array() <= upper_bound_.array() + tol).all();
   }
@@ -151,10 +157,15 @@ class Constraint : public EvaluatorBase {
   virtual bool DoCheckSatisfied(const Eigen::Ref<const AutoDiffVecXd>& x,
                                 const double tol) const {
     AutoDiffVecXd y(num_constraints());
-    DoEval(x, y);
-    return (y.array() >= lower_bound_.cast<AutoDiffXd>().array() - tol).all() &&
-           (y.array() <= upper_bound_.cast<AutoDiffXd>().array() + tol).all();
+    DoEval(x, &y);
+    auto get_value = [](const AutoDiffXd& v) { return v.value(); };
+    return
+        (y.array().unaryExpr(get_value) >= lower_bound_.array() - tol).all() &&
+        (y.array().unaryExpr(get_value) <= upper_bound_.array() + tol).all();
   }
+
+  virtual symbolic::Formula DoCheckSatisfied(
+      const Eigen::Ref<const VectorX<symbolic::Variable>>& x) const;
 
  private:
   void check(int num_constraints) {
@@ -235,11 +246,18 @@ class QuadraticConstraint : public Constraint {
   }
 
  private:
+  template <typename DerivedX, typename ScalarY>
+  void DoEvalGeneric(const Eigen::MatrixBase<DerivedX>& x,
+                     VectorX<ScalarY>* y) const;
+
   void DoEval(const Eigen::Ref<const Eigen::VectorXd>& x,
-              Eigen::VectorXd& y) const override;
+              Eigen::VectorXd* y) const override;
 
   void DoEval(const Eigen::Ref<const AutoDiffVecXd>& x,
-              AutoDiffVecXd& y) const override;
+              AutoDiffVecXd* y) const override;
+
+  void DoEval(const Eigen::Ref<const VectorX<symbolic::Variable>>& x,
+              VectorX<symbolic::Expression>* y) const override;
 
   Eigen::MatrixXd Q_;
   Eigen::VectorXd b_;
@@ -293,11 +311,18 @@ class LorentzConeConstraint : public Constraint {
   const Eigen::VectorXd& b() const { return b_; }
 
  private:
+  template <typename DerivedX, typename ScalarY>
+  void DoEvalGeneric(const Eigen::MatrixBase<DerivedX>& x,
+                     VectorX<ScalarY>* y) const;
+
   void DoEval(const Eigen::Ref<const Eigen::VectorXd>& x,
-              Eigen::VectorXd& y) const override;
+              Eigen::VectorXd* y) const override;
 
   void DoEval(const Eigen::Ref<const AutoDiffVecXd>& x,
-              AutoDiffVecXd& y) const override;
+              AutoDiffVecXd* y) const override;
+
+  void DoEval(const Eigen::Ref<const VectorX<symbolic::Variable>>& x,
+              VectorX<symbolic::Expression>* y) const override;
 
   const Eigen::MatrixXd A_;
   const Eigen::VectorXd b_;
@@ -345,11 +370,18 @@ class RotatedLorentzConeConstraint : public Constraint {
   ~RotatedLorentzConeConstraint() override {}
 
  private:
+  template <typename DerivedX, typename ScalarY>
+  void DoEvalGeneric(const Eigen::MatrixBase<DerivedX>& x,
+                     VectorX<ScalarY>* y) const;
+
   void DoEval(const Eigen::Ref<const Eigen::VectorXd>& x,
-              Eigen::VectorXd& y) const override;
+              Eigen::VectorXd* y) const override;
 
   void DoEval(const Eigen::Ref<const AutoDiffVecXd>& x,
-              AutoDiffVecXd& y) const override;
+              AutoDiffVecXd* y) const override;
+
+  void DoEval(const Eigen::Ref<const VectorX<symbolic::Variable>>& x,
+              VectorX<symbolic::Expression>* y) const override;
 
   const Eigen::MatrixXd A_;
   const Eigen::VectorXd b_;
@@ -379,9 +411,9 @@ class EvaluatorConstraint : public Constraint {
                    std::forward<Args>(args)...),
         evaluator_(evaluator) {}
 
+  using Constraint::set_bounds;
   using Constraint::UpdateLowerBound;
   using Constraint::UpdateUpperBound;
-  using Constraint::set_bounds;
 
  protected:
   /** Reference to the nested evaluator. */
@@ -389,11 +421,15 @@ class EvaluatorConstraint : public Constraint {
 
  private:
   void DoEval(const Eigen::Ref<const Eigen::VectorXd>& x,
-              Eigen::VectorXd& y) const override {
+              Eigen::VectorXd* y) const override {
     evaluator_->Eval(x, y);
   }
   void DoEval(const Eigen::Ref<const AutoDiffVecXd>& x,
-              AutoDiffVecXd& y) const override {
+              AutoDiffVecXd* y) const override {
+    evaluator_->Eval(x, y);
+  }
+  void DoEval(const Eigen::Ref<const VectorX<symbolic::Variable>>& x,
+              VectorX<symbolic::Expression>* y) const override {
     evaluator_->Eval(x, y);
   }
 
@@ -443,7 +479,7 @@ class PolynomialConstraint : public EvaluatorConstraint<PolynomialEvaluator> {
 // IntegerConstraint, ...
 
 /**
- * Implements a constraint of the form @f lb <= Ax <= ub @f
+ * Implements a constraint of the form @f$ lb <= Ax <= ub @f$
  */
 class LinearConstraint : public Constraint {
  public:
@@ -497,22 +533,30 @@ class LinearConstraint : public Constraint {
     set_bounds(new_lb, new_ub);
   }
 
+  using Constraint::set_bounds;
   using Constraint::UpdateLowerBound;
   using Constraint::UpdateUpperBound;
-  using Constraint::set_bounds;
 
  protected:
-  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> A_;
-
   void DoEval(const Eigen::Ref<const Eigen::VectorXd>& x,
-              Eigen::VectorXd& y) const override;
+              Eigen::VectorXd* y) const override;
 
   void DoEval(const Eigen::Ref<const AutoDiffVecXd>& x,
-              AutoDiffVecXd& y) const override;
+              AutoDiffVecXd* y) const override;
+
+  void DoEval(const Eigen::Ref<const VectorX<symbolic::Variable>>& x,
+              VectorX<symbolic::Expression>* y) const override;
+
+  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> A_;
+
+ private:
+  template <typename DerivedX, typename ScalarY>
+  void DoEvalGeneric(const Eigen::MatrixBase<DerivedX>& x,
+                     VectorX<ScalarY>* y) const;
 };
 
 /**
- * Implements a constraint of the form @f Ax = b @f
+ * Implements a constraint of the form @f$ Ax = b @f$
  */
 class LinearEqualityConstraint : public LinearConstraint {
  public:
@@ -548,9 +592,9 @@ class LinearEqualityConstraint : public LinearConstraint {
    * instead.
    */
   template <typename DerivedA, typename DerivedL, typename DerivedU>
-  void UpdateCoefficients(const Eigen::MatrixBase<DerivedA>& new_A,
-                          const Eigen::MatrixBase<DerivedL>& new_lb,
-                          const Eigen::MatrixBase<DerivedU>& new_ub) {
+  void UpdateCoefficients(const Eigen::MatrixBase<DerivedA>&,
+                          const Eigen::MatrixBase<DerivedL>&,
+                          const Eigen::MatrixBase<DerivedU>&) {
     static_assert(
         !std::is_same<DerivedA, DerivedA>::value,
         "This method should not be called form `LinearEqualityConstraint`");
@@ -558,7 +602,7 @@ class LinearEqualityConstraint : public LinearConstraint {
 };
 
 /**
- * Implements a constraint of the form @f lb <= x <= ub @f
+ * Implements a constraint of the form @f$ lb <= x <= ub @f$
  *
  * Note: the base Constraint class (as implemented at the moment) could
  * play this role.  But this class enforces that it is ONLY a bounding
@@ -578,12 +622,19 @@ class BoundingBoxConstraint : public LinearConstraint {
 
   ~BoundingBoxConstraint() override {}
 
- protected:
+ private:
+  template <typename DerivedX, typename ScalarY>
+  void DoEvalGeneric(const Eigen::MatrixBase<DerivedX>& x,
+                     VectorX<ScalarY>* y) const;
+
   void DoEval(const Eigen::Ref<const Eigen::VectorXd>& x,
-              Eigen::VectorXd& y) const override;
+              Eigen::VectorXd* y) const override;
 
   void DoEval(const Eigen::Ref<const AutoDiffVecXd>& x,
-              AutoDiffVecXd& y) const override;
+              AutoDiffVecXd* y) const override;
+
+  void DoEval(const Eigen::Ref<const VectorX<symbolic::Variable>>& x,
+              VectorX<symbolic::Expression>* y) const override;
 };
 
 /**
@@ -613,12 +664,14 @@ class LinearComplementarityConstraint : public Constraint {
   const Eigen::VectorXd& q() const { return q_; }
 
  protected:
-  /** Return Mx + q (the value of the slack variable). */
   void DoEval(const Eigen::Ref<const Eigen::VectorXd>& x,
-              Eigen::VectorXd& y) const override;
+              Eigen::VectorXd* y) const override;
 
   void DoEval(const Eigen::Ref<const AutoDiffVecXd>& x,
-              AutoDiffVecXd& y) const override;
+              AutoDiffVecXd* y) const override;
+
+  void DoEval(const Eigen::Ref<const VectorX<symbolic::Variable>>& x,
+              VectorX<symbolic::Expression>* y) const override;
 
   bool DoCheckSatisfied(const Eigen::Ref<const Eigen::VectorXd>& x,
                         const double tol) const override;
@@ -626,7 +679,15 @@ class LinearComplementarityConstraint : public Constraint {
   bool DoCheckSatisfied(const Eigen::Ref<const AutoDiffVecXd>& x,
                         const double tol) const override;
 
+  symbolic::Formula DoCheckSatisfied(
+      const Eigen::Ref<const VectorX<symbolic::Variable>>& x) const override;
+
  private:
+  // Return Mx + q (the value of the slack variable).
+  template <typename DerivedX, typename ScalarY>
+  void DoEvalGeneric(const Eigen::MatrixBase<DerivedX>& x,
+                     VectorX<ScalarY>* y) const;
+
   // TODO(ggould-tri) We are storing what are likely statically sized matrices
   // in dynamically allocated containers.  This probably isn't optimal.
   Eigen::MatrixXd M_;
@@ -679,10 +740,10 @@ class PositiveSemidefiniteConstraint : public Constraint {
    * /////////////////////////////////////////////////////////////
    *
    * // Now solve the program.
-   * prog.Solve();
+   * auto result = Solve(prog);
    *
    * // Retrieve the solution of matrix S.
-   * auto S_value = GetSolution(S);
+   * auto S_value = GetSolution(S, result);
    *
    * // Compute the eigen values of the solution, to see if they are
    * // all non-negative.
@@ -712,7 +773,7 @@ class PositiveSemidefiniteConstraint : public Constraint {
    * @param x The stacked columns of the symmetric matrix.
    */
   void DoEval(const Eigen::Ref<const Eigen::VectorXd>& x,
-              Eigen::VectorXd& y) const override;
+              Eigen::VectorXd* y) const override;
 
   /**
    * @param x The stacked columns of the symmetric matrix. This function is not
@@ -720,7 +781,15 @@ class PositiveSemidefiniteConstraint : public Constraint {
    * AutoDiffScalar.
    */
   void DoEval(const Eigen::Ref<const AutoDiffVecXd>& x,
-              AutoDiffVecXd& y) const override;
+              AutoDiffVecXd* y) const override;
+
+  /**
+   * @param x The stacked columns of the symmetric matrix. This function is not
+   * supported, since Eigen's eigen value solver does not accept
+   * symbolic::Expression.
+   */
+  void DoEval(const Eigen::Ref<const VectorX<symbolic::Variable>>& x,
+              VectorX<symbolic::Expression>* y) const override;
 
  private:
   int matrix_rows_;  // Number of rows in the symmetric matrix being positive
@@ -765,18 +834,75 @@ class LinearMatrixInequalityConstraint : public Constraint {
    * Evaluate the eigen values of the linear matrix.
    */
   void DoEval(const Eigen::Ref<const Eigen::VectorXd>& x,
-              Eigen::VectorXd& y) const override;
+              Eigen::VectorXd* y) const override;
 
   /**
    * This function is not supported, since Eigen's eigen value solver does not
    * accept AutoDiffScalar type.
    */
   void DoEval(const Eigen::Ref<const AutoDiffVecXd>& x,
-              AutoDiffVecXd& y) const override;
+              AutoDiffVecXd* y) const override;
+
+  /**
+   * This function is not supported, since Eigen's eigen value solver does not
+   * accept symbolic::Expression type.
+   */
+  void DoEval(const Eigen::Ref<const VectorX<symbolic::Variable>>& x,
+              VectorX<symbolic::Expression>* y) const override;
 
  private:
   std::vector<Eigen::MatrixXd> F_;
   const int matrix_rows_{};
+};
+
+/**
+ * Impose a generic (potentially nonlinear) constraint represented as a
+ * vector of symbolic Expression.  Expression::Evaluate is called on every
+ * constraint evaluation.
+ *
+ * Uses symbolic::Jacobian to provide the gradients to the AutoDiff method.
+ */
+class ExpressionConstraint : public Constraint {
+ public:
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(ExpressionConstraint)
+
+  ExpressionConstraint(const Eigen::Ref<const VectorX<symbolic::Expression>>& v,
+                       const Eigen::Ref<const Eigen::VectorXd>& lb,
+                       const Eigen::Ref<const Eigen::VectorXd>& ub);
+
+  /**
+   * @return the list of the variables involved in the vector of expressions,
+   * in the order that they are expected to be received during DoEval.
+   * Any Binding that connects this constraint to decision variables should
+   * pass this list of variables to the Binding.
+   */
+  const VectorXDecisionVariable& vars() const { return vars_; }
+
+  /** @return the symbolic expressions. */
+  const VectorX<symbolic::Expression>& expressions() const {
+    return expressions_;
+  }
+
+ protected:
+  void DoEval(const Eigen::Ref<const Eigen::VectorXd>& x,
+              Eigen::VectorXd* y) const override;
+
+  void DoEval(const Eigen::Ref<const AutoDiffVecXd>& x,
+              AutoDiffVecXd* y) const override;
+
+  void DoEval(const Eigen::Ref<const VectorX<symbolic::Variable>>& x,
+              VectorX<symbolic::Expression>* y) const override;
+
+ private:
+  VectorX<symbolic::Expression> expressions_{0};
+  MatrixX<symbolic::Expression> derivatives_{0, 0};
+
+  // map_var_to_index_[vars_(i).get_id()] = i.
+  VectorXDecisionVariable vars_{0};
+  std::unordered_map<symbolic::Variable::Id, int> map_var_to_index_;
+
+  // Only for caching, does not carrying hidden state.
+  mutable symbolic::Environment environment_;
 };
 
 }  // namespace solvers

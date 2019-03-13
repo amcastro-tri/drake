@@ -3,8 +3,12 @@
 #include <memory>
 
 #include "drake/common/default_scalars.h"
+#include "drake/common/find_resource.h"
 #include "drake/math/gradient.h"
-#include "drake/math/roll_pitch_yaw.h"
+#include "drake/math/rigid_transform.h"
+#include "drake/math/rotation_matrix.h"
+#include "drake/multibody/parsing/parser.h"
+#include "drake/multibody/plant/multibody_plant.h"
 #include "drake/systems/controllers/linear_quadratic_regulator.h"
 #include "drake/util/drakeGeometryUtil.h"
 
@@ -39,16 +43,27 @@ QuadrotorPlant<T>::QuadrotorPlant(double m_arg, double L_arg,
     : systems::LeafSystem<T>(
           systems::SystemTypeTag<quadrotor::QuadrotorPlant>{}),
       g_{9.81}, m_(m_arg), L_(L_arg), kF_(kF_arg), kM_(kM_arg), I_(I_arg) {
-  this->DeclareInputPort(systems::kVectorValued, kInputDimension);
-  this->DeclareContinuousState(kStateDimension);
-  this->DeclareVectorOutputPort(systems::BasicVector<T>(kStateDimension),
-                                &QuadrotorPlant::CopyStateOut);
+  // Four inputs -- one for each propellor.
+  this->DeclareInputPort("propellor_force", systems::kVectorValued, 4);
+  // State is x ,y , z, roll, pitch, yaw + velocities.
+  this->DeclareContinuousState(12);
+  state_port_ =
+      this->DeclareVectorOutputPort("state", systems::BasicVector<T>(12),
+                                    &QuadrotorPlant::CopyStateOut)
+          .get_index();
 }
 
 template <typename T>
 template <typename U>
 QuadrotorPlant<T>:: QuadrotorPlant(const QuadrotorPlant<U>& other)
-    : QuadrotorPlant<T>(other.m_, other.L_, other.I_, other.kF_, other.kM_) {}
+    : QuadrotorPlant<T>(other.m_, other.L_, other.I_, other.kF_, other.kM_) {
+  source_id_ = other.source_id();
+  frame_id_ = other.frame_id_;
+
+  if (source_id_.is_valid()) {
+    geometry_pose_port_ = AllocateGeometryPoseOutputPort();
+  }
+}
 
 template <typename T>
 QuadrotorPlant<T>::~QuadrotorPlant() {}
@@ -64,62 +79,121 @@ template <typename T>
 void QuadrotorPlant<T>::DoCalcTimeDerivatives(
     const systems::Context<T> &context,
     systems::ContinuousState<T> *derivatives) const {
+  // Get the input value characterizing each of the 4 rotor's aerodynamics.
+  const Vector4<T> u = this->EvalVectorInput(context, 0)->get_value();
+
+  // For each rotor, calculate the Bz measure of its aerodynamic force on B.
+  // Note: B is the quadrotor body and Bz is parallel to each rotor's spin axis.
+  const Vector4<T> uF_Bz = kF_ * u;
+
+  // Compute the net aerodynamic force on B (from the 4 rotors), expressed in B.
+  const Vector3<T> Faero_B(0, 0, uF_Bz.sum());
+
+  // Compute the Bx and By measures of the moment on B about Bcm (B's center of
+  // mass) from the 4 rotor forces.  These moments arise from the cross product
+  // of a position vector with an aerodynamic force at the center of each rotor.
+  // For example, the moment of the aerodynamic forces on rotor 0 about Bcm
+  // results from Cross( L_* Bx, uF_Bz(0) * Bz ) = -L_ * uF_Bz(0) * By.
+  const T Mx = L_ * (uF_Bz(1) - uF_Bz(3));
+  const T My = L_ * (uF_Bz(2) - uF_Bz(0));
+
+  // For rotors 0 and 2, get the Bz measure of its aerodynamic torque on B.
+  // For rotors 1 and 3, get the -Bz measure of its aerodynamic torque on B.
+  // Sum the net Bz measure of the aerodynamic torque on B.
+  // Note: Rotors 0 and 2 rotate one way and rotors 1 and 3 rotate the other.
+  const Vector4<T> uTau_Bz = kM_ * u;
+  const T Mz = uTau_Bz(0) - uTau_Bz(1) + uTau_Bz(2) - uTau_Bz(3);
+
+  // Form the net moment on B about Bcm, expressed in B. The net moment accounts
+  // for all contact and distance forces (aerodynamic and gravity forces) on B.
+  // Note: Since the net moment on B is about Bcm, gravity does not contribute.
+  const Vector3<T> Tau_B(Mx, My, Mz);
+
+  // Calculate local celestial body's (Earth's) gravity force on B, expressed in
+  // the Newtonian frame N (a.k.a the inertial or World frame).
+  const Vector3<T> Fgravity_N(0, 0, -m_ * g_);
+
+  // Extract roll-pitch-yaw angles (rpy) and their time-derivatives (rpyDt).
   VectorX<T> state = context.get_continuous_state_vector().CopyToVector();
+  const drake::math::RollPitchYaw<T> rpy(state.template segment<3>(3));
+  const Vector3<T> rpyDt = state.template segment<3>(9);
 
-  VectorX<T> u = this->EvalVectorInput(context, 0)->get_value();
+  // Convert roll-pitch-yaw (rpy) orientation to the R_NB rotation matrix.
+  const drake::math::RotationMatrix<T> R_NB(rpy);
 
-  // Extract orientation and angular velocities.
-  Vector3<T> rpy = state.segment(3, 3);
-  Vector3<T> rpy_dot = state.segment(9, 3);
+  // Calculate the net force on B, expressed in N.  Use Newton's law to
+  // calculate a_NBcm_N (acceleration of B's center of mass, expressed in N).
+  const Vector3<T> Fnet_N = Fgravity_N + R_NB * Faero_B;
+  const Vector3<T> xyzDDt = Fnet_N / m_;  // Equal to a_NBcm_N.
 
-  // Convert orientation to a rotation matrix.
-  Matrix3<T> R = drake::math::rpy2rotmat(rpy);
+  // Use rpy and rpyDt to calculate B's angular velocity in N, expressed in B.
+  const Vector3<T> w_BN_B = rpy.CalcAngularVelocityInChildFromRpyDt(rpyDt);
 
-  // Compute the net input forces and moments.
-  VectorX<T> uF = kF_ * u;
-  VectorX<T> uM = kM_ * u;
+  // To compute α (B's angular acceleration in N) due to the net moment 𝛕 on B,
+  // rearrange Euler rigid body equation  𝛕 = I α + ω × (I ω)  and solve for α.
+  const Vector3<T> wIw = w_BN_B.cross(I_ * w_BN_B);            // Expressed in B
+  const Vector3<T> alpha_NB_B = I_.ldlt().solve(Tau_B - wIw);  // Expressed in B
+  const Vector3<T> alpha_NB_N = R_NB * alpha_NB_B;             // Expressed in N
 
-  Vector3<T> Fg(0, 0, -m_ * g_);
-  Vector3<T> F(0, 0, uF.sum());
-  Vector3<T> M(L_ * (uF(1) - uF(3)), L_ * (uF(2) - uF(0)),
-               uM(0) - uM(1) + uM(2) - uM(3));
-
-  // Computing the resultant linear acceleration due to the forces.
-  Vector3<T> xyz_ddot = (1.0 / m_) * (Fg + R * F);
-
-  Vector3<T> pqr;
-  rpydot2angularvel(rpy, rpy_dot, pqr);
-  pqr = R.adjoint() * pqr;
-
-  // Computing the resultant angular acceleration due to the moments.
-  Vector3<T> pqr_dot = I_.ldlt().solve(M - pqr.cross(I_ * pqr));
-  Matrix3<T> Phi;
-  typename drake::math::Gradient<Matrix3<T>, 3>::type dPhi;
-  typename drake::math::Gradient<Matrix3<T>, 3, 2>::type* ddPhi = nullptr;
-  angularvel2rpydotMatrix(rpy, Phi, &dPhi, ddPhi);
-
-  MatrixX<T> drpy2drotmat = drake::math::drpy2rotmat(rpy);
-  VectorX<T> Rdot_vec(9);
-  Rdot_vec = drpy2drotmat * rpy_dot;
-  Matrix3<T> Rdot = Eigen::Map<Matrix3<T>>(Rdot_vec.data());
-  VectorX<T> dPhi_x_rpydot_vec;
-  dPhi_x_rpydot_vec = dPhi * rpy_dot;
-  Matrix3<T> dPhi_x_rpydot = Eigen::Map<Matrix3<T>>(dPhi_x_rpydot_vec.data());
-  Vector3<T> rpy_ddot =
-      Phi * R * pqr_dot + dPhi_x_rpydot * R * pqr + Phi * Rdot * pqr;
+  // Calculate the 2nd time-derivative of rpy.
+  const Vector3<T> rpyDDt =
+      rpy.CalcRpyDDtFromRpyDtAndAngularAccelInParent(rpyDt, alpha_NB_N);
 
   // Recomposing the derivatives vector.
-  VectorX<T> xdot(12);
-  xdot << state.tail(6), xyz_ddot, rpy_ddot;
-
-  derivatives->SetFromVector(xdot);
+  VectorX<T> xDt(12);
+  xDt << state.template tail<6>(), xyzDDt, rpyDDt;
+  derivatives->SetFromVector(xDt);
 }
 
-// Declare storage for our constants.
 template <typename T>
-constexpr int QuadrotorPlant<T>::kStateDimension;
+systems::OutputPortIndex QuadrotorPlant<T>::AllocateGeometryPoseOutputPort() {
+  DRAKE_DEMAND(source_id_.is_valid() && frame_id_.is_valid());
+  return this
+      ->DeclareAbstractOutputPort(
+          "geometry_pose",
+          geometry::FramePoseVector<T>(source_id_, {frame_id_}),
+          &QuadrotorPlant<T>::CopyPoseOut)
+      .get_index();
+}
+
 template <typename T>
-constexpr int QuadrotorPlant<T>::kInputDimension;
+void QuadrotorPlant<T>::RegisterGeometry(
+    geometry::SceneGraph<double>* scene_graph) {
+  DRAKE_DEMAND(!source_id_.is_valid());
+  DRAKE_DEMAND(scene_graph);
+
+  // Use (temporary) MultibodyPlant to parse the urdf and setup the
+  // scene_graph.
+  // TODO(SeanCurtis-TRI): Update this on resolution of #10775.
+  multibody::MultibodyPlant<double> mbp;
+  multibody::Parser parser(&mbp, scene_graph);
+
+  auto model_id = parser.AddModelFromFile(
+      FindResourceOrThrow("drake/examples/quadrotor/quadrotor.urdf"),
+      "quadrotor");
+  mbp.Finalize();
+
+  source_id_ = *mbp.get_source_id();
+  frame_id_ = mbp.GetBodyFrameIdOrThrow(mbp.GetBodyIndices(model_id)[0]);
+
+  // Now allocate the output port.
+  geometry_pose_port_ = AllocateGeometryPoseOutputPort();
+}
+
+template <typename T>
+void QuadrotorPlant<T>::CopyPoseOut(const systems::Context<T>& context,
+                                   geometry::FramePoseVector<T>* poses) const {
+  DRAKE_DEMAND(poses->size() == 1);
+  DRAKE_DEMAND(poses->source_id() == source_id_);
+
+  VectorX<T> state = context.get_continuous_state_vector().CopyToVector();
+
+  poses->clear();
+  math::RigidTransform<T> pose(
+      math::RollPitchYaw<T>(state.template segment<3>(3)),
+      state.template head<3>());
+  poses->set_value(frame_id_, pose.GetAsIsometry3());
+}
 
 std::unique_ptr<systems::AffineSystem<double>> StabilizingLQRController(
     const QuadrotorPlant<double>* quadrotor_plant,
@@ -134,7 +208,7 @@ std::unique_ptr<systems::AffineSystem<double>> StabilizingLQRController(
       4, quadrotor_plant->m() * quadrotor_plant->g() / 4);
 
   quad_context_goal->FixInputPort(0, u0);
-  quadrotor_plant->set_state(quad_context_goal.get(), x0);
+  quad_context_goal->SetContinuousState(x0);
 
   // Setup LQR cost matrices (penalize position error 10x more than velocity
   // error).

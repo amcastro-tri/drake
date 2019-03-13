@@ -6,8 +6,8 @@
 #include <vector>
 
 #include "drake/common/drake_copyable.h"
+#include "drake/common/drake_optional.h"
 #include "drake/lcm/drake_lcm_interface.h"
-#include "drake/lcm/drake_lcm_message_handler_interface.h"
 
 namespace drake {
 namespace lcm {
@@ -36,19 +36,15 @@ class DrakeMockLcm : public DrakeLcmInterface {
    */
   void EnableLoopBack() { enable_loop_back_ = true; }
 
-  void StartReceiveThread() override;
-
-  void StopReceiveThread() override;
-
-  void Publish(const std::string& channel, const void* data,
-               int data_size, double time_sec = 0) override;
+  void Publish(const std::string&, const void*, int, optional<double>) override;
 
   /**
    * Obtains the most recently "published" message on a particular channel.
    * This method automatically decodes the message into an LCM message whose
-   * type is specified by the template type. Throws a std::runtime_error
-   * exception if no LCM message was published on the provided channel or if the
-   * message failed to be decoded by the provided LCM message type.
+   * type is specified by the template type.
+   * @throws std::runtime_error if no LCM message was published on the provided
+   * channel or if the message failed to be decoded by the provided LCM message
+   * type.
    *
    * @tparam T The LCM message type.
    *
@@ -93,17 +89,17 @@ class DrakeMockLcm : public DrakeLcmInterface {
       const std::string& channel) const;
 
   /**
-   * Creates a subscription. Only one subscription per channel name is
-   * permitted. A std::runtime_error is thrown if more than one subscription to
-   * the same channel name is attempted.
+   * Returns the time of the most recent publication on a particular channel.
+   * Returns nullopt iff a message has never been published on this channel or
+   * the most recent Publish call had no time_sec.
    */
-  void Subscribe(const std::string& channel,
-                 DrakeLcmMessageHandlerInterface* handler) override;
+  optional<double> get_last_publication_time(const std::string& channel) const;
+
+  void Subscribe(const std::string&, HandlerFunction) override;
 
   /**
-   * Fakes a callback. This will only work if StartReceivedThread() was already
-   * called, otherwise this method will do nothing. The callback is executed by
-   * the same thread as the one calling this method.
+   * Fakes a callback. The callback is executed by the same thread as the one
+   * calling this method.
    *
    * @param[in] channel The channel on which to publish the message.
    *
@@ -117,16 +113,16 @@ class DrakeMockLcm : public DrakeLcmInterface {
 
  private:
   bool enable_loop_back_{false};
-  bool receive_thread_started_{false};
 
   struct LastPublishedMessage {
     std::vector<uint8_t> data{};
+    optional<double> time_sec{};
   };
 
   std::map<std::string, LastPublishedMessage> last_published_messages_;
 
   // Maps the channel name to the subscriber.
-  std::map<std::string, DrakeLcmMessageHandlerInterface*> subscriptions_;
+  std::multimap<std::string, HandlerFunction> subscriptions_;
 };
 
 }  // namespace lcm

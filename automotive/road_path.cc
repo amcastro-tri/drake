@@ -1,5 +1,6 @@
 #include "drake/automotive/road_path.h"
 
+#include <stdexcept>
 #include <vector>
 
 #include "drake/automotive/maliput/api/branch_point.h"
@@ -18,6 +19,7 @@ using maliput::api::Lane;
 using maliput::api::LaneEnd;
 using maliput::api::LaneEndSet;
 using maliput::api::RoadGeometry;
+using trajectories::PiecewisePolynomial;
 
 template <typename T>
 RoadPath<T>::RoadPath(const LaneDirection& initial_lane_direction,
@@ -39,7 +41,8 @@ template <typename T>
 const T RoadPath<T>::GetClosestPathPosition(const Vector3<T>& geo_pos,
                                             const T& s_guess) const {
   unused(geo_pos, s_guess);
-  DRAKE_ABORT();
+  throw std::runtime_error(
+      "RoadPath<T>::GetClosestPathPosition is not implemented");
 }
 
 template <typename T>

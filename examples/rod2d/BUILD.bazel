@@ -1,10 +1,10 @@
 # -*- python -*-
 
 load(
-    "//tools:drake.bzl",
+    "@drake//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
     "drake_cc_googletest",
     "drake_cc_library",
-    "drake_cc_binary",
 )
 load(
     "@drake//tools/vector_gen:vector_gen.bzl",
@@ -26,14 +26,14 @@ drake_cc_binary(
     test_rule_args = [" --sim_duration=0.01"],
     deps = [
         ":rod2d",
+        "//attic/systems/rendering:drake_visualizer_client",
         "//common:essential",
         "//common:text_logging_gflags",
         "//lcm",
         "//lcmtypes:viewer",
         "//systems/analysis",
         "//systems/framework",
-        "//systems/lcm",
-        "//systems/rendering:drake_visualizer_client",
+        "//systems/lcm:lcm_pubsub_system",
         "//systems/rendering:pose_aggregator",
         "//systems/rendering:pose_bundle_to_draw_message",
         "@gflags",
@@ -51,7 +51,6 @@ drake_cc_library(
         ":rod2d_state_vector",
         "//common:essential",
         "//multibody/constraint",
-        "//multibody/constraint:constraint_solver",
         "//solvers:mathematical_program",
         "//systems/framework:leaf_system",
         "//systems/rendering:pose_vector",
@@ -66,7 +65,7 @@ drake_cc_googletest(
         ":rod2d",
         "//common:essential",
         "//common/test_utilities:eigen_matrix_compare",
-        "//multibody/constraint:constraint_solver",
+        "//multibody/constraint",
         "//systems/analysis",
     ],
 )

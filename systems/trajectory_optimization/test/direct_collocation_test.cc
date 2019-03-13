@@ -8,11 +8,16 @@
 
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/math/autodiff.h"
+#include "drake/solvers/ipopt_solver.h"
+#include "drake/solvers/solve.h"
 #include "drake/systems/primitives/linear_system.h"
 
 namespace drake {
 namespace systems {
 namespace trajectory_optimization {
+
+using trajectories::PiecewisePolynomial;
+
 namespace {
 
 std::unique_ptr<LinearSystem<double>> MakeSimpleLinearSystem() {
@@ -25,6 +30,45 @@ std::unique_ptr<LinearSystem<double>> MakeSimpleLinearSystem() {
   // clang-format on
   const Eigen::MatrixXd C(0, 2), D(0, 2);
   return std::make_unique<LinearSystem<double>>(A, B, C, D);
+}
+
+GTEST_TEST(DirectCollocationTest, TestAddRunningCost) {
+  const std::unique_ptr<LinearSystem<double>> system = MakeSimpleLinearSystem();
+  const std::unique_ptr<Context<double>> context =
+      system->CreateDefaultContext();
+
+  const int kNumSampleTimes = 4;
+  const double kTimeStep = .1;
+  DirectCollocation prog(system.get(), *context, kNumSampleTimes, kTimeStep,
+                         kTimeStep);
+
+  prog.AddRunningCost(
+      prog.state().cast<symbolic::Expression>().dot(prog.state()) +
+      prog.input().cast<symbolic::Expression>().dot(prog.input()));
+
+  Eigen::Matrix<double, 2, kNumSampleTimes> u;
+  Eigen::Matrix<double, 2, kNumSampleTimes> x;
+  for (int i = 0; i < kNumSampleTimes - 1; ++i) {
+    prog.SetInitialGuess(prog.timestep(i), Vector1d(kTimeStep));
+  }
+  for (int i = 0; i < kNumSampleTimes; ++i) {
+    x.col(i) << 0.2 * i - 1, 0.1 + i;
+    u.col(i) << 0.1 * i, 0.2 * i + 0.1;
+    prog.SetInitialGuess(prog.state(i), x.col(i));
+    prog.SetInitialGuess(prog.input(i), u.col(i));
+  }
+  double total_cost = 0;
+  for (const auto& cost : prog.GetAllCosts()) {
+    total_cost += prog.EvalBindingAtInitialGuess(cost)(0);
+  }
+  const Eigen::Matrix<double, 1, kNumSampleTimes> g_val =
+      (x.array() * x.array()).matrix().colwise().sum() +
+      (u.array() * u.array()).matrix().colwise().sum();
+  const double total_cost_expected =
+      ((g_val.head<kNumSampleTimes - 1>() + g_val.tail<kNumSampleTimes - 1>()) /
+       2 * kTimeStep)
+          .sum();
+  EXPECT_NEAR(total_cost, total_cost_expected, 1E-12);
 }
 
 // Reconstructs the collocation constraint value (called the "defect") from a
@@ -59,14 +103,14 @@ GTEST_TEST(DirectCollocationTest, TestCollocationConstraint) {
   for (int i = 0; i < (kNumSampleTimes - 1); i++) {
     const auto& binding = collocation_constraints[i];
 
-    prog.SetDecisionVariableValues(prog.timestep(i), Vector1d(kTimeStep));
-    prog.SetDecisionVariableValues(prog.input(i), u0);
-    prog.SetDecisionVariableValues(prog.input(i + 1), u1);
-    prog.SetDecisionVariableValues(prog.state(i), x0);
-    prog.SetDecisionVariableValues(prog.state(i + 1), x1);
+    prog.SetInitialGuess(prog.timestep(i), Vector1d(kTimeStep));
+    prog.SetInitialGuess(prog.input(i), u0);
+    prog.SetInitialGuess(prog.input(i + 1), u1);
+    prog.SetInitialGuess(prog.state(i), x0);
+    prog.SetInitialGuess(prog.state(i + 1), x1);
 
     EXPECT_TRUE(
-        CompareMatrices(prog.EvalBindingAtSolution(binding), defect, 1e-6));
+        CompareMatrices(prog.EvalBindingAtInitialGuess(binding), defect, 1e-6));
   }
 }
 
@@ -83,29 +127,34 @@ GTEST_TEST(DirectCollocationTest, TestReconstruction) {
                          kTimeStep);
 
   // Sets all decision variables to trivial known values (1,2,3,...).
-  prog.SetDecisionVariableValues(
+  // Pretends that the solver has solved the optimization problem, and set the
+  // decision variable to some user-specified values.
+  solvers::MathematicalProgramResult result;
+  result.set_decision_variable_index(prog.decision_variable_index());
+  result.set_solver_id(solvers::SolverId("dummy"));
+  result.set_x_val(
       Eigen::VectorXd::LinSpaced(prog.num_vars(), 1, prog.num_vars()));
 
-  const PiecewisePolynomialTrajectory input_spline =
-      prog.ReconstructInputTrajectory();
-  const PiecewisePolynomialTrajectory state_spline =
-      prog.ReconstructStateTrajectory();
+  const PiecewisePolynomial<double> input_spline =
+      prog.ReconstructInputTrajectory(result);
+  const PiecewisePolynomial<double> state_spline =
+      prog.ReconstructStateTrajectory(result);
   const auto derivative_spline = state_spline.derivative();
 
   double time = 0.0;
   for (int i = 0; i < kNumSampleTimes; i++) {
-    EXPECT_TRUE(CompareMatrices(prog.GetSolution(prog.input(i)),
+    EXPECT_TRUE(CompareMatrices(result.GetSolution(prog.input(i)),
                                 input_spline.value(time), 1e-6));
-    EXPECT_TRUE(CompareMatrices(prog.GetSolution(prog.state(i)),
+    EXPECT_TRUE(CompareMatrices(result.GetSolution(prog.state(i)),
                                 state_spline.value(time), 1e-6));
 
-    EXPECT_TRUE(
-        CompareMatrices(system->A() * prog.GetSolution(prog.state(i)) +
-                            system->B() * prog.GetSolution(prog.input(i)),
-                        derivative_spline->value(time), 1e-6));
+    EXPECT_TRUE(CompareMatrices(
+        system->A() * result.GetSolution(prog.state(i)) +
+            system->B() * result.GetSolution(prog.input(i)),
+        derivative_spline.value(time), 1e-6));
 
     if (i < (kNumSampleTimes - 1)) {
-      time += prog.GetSolution(prog.timestep(i).coeff(0));
+      time += result.GetSolution(prog.timestep(i).coeff(0));
     }
   }
 
@@ -114,16 +163,16 @@ GTEST_TEST(DirectCollocationTest, TestReconstruction) {
   EXPECT_EQ(collocation_constraints.size(), kNumSampleTimes - 1);
   time = 0.0;
   for (int i = 0; i < (kNumSampleTimes - 1); i++) {
-    const double timestep = prog.GetSolution(prog.timestep(i).coeff(0));
+    const double timestep = result.GetSolution(prog.timestep(i).coeff(0));
     const double collocation_time = time + timestep / 2.0;
 
     const auto& binding = collocation_constraints[i];
     Eigen::Vector2d defect =
-        derivative_spline->value(collocation_time) -
+        derivative_spline.value(collocation_time) -
         system->A() * state_spline.value(collocation_time) -
         system->B() * input_spline.value(collocation_time);
-    EXPECT_TRUE(
-        CompareMatrices(defect, prog.EvalBindingAtSolution(binding), 1e-6));
+    EXPECT_TRUE(CompareMatrices(
+        defect, prog.EvalBinding(binding, result.get_x_val()), 1e-6));
     time += timestep;
   }
 }
@@ -160,14 +209,15 @@ GTEST_TEST(DirectCollocationTest, DoubleIntegratorTest) {
   // Cost is just total time.
   prog.AddFinalCost(prog.time().cast<symbolic::Expression>());
 
-  EXPECT_EQ(prog.Solve(), solvers::SolutionResult::kSolutionFound);
+  const solvers::MathematicalProgramResult result = Solve(prog);
+  EXPECT_TRUE(result.is_success());
 
   // Solution should be bang-band (u = +1 then -1).
   int i = 0;
   while (i < kNumSampleTimes / 2.0)
-    EXPECT_NEAR(prog.GetSolution(prog.input(i++))(0), 1.0, 1e-5);
+    EXPECT_NEAR(result.GetSolution(prog.input(i++))(0), 1.0, 1e-5);
   while (i < kNumSampleTimes)
-    EXPECT_NEAR(prog.GetSolution(prog.input(i++))(0), -1.0, 1e-5);
+    EXPECT_NEAR(result.GetSolution(prog.input(i++))(0), -1.0, 1e-5);
 }
 
 // Tests that the double integrator without input limits results in minimal
@@ -194,12 +244,13 @@ GTEST_TEST(DirectCollocationTest, MinimumTimeTest) {
   // Cost is just total time.
   prog.AddFinalCost(prog.time().cast<symbolic::Expression>());
 
-  EXPECT_EQ(prog.Solve(), solvers::SolutionResult::kSolutionFound);
+  const solvers::MathematicalProgramResult result = Solve(prog);
+  EXPECT_TRUE(result.is_success());
 
   // Solution should have total time equal to 0.5.
   double total_time = 0;
   for (int i = 0; i < kNumSampleTimes - 1; i++)
-    total_time += prog.GetSolution(prog.timestep(i))(0);
+    total_time += result.GetSolution(prog.timestep(i))(0);
   EXPECT_NEAR(total_time, kMinTimeStep * (kNumSampleTimes - 1), 1e-5);
 }
 
@@ -221,11 +272,45 @@ GTEST_TEST(DirectCollocationTest, NoInputs) {
   const double x0 = 2.0;
   prog.AddLinearConstraint(prog.initial_state() == Vector1d(x0));
 
-  EXPECT_EQ(prog.Solve(), solvers::SolutionResult::kSolutionFound);
+  const solvers::MathematicalProgramResult result = Solve(prog);
+  EXPECT_TRUE(result.is_success());
 
   const double duration = (kNumSampleTimes - 1) * kFixedTimeStep;
-  EXPECT_NEAR(prog.GetSolution(prog.final_state())(0), x0 * std::exp(-duration),
-              1e-6);
+  EXPECT_NEAR(result.GetSolution(prog.final_state())(0),
+              x0 * std::exp(-duration), 1e-6);
+
+  const auto state_trajectory = prog.ReconstructStateTrajectory(result);
+  EXPECT_EQ(state_trajectory.get_number_of_segments(), kNumSampleTimes-1);
+}
+
+GTEST_TEST(DirectCollocationTest, AddDirectCollocationConstraint) {
+  const auto double_integrator = MakeDoubleIntegrator();
+  auto context = double_integrator->CreateDefaultContext();
+  auto constraint = std::make_shared<DirectCollocationConstraint>
+      (*double_integrator, *context);
+
+  solvers::MathematicalProgram prog;
+  const auto h = prog.NewContinuousVariables<1>();
+  const auto x0 = prog.NewContinuousVariables<2>();
+  const auto x1 = prog.NewContinuousVariables<2>();
+  const auto u0 = prog.NewContinuousVariables<1>();
+  const auto u1 = prog.NewContinuousVariables<1>();
+
+  solvers::Binding<solvers::Constraint> binding =
+      AddDirectCollocationConstraint(constraint, h, x0, x1, u0, u1, &prog);
+
+  EXPECT_EQ(prog.generic_constraints().size(), 1);
+
+  // qdot = 0, u = 0 should be a fixed point for any q.  Test a simple one.
+  prog.SetInitialGuess(h, Vector1d{1.0});
+  prog.SetInitialGuess(x0, Eigen::Vector2d{1., 0.});
+  prog.SetInitialGuess(x1, Eigen::Vector2d{1., 0.});
+  prog.SetInitialGuess(u0, Vector1d{0.});
+  prog.SetInitialGuess(u1, Vector1d{0.});
+
+  const Eigen::VectorXd val = prog.EvalBindingAtInitialGuess(binding);
+  EXPECT_EQ(val.size(), 2);
+  EXPECT_TRUE(val.isZero());
 }
 
 }  // anonymous namespace

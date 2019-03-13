@@ -7,11 +7,18 @@
 #include "drake/common/text_logging.h"
 #include "drake/math/wrap_to.h"
 #include "drake/solvers/mathematical_program.h"
+#include "drake/solvers/solve.h"
 #include "drake/systems/analysis/simulator.h"
 
 namespace drake {
 namespace systems {
 namespace controllers {
+
+DynamicProgrammingOptions::PeriodicBoundaryCondition::PeriodicBoundaryCondition(
+    int state_index_in, double low_in, double high_in)
+    : state_index(state_index_in), low(low_in), high(high_in) {
+  DRAKE_DEMAND(low_in < high_in);
+}
 
 std::pair<std::unique_ptr<BarycentricMeshSystem<double>>, Eigen::RowVectorXd>
 FittedValueIteration(
@@ -238,14 +245,14 @@ Eigen::VectorXd LinearProgrammingApproximateDynamicProgramming(
   }
 
   drake::log()->info("Solving linear program.");
-  const solvers::SolutionResult result = prog.Solve();
-  if (result != solvers::SolutionResult::kSolutionFound) {
+  const solvers::MathematicalProgramResult result = Solve(prog);
+  if (!result.is_success()) {
     drake::log()->error("No solution found.  SolutionResult = " +
-                        std::to_string(result));
+                        to_string(result.get_solution_result()));
   }
   drake::log()->info("Done solving linear program.");
 
-  return prog.GetSolution(params);
+  return result.GetSolution(params);
 }
 
 }  // namespace controllers

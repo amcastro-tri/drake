@@ -8,8 +8,8 @@ def bullet_repository(
     github_archive(
         name = name,
         repository = "bulletphysics/bullet3",
-        commit = "2.86.1",
-        sha256 = "c058b2e4321ba6adaa656976c1a138c07b18fc03b29f5b82880d5d8228fbf059",  # noqa
+        commit = "2.88",
+        sha256 = "21c135775527754fc2929db1db5144e92ad0218ae72840a9f162acb467a7bbf9",  # noqa
         build_file = "@drake//tools/workspace/bullet:package.BUILD.bazel",
         mirrors = mirrors,
     )

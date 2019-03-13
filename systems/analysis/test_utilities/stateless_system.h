@@ -12,41 +12,6 @@ namespace drake {
 namespace systems {
 namespace analysis_test {
 
-template <class T>
-class StatelessSystem;
-
-/// Witness function for determining when the time of the empty system
-/// crosses zero. The witness function is just the time in the context.
-template <class T>
-class ClockWitness : public WitnessFunction<T> {
- public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(ClockWitness)
-
-  explicit ClockWitness(
-      double trigger_time,
-      const System<T>* system,
-      const WitnessFunctionDirection& dir_type) :
-        WitnessFunction<T>(
-            system,
-            dir_type,
-            std::make_unique<PublishEvent<T>>(Event<T>::TriggerType::kWitness)),
-        trigger_time_(trigger_time) {
-  }
-
-  /// Get the time at which this witness triggers.
-  double get_trigger_time() const { return trigger_time_; }
-
- protected:
-  // The witness function is the time value itself plus the offset value.
-  T DoCalcWitnessValue(const Context<T>& context) const override {
-    return context.get_time() - trigger_time_;
-  }
-
- private:
-  // The time at which the witness function is to trigger.
-  const double trigger_time_;
-};
-
 /// System with no state for testing a simplistic witness function.
 template <class T>
 class StatelessSystem final : public LeafSystem<T> {
@@ -54,8 +19,11 @@ class StatelessSystem final : public LeafSystem<T> {
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(StatelessSystem)
 
   StatelessSystem(double offset, const WitnessFunctionDirection& dir_type)
-      : LeafSystem<T>(SystemTypeTag<analysis_test::StatelessSystem>{}) {
-    witness_ = std::make_unique<ClockWitness<T>>(offset, this, dir_type);
+      : LeafSystem<T>(SystemTypeTag<analysis_test::StatelessSystem>{}),
+        offset_(offset) {
+    witness_ = this->DeclareWitnessFunction(
+        "clock witness", dir_type, &StatelessSystem::CalcClockWitness,
+        &StatelessSystem::InvokePublishCallback);
   }
 
   /// Scalar-converting copy constructor. See @ref system_scalar_conversion.
@@ -64,13 +32,16 @@ class StatelessSystem final : public LeafSystem<T> {
   ///       whether the publish callback survives transmogrification.
   template <typename U>
   explicit StatelessSystem(const StatelessSystem<U>& other)
-      : StatelessSystem<T>(other.witness_->get_trigger_time(),
-                           other.witness_->get_dir_type()) {}
+      : StatelessSystem<T>(other.get_trigger_time(),
+                           other.witness_->direction_type()) {}
 
   void set_publish_callback(
       std::function<void(const Context<T>&)> callback) {
     publish_callback_ = callback;
   }
+
+  /// Gets the time that the witness function triggered.
+  double get_trigger_time() const { return offset_; }
 
  protected:
   void DoGetWitnessFunctions(
@@ -79,17 +50,22 @@ class StatelessSystem final : public LeafSystem<T> {
     w->push_back(witness_.get());
   }
 
-  void DoPublish(
-      const Context<T>& context,
-      const std::vector<const PublishEvent<T>*>&) const override {
-    if (publish_callback_ != nullptr) publish_callback_(context);
-  }
-
  private:
   // Allow different specializations to access each other's private data.
   template <typename> friend class StatelessSystem;
 
-  std::unique_ptr<ClockWitness<T>> witness_;
+  // The witness function is the time value itself less the offset value.
+  T CalcClockWitness(const Context<T>& context) const {
+    return context.get_time() - offset_;
+  }
+
+  void InvokePublishCallback(const Context<T>& context,
+                             const PublishEvent<T>&) const {
+    if (this->publish_callback_ != nullptr) this->publish_callback_(context);
+  }
+
+  const double offset_;
+  std::unique_ptr<WitnessFunction<T>> witness_;
   std::function<void(const Context<T>&)> publish_callback_{nullptr};
 };
 

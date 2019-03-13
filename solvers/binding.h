@@ -43,7 +43,8 @@ class Binding {
               std::shared_ptr<U>, std::shared_ptr<C>>::value>::type* = nullptr)
       : Binding(b.evaluator(), b.variables()) {}
 
-  DRAKE_DEPRECATED("Please use evaluator() instead of constraint()")
+  DRAKE_DEPRECATED("2019-06-01",
+      "Please use evaluator() instead of constraint()")
   const std::shared_ptr<C>& constraint() const { return evaluator_; }
 
   const std::shared_ptr<C>& evaluator() const { return evaluator_; }
@@ -51,7 +52,7 @@ class Binding {
   const VectorXDecisionVariable& variables() const { return vars_; }
 
   /**
-   * Returns true iff the given @p var is included in this Binding.*/
+   * Returns true iff the given @p var is included in this Binding. */
   bool ContainsVariable(const symbolic::Variable& var) const {
     for (int i = 0; i < vars_.rows(); ++i) {
       if (vars_(i).equal_to(var)) {
@@ -83,6 +84,13 @@ namespace internal {
 template <typename C, typename... Args>
 Binding<C> CreateBinding(const std::shared_ptr<C>& c, Args&&... args) {
   return Binding<C>(c, std::forward<Args>(args)...);
+}
+
+template <typename To, typename From>
+Binding<To> BindingDynamicCast(const Binding<From>& binding) {
+  auto constraint = std::dynamic_pointer_cast<To>(binding.evaluator());
+  DRAKE_DEMAND(constraint != nullptr);
+  return Binding<To>(constraint, binding.variables());
 }
 
 }  // namespace internal

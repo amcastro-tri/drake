@@ -19,13 +19,14 @@ namespace systems {
 /// @tparam T The vector element type, which must be a valid Eigen scalar.
 ///
 /// Instantiated templates for the following kinds of T's are provided:
+///
 /// - double
 ///
 /// They are already available to link against in the containing library.
 /// No other values for T are currently supported.
 /// @ingroup primitive_systems
 template <typename T>
-class TrajectorySource : public SingleOutputVectorSource<T> {
+class TrajectorySource final : public SingleOutputVectorSource<T> {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(TrajectorySource)
 
@@ -34,13 +35,13 @@ class TrajectorySource : public SingleOutputVectorSource<T> {
   /// Must be greater than or equal to zero.
   /// @param zero_derivatives_beyond_limits All derivatives will be zero before
   /// the start time or after the end time of @p trajectory.
-  explicit TrajectorySource(const Trajectory& trajectory,
+  explicit TrajectorySource(const trajectories::Trajectory<T>& trajectory,
                             int output_derivative_order = 0,
                             bool zero_derivatives_beyond_limits = true);
 
-  ~TrajectorySource() override = default;
+  ~TrajectorySource() final = default;
 
- protected:
+ private:
   /// Outputs a vector of values evaluated at the context time of the trajectory
   /// and up to its Nth derivatives, where the trajectory and N are passed to
   /// the constructor. The size of the vector is:
@@ -48,12 +49,11 @@ class TrajectorySource : public SingleOutputVectorSource<T> {
   /// constructor.
   void DoCalcVectorOutput(
       const Context<T>& context,
-      Eigen::VectorBlock<VectorX<T>>* output) const override;
+      Eigen::VectorBlock<VectorX<T>>* output) const final;
 
- private:
-  const std::unique_ptr<Trajectory> trajectory_;
+  const std::unique_ptr<trajectories::Trajectory<T>> trajectory_;
   const bool clamp_derivatives_;
-  std::vector<std::unique_ptr<Trajectory>> derivatives_;
+  std::vector<std::unique_ptr<trajectories::Trajectory<T>>> derivatives_;
 };
 
 }  // namespace systems

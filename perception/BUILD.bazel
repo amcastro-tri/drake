@@ -1,13 +1,24 @@
 # -*- python -*-
 
 load(
-    "//tools:drake.bzl",
+    "@drake//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
     "drake_cc_googletest",
     "drake_cc_library",
+    "drake_cc_package_library",
 )
 load("//tools/lint:lint.bzl", "add_lint_tests")
 
 package(default_visibility = ["//visibility:public"])
+
+drake_cc_package_library(
+    name = "perception",
+    deps = [
+        ":depth_image_to_point_cloud",
+        ":point_cloud",
+        ":point_cloud_flags",
+    ],
+)
 
 drake_cc_library(
     name = "point_cloud_flags",
@@ -25,6 +36,30 @@ drake_cc_library(
     deps = [
         ":point_cloud_flags",
         "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "depth_image_to_point_cloud",
+    srcs = ["depth_image_to_point_cloud.cc"],
+    hdrs = ["depth_image_to_point_cloud.h"],
+    deps = [
+        ":point_cloud",
+        "//common:essential",
+        "//math:geometric_transform",
+        "//systems/framework",
+        "//systems/sensors:camera_info",
+        "//systems/sensors:image",
+    ],
+)
+
+drake_cc_googletest(
+    name = "depth_image_to_point_cloud_test",
+    srcs = ["test/depth_image_to_point_cloud_test.cc"],
+    deps = [
+        ":depth_image_to_point_cloud",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//systems/sensors:camera_info",
     ],
 )
 

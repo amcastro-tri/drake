@@ -12,6 +12,7 @@
 #include "drake/common/extract_double.h"
 #include "drake/math/quaternion.h"
 #include "drake/math/roll_pitch_yaw.h"
+#include "drake/math/rotation_matrix.h"
 
 namespace drake {
 namespace maliput {
@@ -68,7 +69,7 @@ class Rotation {
   /// expressing a roll around X, followed by pitch around Y,
   /// followed by yaw around Z (with all angles in radians).
   static Rotation FromRpy(const Vector3<double>& rpy) {
-    return Rotation(math::RollPitchYawToQuaternion(rpy));
+    return Rotation(math::RollPitchYaw<double>(rpy).ToQuaternion());
   }
 
   /// Constructs a Rotation expressing a @p roll around X, followed by
@@ -86,13 +87,15 @@ class Rotation {
     quaternion_ = quaternion.normalized();
   }
 
-  /// Provides a rotation matrix representation of the rotation.
-  Matrix3<double> matrix() const { return quaternion_.toRotationMatrix(); }
+  /// Provides a 3x3 rotation matrix representation of "this" rotation.
+  Matrix3<double> matrix() const {
+    return math::RotationMatrix<double>(quaternion_).matrix();
+  }
 
   /// Provides a representation of rotation as a vector of angles
   /// `[roll, pitch, yaw]` (in radians).
-  Vector3<double> rpy() const {
-    return math::QuaternionToSpaceXYZ(to_drake(quaternion_));
+  math::RollPitchYaw<double> rpy() const {
+    return math::RollPitchYaw<double>(quaternion_);
   }
 
   // TODO(maddog@tri.global)  Deprecate and/or remove roll()/pitch()/yaw(),
@@ -100,21 +103,16 @@ class Rotation {
   //                          most call-sites should probably be using something
   //                          else (e.g., quaternion) anyway.
   /// Returns the roll component of the Rotation (in radians).
-  double roll() const { return rpy().x(); }
+  double roll() const { return rpy().roll_angle(); }
 
   /// Returns the pitch component of the Rotation (in radians).
-  double pitch() const { return rpy().y(); }
+  double pitch() const { return rpy().pitch_angle(); }
 
   /// Returns the yaw component of the Rotation (in radians).
-  double yaw() const { return rpy().z(); }
+  double yaw() const { return rpy().yaw_angle(); }
 
  private:
   explicit Rotation(const Quaternion<double>& quat) : quaternion_(quat) {}
-
-  // Converts Eigen (x,y,z,w) quaternion to drake's temporary(?) (w,x,y,z).
-  static Vector4<double> to_drake(const Quaternion<double>& quat) {
-    return Vector4<double>(quat.w(), quat.x(), quat.y(), quat.z());
-  }
 
   Quaternion<double> quaternion_;
 };
@@ -129,6 +127,7 @@ std::ostream& operator<<(std::ostream& out, const Rotation& rotation);
 /// frame, consisting of three components x, y, and z.
 ///
 /// Instantiated templates for the following kinds of T's are provided:
+///
 /// - double
 /// - drake::AutoDiffXd
 /// - drake::symbolic::Expression
@@ -206,11 +205,13 @@ auto operator!=(const GeoPositionT<T>& lhs, const GeoPositionT<T>& rhs) {
 }
 
 /// A 3-dimensional position in a `Lane`-frame, consisting of three components:
-///  * s is longitudinal position, as arc-length along a Lane's reference line.
-///  * r is lateral position, perpendicular to the reference line at s.
-///  * h is height above the road surface.
+///
+/// * s is longitudinal position, as arc-length along a Lane's reference line.
+/// * r is lateral position, perpendicular to the reference line at s.
+/// * h is height above the road surface.
 ///
 /// Instantiated templates for the following kinds of T's are provided:
+///
 /// - double
 /// - drake::AutoDiffXd
 /// - drake::symbolic::Expression

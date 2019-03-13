@@ -1,20 +1,25 @@
 # -*- python -*-
 
-load("//tools:drake.bzl", "drake_cc_googletest", "drake_cc_library")
+load(
+    "@drake//tools/skylark:drake_cc.bzl",
+    "drake_cc_googletest",
+    "drake_cc_library",
+    "drake_cc_package_library",
+)
 load("//tools/lint:lint.bzl", "add_lint_tests")
 
 package(default_visibility = ["//visibility:public"])
 
-drake_cc_library(
+drake_cc_package_library(
     name = "primitives",
-    srcs = [],
-    hdrs = [],
     deps = [
         ":adder",
         ":affine_system",
+        ":barycentric_system",
         ":constant_value_source",
         ":constant_vector_source",
         ":demultiplexer",
+        ":discrete_derivative",
         ":first_order_low_pass_filter",
         ":gain",
         ":integrator",
@@ -28,8 +33,10 @@ drake_cc_library(
         ":saturation",
         ":signal_log",
         ":signal_logger",
+        ":sine",
         ":time_varying_data",
         ":trajectory_source",
+        ":wrap_to_system",
         ":zero_order_hold",
     ],
 )
@@ -81,7 +88,8 @@ drake_cc_library(
     srcs = ["constant_vector_source.cc"],
     hdrs = ["constant_vector_source.h"],
     deps = [
-        "//common:symbolic",
+        "//common:default_scalars",
+        "//common:extract_double",
         "//systems/framework",
     ],
 )
@@ -91,6 +99,18 @@ drake_cc_library(
     srcs = ["demultiplexer.cc"],
     hdrs = ["demultiplexer.h"],
     deps = [
+        "//systems/framework",
+    ],
+)
+
+drake_cc_library(
+    name = "discrete_derivative",
+    srcs = ["discrete_derivative.cc"],
+    hdrs = ["discrete_derivative.h"],
+    deps = [
+        ":linear_system",
+        ":multiplexer",
+        ":pass_through",
         "//systems/framework",
     ],
 )
@@ -249,7 +269,7 @@ drake_cc_library(
     hdrs = ["time_varying_data.h"],
     deps = [
         "//common:essential",
-        "//common/trajectories:piecewise_polynomial_trajectory",
+        "//common/trajectories:piecewise_polynomial",
     ],
 )
 
@@ -353,7 +373,7 @@ drake_cc_googletest(
         ":constant_vector_source",
         "//common/test_utilities:eigen_matrix_compare",
         "//systems/framework",
-        "//systems/framework/test_utilities:my_vector",
+        "//systems/framework/test_utilities",
     ],
 )
 
@@ -362,6 +382,20 @@ drake_cc_googletest(
     deps = [
         ":demultiplexer",
         "//common/test_utilities:eigen_matrix_compare",
+        "//systems/framework",
+        "//systems/framework/test_utilities",
+    ],
+)
+
+drake_cc_googletest(
+    name = "discrete_derivative_test",
+    deps = [
+        ":discrete_derivative",
+        ":signal_logger",
+        ":trajectory_source",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/trajectories:piecewise_polynomial",
+        "//systems/analysis:simulator",
         "//systems/framework",
         "//systems/framework/test_utilities",
     ],
@@ -411,6 +445,7 @@ drake_cc_googletest(
         ":affine_linear_test",
         ":linear_system",
         "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
         "//examples/pendulum:pendulum_plant",
         "//systems/framework",
         "//systems/framework/test_utilities",
@@ -489,7 +524,7 @@ drake_cc_googletest(
         ":random_source",
         ":signal_logger",
         "//common/test_utilities:eigen_matrix_compare",
-        "//systems/analysis",
+        "//systems/analysis:simulator",
     ],
 )
 
@@ -504,9 +539,11 @@ drake_cc_googletest(
     name = "signal_logger_test",
     deps = [
         ":affine_system",
+        ":constant_vector_source",
         ":linear_system",
         ":signal_logger",
         "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
         "//systems/analysis:simulator",
         "//systems/framework",
     ],
@@ -540,7 +577,7 @@ drake_cc_googletest(
     deps = [
         ":trajectory_source",
         "//common/test_utilities:eigen_matrix_compare",
-        "//common/trajectories:piecewise_polynomial_trajectory",
+        "//common/trajectories:piecewise_polynomial",
         "//systems/framework",
     ],
 )

@@ -1,13 +1,39 @@
 # -*- python -*-
 
 load(
-    "//tools:drake.bzl",
+    "@drake//tools/skylark:drake_cc.bzl",
     "drake_cc_googletest",
     "drake_cc_library",
+    "drake_cc_package_library",
 )
 load("//tools/lint:lint.bzl", "add_lint_tests")
 
 package(default_visibility = ["//visibility:public"])
+
+drake_cc_package_library(
+    name = "geometry",
+    deps = [
+        ":frame_kinematics",
+        ":geometry_context",
+        ":geometry_frame",
+        ":geometry_ids",
+        ":geometry_index",
+        ":geometry_instance",
+        ":geometry_properties",
+        ":geometry_roles",
+        ":geometry_set",
+        ":geometry_state",
+        ":geometry_visualization",
+        ":identifier",
+        ":internal_frame",
+        ":internal_geometry",
+        ":proximity_engine",
+        ":scene_graph",
+        ":scene_graph_inspector",
+        ":shape_specification",
+        ":utilities",
+    ],
+)
 
 drake_cc_library(
     name = "proximity_engine",
@@ -21,27 +47,32 @@ drake_cc_library(
         ":geometry_ids",
         ":geometry_index",
         ":shape_specification",
+        ":utilities",
         "//common",
         "//common:default_scalars",
         "//geometry/query_results:penetration_as_point_pair",
+        "//geometry/query_results:signed_distance_pair",
+        "//geometry/query_results:signed_distance_to_point",
+        "//math",
         "@fcl",
+        "@tinyobjloader",
     ],
 )
 
 drake_cc_library(
     name = "frame_kinematics",
     srcs = [
-        "frame_id_vector.cc",
         "frame_kinematics_vector.cc",
     ],
     hdrs = [
-        "frame_id_vector.h",
         "frame_kinematics_vector.h",
     ],
     deps = [
         ":geometry_ids",
+        ":utilities",
         "//common:autodiff",
         "//common:essential",
+        "//common:symbolic",
     ],
 )
 
@@ -85,10 +116,39 @@ drake_cc_library(
     hdrs = ["geometry_instance.h"],
     deps = [
         ":geometry_ids",
+        ":geometry_roles",
         ":shape_specification",
+        ":utilities",
         "//common:copyable_unique_ptr",
         "//common:essential",
     ],
+)
+
+drake_cc_library(
+    name = "geometry_properties",
+    srcs = ["geometry_properties.cc"],
+    hdrs = ["geometry_properties.h"],
+    deps = [
+        "//common:essential",
+        "//common:value",
+        "@fmt",
+    ],
+)
+
+drake_cc_library(
+    name = "geometry_roles",
+    srcs = ["geometry_roles.cc"],
+    hdrs = ["geometry_roles.h"],
+    deps = [
+        ":geometry_properties",
+        "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "geometry_set",
+    hdrs = ["geometry_set.h"],
+    deps = [":geometry_ids"],
 )
 
 drake_cc_library(
@@ -101,30 +161,41 @@ drake_cc_library(
         ":geometry_ids",
         ":geometry_index",
         ":geometry_instance",
+        ":geometry_set",
         ":internal_frame",
         ":internal_geometry",
         ":proximity_engine",
+        ":utilities",
     ],
 )
 
 drake_cc_library(
-    name = "geometry_system",
+    name = "scene_graph",
     srcs = [
-        "geometry_system.cc",
         "query_object.cc",
+        "scene_graph.cc",
     ],
     hdrs = [
-        "geometry_system.h",
         "query_object.h",
+        "scene_graph.h",
     ],
     deps = [
         ":geometry_context",
         ":geometry_state",
+        ":scene_graph_inspector",
         "//common:essential",
         "//geometry/query_results:penetration_as_point_pair",
+        "//geometry/query_results:signed_distance_pair",
+        "//geometry/query_results:signed_distance_to_point",
         "//systems/framework",
         "//systems/rendering:pose_bundle",
     ],
+)
+
+drake_cc_library(
+    name = "scene_graph_inspector",
+    hdrs = ["scene_graph_inspector.h"],
+    deps = [":geometry_state"],
 )
 
 drake_cc_library(
@@ -133,10 +204,13 @@ drake_cc_library(
     hdrs = ["geometry_visualization.h"],
     deps = [
         ":geometry_state",
-        ":geometry_system",
+        ":scene_graph",
         "//lcm",
         "//lcmtypes:viewer",
         "//math:geometric_transform",
+        "//systems/framework:diagram_builder",
+        "//systems/lcm:lcm_pubsub_system",
+        "//systems/rendering:pose_bundle_to_draw_message",
     ],
 )
 
@@ -158,6 +232,8 @@ drake_cc_library(
     deps = [
         ":geometry_ids",
         ":geometry_index",
+        ":geometry_roles",
+        ":internal_frame",
         ":shape_specification",
         "//common:copyable_unique_ptr",
         "//common:essential",
@@ -178,21 +254,27 @@ drake_cc_library(
     deps = ["//common:essential"],
 )
 
+drake_cc_library(
+    name = "utilities",
+    srcs = ["utilities.cc"],
+    hdrs = ["utilities.h"],
+    deps = ["//common"],
+)
+
 # -----------------------------------------------------
 
 drake_cc_googletest(
     name = "proximity_engine_test",
+    data = [
+        "test/forbidden_two_cubes.obj",
+        "test/quad_cube.obj",
+    ],
     deps = [
         ":proximity_engine",
+        ":shape_specification",
         "//common/test_utilities:eigen_matrix_compare",
-    ],
-)
-
-drake_cc_googletest(
-    name = "frame_id_vector_test",
-    deps = [
-        ":frame_kinematics",
-        "//geometry/test_utilities",
+        "//common/test_utilities:expect_throws_message",
+        "//math",
     ],
 )
 
@@ -209,12 +291,33 @@ drake_cc_googletest(
     deps = [
         ":geometry_frame",
         "//common:essential",
+        "//common/test_utilities:expect_throws_message",
     ],
 )
 
 drake_cc_googletest(
     name = "geometry_instance_test",
-    deps = [":geometry_instance"],
+    deps = [
+        ":geometry_instance",
+        "//common/test_utilities",
+    ],
+)
+
+drake_cc_googletest(
+    name = "geometry_properties_test",
+    deps = [
+        ":geometry_properties",
+        "//common/test_utilities",
+    ],
+)
+
+drake_cc_googletest(
+    name = "geometry_set_test",
+    deps = [
+        ":geometry_ids",
+        ":geometry_set",
+        "//geometry/test_utilities:geometry_set_tester",
+    ],
 )
 
 drake_cc_googletest(
@@ -222,16 +325,23 @@ drake_cc_googletest(
     deps = [
         ":geometry_state",
         "//common/test_utilities",
-        "//geometry/test_utilities",
     ],
 )
 
 drake_cc_googletest(
-    name = "geometry_system_test",
+    name = "scene_graph_test",
     deps = [
-        ":geometry_system",
         ":geometry_visualization",
-        "//geometry/test_utilities",
+        ":scene_graph",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "geometry_visualization_test",
+    deps = [
+        ":geometry_visualization",
+        "//common/test_utilities:expect_throws_message",
     ],
 )
 
@@ -243,8 +353,18 @@ drake_cc_googletest(
 drake_cc_googletest(
     name = "query_object_test",
     deps = [
-        ":geometry_system",
-        "//geometry/test_utilities",
+        ":geometry_frame",
+        ":geometry_instance",
+        ":scene_graph",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "scene_graph_inspector_test",
+    deps = [
+        ":geometry_frame",
+        ":scene_graph_inspector",
     ],
 )
 
@@ -252,6 +372,14 @@ drake_cc_googletest(
     name = "shape_specification_test",
     deps = [
         ":shape_specification",
+        "//common/test_utilities",
+    ],
+)
+
+drake_cc_googletest(
+    name = "utilities_test",
+    deps = [
+        "utilities",
         "//common/test_utilities",
     ],
 )

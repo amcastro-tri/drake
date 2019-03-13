@@ -1,9 +1,16 @@
 # -*- python -*-
 
 load(
-    "//tools:drake.bzl",
+    "@drake//tools/skylark:drake_cc.bzl",
     "drake_cc_googletest",
     "drake_cc_library",
+    "drake_cc_package_library",
+)
+load(
+    "@drake//tools/skylark:drake_py.bzl",
+    "drake_py_binary",
+    "drake_py_library",
+    "drake_py_unittest",
 )
 load(
     "@drake//tools/skylark:drake_proto.bzl",
@@ -14,6 +21,17 @@ load("@drake//tools/install:install.bzl", "install")
 load("//tools/lint:lint.bzl", "add_lint_tests")
 
 package(default_visibility = ["//visibility:public"])
+
+drake_cc_package_library(
+    name = "proto",
+    deps = [
+        ":call_matlab",
+        ":call_python",
+        ":matlab_rpc",
+        ":protobuf",
+        ":rpc_pipe_temp_directory",
+    ],
+)
 
 drake_cc_proto_library(
     name = "matlab_rpc",
@@ -35,6 +53,7 @@ drake_cc_library(
     hdrs = ["call_matlab.h"],
     deps = [
         ":matlab_rpc",
+        ":rpc_pipe_temp_directory",
         "//common:essential",
     ],
 )
@@ -54,11 +73,12 @@ drake_cc_library(
     hdrs = ["call_python.h"],
     deps = [
         ":call_matlab",
+        ":rpc_pipe_temp_directory",
         "//common:copyable_unique_ptr",
     ],
 )
 
-py_library(
+drake_py_library(
     name = "call_python_client",
     srcs = ["call_python_client.py"],
     imports = ["."],
@@ -67,7 +87,7 @@ py_library(
     ],
 )
 
-py_binary(
+drake_py_binary(
     name = "call_python_client_cli",
     srcs = ["call_python_client.py"],
     main = "call_python_client.py",
@@ -90,6 +110,24 @@ cc_library(
     hdrs = [_UBSAN_H],
     include_prefix = "drake/common/proto",
     strip_include_prefix = "/third_party/com_github_google_protobuf",
+    tags = [
+        # Developers should not use this directly.
+        "exclude_from_package",
+        # Don't install via cc_library; instead, rely on the :install rule
+        # below to handle the install path correctly.
+        "exclude_from_libdrake",
+    ],
+)
+
+drake_cc_library(
+    name = "rpc_pipe_temp_directory",
+    srcs = ["rpc_pipe_temp_directory.cc"],
+    hdrs = ["rpc_pipe_temp_directory.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//common:essential",
+        "@spruce",
+    ],
 )
 
 install(
@@ -110,8 +148,7 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
-    name = "call_python_test",
-    srcs = ["test/call_python_test.cc"],
+    name = "call_python_server_test",
     tags = ["manual"],
     deps = [
         ":call_python",
@@ -120,16 +157,17 @@ drake_cc_googletest(
 
 # TODO(eric.cousineau): Add a test which will use an interactive matplotlib
 # backend on CI only.
-sh_test(
-    name = "call_python_full_test",
-    srcs = ["test/call_python_full_test.sh"],
+drake_py_unittest(
+    name = "call_python_test",
+    size = "small",
     data = [
         ":call_python_client_cli",
-        ":call_python_test",
+        ":call_python_server_test",
     ],
-    # TODO(eric.cousineau): Find the source of (more) sporadic CI failures, but
-    # after refactoring the script into Python.
+    # TODO(eric.cousineau): Find the source of sporadic CI failures.
     flaky = 1,
+    # We wish to access neighboring files.
+    isolate = 0,
 )
 
 drake_cc_googletest(
@@ -140,6 +178,13 @@ drake_cc_googletest(
     deps = [
         ":protobuf",
         "//common",
+    ],
+)
+
+drake_cc_googletest(
+    name = "rpc_pipe_temp_directory_test",
+    deps = [
+        ":rpc_pipe_temp_directory",
     ],
 )
 

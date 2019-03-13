@@ -2,9 +2,12 @@
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "drake/common/drake_copyable.h"
+#include "drake/common/drake_optional.h"
 #include "drake/common/eigen_types.h"
+#include "drake/systems/analysis/dense_output.h"
 #include "drake/systems/analysis/integrator_base.h"
 #include "drake/systems/framework/context.h"
 #include "drake/systems/framework/parameters.h"
@@ -20,11 +23,24 @@ namespace systems {
 /// allows for generic IVP definitions, which can later be solved for any
 /// instance of said vector.
 ///
-/// Additionally, this class' implementation performs basic computation caching,
+/// By default, an explicit 3rd order RungeKutta integration scheme is used.
+///
+/// The implementation of this class performs basic computation caching,
 /// optimizing away repeated integration whenever the IVP is solved for
-/// increasing values of time t while both initial conditions and parameters are
-/// kept constant, e.g. if solved for t₁ > t₀ first, solving for t₂ > t₁ will
-/// only require integrating from t₁ onward.
+/// increasing values of time t while both initial conditions and parameters
+/// are kept constant, e.g. if solved for t₁ > t₀ first, solving for t₂ > t₁
+/// will only require integrating from t₁ onward.
+///
+/// Additionally, IntegratorBase's dense output support can be leveraged to
+/// efficiently approximate the IVP solution within closed intervals of t.
+/// This is convenient when there's a need for a more dense sampling of the
+/// IVP solution than what would be available through either fixed or
+/// error-controlled step integration (for a given accuracy), or when the IVP
+/// is to be solved repeatedly for arbitrarily many t values within a given
+/// interval. See documentation of the internally held IntegratorBase subclass
+/// instance (either the default or a user-defined one, set via
+/// reset_integrator()) for further reference on the specific dense output
+/// technique in use.
 ///
 /// For further insight into its use, consider the following examples:
 ///
@@ -43,6 +59,7 @@ namespace systems {
 ///
 /// @note
 /// Instantiated templates for the following scalar types @p T are provided:
+///
 /// - double
 template <typename T>
 class InitialValueProblem {
@@ -50,7 +67,7 @@ class InitialValueProblem {
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(InitialValueProblem);
 
   /// Default integration accuracy in the relative tolerance sense.
-  static const T kDefaultAccuracy;
+  static const double kDefaultAccuracy;
   /// Default initial integration step size.
   static const T kInitialStepSize;
   /// Default maximum integration step size.
@@ -62,100 +79,105 @@ class InitialValueProblem {
   /// @param x The dependent vector variable 𝐱 ∈ ℝⁿ.
   /// @param k The vector of parameters 𝐤 ∈ ℝᵐ.
   /// @return The derivative vector d𝐱/dt ∈ ℝⁿ.
-  typedef std::function<VectorX<T> (
-      const T& t, const VectorX<T>& x,
-      const VectorX<T>& k)> ODEFunction;
+  using ODEFunction = std::function<VectorX<T> (
+      const T& t, const VectorX<T>& x, const VectorX<T>& k)>;
+
+  /// A collection of values i.e. initial time t₀, initial state vector 𝐱₀
+  /// and parameters vector 𝐤.to further specify the ODE system (in order
+  /// to become an initial value problem).
+  struct SpecifiedValues {
+    /// Default constructor, leaving all values unspecified.
+    SpecifiedValues() = default;
+
+    /// Constructor specifying all values.
+    ///
+    /// @param t0_in Specified initial time t₀.
+    /// @param x0_in Specified initial state vector 𝐱₀.
+    /// @param k_in Specified parameter vector 𝐤.
+    SpecifiedValues(const optional<T>& t0_in,
+                    const optional<VectorX<T>>& x0_in,
+                    const optional<VectorX<T>>& k_in)
+        : t0(t0_in), x0(x0_in), k(k_in) {}
+
+    bool operator==(const SpecifiedValues& rhs) const {
+      return (t0 == rhs.t0 && x0 == rhs.x0 && k == rhs.k);
+    }
+
+    bool operator!=(const SpecifiedValues& rhs) const {
+      return !operator==(rhs);
+    }
+
+    optional<T> t0;  ///< The initial time t₀ for the IVP.
+    optional<VectorX<T>> x0;  ///< The initial state vector 𝐱₀ for the IVP.
+    optional<VectorX<T>> k;  ///< The parameter vector 𝐤 for the IVP.
+  };
 
   /// Constructs an IVP described by the given @p ode_function, using
-  /// given @p default_initial_time and @p default_initial_state as initial
-  /// conditions, and parameterized with @p default_parameters by default.
+  /// given @p default_values.t0 and @p default_values.x0 as initial
+  /// conditions, and parameterized with @p default_values.k by default.
   ///
   /// @param ode_function The ODE function f(t, 𝐱; 𝐤) that describes the state
   ///                     evolution over time.
-  /// @param default_initial_time The default initial time t₀ ∈ ℝ.
-  /// @param default_initial_state The default initial state vector 𝐱₀ ∈ ℝⁿ.
-  /// @param default_parameters The default parameters vector 𝐤₀ ∈ ℝᵐ.
+  /// @param default_values The values specified by default for this IVP, i.e.
+  ///                       default initial time t₀ ∈ ℝ and state vector
+  ///                       𝐱₀ ∈ ℝⁿ, and default parameter vector 𝐤 ∈ ℝᵐ.
+  /// @pre An initial time @p default_values.t0 is given.
+  /// @pre An initial state vector @p default_values.x0 is given.
+  /// @pre A parameter vector @p default_values.k is given.
+  /// @throws std::logic_error if preconditions are not met.
   InitialValueProblem(const ODEFunction& ode_function,
-                      const T& default_initial_time,
-                      const VectorX<T>& default_initial_state,
-                      const VectorX<T>& default_parameters);
+                      const SpecifiedValues& default_values);
 
-  /// Solves the IVP for the given time @p t, using default parameters vector
-  /// 𝐤₀ and default initial conditions (t₀, 𝐱₀).
+  /// Solves the IVP for time @p tf, using the initial time t₀, initial state
+  /// vector 𝐱₀ and parameter vector 𝐤 present in @p values, falling back to
+  /// the ones given on construction if not given.
   ///
-  /// @param t The time t to solve the IVP for.
-  /// @return The IVP solution 𝐱(@p t; 𝐤₀) for 𝐱(t₀; 𝐤₀) = 𝐱₀.
-  /// @pre The time @p t must be larger than or equal to the initial time t₀
-  ///      given on construction.
-  /// @throw std::runtime_error If preconditions are not met.
-  inline VectorX<T> Solve(const T& t) const {
-    return this->Solve(default_initial_time_, t);
-  }
+  /// @param tf The IVP will be solved for this time.
+  /// @param values IVP initial conditions and parameters.
+  /// @returns The IVP solution 𝐱(@p tf; 𝐤) for 𝐱(t₀; 𝐤) = 𝐱₀.
+  /// @pre Given @p tf must be larger than or equal to the specified initial
+  ///      time t₀ (either given or default).
+  /// @pre If given, the dimension of the initial state vector @p values.x0
+  ///      must match that of the default initial state vector in the default
+  ///      specified values given on construction.
+  /// @pre If given, the dimension of the parameter vector @p values.k
+  ///      must match that of the parameter vector in the default specified
+  ///      values given on construction.
+  /// @throws std::logic_error if preconditions are not met.
+  VectorX<T> Solve(const T& tf, const SpecifiedValues& values = {}) const;
 
-  /// Solves the IVP for the given time @p t, starting at the given initial
-  /// time @p t0, and using default parameters vector 𝐤₀ and default initial
-  /// state vector 𝐱₀.
+  /// Solves and yields an approximation of the IVP solution x(t; 𝐤) for
+  /// the closed time interval between the initial time t₀ and the given final
+  /// time @p tf, using initial state 𝐱₀ and parameter vector 𝐤 present in
+  /// @p values (falling back to the ones given on construction if not given).
   ///
-  /// @param t0 The initial time for the IVP.
-  /// @param t The time to solve the IVP for.
-  /// @return The IVP solution 𝐱(@p t; 𝐤₀) for 𝐱(@p t0; 𝐤₀) = 𝐱₀.
-  /// @pre The time @p t must be larger than or equal to the initial time
-  ///      @p t0.
-  /// @throw std::runtime_error If preconditions are not met.
-  inline VectorX<T> Solve(const T& t0, const T& t) const {
-    return this->Solve(t0, t, default_parameters_);
-  }
-
-  /// Solves the IVP for the given time @p t with default initial conditions
-  /// (t₀, 𝐱₀) and using the given parameters vector @p k.
+  /// To this end, the wrapped IntegratorBase instance solves this IVP,
+  /// advancing time and state from t₀ and 𝐱₀ = 𝐱(t₀) to @p tf and 𝐱(@p tf),
+  /// creating a dense output over that [t₀, @p tf] interval along the way.
   ///
-  /// @param t The time to solve the IVP for.
-  /// @param k The parameters vector for the IVP.
-  /// @return The IVP solution 𝐱(@p t; @p k ) for 𝐱(t₀; @p k) = 𝐱₀.
-  /// @pre The time @p t must be larger than or equal to the initial time t₀
-  ///      given on construction.
-  /// @pre The dimension of the given parameters vector @p k must match that
-  ///      of the default parameters vector 𝐤₀ given on construction.
-  /// @throw std::logic_error If preconditions are not met.
-  inline VectorX<T> Solve(const T& t, const VectorX<T>& k) const {
-    return this->Solve(default_initial_time_, t, k);
-  }
+  /// @param tf The IVP will be solved up to this time. Usually, t₀ < @p tf as
+  ///           an empty dense output would result if t₀ = @p tf.
+  /// @param values IVP initial conditions and parameters.
+  /// @returns A dense approximation to 𝐱(t; 𝐤) with 𝐱(t₀; 𝐤) = 𝐱₀, defined for
+  ///          t₀ ≤ t ≤ tf.
+  /// @note The larger the given @p tf value is, the larger the approximated
+  ///       interval will be. See documentation of the specific dense output
+  ///       technique in use for reference on performance impact as this
+  ///       interval grows.
+  /// @pre Given @p tf must be larger than or equal to the specified initial
+  ///      time t₀ (either given or default).
+  /// @pre If given, the dimension of the initial state vector @p values.x0
+  ///      must match that of the default initial state vector in the default
+  ///      specified values given on construction.
+  /// @pre If given, the dimension of the parameter vector @p values.k
+  ///      must match that of the parameter vector in the default specified
+  ///      values given on construction.
+  /// @throws std::logic_error if any of the preconditions is not met.
+  std::unique_ptr<DenseOutput<T>> DenseSolve(
+      const T& tf, const SpecifiedValues& values = {}) const;
 
-  /// Solves the IVP starting at time @p t0 with default initial state vector
-  /// 𝐱₀ for the given time @p t and using the given parameters @p k.
-  ///
-  /// @param t0 The initial time for the IVP.
-  /// @param t The time to solve the IVP for.
-  /// @param k The parameters vector for the IVP.
-  /// @return The IVP solution 𝐱(@p t; @p k) for 𝐱(@p t0; @p k) = 𝐱₀.
-  /// @pre The time @p t must be larger than or equal to the initial time
-  ///      @p t0.
-  /// @pre The dimension of the given parameters vector @p k must match that
-  ///      of the default parameters vector 𝐤₀ given on construction.
-  /// @throw std::logic_error If preconditions are not met.
-  inline VectorX<T> Solve(const T& t0, const T& t,
-                          const VectorX<T>& k) const {
-    return this->Solve(t0, default_initial_state_, t, k);
-  }
-
-  /// Solves the IVP starting at time @p t0 with default initial state @p x0
-  /// for the given time @p t , using the given parameters @p k.
-  ///
-  /// @param t0 The initial time for the IVP.
-  /// @param t The time to solve the IVP for.
-  /// @param x0 The initial state vector of the IVP.
-  /// @param k The parameter vector for the IVP.
-  /// @return The IVP solution 𝐱(@p t; @p k) for 𝐱(@p t0; @p k) = @p x0.
-  /// @pre The time @p t must be larger than or equal to the initial time @p t0.
-  /// @pre The dimension of the given initial state @p x0 must match that of the
-  ///      default initial state vector 𝐱₀ given on construction.
-  /// @pre The dimension of the given parameters vector @p k must match that
-  ///      of the default parameters vector 𝐤₀ given on construction.
-  /// @throw std::logic_error If preconditions are not met.
-  VectorX<T> Solve(const T& t0, const VectorX<T>& x0,
-                   const T& t, const VectorX<T>& k) const;
-
-  /// Resets the internal integrator instance.
+  /// Resets the internal integrator instance by in-place
+  /// construction of the given integrator type.
   ///
   /// A usage example is shown below.
   /// @code{.cpp}
@@ -163,36 +185,49 @@ class InitialValueProblem {
   /// @endcode
   ///
   /// @param args The integrator type-specific arguments.
-  /// @return The new integrator instance.
-  /// @tparam I The integrator type, which must be an IntegratorBase subclass.
+  /// @returns The new integrator instance.
+  /// @tparam Integrator The integrator type, which must be an
+  ///         IntegratorBase subclass.
   /// @tparam Args The integrator specific argument types.
   /// @warning This operation invalidates pointers returned by
   ///          InitialValueProblem::get_integrator() and
   ///          InitialValueProblem::get_mutable_integrator().
-  template <typename I, typename... Args>
-  I* reset_integrator(Args&&... args) {
-    integrator_ = std::make_unique<I>(*system_, std::forward<Args>(args)...);
+  template <typename Integrator, typename... Args>
+  Integrator* reset_integrator(Args&&... args) {
+    integrator_ = std::make_unique<Integrator>(
+        *system_, std::forward<Args>(args)...);
     integrator_->reset_context(context_.get());
-    return static_cast<I*>(integrator_.get());
+    return static_cast<Integrator*>(integrator_.get());
   }
 
   /// Gets a pointer to the internal integrator instance.
-  inline const IntegratorBase<T>* get_integrator() const {
+  const IntegratorBase<T>* get_integrator() const {
     return integrator_.get();
   }
 
   /// Gets a pointer to the internal mutable integrator instance.
-  inline IntegratorBase<T>* get_mutable_integrator() {
+  IntegratorBase<T>* get_mutable_integrator() {
     return integrator_.get();
   }
 
  private:
-  // IVP default initial time t₀.
-  const T default_initial_time_;
-  // IVP default initial state 𝐱₀.
-  const VectorX<T> default_initial_state_;
-  // IVP default parameters 𝐤₀.
-  const VectorX<T> default_parameters_;
+  // Sanitizes given @p values to solve for @p tf, i.e. sets defaults
+  // when values are missing and validates that all preconditions specified
+  // for InitialValueProblem::Solve() and InitialValueProblem::DenseSolve()
+  // hold.
+  //
+  // @param tf The IVP will be solved for this time.
+  // @param values IVP initial conditions and parameters.
+  // @returns Sanitized values.
+  // @throws std::logic_error If preconditions specified for
+  //                          InitialValueProblem::Solve() and
+  //                          InitialValueProblem::DenseSolve()
+  //                          do not hold.
+  SpecifiedValues SanitizeValuesOrThrow(
+      const T& tf, const SpecifiedValues& values) const;
+
+  // IVP values specified by default.
+  const SpecifiedValues default_values_;
 
   // @name Caching support
   //
@@ -203,12 +238,19 @@ class InitialValueProblem {
   // expresses the fact that neither computation results nor IVP
   // definition are affected when these change.
 
-  // IVP current initial time tᵢ (for caching).
-  mutable T current_initial_time_;
-  // IVP current initial state xᵢ (for caching).
-  mutable VectorX<T> current_initial_state_;
-  // IVP current parameters 𝐤ᵢ (for caching).
-  mutable VectorX<T> current_parameters_;
+  // Invalidates and initializes cached IVP specified values and
+  // integration context based on the newly provided @p values.
+  void ResetCachedState(const SpecifiedValues& values) const;
+
+  // Conditionally invalidates and initializes cached IVP specified
+  // values and integration context based on time @p tf to solve for
+  // and the provided @p values. If cached state can be reused, it's a
+  // no-op.
+  void ResetCachedStateIfNecessary(
+      const T& tf, const SpecifiedValues& values) const;
+
+  // IVP current specified values (for caching).
+  mutable SpecifiedValues current_values_;
 
   // IVP ODE solver integration context.
   std::unique_ptr<Context<T>> context_;

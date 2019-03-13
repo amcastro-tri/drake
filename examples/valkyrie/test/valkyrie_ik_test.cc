@@ -17,6 +17,7 @@
 #include "drake/multibody/rigid_body_plant/create_load_robot_message.h"
 #include "drake/multibody/rigid_body_plant/viewer_draw_translator.h"
 #include "drake/multibody/rigid_body_tree.h"
+#include "drake/systems/framework/basic_vector.h"
 
 using Eigen::Vector2d;
 using Eigen::Vector3d;
@@ -259,26 +260,18 @@ GTEST_TEST(ValkyrieIK_Test, ValkyrieIK_Test_StandingPose_Test) {
   EXPECT_GT(com(2), 0);
 
   // show it in drake visualizer
-  VectorX<double> x = VectorX<double>::Zero(tree->get_num_positions() +
-                                            tree->get_num_velocities());
-  x.head(q_sol.size()) = q_sol;
-  systems::BasicVector<double> q_draw(x);
-
   lcm::DrakeLcm lcm;
-  std::vector<uint8_t> message_bytes;
 
   lcmt_viewer_load_robot load_msg =
       multibody::CreateLoadRobotMessage<double>(*tree);
-  const int length = load_msg.getEncodedSize();
-  message_bytes.resize(length);
-  load_msg.encode(message_bytes.data(), 0, length);
-  lcm.Publish("DRAKE_VIEWER_LOAD_ROBOT", message_bytes.data(),
-              message_bytes.size());
+  Publish(&lcm, "DRAKE_VIEWER_LOAD_ROBOT", load_msg);
 
   systems::ViewerDrawTranslator posture_drawer(*tree);
-  posture_drawer.Serialize(0, q_draw, &message_bytes);
+  std::vector<uint8_t> message_bytes;
+  posture_drawer.Serialize(0, systems::BasicVector<double>{q_sol},
+                           &message_bytes);
   lcm.Publish("DRAKE_VIEWER_DRAW", message_bytes.data(),
-              message_bytes.size());
+              message_bytes.size(), {});
 }
 
 }  // namespace

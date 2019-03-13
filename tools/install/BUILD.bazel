@@ -4,7 +4,7 @@ package(default_visibility = ["//visibility:public"])
 
 load("//tools/lint:lint.bzl", "add_lint_tests")
 load(
-    "//tools/skylark:drake_py.bzl",
+    "@drake//tools/skylark:drake_py.bzl",
     "drake_py_test",
     "drake_py_unittest",
 )
@@ -34,6 +34,12 @@ exports_files(
 # Runs `install_test_helper` unit tests.
 drake_py_unittest(
     name = "install_test_helper_test",
-    size = "small",
     deps = [":install_test_helper"],
 )
+
+drake_py_unittest(
+    name = "install_meta_test",
+    data = ["//tools/install/dummy:install"],
+)
+
+add_lint_tests()

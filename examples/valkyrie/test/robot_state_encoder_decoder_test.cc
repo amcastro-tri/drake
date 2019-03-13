@@ -104,7 +104,7 @@ void TestEncodeThenDecode(FloatingBaseType floating_base_type) {
   auto kinematics_results_value = make_unique<Value<KinematicsResults<double>>>(
       KinematicsResults<double>(&tree));
   KinematicsResults<double>& kinematics_results =
-      kinematics_results_value->GetMutableValue<KinematicsResults<double>>();
+      kinematics_results_value->get_mutable_value();
 
   std::default_random_engine generator;  // Same seed every time, but that's OK.
   std::normal_distribution<double> distribution;
@@ -148,7 +148,7 @@ void TestEncodeThenDecode(FloatingBaseType floating_base_type) {
   auto contact_results_value =
       make_unique<Value<ContactResults<double>>>(ContactResults<double>());
   ContactResults<double>& contact_results =
-      contact_results_value->GetMutableValue<ContactResults<double>>();
+      contact_results_value->get_mutable_value();
 
   double spatial_forces_start = 0.0;
   for (Side side : Side::values) {
@@ -221,12 +221,12 @@ void TestEncodeThenDecode(FloatingBaseType floating_base_type) {
   auto diagram = builder.Build();
 
   auto context = diagram->CreateDefaultContext();
-  auto output = diagram->AllocateOutput(*context);
+  auto output = diagram->AllocateOutput();
   diagram->CalcOutput(*context, output.get());
 
   // TODO(tkoolen): magic numbers.
-  auto cache_output = output->get_data(0)->GetValue<KinematicsCache<double>>();
-  auto msg_output = output->get_data(1)->GetValue<robot_state_t>();
+  auto cache_output = output->get_data(0)->get_value<KinematicsCache<double>>();
+  auto msg_output = output->get_data(1)->get_value<robot_state_t>();
 
   // Tolerance because we're converting to float and back:
   double tolerance = 10. * std::numeric_limits<float>::epsilon();
@@ -241,6 +241,7 @@ void TestEncodeThenDecode(FloatingBaseType floating_base_type) {
       v_non_floating_joint_start_index = 6;
       break;
     case FloatingBaseType::kQuaternion:
+    case FloatingBaseType::kExperimentalMultibodyPlantStyle:
       q_non_floating_joint_start_index = 7;
       v_non_floating_joint_start_index = 6;
       break;
@@ -334,9 +335,10 @@ void TestEncodeThenDecode(FloatingBaseType floating_base_type) {
           auto quat_expected = q_joint_expected.tail<kQuaternionSize>();
           auto quat_back = q_joint_back.tail<kQuaternionSize>();
           auto quat_diff = math::quatDiff(quat_expected, quat_back);
-          auto angle_axis = math::quat2axis(quat_diff);
-          // TODO(hongkai.dai): fix magic number once we use Eigen's AngleAxis:
-          auto angle = angle_axis[3];
+          const Eigen::Quaternion<decltype(quat_diff)::Scalar> q_eigen(
+              quat_diff(0), quat_diff(1), quat_diff(2), quat_diff(3));
+          Eigen::AngleAxis<decltype(quat_diff)::Scalar> angle_axis(q_eigen);
+          auto angle = angle_axis.angle();
           EXPECT_NEAR(angle, 0.0, tolerance);
         } else {
           EXPECT_TRUE(CompareMatrices(q_joint_expected, q_joint_back, tolerance,

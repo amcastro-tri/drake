@@ -21,6 +21,7 @@ namespace automotive {
 ///
 /// This class is explicitly instantiated for the following scalar types. No
 /// other scalar types are supported.
+///
 /// - double
 ///
 /// @tparam T The vector element type, which must be a valid Eigen scalar.
@@ -42,7 +43,7 @@ class RoadPath {
            int num_breaks);
   ~RoadPath();
 
-  const PiecewisePolynomial<T>& get_path() const;
+  const trajectories::PiecewisePolynomial<T>& get_path() const;
 
   /// Computes the closest `s`-position on the path to an arbitrary point in
   /// the world frame of the provided Maliput Lanes.  (Not yet implemented)
@@ -58,14 +59,18 @@ class RoadPath {
   // If a BranchPoint is encountered in which there is more than one ongoing
   // lane, the zero-index lane is always selected.
   // TODO(jadecastro): Use Lane::GetDefaultBranch() to decide the ongoing Lane.
-  const PiecewisePolynomial<T> MakePiecewisePolynomial(
+  const trajectories::PiecewisePolynomial<T> MakePiecewisePolynomial(
       const LaneDirection& initial_lane_direction, const T& step_size,
       int num_breaks) const;
 
-  PiecewisePolynomial<T> path_;  // The path representing the mid-curve of the
-                                 // road.
-  PiecewisePolynomial<T> path_prime_;         // First derivative of path_.
-  PiecewisePolynomial<T> path_double_prime_;  // Second derivative of path_.
+  // The path representing the mid-curve of the road.
+  trajectories::PiecewisePolynomial<T> path_;
+
+  // First derivative of path_.
+  trajectories::PiecewisePolynomial<T> path_prime_;
+
+  // Second derivative of path_.
+  trajectories::PiecewisePolynomial<T> path_double_prime_;
 };
 
 }  // namespace automotive

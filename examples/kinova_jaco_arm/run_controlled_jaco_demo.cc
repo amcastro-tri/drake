@@ -12,7 +12,7 @@
 #include <gflags/gflags.h>
 
 #include "drake/common/find_resource.h"
-#include "drake/common/trajectories/piecewise_polynomial_trajectory.h"
+#include "drake/common/trajectories/piecewise_polynomial.h"
 #include "drake/examples/kinova_jaco_arm/jaco_common.h"
 #include "drake/lcm/drake_lcm.h"
 #include "drake/multibody/parsers/urdf_parser.h"
@@ -21,7 +21,7 @@
 #include "drake/multibody/rigid_body_plant/rigid_body_plant.h"
 #include "drake/multibody/rigid_body_tree_construction.h"
 #include "drake/systems/analysis/simulator.h"
-#include "drake/systems/controllers/inverse_dynamics_controller.h"
+#include "drake/systems/controllers/rbt_inverse_dynamics_controller.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/primitives/trajectory_source.h"
 
@@ -31,6 +31,7 @@ using Eigen::VectorXd;
 using Eigen::VectorXi;
 using Eigen::MatrixXd;
 using std::make_unique;
+using drake::systems::controllers::rbt::InverseDynamicsController;
 
 DEFINE_double(simulation_sec, 12, "Number of seconds to simulate.");
 
@@ -39,10 +40,12 @@ namespace examples {
 namespace kinova_jaco_arm {
 namespace {
 
+using trajectories::PiecewisePolynomial;
+
 const char* kRelUrdfPath =
     "drake/manipulation/models/jaco_description/urdf/j2n6s300.urdf";
 
-std::unique_ptr<PiecewisePolynomialTrajectory> MakePlan() {
+PiecewisePolynomial<double> MakePlan() {
   auto tree = make_unique<RigidBodyTree<double>>();
   parsers::urdf::AddModelInstanceFromUrdfFileToWorld(
       FindResourceOrThrow(kRelUrdfPath), multibody::joints::kFixed, tree.get());
@@ -145,8 +148,7 @@ std::unique_ptr<PiecewisePolynomialTrajectory> MakePlan() {
     knots[i] = q_sol.col(i);
   }
 
-  return make_unique<PiecewisePolynomialTrajectory>(
-      PiecewisePolynomial<double>::FirstOrderHold(kTimes, knots));
+  return PiecewisePolynomial<double>::FirstOrderHold(kTimes, knots);
 }
 
 int DoMain() {
@@ -155,7 +157,7 @@ int DoMain() {
   drake::lcm::DrakeLcm lcm;
   systems::DiagramBuilder<double> builder;
   systems::RigidBodyPlant<double>* plant = nullptr;
-  std::unique_ptr<PiecewisePolynomialTrajectory> trajectory = MakePlan();
+  PiecewisePolynomial<double> trajectory = MakePlan();
 
   {
     auto tree = make_unique<RigidBodyTree<double>>();
@@ -178,17 +180,16 @@ int DoMain() {
   VectorX<double> jaco_kp, jaco_kd, jaco_ki;
   SetPositionControlledJacoGains(&jaco_kp, &jaco_ki, &jaco_kd);
   auto control_sys =
-      make_unique<systems::controllers::InverseDynamicsController<double>>(
+      make_unique<InverseDynamicsController<double>>(
           plant->get_rigid_body_tree().Clone(), jaco_kp, jaco_ki, jaco_kd,
           false /* no feedforward acceleration */);
   auto controller =
-      builder
-          .AddSystem<systems::controllers::InverseDynamicsController<double>>(
-              std::move(control_sys));
+      builder.AddSystem<InverseDynamicsController<double>>(
+          std::move(control_sys));
 
   // Adds a trajectory source for desired state.
   auto traj_src = builder.AddSystem<systems::TrajectorySource<double>>(
-      *trajectory, 1 /* outputs q + v */);
+      trajectory, 1 /* outputs q + v */);
   traj_src->set_name("trajectory_source");
 
   builder.Connect(traj_src->get_output_port(),

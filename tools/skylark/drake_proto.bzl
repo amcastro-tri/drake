@@ -9,7 +9,6 @@ load(
     "@drake//tools/skylark:drake_cc.bzl",
     "drake_cc_library",
 )
-load("//tools/skylark:6996.bzl", "adjust_labels_for_drake_hoist")
 
 def drake_cc_proto_library(
         name,
@@ -18,9 +17,9 @@ def drake_cc_proto_library(
         tags = [],
         **kwargs):
     """A wrapper to insert Drake-specific customizations."""
-    deps = adjust_labels_for_drake_hoist(deps)
     pb_hdrs = [x[:-len(".proto")] + ".pb.h" for x in srcs]
     pb_srcs = [x[:-len(".proto")] + ".pb.cc" for x in srcs]
+
     # Generate the h and cc file.
     proto_gen(
         name = name + "_genproto",
@@ -31,9 +30,10 @@ def drake_cc_proto_library(
         outs = pb_srcs + pb_hdrs,
         visibility = ["//visibility:public"],
     )
+
     # Apply ubsan fixups.
     pb_ubsan_fixups = [x[:-len(".proto")] + "_ubsan_fixup.pb.cc" for x in srcs]
-    tool = "//tools/skylark:drake_proto_ubsan_fix"
+    tool = "@drake//tools/skylark:drake_proto_ubsan_fix"
     native.genrule(
         name = name + "_ubsan_fixup",
         srcs = pb_srcs,
@@ -41,6 +41,7 @@ def drake_cc_proto_library(
         tools = [tool],
         cmd = "$(location {tool}) '$(SRCS)' '$(OUTS)'".format(tool = tool),
     )
+
     # Compile the cc files.
     drake_cc_library(
         name = name,
@@ -51,7 +52,9 @@ def drake_cc_proto_library(
             "@com_google_protobuf//:protobuf",
             "@drake//common/proto:protobuf_ubsan_fixup",
         ],
-        **kwargs)
+        copts = ["-Wno-unused-parameter"],
+        **kwargs
+    )
 
 def drake_py_proto_library(
         name,
@@ -61,4 +64,5 @@ def drake_py_proto_library(
     py_proto_library(
         name = name,
         tags = tags + ["nolint"],
-        **kwargs)
+        **kwargs
+    )

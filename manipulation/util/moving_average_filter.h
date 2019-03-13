@@ -25,8 +25,9 @@ namespace util {
  *
  * @tparam T The element type.
  * Instantiated templates for the following kinds of T's are provided:
- *  - double
- *  - VectorX<double>
+ *
+ * - double
+ * - VectorX<double>
  */
 template <typename T>
 class MovingAverageFilter {
@@ -35,7 +36,7 @@ class MovingAverageFilter {
   /**
    * Constructs the filter with the specified `window_size`.
    * @param window_size The size of the window.
-   * @throws a std::runtime_error when window_size <= 0.
+   * @throws std::runtime_error when window_size <= 0.
    */
   explicit MovingAverageFilter(int window_size);
 
@@ -48,6 +49,13 @@ class MovingAverageFilter {
    * @return
    */
   T Update(const T& new_data);
+
+  const std::queue<T>& window() const { return window_; }
+
+  /**
+   * Returns the most recent result of the averaging filter.
+   */
+  const T moving_average() const { return (1.0 / window_.size()) * sum_; }
 
  private:
   std::queue<T> window_;

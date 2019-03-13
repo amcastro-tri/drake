@@ -1,21 +1,32 @@
 #include "drake/solvers/dreal_solver.h"
 
 #include <algorithm>  // To suppress cpplint.
+#include <functional>
 #include <map>
+#include <memory>
 #include <numeric>
 #include <set>
 #include <stdexcept>
+#include <string>
 #include <utility>
+#include <vector>
+
+#include "drake/solvers/mathematical_program.h"
 
 namespace drake {
 namespace solvers {
 
 using std::accumulate;
+using std::dynamic_pointer_cast;
+using std::logic_error;
 using std::map;
 using std::pair;
 using std::runtime_error;
 using std::set;
+using std::shared_ptr;
+using std::string;
 using std::unordered_map;
+using std::vector;
 
 namespace {
 
@@ -109,6 +120,11 @@ dreal::Variable::Type convert_type(const symbolic::Variable::Type type) {
       return dreal::Variable::Type::BINARY;
     case symbolic::Variable::Type::BOOLEAN:
       return dreal::Variable::Type::BOOLEAN;
+    case symbolic::Variable::Type::RANDOM_UNIFORM:
+    case symbolic::Variable::Type::RANDOM_GAUSSIAN:
+    case symbolic::Variable::Type::RANDOM_EXPONENTIAL:
+      throw runtime_error(
+          "Random variables are not supported in dReal solver.");
   }
   throw runtime_error("Should be unreachable.");  // LCOV_EXCL_LINE
 }
@@ -388,16 +404,190 @@ optional<DrealSolver::IntervalBox> DrealSolver::CheckSatisfiability(
 
 optional<DrealSolver::IntervalBox> DrealSolver::Minimize(
     const symbolic::Expression& objective, const symbolic::Formula& constraint,
-    const double delta) {
+    const double delta, const LocalOptimization local_optimization) {
   DrealConverter dreal_converter;
   dreal::Box model;
+  dreal::Config config;
+  config.mutable_precision() = delta;
+  config.mutable_use_local_optimization() =
+      local_optimization == LocalOptimization::kUse;
   const bool result{dreal::Minimize(dreal_converter.Convert(objective),
-                                    dreal_converter.Convert(constraint), delta,
+                                    dreal_converter.Convert(constraint), config,
                                     &model)};
   if (result) {
     return dreal_converter.Convert(model);
   } else {
     return nullopt;
+  }
+}
+
+bool DrealSolver::is_available() { return true; }
+
+namespace {
+// Extracts value of @p key from @p solver_options. If not specified,
+// returns @p default_value.
+template <typename T>
+T GetOptionWithDefaultValue(const SolverOptions& solver_options,
+                            const std::string& key, const T& default_value) {
+  const auto& options = solver_options.GetOptions<T>(DrealSolver::id());
+  const auto it = options.find(key);
+  if (it != options.end()) {
+    return it->second;
+  }
+  return default_value;
+}
+
+template <typename T>
+symbolic::Formula ExtractConstraints(const vector<Binding<T>>& bindings) {
+  symbolic::Formula f{symbolic::Formula::True()};
+  for (const Binding<T>& binding : bindings) {
+    f = f && binding.evaluator()->CheckSatisfied(binding.variables());
+  }
+  return f;
+}
+
+// Extracts bounding box constraints in @p prog into a symbolic formula.
+// This is a helper function used in DrealSolver::Solve.
+symbolic::Formula ExtractBoundingBoxConstraints(
+    const MathematicalProgram& prog) {
+  return ExtractConstraints(prog.bounding_box_constraints());
+}
+
+// Extracts linear constraints in @p prog into a symbolic formula.
+// This is a helper function used in DrealSolver::Solve.
+symbolic::Formula ExtractLinearConstraints(const MathematicalProgram& prog) {
+  return ExtractConstraints(prog.linear_constraints());
+}
+
+// Extracts linear-equality constraints in @p prog into a symbolic formula.
+// This is a helper function used in DrealSolver::Solve.
+symbolic::Formula ExtractLinearEqualityConstraints(
+    const MathematicalProgram& prog) {
+  return ExtractConstraints(prog.linear_equality_constraints());
+}
+
+// Extracts Lorentz-cone constraints in @p prog into a symbolic formula.
+// This is a helper function used in DrealSolver::Solve.
+symbolic::Formula ExtractLorentzConeConstraints(
+    const MathematicalProgram& prog) {
+  return ExtractConstraints(prog.lorentz_cone_constraints());
+}
+
+// Extracts rotated Lorentz-cone constraints in @p prog into a symbolic formula.
+// This is a helper function used in DrealSolver::Solve.
+symbolic::Formula ExtractRotatedLorentzConeConstraints(
+    const MathematicalProgram& prog) {
+  return ExtractConstraints(prog.rotated_lorentz_cone_constraints());
+}
+
+// Extracts linear-complementarity constraints in @p prog into a symbolic
+// formula. This is a helper function used in DrealSolver::Solve.
+symbolic::Formula ExtractLinearComplementarityConstraints(
+    const MathematicalProgram& prog) {
+  return ExtractConstraints(prog.linear_complementarity_constraints());
+}
+
+// Extracts generic constraints in @p prog into a symbolic formula. This is a
+// helper function used in DrealSolver::Solve.
+//
+// @throws std::logic_error if there is a generic-constraint which does not
+// provide symbolic evaluation.
+symbolic::Formula ExtractGenericConstraints(const MathematicalProgram& prog) {
+  return ExtractConstraints(prog.generic_constraints());
+}
+
+// Extracts linear costs in @p prog and push them into @p costs vector. This is
+// a helper function used in DrealSolver::Solve.
+void ExtractLinearCosts(const MathematicalProgram& prog,
+                        vector<symbolic::Expression>* const costs) {
+  for (const Binding<LinearCost>& binding : prog.linear_costs()) {
+    const VectorXDecisionVariable& x{binding.variables()};
+    const shared_ptr<LinearCost>& cost{binding.evaluator()};
+    VectorX<symbolic::Expression> y;
+    cost->Eval(x, &y);
+    costs->push_back(y[0]);
+  }
+}
+
+// Extracts quadratic costs in @p prog and push them into @p costs vector.
+void ExtractQuadraticCosts(const MathematicalProgram& prog,
+                           vector<symbolic::Expression>* const costs) {
+  for (const Binding<QuadraticCost>& binding : prog.quadratic_costs()) {
+    const VectorXDecisionVariable& x{binding.variables()};
+    const shared_ptr<QuadraticCost>& cost{binding.evaluator()};
+    VectorX<symbolic::Expression> y;
+    cost->Eval(x, &y);
+    costs->push_back(y[0]);
+  }
+}
+
+}  // namespace
+
+void DrealSolver::DoSolve(
+    const MathematicalProgram& prog,
+    const Eigen::VectorXd& initial_guess,
+    const SolverOptions& merged_options,
+    MathematicalProgramResult* result) const {
+  unused(initial_guess);
+
+  // 1. Extracts the constraints from @p prog and constructs an equivalent
+  // symbolic formula.
+  symbolic::Formula constraints{ExtractBoundingBoxConstraints(prog) &&
+                                ExtractLinearConstraints(prog) &&
+                                ExtractLinearEqualityConstraints(prog) &&
+                                ExtractLorentzConeConstraints(prog) &&
+                                ExtractRotatedLorentzConeConstraints(prog) &&
+                                ExtractLinearComplementarityConstraints(prog) &&
+                                ExtractGenericConstraints(prog)};
+  // 2. Extracts the costs from @p prog and constructs equivalent symbolic
+  // Expressions.
+  vector<symbolic::Expression> costs;
+  ExtractLinearCosts(prog, &costs);
+  ExtractQuadraticCosts(prog, &costs);
+  // TODO(soonho): Add ExtractGenericCosts.
+
+  // 3. Call dReal to check the delta-satisfiability of the problem.
+
+  // TODO(soonho): Support other dReal options. For now, we only support
+  // "--preicision" and "--local-optimization".
+
+  const double precision{GetOptionWithDefaultValue(
+      merged_options, "precision", 0.001 /* default */)};
+  const LocalOptimization local_optimization{
+      GetOptionWithDefaultValue<int>(
+          merged_options, "use_local_optimization", 1 /* default */) > 0
+          ? LocalOptimization::kUse
+          : LocalOptimization::kNotUse};
+  optional<IntervalBox> dreal_result;
+  if (costs.size() == 0) {
+    // No cost functions in the problem. Call Checksatisfiability.
+    dreal_result = CheckSatisfiability(constraints, precision);
+  } else {
+    // Call Minimize with cost = ∑ᵢ costs(i).
+    dreal_result = Minimize(
+        accumulate(costs.begin(), costs.end(), symbolic::Expression::Zero(),
+                   std::plus<symbolic::Expression>{}),
+        constraints, precision, local_optimization);
+  }
+
+  // 4. Sets MathematicalProgramResult.
+  result->set_solution_result(SolutionResult::kUnknownError);
+  if (dreal_result) {
+    // 4.1. delta-SAT case.
+    const int num_vars{prog.num_vars()};
+    Eigen::VectorXd solution_vector(num_vars);
+    // dReal returns an interval box instead of a point as a solution. We pick
+    // the mid-point from a returned box and assign it to the result.
+    for (const auto& item : *dreal_result) {
+      const symbolic::Variable& var{item.first};
+      const double v{item.second.mid()};
+      solution_vector(prog.FindDecisionVariableIndex(var)) = v;
+    }
+    result->set_solution_result(SolutionResult::kSolutionFound);
+    result->set_x_val(solution_vector);
+  } else {
+    // 4.2. UNSAT case
+    result->set_solution_result(SolutionResult::kInfeasibleConstraints);
   }
 }
 

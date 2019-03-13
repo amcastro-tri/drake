@@ -28,10 +28,7 @@ struct DynamicProgrammingOptions {
   /// ensure that all values are in the range [low, high).  The classic example
   /// is for angles that are wrapped around at 2π.
   struct PeriodicBoundaryCondition {
-    PeriodicBoundaryCondition(int state_index, double low, double high) :
-      state_index(state_index), low(low), high(high) {
-      DRAKE_DEMAND(low < high);
-    }
+    PeriodicBoundaryCondition(int state_index, double low, double high);
     int state_index{-1};
     double low{0.};
     double high{2.*M_PI};
@@ -45,8 +42,10 @@ struct DynamicProgrammingOptions {
 
   /// If callable, this method is invoked during each major iteration of the
   /// dynamic programming algorithm, in order to facilitate e.g. graphical
-  /// inspection/debugging of the results.  Note: the first call happens at
-  /// iteration 1 (after the value iteration has run once), not zero.
+  /// inspection/debugging of the results.
+  ///
+  /// @note The first call happens at iteration 1 (after the value iteration
+  /// has run once), not zero.
   std::function<void(
       int iteration, const math::BarycentricMesh<double>& state_mesh,
       const Eigen::RowVectorXd& cost_to_go, const Eigen::MatrixXd& policy)>

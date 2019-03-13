@@ -150,6 +150,31 @@ class DependencyTracker {
   DependencyGraph. The ticket is unique within the containing subcontext. */
   DependencyTicket ticket() const { return ticket_; }
 
+  /** (Internal use only) Sets the cache entry value to be marked out-of-date
+  when this tracker's prerequisites change.
+  @pre The supplied cache entry value is non-null.
+  @pre No cache entry value has previously been assigned. */
+  // This is intended for use in connecting pre-defined trackers to cache
+  // entry values that are created later. See the private constructor
+  // documentation for more information.
+  void set_cache_entry_value(CacheEntryValue* cache_value) {
+    DRAKE_DEMAND(cache_value != nullptr);
+    DRAKE_DEMAND(!has_associated_cache_entry_);
+    cache_value_ = cache_value;
+    has_associated_cache_entry_ = true;
+  }
+
+  /** (Internal use only) Returns a pointer to the CacheEntryValue if this
+  tracker is a cache entry tracker, otherwise nullptr. */
+  // This is for validating that this tracker is associated with the right
+  // cache entry. Don't use this during runtime invalidation.
+  const CacheEntryValue* cache_entry_value() const {
+    DRAKE_DEMAND(cache_value_);
+    if (!has_associated_cache_entry_)
+      return nullptr;  // cache_value_ actually points to a dummy entry.
+    return cache_value_;
+  }
+
   /** Notifies `this` %DependencyTracker that its managed value was directly
   modified or made available for mutable access. That is, this is the
   _initiating_ event of a value modification. All of our downstream
@@ -228,7 +253,7 @@ class DependencyTracker {
 
   /** @name                     Runtime statistics
   These methods track runtime operations and are useful for debugging and for
-  performance analysis. **/
+  performance analysis. */
   //@{
 
   /** What is the total number of notifications received by this tracker?
@@ -263,6 +288,24 @@ class DependencyTracker {
   }
   //@}
 
+  /** @name                Testing/debugging utilities
+  Methods used in test cases or for debugging. */
+  //@{
+
+  /** Throws an std::logic_error if there is something clearly wrong with this
+  %DependencyTracker object. If the owning subcontext is known, provide a
+  pointer to it here and we'll check that this tracker agrees. If you know which
+  cache entry is supposed to be associated with this tracker, supply a pointer
+  to that and we'll check it (trackers that are not associated with a real cache
+  entry are still associated with the CacheEntryValue::dummy()). In addition we
+  check for other internal inconsistencies.
+  @throws std::logic_error for anything that goes wrong, with an appropriate
+                           explanatory message. */
+  void ThrowIfBadDependencyTracker(
+      const internal::ContextMessageInterface* owning_subcontext = nullptr,
+      const CacheEntryValue* cache_value = nullptr) const;
+  //@}
+
  private:
   friend class DependencyGraph;
 
@@ -274,18 +317,20 @@ class DependencyTracker {
   // system pathname service of the owning subcontext must be supplied here and
   // be non-null.
   DependencyTracker(DependencyTicket ticket, std::string description,
-                    const internal::SystemPathnameInterface* owning_subcontext,
+                    const internal::ContextMessageInterface* owning_subcontext,
                     CacheEntryValue* cache_value)
       : ticket_(ticket),
         description_(std::move(description)),
         owning_subcontext_(owning_subcontext),
+        has_associated_cache_entry_(cache_value != nullptr),
         cache_value_(cache_value ? cache_value : &CacheEntryValue::dummy()) {
     DRAKE_SPDLOG_DEBUG(
         log(), "Tracker #{} '{}' constructed {} invalidation {:#x}{}.", ticket_,
-        description_, cache_value ? "with" : "without", size_t(cache_value),
-        cache_value
-        ? " cache entry " + std::to_string(cache_value->cache_index())
-        : "");
+        description_, has_associated_cache_entry_ ? "with" : "without",
+        size_t(cache_value),
+        has_associated_cache_entry_
+            ? " cache entry " + std::to_string(cache_value->cache_index())
+            : "");
   }
 
   // Copies the current tracker but with all pointers set to null, and all
@@ -295,9 +340,11 @@ class DependencyTracker {
     // Can't use make_unique here because constructor is private.
     std::unique_ptr<DependencyTracker> clone(
         new DependencyTracker(ticket(), description(), nullptr, nullptr));
-    // cache_value_ is set to dummy by default; must reset to null now so we
-    // can fix it up later.
-    clone->cache_value_ = nullptr;
+    clone->has_associated_cache_entry_ = has_associated_cache_entry_;
+    // The constructor sets cache_value_ to dummy by default, but that's wrong
+    // if there is an associated cache entry. In that case we'll set it later.
+    if (has_associated_cache_entry_)
+      clone->cache_value_ = nullptr;
     clone->subscribers_.resize(num_subscribers(), nullptr);
     clone->prerequisites_.resize(num_prerequisites(), nullptr);
     return clone;
@@ -306,11 +353,12 @@ class DependencyTracker {
   // Assumes `this` tracker is a recent clone containing no pointers, sets
   // the pointers here to addresses corresponding to those in the source
   // tracker, with the help of the given map. It is a fatal error if any needed
-  // pointer is not present in the map.
+  // pointer is not present in the map. Performs a sanity check that the
+  // resulting tracker looks reasonable.
   void RepairTrackerPointers(
       const DependencyTracker& source,
       const DependencyTracker::PointerMap& tracker_map,
-      const internal::SystemPathnameInterface* owning_subcontext, Cache* cache);
+      const internal::ContextMessageInterface* owning_subcontext, Cache* cache);
 
   // Notifies `this` DependencyTracker that one of its prerequisite values was
   // modified or made available for mutable access. All of our downstream
@@ -335,15 +383,22 @@ class DependencyTracker {
     return owning_subcontext_->GetSystemPathname();
   }
 
+  // Provides an identifying prefix for error messages.
+  std::string FormatName(const char* api) const {
+    return "DependencyTracker(" + GetPathDescription() + ")::" + api + "(): ";
+  }
+
   // This tracker's index within its owning DependencyGraph.
   const DependencyTicket ticket_;
 
   const std::string description_;
 
   // Pointer to the system name service of the owning subcontext.
-  const internal::SystemPathnameInterface* owning_subcontext_{nullptr};
+  const internal::ContextMessageInterface* owning_subcontext_{nullptr};
 
-  // Points to CacheEntryValue::dummy() if we're not told otherwise.
+  // If false, cache_value_ will be set to point to CacheEntryValue::dummy() so
+  // we don't need to check during invalidation sweeps.
+  bool has_associated_cache_entry_{false};
   CacheEntryValue* cache_value_{nullptr};
 
   std::vector<const DependencyTracker*> subscribers_;
@@ -398,7 +453,7 @@ class DependencyGraph {
   /** Constructor creates an empty graph referencing the system pathname
   service of its owning subcontext. The supplied pointer must not be null. */
   explicit DependencyGraph(
-      const internal::SystemPathnameInterface* owning_subcontext)
+      const internal::ContextMessageInterface* owning_subcontext)
       : owning_subcontext_(owning_subcontext) {
     DRAKE_DEMAND(owning_subcontext != nullptr);
   }
@@ -507,12 +562,12 @@ class DependencyGraph {
   void RepairTrackerPointers(
       const DependencyGraph& source,
       const DependencyTracker::PointerMap& tracker_map,
-      const internal::SystemPathnameInterface* owning_subcontext,
+      const internal::ContextMessageInterface* owning_subcontext,
       Cache* new_cache);
 
  private:
   // The system name service of the subcontext that owns this subgraph.
-  const internal::SystemPathnameInterface* owning_subcontext_{};
+  const internal::ContextMessageInterface* owning_subcontext_{};
 
   // All value trackers, indexed by DependencyTicket.
   std::vector<std::unique_ptr<DependencyTracker>> graph_;

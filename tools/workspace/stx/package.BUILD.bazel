@@ -7,11 +7,16 @@ load(
     "install_cmake_config",
 )
 
+licenses(["notice"])  # BSD-3-Clause AND BSL-1.0
+
 package(default_visibility = ["//visibility:public"])
 
 cc_library(
     name = "stx",
-    hdrs = ["include/stx/optional.hpp"],
+    hdrs = [
+        "include/stx/optional.hpp",
+        "include/stx/variant.hpp",
+    ],
     includes = ["include"],
 )
 

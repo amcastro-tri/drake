@@ -153,10 +153,10 @@ int DoMain() {
           systems::lcm::UtimeMessageToSeconds<lcmt_jaco_status>>());
 
   // Waits for the first message.
-  const systems::AbstractValue& first_msg = loop.WaitForMessage();
+  const AbstractValue& first_msg = loop.WaitForMessage();
   double msg_time =
       loop.get_message_to_time_converter().GetTimeInSeconds(first_msg);
-  const lcmt_jaco_status& first_status = first_msg.GetValue<lcmt_jaco_status>();
+  const auto& first_status = first_msg.get_value<lcmt_jaco_status>();
   DRAKE_DEMAND(first_status.num_joints == 0 ||
                first_status.num_joints == num_joints);
   DRAKE_DEMAND(first_status.num_fingers == 0 ||

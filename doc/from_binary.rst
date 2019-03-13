@@ -4,24 +4,24 @@
 Binary installation (macOS, Ubuntu)
 ***********************************
 
-Important Note (October, 2016)
-==============================
-
-Drake is currently undergoing a major renovation, with all of the core
-libraries moving into C++.  The examples will move and the existing APIs will
-change.
+Nightly releases
+================
 
 There are `experimental binary packages <https://github.com/RobotLocomotion/drake/issues/1766#issuecomment-318955338>`_ of Drake available at:
 
+- https://drake-packages.csail.mit.edu/drake/nightly/drake-latest-bionic.tar.gz
 - https://drake-packages.csail.mit.edu/drake/nightly/drake-latest-xenial.tar.gz
 - https://drake-packages.csail.mit.edu/drake/nightly/drake-latest-mac.tar.gz
-- :samp:`https://drake-packages.csail.mit.edu/drake/nightly/drake-{yyyymmdd}-{mac|xenial}.tar.gz`.
+- :samp:`https://drake-packages.csail.mit.edu/drake/nightly/drake-{yyyymmdd}-{bionic|mac|xenial}.tar.gz`.
     - Example: https://drake-packages.csail.mit.edu/drake/nightly/drake-20171015-xenial.tar.gz
 
-Example usages of these binaries are shown in this `example CMake project <https://github.com/RobotLocomotion/drake-shambhala/tree/master/drake_cmake_installed>`_.
+Example usages of these binaries are shown in this `example CMake project <https://github.com/RobotLocomotion/drake-external-examples/tree/master/drake_cmake_installed>`_.
 For the compilers used to produce these releases, see :ref:`binary-packages`.
 If you are unsure of which approach to use, we suggest you :ref:`build from source <build_from_source>`
 instead.
+
+For using Python bindings, see :ref:`Binary Installation for Python
+<python-bindings-binary>`.
 
 Using older (2015) releases
 ===========================
@@ -60,7 +60,7 @@ To work around this issue, the symbolic link for the standard C++ library provid
 
 First, make sure that a suitable version of the standard library is installed::
 
-	sudo apt-get install g++-4.4
+	sudo apt install g++-4.4
 
 Now, the symbolic link in MATLAB must be updated to point to the version that was just installed in `/usr/lib`.  An example for MATLAB R2014a is shown below::
 

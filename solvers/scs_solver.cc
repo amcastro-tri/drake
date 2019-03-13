@@ -1,6 +1,7 @@
 #include "drake/solvers/scs_solver.h"
 
 #include <Eigen/Sparse>
+#include <fmt/format.h>
 
 // clang-format off
 // scs.h should be included before linsys/amatrix.h, since amatrix.h uses types
@@ -451,16 +452,6 @@ std::string Scs_return_info(scs_int scs_status) {
   }
 }
 
-void ExtractSolution(MathematicalProgram* prog,
-                     const SCS_SOL_VARS& scs_sol_vars) {
-  // For zero, positive or second-order cones, the primal variable x is the
-  // same variable as in `prog`. For semidefinite cones, the variable x is a
-  // scaled version of the lower-triangular part of the variable in `prog`, with
-  // a scaling factor of √2.
-  prog->SetDecisionVariableValues(
-      Eigen::Map<Eigen::VectorXd>(scs_sol_vars.x, prog->num_vars()));
-}
-
 void SetScsProblemData(int A_row_count, int num_vars,
                        const Eigen::SparseMatrix<double>& A,
                        const std::vector<double>& b,
@@ -509,9 +500,84 @@ void SetScsProblemData(int A_row_count, int num_vars,
 }
 }  // namespace
 
-bool ScsSolver::available() const { return true; }
+bool ScsSolver::is_available() { return true; }
 
-SolutionResult ScsSolver::Solve(MathematicalProgram& prog) const {
+namespace {
+void SetScsSettings(std::unordered_map<std::string, int>* solver_options_int,
+                    SCS_SETTINGS* scs_settings) {
+  auto it = solver_options_int->find("max_iters");
+  if (it != solver_options_int->end()) {
+    scs_settings->max_iters = it->second;
+    solver_options_int->erase(it);
+  }
+  it = solver_options_int->find("normalize");
+  if (it != solver_options_int->end()) {
+    scs_settings->normalize = it->second;
+    solver_options_int->erase(it);
+  }
+  it = solver_options_int->find("verbose");
+  if (it != solver_options_int->end()) {
+    scs_settings->verbose = it->second;
+    solver_options_int->erase(it);
+  }
+  it = solver_options_int->find("warm_start");
+  if (it != solver_options_int->end()) {
+    scs_settings->warm_start = it->second;
+    solver_options_int->erase(it);
+  }
+  it = solver_options_int->find("acceleration_lookback");
+  if (it != solver_options_int->end()) {
+    scs_settings->acceleration_lookback = it->second;
+    solver_options_int->erase(it);
+  }
+  if (!solver_options_int->empty()) {
+    throw std::invalid_argument("Unsupported SCS solver options.");
+  }
+}
+
+void SetScsSettings(
+    std::unordered_map<std::string, double>* solver_options_double,
+    SCS_SETTINGS* scs_settings) {
+  auto it = solver_options_double->find("scale");
+  if (it != solver_options_double->end()) {
+    scs_settings->scale = it->second;
+    solver_options_double->erase(it);
+  }
+  it = solver_options_double->find("rho_x");
+  if (it != solver_options_double->end()) {
+    scs_settings->rho_x = it->second;
+    solver_options_double->erase(it);
+  }
+  it = solver_options_double->find("eps");
+  if (it != solver_options_double->end()) {
+    scs_settings->eps = it->second;
+    solver_options_double->erase(it);
+  }
+  it = solver_options_double->find("alpha");
+  if (it != solver_options_double->end()) {
+    scs_settings->alpha = it->second;
+    solver_options_double->erase(it);
+  }
+  it = solver_options_double->find("cg_rate");
+  if (it != solver_options_double->end()) {
+    scs_settings->cg_rate = it->second;
+    solver_options_double->erase(it);
+  }
+  if (!solver_options_double->empty()) {
+    throw std::invalid_argument("Unsupported SCS solver options.");
+  }
+}
+}  // namespace
+
+void ScsSolver::DoSolve(
+    const MathematicalProgram& prog,
+    const Eigen::VectorXd& initial_guess,
+    const SolverOptions& merged_options,
+    MathematicalProgramResult* result) const {
+  // TODO(hongkai.dai): allow warm starting SCS with initial guess on
+  // primal/dual variables and primal residues.
+  unused(initial_guess);
+  // The initial guess for SCS is unused.
   // SCS solves the problem in this form
   // min  cᵀx
   // s.t A x + s = b
@@ -609,40 +675,67 @@ SolutionResult ScsSolver::Solve(MathematicalProgram& prog) const {
   ScsData* scs_problem_data =
       static_cast<ScsData*>(scs_calloc(1, sizeof(ScsData)));
   SetScsProblemData(A_row_count, num_x, A, b, c, scs_problem_data);
-  scs_problem_data->stgs->verbose = verbose_ ? VERBOSE : 0;
+  std::unordered_map<std::string, int> input_solver_options_int =
+      merged_options.GetOptionsInt(id());
+  std::unordered_map<std::string, double> input_solver_options_double =
+      merged_options.GetOptionsDouble(id());
+  SetScsSettings(&input_solver_options_int, scs_problem_data->stgs);
+  SetScsSettings(&input_solver_options_double, scs_problem_data->stgs);
 
   ScsInfo scs_info{0};
 
   ScsSolution* scs_sol =
       static_cast<ScsSolution*>(scs_calloc(1, sizeof(ScsSolution)));
 
-  scs_int scs_status = scs(scs_problem_data, cone, scs_sol, &scs_info);
+  ScsSolverDetails& solver_details =
+      result->SetSolverDetailsType<ScsSolverDetails>();
+  solver_details.scs_status = scs(scs_problem_data, cone, scs_sol, &scs_info);
 
-  SolutionResult sol_result{SolutionResult::kUnknownError};
-  if (scs_status == SCS_SOLVED || scs_status == SCS_SOLVED_INACCURATE) {
-    sol_result = SolutionResult::kSolutionFound;
-    ExtractSolution(&prog, *scs_sol);
-    prog.SetOptimalCost(scs_info.pobj + cost_constant);
-  } else if (scs_status == SCS_UNBOUNDED ||
-             scs_status == SCS_UNBOUNDED_INACCURATE) {
-    sol_result = SolutionResult::kUnbounded;
-    prog.SetOptimalCost(MathematicalProgram::kUnboundedCost);
-  } else if (scs_status == SCS_INFEASIBLE ||
-             scs_status == SCS_INFEASIBLE_INACCURATE) {
-    sol_result = SolutionResult::kInfeasibleConstraints;
-    prog.SetOptimalCost(MathematicalProgram::kGlobalInfeasibleCost);
+  solver_details.iter = scs_info.iter;
+  solver_details.primal_objective = scs_info.pobj;
+  solver_details.dual_objective = scs_info.dobj;
+  solver_details.primal_residue = scs_info.res_pri;
+  solver_details.residue_infeasibility = scs_info.res_infeas;
+  solver_details.residue_unbounded = scs_info.res_unbdd;
+  solver_details.relative_duality_gap = scs_info.rel_gap;
+  solver_details.scs_setup_time = scs_info.setup_time;
+  solver_details.scs_solve_time = scs_info.solve_time;
+
+  SolutionResult solution_result{SolutionResult::kUnknownError};
+  solver_details.y.resize(A_row_count);
+  solver_details.s.resize(A_row_count);
+  for (int i = 0; i < A_row_count; ++i) {
+    solver_details.y(i) = scs_sol->y[i];
+    solver_details.s(i) = scs_sol->s[i];
   }
-  if (scs_status != SCS_SOLVED) {
+  if (solver_details.scs_status == SCS_SOLVED ||
+      solver_details.scs_status == SCS_SOLVED_INACCURATE) {
+    solution_result = SolutionResult::kSolutionFound;
+    result->set_x_val(
+        (Eigen::Map<VectorX<scs_float>>(scs_sol->x, prog.num_vars()))
+            .cast<double>());
+    result->set_optimal_cost(scs_info.pobj + cost_constant);
+  } else if (solver_details.scs_status == SCS_UNBOUNDED ||
+             solver_details.scs_status == SCS_UNBOUNDED_INACCURATE) {
+    solution_result = SolutionResult::kUnbounded;
+    result->set_optimal_cost(MathematicalProgram::kUnboundedCost);
+  } else if (solver_details.scs_status == SCS_INFEASIBLE ||
+             solver_details.scs_status == SCS_INFEASIBLE_INACCURATE) {
+    solution_result = SolutionResult::kInfeasibleConstraints;
+    result->set_optimal_cost(MathematicalProgram::kGlobalInfeasibleCost);
+  }
+  if (solver_details.scs_status != SCS_SOLVED) {
     drake::log()->info("SCS returns code {}, with message \"{}\".\n",
-                       scs_status, Scs_return_info(scs_status));
+                       solver_details.scs_status,
+                       Scs_return_info(solver_details.scs_status));
   }
+
+  result->set_solution_result(solution_result);
 
   // Free allocated memory
   scs_free_data(scs_problem_data, cone);
   scs_free_sol(scs_sol);
-
-  prog.SetSolverId(id());
-  return sol_result;
 }
+
 }  // namespace solvers
 }  // namespace drake

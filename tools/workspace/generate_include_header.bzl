@@ -7,13 +7,13 @@ def _generate_include_header_impl(ctx):
     # Collect list of headers
     hdrs = []
     for h in ctx.attr.hdrs:
-        for f in h.files:
+        for f in h.files.to_list():
             hdrs.append(output_path(ctx, f, ctx.attr.strip_prefix))
 
     # Generate include header
     content = "#pragma once\n"
     content = content + "\n".join(["#include <%s>" % h for h in hdrs])
-    ctx.file_action(output = ctx.outputs.out, content = content)
+    ctx.actions.write(output = ctx.outputs.out, content = content)
 
 drake_generate_include_header = rule(
     attrs = {

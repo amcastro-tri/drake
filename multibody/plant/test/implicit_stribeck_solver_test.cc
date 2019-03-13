@@ -21,7 +21,8 @@ class ImplicitStribeckSolverTester {
     const int nv = solver.nv_;
 
     // Problem data.
-    const auto& M = solver.problem_data_aliases_.M();
+    //const auto& M = solver.problem_data_aliases_.M();
+    const auto& Mi = solver.forward_dynamics_;
     const auto& Jn = solver.problem_data_aliases_.Jn();
     const auto& Jt = solver.problem_data_aliases_.Jt();
 
@@ -62,13 +63,13 @@ class ImplicitStribeckSolverTester {
     // t_hat and v_slip.
     solver.CalcFrictionForcesGradient(fn, mus, t_hat, v_slip, &dft_dvt);
 
-    const auto& M_ldlt = M.ldlt();
-    const MatrixX<double> Mi_x_JnT = M_ldlt.solve(Jn.transpose());
-    const MatrixX<double> Mi_x_JtT = M_ldlt.solve(Jt.transpose());
+    //const auto& M_ldlt = M.ldlt();
+    const MatrixX<double> Mi_x_JnT = Mi(Jn.transpose());
+    const MatrixX<double> Mi_x_JtT = Mi(Jt.transpose());
 
     // Newton-Raphson Jacobian, J = ∇ᵥR, as a function of M, dft_dvt, Jt, dt.
     MatrixX<double> J(nv, nv);
-    solver.CalcJacobian(M, Jn, Jt, Gn, dft_dvt, t_hat, mus, dt, Mi_x_JnT,
+    solver.CalcJacobian(Jn, Jt, Gn, dft_dvt, t_hat, mus, dt, Mi_x_JnT,
                         Mi_x_JtT, &J);
 
     return J;
@@ -853,7 +854,11 @@ class RollingCylinder : public ::testing::Test {
         damping_ratio * time_scale / penetration_allowance;
     dissipation_(0) = dissipation;
 
-    solver_.SetTwoWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &x0_,
+    auto& M = M_;
+    auto Mi = [&M](const Eigen::Ref<const MatrixX<double>>& tau) {
+      return M.ldlt().solve(tau);
+    };
+    solver_.SetTwoWayCoupledProblemData(Mi, &Jn_, &Jt_, &p_star_, &x0_,
                                         &stiffness_, &dissipation_,
                                         &mu_vector_);
   }

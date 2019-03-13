@@ -287,27 +287,40 @@ void ImplicitStribeckSolver<T>::SetTwoWayCoupledProblemData(
     EigenPtr<const MatrixX<T>> Jt, EigenPtr<const VectorX<T>> p_star,
     EigenPtr<const VectorX<T>> x0, EigenPtr<const VectorX<T>> stiffness,
     EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
+  DRAKE_THROW_UNLESS(M->rows() == nv_ && M->cols() == nv_);    
+  // Setup forward dynamics solver.
+  // TODO(amcastro-tri): Make this method to take functor to an actual O(n)
+  // forward dynamics.
+  fixed_size_workspace_.mutable_M_ldlt().compute(*M);
+  const auto& M_ldlt = fixed_size_workspace_.M_ldlt();
+  auto forward_dynamics = [&M_ldlt](const Eigen::Ref<const MatrixX<T>>& tau) {
+    return M_ldlt.solve(tau);
+  };
+  SetTwoWayCoupledProblemData(
+        forward_dynamics, Jn, Jt, p_star, x0, stiffness, dissipation, mu);
+}
+
+template <typename T>
+void ImplicitStribeckSolver<T>::SetTwoWayCoupledProblemData(
+    std::function<MatrixX<T>(const Eigen::Ref<const MatrixX<T>>&)>
+        forward_dynamics,
+    EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
+    EigenPtr<const VectorX<T>> p_star, EigenPtr<const VectorX<T>> x0,
+    EigenPtr<const VectorX<T>> stiffness,
+    EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
   nc_ = x0->size();
   DRAKE_THROW_UNLESS(p_star->size() == nv_);
-  DRAKE_THROW_UNLESS(M->rows() == nv_ && M->cols() == nv_);
   DRAKE_THROW_UNLESS(Jn->rows() == nc_ && Jn->cols() == nv_);
   DRAKE_THROW_UNLESS(Jt->rows() == 2 * nc_ && Jt->cols() == nv_);
   DRAKE_THROW_UNLESS(mu->size() == nc_);
   DRAKE_THROW_UNLESS(stiffness->size() == nc_);
   DRAKE_THROW_UNLESS(dissipation->size() == nc_);
   // Keep references to the problem data.
-  problem_data_aliases_.SetTwoWayCoupledData(M, Jn, Jt, p_star, x0, stiffness,
-                                             dissipation, mu);
+  problem_data_aliases_.SetTwoWayCoupledData(nullptr, Jn, Jt, p_star, x0,
+                                             stiffness, dissipation, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
 
-  // Setup forward dynamics solver.
-  // TODO(amcastro-tri): Make this method to take functor to an actual O(n)
-  // forward dynamics.
-  fixed_size_workspace_.mutable_M_ldlt().compute(*M);
-  const auto& M_ldlt = fixed_size_workspace_.M_ldlt();
-  forward_dynamics_ = [&M_ldlt](const Eigen::Ref<const MatrixX<T>>& tau) {
-    return M_ldlt.solve(tau);
-  };
+  forward_dynamics_ = forward_dynamics;
 }
 
 template <typename T>
@@ -533,7 +546,6 @@ void ImplicitStribeckSolver<T>::CalcNormalForces(
 
 template <typename T>
 void ImplicitStribeckSolver<T>::CalcJacobian(
-    const Eigen::Ref<const MatrixX<T>>& M,
     const Eigen::Ref<const MatrixX<T>>& Jn,
     const Eigen::Ref<const MatrixX<T>>& Jt,
     const Eigen::Ref<const MatrixX<T>>& Gn,
@@ -660,7 +672,6 @@ ImplicitStribeckSolverResult ImplicitStribeckSolver<T>::SolveWithGuess(
       parameters_.relative_tolerance * parameters_.stiction_tolerance;
 
   // Convenient aliases to problem data.
-  const auto M = problem_data_aliases_.M();
   const auto Jn = problem_data_aliases_.Jn();
   const auto Jt = problem_data_aliases_.Jt();
 
@@ -734,7 +745,7 @@ ImplicitStribeckSolverResult ImplicitStribeckSolver<T>::SolveWithGuess(
     CalcFrictionForcesGradient(fn, mu_vt, t_hat, v_slip, &dft_dvt);
 
     // Newton-Raphson Jacobian, J = ∇ᵥR, as a function of M, dft_dvt, Jt, dt.
-    CalcJacobian(M, Jn, Jt, Gn, dft_dvt, t_hat, mu_vt, dt, Mi_x_JnT, Mi_x_JtT,
+    CalcJacobian(Jn, Jt, Gn, dft_dvt, t_hat, mu_vt, dt, Mi_x_JnT, Mi_x_JtT,
                  &J);
 
     // TODO(amcastro-tri): Consider using a cheap iterative solver like CG.

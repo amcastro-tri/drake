@@ -549,6 +549,14 @@ class ImplicitStribeckSolver {
       EigenPtr<const VectorX<T>> p_star,
       EigenPtr<const VectorX<T>> fn, EigenPtr<const VectorX<T>> mu);
 
+  void SetTwoWayCoupledProblemData(
+    std::function<MatrixX<T>(const Eigen::Ref<const MatrixX<T>>&)>
+        forward_dynamics,
+    EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
+    EigenPtr<const VectorX<T>> p_star, EigenPtr<const VectorX<T>> x0,
+    EigenPtr<const VectorX<T>> stiffness,
+    EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu);    
+
   /// Sets the problem data to solve the problem outlined in Eq. (10) in this
   /// class's documentation using a two-way coupled approach: <pre>
   ///   (10)  M(qˢ) vˢ⁺¹ = p* + δt [Jₙᵀ(qˢ) fₙ(vˢ⁺¹) + Jₜᵀ(qˢ) fₜ(vˢ⁺¹)]
@@ -744,7 +752,7 @@ class ImplicitStribeckSolver {
         EigenPtr<const VectorX<T>> x0,
         EigenPtr<const VectorX<T>> stiffness,
         EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
-      DRAKE_DEMAND(M != nullptr);
+      //DRAKE_DEMAND(M != nullptr);
       DRAKE_DEMAND(Jn != nullptr);
       DRAKE_DEMAND(Jt != nullptr);
       DRAKE_DEMAND(p_star != nullptr);
@@ -771,7 +779,7 @@ class ImplicitStribeckSolver {
       return coupling_scheme_ == kTwoWayCoupled;
     }
 
-    Eigen::Ref<const MatrixX<T>> M() const { return *M_ptr_; }
+    //Eigen::Ref<const MatrixX<T>> M() const { return *M_ptr_; }
     Eigen::Ref<const MatrixX<T>> Jn() const { return *Jn_ptr_; }
     Eigen::Ref<const MatrixX<T>> Jt() const { return *Jt_ptr_; }
     Eigen::Ref<const VectorX<T>> p_star() const { return *p_star_ptr_; }
@@ -1098,7 +1106,6 @@ class ImplicitStribeckSolver {
   // Helper method to compute the Newton-Raphson Jacobian, J = ∇ᵥR, as a
   // function of M, Jn, Jt, Gn, dft_dvt, t_hat, mu_vt and dt.
   void CalcJacobian(
-      const Eigen::Ref<const MatrixX<T>>& M,
       const Eigen::Ref<const MatrixX<T>>& Jn,
       const Eigen::Ref<const MatrixX<T>>& Jt,
       const Eigen::Ref<const MatrixX<T>>& Gn,

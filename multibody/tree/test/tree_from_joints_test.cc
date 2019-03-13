@@ -23,7 +23,9 @@ namespace {
 const double kEpsilon = std::numeric_limits<double>::epsilon();
 
 using benchmarks::Acrobot;
+using Eigen::Isometry3d;
 using Eigen::Matrix2d;
+using Eigen::Translation3d;
 using Eigen::Vector2d;
 using Eigen::Vector3d;
 using std::make_unique;
@@ -367,6 +369,62 @@ class PendulumTests : public ::testing::Test {
     return pendulum_.tree();
   }
 
+  // Compare forward dynamics computed using the articulated body algorithm
+  // against explicitly solving using the mass matrix.
+  void VerifyForwardDynamicsViaMassMatrix(double shoulder_angle,
+                                          double elbow_angle,
+                                          double shoulder_rate,
+                                          double elbow_rate) {
+    const double kTolerance = 10 * kEpsilon;
+
+    pendulum_.shoulder().set_angle(context_.get(), shoulder_angle);
+    pendulum_.elbow().set_angle(context_.get(), elbow_angle);
+
+    // Variables for temporary computation results.
+    internal::PositionKinematicsCache<double> pc(tree().get_topology());
+    internal::VelocityKinematicsCache<double> vc(tree().get_topology());
+    Matrix2d M;
+    Vector2d C;
+    VectorX<double> tau_applied(tree().num_velocities());
+    std::vector<SpatialForce<double>> Fapplied_Bo_W_array(
+        tree().num_bodies());
+    std::vector<SpatialAcceleration<double>> A_WB_array(
+        tree().num_bodies());
+
+    Vector2d qddot;
+    Vector2d qddot_expected;
+
+    // Set angular velocity.
+    pendulum_.shoulder().set_angular_rate(context_.get(), shoulder_rate);
+    pendulum_.elbow().set_angular_rate(context_.get(), elbow_rate);
+
+    M = acrobot_benchmark_.CalcMassMatrix(elbow_angle);
+    tree().CalcPositionKinematicsCache(*context_, &pc);
+    tree().CalcVelocityKinematicsCache(*context_, pc, &vc);
+
+    // Compute qddot via articulated body algorithm.
+    MultibodyForces<double> applied_forces(tree());
+    internal::AccelerationKinematicsCache<double> ac(tree().get_topology());
+    tree().CalcForwardDynamics(*context_, applied_forces, &ac);
+    qddot = ac.get_vdot();
+
+    // Compute qddot_expected via mass matrix solve.
+    MultibodyForces<double> forces(tree());
+    tree().CalcForceElementsContribution(*context_, pc, vc, &forces);
+
+    Vector2d vdot = Vector2d::Zero();
+    Fapplied_Bo_W_array = forces.body_forces();
+    tau_applied = forces.generalized_forces();
+    tree().CalcInverseDynamics(
+        *context_, pc, vc, vdot, Fapplied_Bo_W_array, tau_applied,
+        &A_WB_array, &Fapplied_Bo_W_array, &C);
+    qddot_expected = M.llt().solve(-C);
+
+    // Compare qddot.
+    EXPECT_TRUE(CompareMatrices(
+        qddot, qddot_expected, kTolerance, MatrixCompareType::relative));
+  }
+
  protected:
   // The MultibodyTree model under test.
   DoublePendulumModel<double> pendulum_;
@@ -497,6 +555,28 @@ TEST_F(PendulumTests, CalcForwardDynamicsViaExplicitMassMatrixSolve) {
       -M_PI / 5.0, M_PI / 2.0,  /* joint's angles */
       0.5, 1.0,                 /* joint's angular rates */
       -0.5, -1.0);              /* joint's torques */
+}
+
+// Compare the output of the articulated body algorithm against the solution
+// from using the mass matrix.
+TEST_F(PendulumTests, ForwardDynamicsCompare) {
+  VerifyForwardDynamicsViaMassMatrix(0.0, 0.0, 0.0, 0.0);
+  VerifyForwardDynamicsViaMassMatrix(0.0, 0.0, 1.0, 0.0);
+  VerifyForwardDynamicsViaMassMatrix(0.0, 0.0, 0.0, 1.0);
+  VerifyForwardDynamicsViaMassMatrix(0.0, 0.0, 1.0, 1.0);
+
+  VerifyForwardDynamicsViaMassMatrix(M_PI / 3.0, 0.0, 0.0, 0.0);
+  VerifyForwardDynamicsViaMassMatrix(M_PI / 3.0, 0.0, 1.0, 0.0);
+  VerifyForwardDynamicsViaMassMatrix(M_PI / 3.0, 0.0, 0.0, 1.0);
+  VerifyForwardDynamicsViaMassMatrix(M_PI / 3.0, 0.0, 1.0, 1.0);
+
+  VerifyForwardDynamicsViaMassMatrix(0.0, M_PI / 2.0, 1.0, 0.0);
+  VerifyForwardDynamicsViaMassMatrix(0.0, M_PI / 3.0, 0.0, 1.0);
+  VerifyForwardDynamicsViaMassMatrix(0.0, M_PI / 4.0, 1.0, 1.0);
+
+  VerifyForwardDynamicsViaMassMatrix(M_PI / 3.0, M_PI / 2.0, -1.0, 1.0);
+  VerifyForwardDynamicsViaMassMatrix(M_PI / 3.0, M_PI / 3.0, 0.0, -1.0);
+  VerifyForwardDynamicsViaMassMatrix(M_PI / 3.0, M_PI / 4.0, -1.0, 0.0);
 }
 
 }  // namespace

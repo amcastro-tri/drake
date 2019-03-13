@@ -17,6 +17,7 @@
 #include "drake/common/random.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/tree/acceleration_kinematics_cache.h"
+#include "drake/multibody/tree/articulated_body_algorithm_cache.h"
 #include "drake/multibody/tree/articulated_body_inertia_cache.h"
 #include "drake/multibody/tree/multibody_forces.h"
 #include "drake/multibody/tree/multibody_tree_system.h"
@@ -1524,6 +1525,12 @@ class MultibodyTree {
   /// See MultibodyPlant method.
   void CalcMassMatrixViaInverseDynamics(
       const systems::Context<T>& context, EigenPtr<MatrixX<T>> H) const;
+  
+  /// See MultibodyPlant method.
+  void MultiplyByMassMatrixInverse(
+    const systems::Context<T>& context,
+    const Eigen::Ref<const VectorX<T>>& b, 
+    EigenPtr<VectorX<T>> x) const;
 
   /// See MultibodyPlant method.
   void CalcBiasTerm(
@@ -1545,30 +1552,35 @@ class MultibodyTree {
       const Eigen::Ref<const VectorX<T>>& qdot,
       EigenPtr<VectorX<T>> v) const;
 
-  /// Computes all the quantities that are required in the final pass of the
-  /// articulated body algorithm and stores them in the articulated body cache
-  /// `abc`.
-  ///
-  /// These include:
-  /// - Articulated body inertia `Pplus_PB_W`, which can be thought of as the
-  ///   articulated body inertia of parent body P as though it were inertialess,
-  ///   but taken about Bo and expressed in W.
+  /// Given a state for `this` model stored in `context` and a set of applied
+  /// forces `applied_forces`, this method uses the `O(n)` articulated body
+  /// algorithm first developed by [Featherstone 1983] to compute generalized
+  /// accelerations `vdot`, that is the time derivatives of the generalized
+  /// velocities `v` stored in context. This implementation uses many ideas and
+  /// terminology from [Jain 2010].
   ///
   /// @param[in] context
   ///   The context containing the state of the %MultibodyTree model.
-  /// @param[in] pc
-  ///   A position kinematics cache object already updated to be in sync with
-  ///   `context`.
-  /// @param[out] abc
-  ///   A pointer to a valid, non nullptr, articulated body cache. This method
-  ///   throws an exception if `abc` is a nullptr.
+  /// @param[in] applied_forces
+  ///   A multibody forces object representing external forces on `this` model.
+  ///   This method will abort if the `applied_forces` is not compatible with
+  ///   `this` %MultibodyTree. See MultibodyForces::CheckInvariants().
+  /// @param[out] ac
+  ///   A pointer to a valid, non nullptr, acceleration kinematics cache. This
+  ///   method aborts if `ac` is nullptr.
   ///
-  /// @pre The position kinematics `pc` must have been previously updated with a
-  /// call to CalcPositionKinematicsCache() using the same `context`  .
-  void CalcArticulatedBodyInertiaCache(
+  /// References:
+  /// - [Featherstone 1983] Featherstone, R., 1983. The calculation of robot
+  ///                       dynamics using articulated-body inertias. The
+  ///                       International Journal of Robotics Research, 2(1),
+  ///                       pp. 13-30.
+  /// - [Jain 2010] Jain, A., 2010. Robot and multibody dynamics: analysis and
+  ///               algorithms. Springer Science & Business Media, pp. 123-130.
+  ///
+  void CalcForwardDynamics(
       const systems::Context<T>& context,
-      const PositionKinematicsCache<T>& pc,
-      ArticulatedBodyInertiaCache<T>* abc) const;
+      const MultibodyForces<T>& applied_forces,
+      AccelerationKinematicsCache<T>* ac) const;
 
   /// @}
   // Closes "Computational methods" Doxygen section.
@@ -2310,6 +2322,68 @@ class MultibodyTree {
   // TODO(amcastro-tri): In future PR's adding MBT computational methods, write
   // a method that verifies the state of the topology with a signature similar
   // to RoadGeometry::CheckHasRightSizeForModel().
+
+  // Computes some quantities that are required in the final pass of the
+  // articulated body algorithm which depend only on generalized positions and
+  // stores them in the articulated body inertia cache `abic`.
+  //
+  // Note that because this method only depends on the generalized positions,
+  // computing forward dynamics with different forces under the same context
+  // would only require one call to this method but multiple evaluations of
+  // MultibodyTree::CalcArticulatedBodyAlgorithmCache().
+  //
+  // These include:
+  // - Articulated body inertia `P_B_W` of the body taken about Bo and
+  //   expressed in W.
+  // - Articulated body inertia `Pplus_PB_W`, which can be thought of as the
+  //   articulated body inertia of parent body P as though it were inertialess,
+  //   but taken about Bo and expressed in W.
+  // - LDLT factorization `ldlt_D_B` of the articulated body hinge inertia.
+  // - The Kalman gain `g_PB_W` of the body.
+  //
+  // This method assumes:
+  // - The position kinematics `pc` is already updated to be in sync with
+  //   `context`.
+  // - `abic` is a pointer to a valid, non nullptr, articulated body inertia
+  //    cache. This method will throw an exception if `abic` is nullptr.
+  void CalcArticulatedBodyInertiaCache(
+      const systems::Context<T>& context,
+      const PositionKinematicsCache<T>& pc,
+      ArticulatedBodyInertiaCache<T>* abic) const;
+
+  // Computes some quantities that are required in the final pass of the
+  // articulated body algorithm which depend on both the generalized positions
+  // and generalized velocities and stores them in the articulated body
+  // algorithm cache.
+  //
+  // These include:
+  // - The articulated body inertia residual force `Zplus_PB_W` for this body
+  //   projected across its inboard mobilizer to frame P.
+  // - The Coriolis spatial acceleration `a_Bo_W` for this body due to the
+  //   relative velocities of body B and body P.
+  // - The articulated body inertia innovations generalized force `e_B` for
+  //   this body's mobilizer.
+  //
+  // This method assumes:
+  // - The position kinematics `pc` is already updated to be in sync with
+  //   `context`.
+  // - The velocity kinematics `vc` is already updated to be in sync with
+  //   `context`.
+  // - The articulated body inertia cache object `abic` is already updated to be
+  //   in sync with `context`.
+  // - The multibody forces object `forces` is  already updated to be in sync
+  //   with `context` and contains both external forces and contributions from
+  //   force elements. This method throws an exception if `forces` is not
+  //   compatible with this model.
+  // - `abac` is a pointer to a valid, non nullptr, articulated body algorithm
+  //   cache. This method throws an exception if `abac` is a nullptr.
+  void CalcArticulatedBodyAlgorithmCache(
+      const systems::Context<T>& context,
+      const PositionKinematicsCache<T>& pc,
+      const VelocityKinematicsCache<T>& vc,
+      const ArticulatedBodyInertiaCache<T>& abic,
+      const MultibodyForces<T>& forces,
+      ArticulatedBodyAlgorithmCache<T>* abac) const;
 
   const RigidBody<T>* world_body_{nullptr};
   std::vector<std::unique_ptr<Body<T>>> owned_bodies_;

@@ -1518,9 +1518,6 @@ void MultibodyTree<T>::CalcArticulatedBodyAlgorithmCache(
   DRAKE_DEMAND(abac != nullptr);
   DRAKE_DEMAND(forces.CheckHasRightSizeForModel(*this));
 
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
-
   // Extract generalized forces and body forces.
   const VectorX<T>& generalized_forces = forces.generalized_forces();
   const std::vector<SpatialForce<T>>& body_forces = forces.body_forces();
@@ -1543,7 +1540,7 @@ void MultibodyTree<T>::CalcArticulatedBodyAlgorithmCache(
       const MatrixUpTo6<T> H_PB_W = node.GetJacobianFromArray(H_PB_W_cache);
 
       node.CalcArticulatedBodyInertiaAlgorithm_TipToBase(
-          mbt_context, pc, vc, abic, Fapplied_Bo_W, tau_applied, H_PB_W, abac);
+          context, pc, vc, abic, Fapplied_Bo_W, tau_applied, H_PB_W, abac);
     }
   }
 }
@@ -1555,9 +1552,6 @@ void MultibodyTree<T>::CalcForwardDynamics(
     AccelerationKinematicsCache<T>* ac) const {
   DRAKE_DEMAND(ac != nullptr);
   DRAKE_DEMAND(applied_forces.CheckHasRightSizeForModel(*this));
-
-  const auto& mbt_context =
-      dynamic_cast<const MultibodyTreeContext<T>&>(context);
 
   // Get position and velocity kinematics from cache.
   const PositionKinematicsCache<T>& pc = EvalPositionKinematics(context);
@@ -1589,7 +1583,7 @@ void MultibodyTree<T>::CalcForwardDynamics(
       const MatrixUpTo6<T> H_PB_W = node.GetJacobianFromArray(H_PB_W_cache);
 
       node.CalcForwardDynamics_BaseToTip(
-          mbt_context, pc, abic, abac, H_PB_W, ac);
+          context, pc, abic, abac, H_PB_W, ac);
     }
   }
 }

@@ -1090,7 +1090,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
   ///
   /// @throws when called on the _root_ node or `abac` is nullptr.
   void CalcArticulatedBodyInertiaAlgorithm_TipToBase(
-      const MultibodyTreeContext<T>& context,
+      const systems::Context<T>& context,
       const PositionKinematicsCache<T>& pc,
       const VelocityKinematicsCache<T>& vc,
       const ArticulatedBodyInertiaCache<T>& abic,
@@ -1175,7 +1175,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     const Isometry3<T>& X_WB = get_X_WB(pc);
 
     // Get R_WB.
-    const Matrix3<T> R_WB = X_WB.linear();
+    const math::RotationMatrix<T> R_WB(X_WB.linear());
 
     // Compute the spatial inertia for this body and re-express in W frame.
     const SpatialInertia<T> M_B = body_B.CalcSpatialInertiaInBodyFrame(context);
@@ -1197,7 +1197,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
 
     // Compute Azero_FM = Hdot * vm.
     const VectorX<T> vmdot_zero =
-        VectorX<T>::Zero(get_num_mobilizer_velocites());
+        VectorX<T>::Zero(get_num_mobilizer_velocities());
     const SpatialAcceleration<T> Azero_FM = get_mobilizer()
         .CalcAcrossMobilizerSpatialAcceleration(context, vmdot_zero);
 
@@ -1323,7 +1323,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
   ///
   /// @throws when called on the _root_ node of `ac` or `vdot` is nullptr.
   void CalcForwardDynamics_BaseToTip(
-      const MultibodyTreeContext<T>& /* context */,
+      const systems::Context<T>& /* context */,
       const PositionKinematicsCache<T>& pc,
       const ArticulatedBodyInertiaCache<T>& abic,
       const ArticulatedBodyAlgorithmCache<T>& abac,

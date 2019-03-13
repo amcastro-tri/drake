@@ -301,7 +301,7 @@ drake_cc_googletest(
     deps = [
         ":tree",
         "//common/test_utilities:eigen_matrix_compare",
-        "//multibody/benchmarks/kuka_iiwa_robot:make_kuka_iiwa_model",
+        "//multibody/benchmarks/kuka_iiwa_robot",
     ],
 )
 

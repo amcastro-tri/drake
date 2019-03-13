@@ -2,12 +2,16 @@
 
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/multibody/benchmarks/kuka_iiwa_robot/make_kuka_iiwa_model.h"
-#include "drake/multibody/tree/joints/revolute_joint.h"
+#include "drake/multibody/tree/revolute_joint.h"
 #include "drake/multibody/tree/multibody_tree.h"
+#include "drake/multibody/tree/multibody_tree-inl.h"
+#include "drake/multibody/tree/multibody_tree_system.h"
+#include "drake/multibody/tree/revolute_joint.h"
 #include "drake/systems/framework/context.h"
 
 namespace drake {
 namespace multibody {
+namespace internal {
 namespace multibody_model {
 namespace {
 
@@ -22,16 +26,22 @@ class KukaIiwaModelForwardDynamicsTests : public ::testing::Test {
  public:
   /// Creates MultibodyTree for a KUKA Iiwa robot arm.
   void SetUp() override {
-    model_ = MakeKukaIiwaModel<double>(true /* Finalize model */, gravity_);
-    context_ = model_->CreateDefaultContext();
+    {
+      auto tree =
+          MakeKukaIiwaModel<double>(true /* Finalize model */, gravity_);
 
-    joints_.push_back(&model_->GetJointByName<RevoluteJoint>("iiwa_joint_1"));
-    joints_.push_back(&model_->GetJointByName<RevoluteJoint>("iiwa_joint_2"));
-    joints_.push_back(&model_->GetJointByName<RevoluteJoint>("iiwa_joint_3"));
-    joints_.push_back(&model_->GetJointByName<RevoluteJoint>("iiwa_joint_4"));
-    joints_.push_back(&model_->GetJointByName<RevoluteJoint>("iiwa_joint_5"));
-    joints_.push_back(&model_->GetJointByName<RevoluteJoint>("iiwa_joint_6"));
-    joints_.push_back(&model_->GetJointByName<RevoluteJoint>("iiwa_joint_7"));
+      joints_.push_back(&tree->GetJointByName<RevoluteJoint>("iiwa_joint_1"));
+      joints_.push_back(&tree->GetJointByName<RevoluteJoint>("iiwa_joint_2"));
+      joints_.push_back(&tree->GetJointByName<RevoluteJoint>("iiwa_joint_3"));
+      joints_.push_back(&tree->GetJointByName<RevoluteJoint>("iiwa_joint_4"));
+      joints_.push_back(&tree->GetJointByName<RevoluteJoint>("iiwa_joint_5"));
+      joints_.push_back(&tree->GetJointByName<RevoluteJoint>("iiwa_joint_6"));
+      joints_.push_back(&tree->GetJointByName<RevoluteJoint>("iiwa_joint_7"));
+
+      // We are done adding modeling elements.
+      system_ = std::make_unique<MultibodyTreeSystem<double>>(std::move(tree));
+    }
+    context_ = system_->CreateDefaultContext();    
   }
 
   /// Sets the configuration of this KUKA Iiwa robot arm.
@@ -62,11 +72,11 @@ class KukaIiwaModelForwardDynamicsTests : public ::testing::Test {
     SetConfiguration(q, v);
 
     // No external forces.
-    MultibodyForces<double> applied_forces(*model_);
+    MultibodyForces<double> applied_forces(tree());
 
     // Compute forward dynamics using articulated body algorithm.
-    AccelerationKinematicsCache<double> ac(model_->get_topology());
-    model_->CalcForwardDynamics(*context_, applied_forces, &ac);
+    internal::AccelerationKinematicsCache<double> ac(tree().get_topology());
+    tree().CalcForwardDynamics(*context_, applied_forces, &ac);
     *vdot = ac.get_vdot();
   }
 
@@ -84,22 +94,22 @@ class KukaIiwaModelForwardDynamicsTests : public ::testing::Test {
     SetConfiguration(q, v);
 
     // Compute position and velocity cache.
-    PositionKinematicsCache<double> pc(model_->get_topology());
-    VelocityKinematicsCache<double> vc(model_->get_topology());
-    model_->CalcPositionKinematicsCache(*context_, &pc);
-    model_->CalcVelocityKinematicsCache(*context_, pc, &vc);
+    internal::PositionKinematicsCache<double> pc(tree().get_topology());
+    internal::VelocityKinematicsCache<double> vc(tree().get_topology());
+    tree().CalcPositionKinematicsCache(*context_, &pc);
+    tree().CalcVelocityKinematicsCache(*context_, pc, &vc);
 
     // Get model parameters.
-    const int nv = model_->num_velocities();
-    const int nq = model_->num_bodies();
+    const int nv = tree().num_velocities();
+    const int nq = tree().num_bodies();
 
     // Compute force element contributions.
-    MultibodyForces<double> forces(*model_);
-    model_->CalcForceElementsContribution(*context_, pc, vc, &forces);
+    MultibodyForces<double> forces(tree());
+    tree().CalcForceElementsContribution(*context_, pc, vc, &forces);
 
     // Construct M, the mass matrix.
     MatrixX<double> M(nv, nv);
-    model_->CalcMassMatrixViaInverseDynamics(*context_, &M);
+    tree().CalcMassMatrixViaInverseDynamics(*context_, &M);
 
     // Construct C, the Coriolis term.
     VectorX<double> C(nv);
@@ -109,7 +119,7 @@ class KukaIiwaModelForwardDynamicsTests : public ::testing::Test {
     const std::vector<SpatialForce<double>>& Fapplied_Bo_W_array =
         forces.body_forces();
     const VectorX<double>& tau_applied_array = forces.generalized_forces();
-    model_->CalcInverseDynamics(
+    tree().CalcInverseDynamics(
         *context_, pc, vc, VectorX<double>::Zero(nv), Fapplied_Bo_W_array,
         tau_applied_array, &A_WB_array, &F_BMo_W_array, &C);
 
@@ -117,6 +127,9 @@ class KukaIiwaModelForwardDynamicsTests : public ::testing::Test {
     *vdot = M.llt().solve(-C);
   }
 
+  const MultibodyTree<double>& tree() const {
+    return internal::GetInternalTree(*system_);
+  }
 
  protected:
   // Compare the articulated body algorithm solution for forward dynamics
@@ -140,8 +153,8 @@ class KukaIiwaModelForwardDynamicsTests : public ::testing::Test {
 
   // Acceleration of gravity:
   const double gravity_{9.81};
-  // The model plant:
-  std::unique_ptr<MultibodyTree<double>> model_;
+  // The model:
+  std::unique_ptr<internal::MultibodyTreeSystem<double>> system_;
   // Workspace including context and derivatives vector:
   std::unique_ptr<Context<double>> context_;
   // Non-owning pointers to the joints:
@@ -184,5 +197,6 @@ TEST_F(KukaIiwaModelForwardDynamicsTests, ForwardDynamicsTest) {
 
 }  // namespace
 }  // namespace multibody_model
+}  // namespace internal
 }  // namespace multibody
 }  // namespace drake

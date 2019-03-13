@@ -365,6 +365,8 @@ class ArticulatedBodyInertia {
   }
 };
 
+DRAKE_DEFINE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN_T(ArticulatedBodyInertia)
+
 }  // namespace multibody
 }  // namespace drake
 

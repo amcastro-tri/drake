@@ -381,8 +381,8 @@ class PendulumTests : public ::testing::Test {
     pendulum_.elbow().set_angle(context_.get(), elbow_angle);
 
     // Variables for temporary computation results.
-    PositionKinematicsCache<double> pc(tree().get_topology());
-    VelocityKinematicsCache<double> vc(tree().get_topology());
+    internal::PositionKinematicsCache<double> pc(tree().get_topology());
+    internal::VelocityKinematicsCache<double> vc(tree().get_topology());
     Matrix2d M;
     Vector2d C;
     VectorX<double> tau_applied(tree().num_velocities());
@@ -403,13 +403,13 @@ class PendulumTests : public ::testing::Test {
     tree().CalcVelocityKinematicsCache(*context_, pc, &vc);
 
     // Compute qddot via articulated body algorithm.
-    MultibodyForces<double> applied_forces(*tree_);
-    AccelerationKinematicsCache<double> ac(tree().get_topology());
+    MultibodyForces<double> applied_forces(tree());
+    internal::AccelerationKinematicsCache<double> ac(tree().get_topology());
     tree().CalcForwardDynamics(*context_, applied_forces, &ac);
     qddot = ac.get_vdot();
 
     // Compute qddot_expected via mass matrix solve.
-    MultibodyForces<double> forces(*tree_);
+    MultibodyForces<double> forces(tree());
     tree().CalcForceElementsContribution(*context_, pc, vc, &forces);
 
     Vector2d vdot = Vector2d::Zero();

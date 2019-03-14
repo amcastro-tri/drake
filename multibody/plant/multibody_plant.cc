@@ -1412,11 +1412,6 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
   VectorX<T> q0 = x0.topRows(nq);
   VectorX<T> v0 = x0.bottomRows(nv);
 
-  // Mass matrix and its factorization.
-  MatrixX<T> M0(nv, nv);
-  internal_tree().CalcMassMatrixViaInverseDynamics(context0, &M0);
-  auto M0_ldlt = M0.ldlt();
-
   // Forces at the previous time step.
   MultibodyForces<T> forces0(internal_tree());
 

@@ -1622,7 +1622,9 @@ void MultibodyTree<T>::MultiplyByMassMatrixInverse(
     
     forces.mutable_generalized_forces() = bcol;
 
-    // Compute articulated body algorithm cache.    
+    // Compute articulated body algorithm cache.
+    // TODO(amcastro-tri): Split q dependent computations from here so that we
+    // can make them outside the icol loop.    
     CalcArticulatedBodyAlgorithmCache(context, pc, vc, abic, forces, &abac);    
 
     // Perform base-to-tip recursion, skipping the world.

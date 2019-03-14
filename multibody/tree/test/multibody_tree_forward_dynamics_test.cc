@@ -9,6 +9,10 @@
 #include "drake/multibody/tree/revolute_joint.h"
 #include "drake/systems/framework/context.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+
 namespace drake {
 namespace multibody {
 namespace internal {
@@ -162,14 +166,25 @@ class KukaIiwaModelForwardDynamicsTests : public ::testing::Test {
     // Construct M, the mass matrix.
     MatrixX<double> M(nv, nv);
     tree().CalcMassMatrixViaInverseDynamics(*context_, &M);
+    
+    VectorX<double> x0(nv);
+    x0 << 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0;
+    const int kNumColumns = 3;
+    MatrixX<double> x_expected(nv, kNumColumns);
+    x_expected << x0, -0.5 * x0, 2.1 * x0;
 
-    VectorX<double> x_expected(nv);
-    x_expected << 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0;
     // Compute b for the known x
-    const VectorX<double> b = M * x_expected; 
+    const MatrixX<double> b = M * x_expected;
 
-    VectorX<double> x(nv);
+    PRINT_VARn(M);
+    PRINT_VARn(b);
+
+    MatrixX<double> x(nv, kNumColumns);
     tree().MultiplyByMassMatrixInverse(*context_, b, &x);
+
+    PRINT_VARn(x);
+    PRINT_VARn(x_expected);
+
     const double kTolerance = 50 * kEpsilon;
     EXPECT_TRUE(CompareMatrices(
         x, x_expected, kTolerance, MatrixCompareType::relative));

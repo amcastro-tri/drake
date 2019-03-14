@@ -1525,6 +1525,12 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
     return x;
   };
 
+#if 0
+  auto Mi = [&M0_ldlt](const Eigen::Ref<const MatrixX<T>>& tau) -> MatrixX<T> {
+    return M0_ldlt.solve(tau);
+  };
+#endif
+
   // We attempt to compute the update during the time interval dt using a
   // progressively larger number of sub-steps (i.e each using a smaller time
   // step than in the previous attempt). This loop breaks on the first

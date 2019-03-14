@@ -1010,41 +1010,48 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     // Get the number of mobilizer velocities (number of columns of H_PB_W).
     const int nv = get_num_mobilizer_velocities();
 
-    // Compute common term HTxP.
-    const MatrixUpTo6<T> HTxP = H_PB_W.transpose() * P_B_W;
+    Matrix6<T> Pplus_PB_W_mat = P_B_W.CopyToFullMatrix6();
 
-    // Compute the articulated body hinge inertia, D_B, using (5).
-    MatrixUpTo6<T> D_B(nv, nv);
-    D_B.template triangularView<Eigen::Lower>() = HTxP * H_PB_W;
+    // Check for weld joints.
+    // TODO(amcastro): review this code.
+    if (nv != 0) {
+      // Compute common term HTxP.
+      const MatrixUpTo6<T> HTxP = H_PB_W.transpose() * P_B_W;
 
-    // Compute the LDLT factorization of D_B as ldlt_D_B.
-    // TODO(bobbyluig): Test performance against inverse().
-    Eigen::LDLT<MatrixUpTo6<T>>& ldlt_D_B = get_mutable_ldlt_D_B(abic);
-    ldlt_D_B = D_B.template selfadjointView<Eigen::Lower>().ldlt();
+      // Compute the articulated body hinge inertia, D_B, using (5).
+      MatrixUpTo6<T> D_B(nv, nv);
+      D_B.template triangularView<Eigen::Lower>() = HTxP * H_PB_W;
 
-    // Ensure that D_B is not singular.
-    // Singularity means that a non-physical hinge mapping matrix was used or
-    // that this articulated body inertia has some non-physical quantities
-    // (such as zero moment of inertia along an axis which the hinge mapping
-    // matrix permits motion).
-    if (ldlt_D_B.info() != Eigen::Success) {
-      std::stringstream message;
-      message << "Encountered singular articulated body hinge inertia "
-              << "for body node index " << topology_.index << ". "
-              << "Please ensure that this body has non-zero inertia "
-              << "along all axes of motion.";
-      throw std::runtime_error(message.str());
+      // Compute the LDLT factorization of D_B as ldlt_D_B.
+      // TODO(bobbyluig): Test performance against inverse().
+      Eigen::LDLT<MatrixUpTo6<T>>& ldlt_D_B = get_mutable_ldlt_D_B(abic);
+      ldlt_D_B = D_B.template selfadjointView<Eigen::Lower>().ldlt();
+
+      // Ensure that D_B is not singular.
+      // Singularity means that a non-physical hinge mapping matrix was used or
+      // that this articulated body inertia has some non-physical quantities
+      // (such as zero moment of inertia along an axis which the hinge mapping
+      // matrix permits motion).
+      if (ldlt_D_B.info() != Eigen::Success) {
+        std::stringstream message;
+        message << "Encountered singular articulated body hinge inertia "
+                << "for body node index " << topology_.index << ". "
+                << "Please ensure that this body has non-zero inertia "
+                << "along all axes of motion.";
+        throw std::runtime_error(message.str());
+      }
+
+      // Compute the Kalman gain, g_PB_W, using (6).
+      MatrixUpTo6<T>& g_PB_W = get_mutable_g_PB_W(abic);
+      g_PB_W = ldlt_D_B.solve(HTxP).transpose();
+
+      // Project P_B_W using (7) to obtain Pplus_PB_W, the articulated body
+      // inertia of this body B as felt by body P and expressed in frame W.
+      // Symmetrize the computation to reduce floating point errors.
+      // TODO(bobbyluig): Only compute lower-triangular region.
+      Pplus_PB_W_mat -= g_PB_W * HTxP;
     }
 
-    // Compute the Kalman gain, g_PB_W, using (6).
-    MatrixUpTo6<T>& g_PB_W = get_mutable_g_PB_W(abic);
-    g_PB_W = ldlt_D_B.solve(HTxP).transpose();
-
-    // Project P_B_W using (7) to obtain Pplus_PB_W, the articulated body
-    // inertia of this body B as felt by body P and expressed in frame W.
-    // Symmetrize the computation to reduce floating point errors.
-    // TODO(bobbyluig): Only compute lower-triangular region.
-    const Matrix6<T> Pplus_PB_W_mat = P_B_W.CopyToFullMatrix6() - g_PB_W * HTxP;
     get_mutable_Pplus_PB_W(abic) = ArticulatedBodyInertia<T>(
         0.5 * (Pplus_PB_W_mat + Pplus_PB_W_mat.transpose()));
   }
@@ -1273,18 +1280,26 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
       Z_Bo_W += Zplus_BCb_W;
     }
 
-    // Compute the articulated body inertia innovations generalized force, e_B,
-    // according to (4).
-    VectorUpTo6<T>& e_B = get_mutable_e_B(abac);
-    e_B = tau_applied - H_PB_W.transpose() * Z_Bo_W.get_coeffs();
+    get_mutable_Zplus_PB_W(abac) = Z_Bo_W;
 
-    // Get the Kalman gain from cache.
-    const MatrixUpTo6<T>& g_PB_W = get_g_PB_W(abic);
+    const int nv = get_num_mobilizer_velocities();
 
-    // Compute the projected articulated body residual spatial force,
-    // Zplus_PB_W, according to (5).
-    get_mutable_Zplus_PB_W(abac) = SpatialForce<T>(
-        Z_Bo_W.get_coeffs() + g_PB_W * e_B);
+    // Eigen goes nuts with zero sized vectors (weld joints).
+    // TODO(amcastro-tri): review this code.
+    if (nv != 0) {
+      // Compute the articulated body inertia innovations generalized force,
+      // e_B,
+      // according to (4).
+      VectorUpTo6<T>& e_B = get_mutable_e_B(abac);
+      e_B = tau_applied - H_PB_W.transpose() * Z_Bo_W.get_coeffs();
+
+      // Get the Kalman gain from cache.
+      const MatrixUpTo6<T>& g_PB_W = get_g_PB_W(abic);
+
+      // Compute the projected articulated body residual spatial force,
+      // Zplus_PB_W, according to (5).
+      get_mutable_Zplus_PB_W(abac) += SpatialForce<T>(g_PB_W * e_B);
+    }
   }
 
   /// This method is used by MultibodyTree within a base-to-tip loop to compute
@@ -1376,9 +1391,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
     const Vector3<T> p_PoBo_W =
         get_X_WP(pc).linear() * get_X_PB(pc).translation();
 
-    // Compute nu_B, the articulated body inertia innovations generalized
-    // acceleration.
-    const VectorUpTo6<T> nu_B = get_ldlt_D_B(abic).solve(get_e_B(abac));
+    const int nv = get_num_mobilizer_velocities();
 
     // Compute A0_WPb using (1), but written out explicitly to skip
     // unnecessary computation.
@@ -1386,13 +1399,24 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
         A_WP.rotational(),
         A_WP.translational() + A_WP.rotational().cross(p_PoBo_W));
 
-    // Compute the generalized acceleration using (2).
-    auto vmdot = get_mutable_accelerations(ac);
-    vmdot = nu_B - get_g_PB_W(abic).transpose() * A0_WPb.get_coeffs();
-
-    // Compute the spatial acceleration of the current body using (3).
     get_mutable_A_WB(ac) = SpatialAcceleration<T>(
-        A0_WPb.get_coeffs() + H_PB_W * vmdot + get_a_Bo_W(abac).get_coeffs());
+        A0_WPb.get_coeffs() + get_a_Bo_W(abac).get_coeffs());
+
+    // Eigen goes crazae with zero sized stuff. Skip for weld joints.
+    // TODO(amcastro-tri): review this code.
+    if (nv != 0) {
+      // Compute nu_B, the articulated body inertia innovations generalized
+      // acceleration.
+      const VectorUpTo6<T> nu_B = get_ldlt_D_B(abic).solve(get_e_B(abac));
+
+      // Compute the generalized acceleration using (2).
+      auto vmdot = get_mutable_accelerations(ac);
+      vmdot = nu_B - get_g_PB_W(abic).transpose() * A0_WPb.get_coeffs();
+
+      // Update with vmdot term the spatial acceleration of the current body
+      // using (3).
+      get_mutable_A_WB(ac).get_coeffs() += H_PB_W * vmdot;
+    }
   }
 
  protected:

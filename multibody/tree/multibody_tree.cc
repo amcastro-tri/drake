@@ -1511,7 +1511,7 @@ template <typename T>
 void MultibodyTree<T>::CalcArticulatedBodyAlgorithmCache(
     const systems::Context<T>& context,
     const PositionKinematicsCache<T>& pc,
-    const VelocityKinematicsCache<T>& vc,
+    const VelocityKinematicsCache<T>* vc,
     const ArticulatedBodyInertiaCache<T>& abic,
     const MultibodyForces<T>& forces,
     ArticulatedBodyAlgorithmCache<T>* abac) const {
@@ -1523,8 +1523,8 @@ void MultibodyTree<T>::CalcArticulatedBodyAlgorithmCache(
   const std::vector<SpatialForce<T>>& body_forces = forces.body_forces();
 
   // TODO(bobbyluig): Eval H_PB_W from the cache.
-  std::vector<Vector6<T>> H_PB_W_cache(num_velocities());
-  CalcAcrossNodeGeometricJacobianExpressedInWorld(context, pc, &H_PB_W_cache);
+  const std::vector<Vector6<T>>& H_PB_W_cache =
+      tree_system_->EvalAcrossNodeGeometricJacobianExpressedInWorld(context);
 
   // Perform tip-to-base recursion, skipping the world.
   for (int depth = tree_height() - 1; depth > 0; depth--) {
@@ -1540,7 +1540,7 @@ void MultibodyTree<T>::CalcArticulatedBodyAlgorithmCache(
       const MatrixUpTo6<T> H_PB_W = node.GetJacobianFromArray(H_PB_W_cache);
 
       node.CalcArticulatedBodyInertiaAlgorithm_TipToBase(
-          context, pc, vc, abic, Fapplied_Bo_W, tau_applied, H_PB_W, abac);
+          context, pc, &*vc, abic, Fapplied_Bo_W, tau_applied, H_PB_W, abac);
     }
   }
 }
@@ -1572,7 +1572,7 @@ void MultibodyTree<T>::CalcForwardDynamics(
 
   // Compute articulated body algorithm cache.
   ArticulatedBodyAlgorithmCache<T> abac(this->topology_);
-  CalcArticulatedBodyAlgorithmCache(context, pc, vc, abic, forces, &abac);
+  CalcArticulatedBodyAlgorithmCache(context, pc, &vc, abic, forces, &abac);
 
   // Perform base-to-tip recursion, skipping the world.
   for (int depth = 1; depth < tree_height(); depth++) {
@@ -1590,8 +1590,7 @@ void MultibodyTree<T>::CalcForwardDynamics(
 
 template <typename T>
 void MultibodyTree<T>::MultiplyByMassMatrixInverse(
-    const systems::Context<T>& context,
-    const Eigen::Ref<const MatrixX<T>>& b, 
+    const systems::Context<T>& context, const Eigen::Ref<const MatrixX<T>>& b,
     EigenPtr<MatrixX<T>> x) const {
   DRAKE_DEMAND(x != nullptr);
   DRAKE_DEMAND(x->rows() == num_velocities());
@@ -1601,8 +1600,8 @@ void MultibodyTree<T>::MultiplyByMassMatrixInverse(
   const PositionKinematicsCache<T>& pc = EvalPositionKinematics(context);
 
   // Pass a nullptr to signal to ignore velocity terms?
-  VelocityKinematicsCache<T> vc(this->get_topology());
-  vc.InitializeToZero();
+  // VelocityKinematicsCache<T> vc(this->get_topology());
+  // vc.InitializeToZero();
 
   const std::vector<Vector6<T>>& H_PB_W_cache =
       tree_system_->EvalAcrossNodeGeometricJacobianExpressedInWorld(context);
@@ -1617,15 +1616,84 @@ void MultibodyTree<T>::MultiplyByMassMatrixInverse(
   ArticulatedBodyAlgorithmCache<T> abac(this->topology_);
   AccelerationKinematicsCache<T> ac(this->get_topology());
 
-  for (int icol = 0; icol < b.cols(); ++icol) {
-    const auto& bcol = b.col(icol);
-    
-    forces.mutable_generalized_forces() = bcol;
+  // Workspace.
+  std::vector<SpatialAcceleration<T>> A_WB(num_bodies());
+  A_WB[world_index()].SetZero();   
+  std::vector<SpatialForce<T>> Zplus_PB_W(num_bodies());
+  std::vector<VectorUpTo6<T>> e_B(num_bodies());
 
-    // Compute articulated body algorithm cache.
-    // TODO(amcastro-tri): Split q dependent computations from here so that we
-    // can make them outside the icol loop.    
-    CalcArticulatedBodyAlgorithmCache(context, pc, vc, abic, forces, &abac);    
+  for (int icol = 0; icol < b.cols(); ++icol) {
+    const auto& rhs = b.col(icol);
+    auto vmdot = x->col(icol);
+
+    // Tip-to-base recursion.
+    for (int depth = tree_height() - 1; depth > 0; depth--) {
+      for (BodyNodeIndex body_node_index : body_node_levels_[depth]) {
+        const BodyNode<T>& node = *body_nodes_[body_node_index];
+        // Get hinge mapping matrix.
+        const MatrixUpTo6<T> H_PB_W = node.GetJacobianFromArray(H_PB_W_cache);
+
+        node.MultiplyByMassMatrixInverse_TipToBase(
+            context, pc, abic, H_PB_W, rhs, &Zplus_PB_W, &e_B);
+      }
+    }
+
+    // Base-to-tip recursion, skipping the world.
+    for (int depth = 1; depth < tree_height(); depth++) {
+      for (BodyNodeIndex body_node_index : body_node_levels_[depth]) {
+        const BodyNode<T>& node = *body_nodes_[body_node_index];
+
+        // Get hinge mapping matrix.
+        const MatrixUpTo6<T> H_PB_W = node.GetJacobianFromArray(H_PB_W_cache);
+
+        node.MultiplyByMassMatrixInverse_BaseToTip(context, pc, abic, H_PB_W,
+                                                   e_B, &A_WB, &vmdot);
+      }
+    }
+  }  //icol
+
+}
+
+template <typename T>
+void MultibodyTree<T>::MultiplyByMassMatrixInverse2(
+    const systems::Context<T>& context, const Eigen::Ref<const MatrixX<T>>& b,
+    EigenPtr<MatrixX<T>> x) const {
+  DRAKE_DEMAND(x != nullptr);
+  DRAKE_DEMAND(x->rows() == num_velocities());
+  DRAKE_DEMAND(x->cols() == b.cols());
+
+  // Get position and velocity kinematics from cache.
+  const PositionKinematicsCache<T>& pc = EvalPositionKinematics(context);
+
+  // Pass a nullptr to signal to ignore velocity terms?
+  // VelocityKinematicsCache<T> vc(this->get_topology());
+  // vc.InitializeToZero();
+
+  const std::vector<Vector6<T>>& H_PB_W_cache =
+      tree_system_->EvalAcrossNodeGeometricJacobianExpressedInWorld(context);
+
+  // Compute articulated body inertia cache.
+  ArticulatedBodyInertiaCache<T> abic(this->topology_);
+  CalcArticulatedBodyInertiaCache(context, pc, &abic);
+
+  // Calculate force element contribution and add in applied forces.
+  // TODO: this is zero and should not even be here.
+  MultibodyForces<T> forces(*this);
+  ArticulatedBodyAlgorithmCache<T> abac(this->topology_);
+  AccelerationKinematicsCache<T> ac(this->get_topology());
+
+  // Workspace.
+  std::vector<SpatialAcceleration<T>> A_WB(num_bodies());
+  A_WB[world_index()].SetZero();   
+  std::vector<SpatialForce<T>> Zplus_PB_W(num_bodies());
+  std::vector<VectorUpTo6<T>> e_B(num_bodies());  
+
+  for (int icol = 0; icol < b.cols(); ++icol) {
+    const auto& rhs = b.col(icol);    
+    forces.mutable_generalized_forces() = rhs;
+    CalcArticulatedBodyAlgorithmCache(context, pc, nullptr, abic, forces, &abac);
+
+    // Base-to-tip recursion, skipping the world.
 
     // Perform base-to-tip recursion, skipping the world.
     for (int depth = 1; depth < tree_height(); depth++) {
@@ -1635,15 +1703,15 @@ void MultibodyTree<T>::MultiplyByMassMatrixInverse(
         // Get hinge mapping matrix.
         const MatrixUpTo6<T> H_PB_W = node.GetJacobianFromArray(H_PB_W_cache);
 
-        // Apparently A_WB in ac is a secondary product of this computation.
-        // Verify if possible to avoid to make it even faster.
-        node.CalcForwardDynamics_BaseToTip(context, pc, abic, abac, H_PB_W,
-                                           &ac);
+        node.CalcForwardDynamics_BaseToTip(context, pc, abic, abac, H_PB_W, &ac);
       }
     }
 
+    //auto vmdot = x->col(icol);
+    //vmdot = ac->get_vdot();
     x->col(icol) = ac.get_vdot();
-  }
+
+  }  // icol
 }
 
 template <typename T>
@@ -1720,8 +1788,8 @@ MatrixX<double> MultibodyTree<T>::MakeActuatorSelectorMatrix(
 
   const int num_selected_actuators = user_to_actuator_index_map.size();
 
-  // The actuation selector matrix maps the vector of "selected" actuators to
-  // the full vector of actuators: u = Sᵤ⋅uₛ.
+  // The actuation selector matrix maps the vector of "selected" actuators
+  // to the full vector of actuators: u = Sᵤ⋅uₛ.
   MatrixX<double> Su =
       MatrixX<double>::Zero(num_actuated_dofs(), num_selected_actuators);
   int user_index = 0;

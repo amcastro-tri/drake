@@ -1532,6 +1532,11 @@ class MultibodyTree {
     const Eigen::Ref<const MatrixX<T>>& b, 
     EigenPtr<MatrixX<T>> x) const;
 
+  void MultiplyByMassMatrixInverse2(
+    const systems::Context<T>& context,
+    const Eigen::Ref<const MatrixX<T>>& b, 
+    EigenPtr<MatrixX<T>> x) const;
+
   /// See MultibodyPlant method.
   void CalcBiasTerm(
       const systems::Context<T>& context, EigenPtr<VectorX<T>> Cv) const;
@@ -2380,7 +2385,7 @@ class MultibodyTree {
   void CalcArticulatedBodyAlgorithmCache(
       const systems::Context<T>& context,
       const PositionKinematicsCache<T>& pc,
-      const VelocityKinematicsCache<T>& vc,
+      const VelocityKinematicsCache<T>* vc,
       const ArticulatedBodyInertiaCache<T>& abic,
       const MultibodyForces<T>& forces,
       ArticulatedBodyAlgorithmCache<T>* abac) const;

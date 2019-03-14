@@ -180,7 +180,7 @@ class KukaIiwaModelForwardDynamicsTests : public ::testing::Test {
     PRINT_VARn(b);
 
     MatrixX<double> x(nv, kNumColumns);
-    tree().MultiplyByMassMatrixInverse(*context_, b, &x);
+    tree().MultiplyByMassMatrixInverse2(*context_, b, &x);
 
     PRINT_VARn(x);
     PRINT_VARn(x_expected);

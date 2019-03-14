@@ -782,7 +782,7 @@ class ImplicitStribeckSolver {
     //Eigen::Ref<const MatrixX<T>> M() const { return *M_ptr_; }
     Eigen::Ref<const MatrixX<T>> Jn() const { return *Jn_ptr_; }
     Eigen::Ref<const MatrixX<T>> Jt() const { return *Jt_ptr_; }
-    Eigen::Ref<const VectorX<T>> p_star() const { return *p_star_ptr_; }
+    Eigen::Ref<const VectorX<T>> v_star() const { return *p_star_ptr_; }
 
     // For the one-way coupled scheme, it returns a constant reference to the
     // data for the normal forces. It aborts if called on data for the two-way

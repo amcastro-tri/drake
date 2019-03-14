@@ -7,6 +7,8 @@
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/multibody/plant/test/implicit_stribeck_solver_test_util.h"
 
+#include <iostream>
+
 namespace drake {
 namespace multibody {
 
@@ -443,6 +445,7 @@ class PizzaSaver : public ::testing::Test {
                   double mu, double theta, double dt) {
     // Next time step generalized momentum if there are no friction forces.
     p_star_ = M_ * v0 + dt * tau;
+    v_star_ = v0 + dt * M_.ldlt().solve(tau);
 
     // Normal forces. Assume they are equally distributed.
     fn_ = m_ * g_ / 3.0 * Vector3<double>::Ones();
@@ -456,7 +459,7 @@ class PizzaSaver : public ::testing::Test {
 
     Jt_ = ComputeTangentialJacobian(theta);
 
-    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &fn_, &mu_);
+    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &v_star_, &fn_, &mu_);
   }
 
   void SetNoContactProblem(const Vector3<double>& v0,
@@ -464,6 +467,7 @@ class PizzaSaver : public ::testing::Test {
                            double dt) {
     // Next time step generalized momentum if there are no friction forces.
     p_star_ = M_ * v0 + dt * tau;
+    v_star_ = v0 + dt * M_.ldlt().solve(tau);
 
     // No contact points.
     fn_.resize(0);
@@ -471,7 +475,7 @@ class PizzaSaver : public ::testing::Test {
     Jn_.resize(0, nv_);
     Jt_.resize(0, nv_);
 
-    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &fn_, &mu_);
+    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &v_star_, &fn_, &mu_);
   }
 
  protected:
@@ -503,6 +507,7 @@ class PizzaSaver : public ::testing::Test {
 
   // Additional solver data that must outlive solver_ during solution.
   Vector3<double> p_star_;  // Generalized momentum.
+  Vector3<double> v_star_;  // v = v_star if contact forces are zero.
   VectorX<double> fn_;      // Normal forces at each contact point.
   VectorX<double> mu_;      // Friction coefficient at each contact point.
 };
@@ -834,6 +839,7 @@ class RollingCylinder : public ::testing::Test {
                         double mu, double height, double dt) {
     // Next time step generalized momentum if there are no contact forces.
     p_star_ = M_ * v0 + dt * tau;
+    v_star_ = v0 + dt * M_.ldlt().solve(tau);
 
     // Friction coefficient for the only contact point in the problem.
     mu_vector_(0) = mu;
@@ -855,10 +861,11 @@ class RollingCylinder : public ::testing::Test {
     dissipation_(0) = dissipation;
 
     auto& M = M_;
-    auto Mi = [&M](const Eigen::Ref<const MatrixX<double>>& tau) {
+    auto Mi = [&M](const Eigen::Ref<const MatrixX<double>>& tau) -> MatrixX<double> {
+      std::cout << "Inside Mi()\n";
       return M.ldlt().solve(tau);
     };
-    solver_.SetTwoWayCoupledProblemData(Mi, &Jn_, &Jt_, &p_star_, &x0_,
+    solver_.SetTwoWayCoupledProblemData(Mi, &Jn_, &Jt_, &v_star_, &x0_,
                                         &stiffness_, &dissipation_,
                                         &mu_vector_);
   }
@@ -909,6 +916,7 @@ class RollingCylinder : public ::testing::Test {
 
   // Additional solver data that must outlive solver_ during solution.
   VectorX<double> p_star_{nv_};  // Generalized momentum.
+  VectorX<double> v_star_{nv_};  // v = v_star if contact forces are zero.
   VectorX<double> mu_vector_{nc_};  // Friction at each contact point.
 };
 

@@ -2251,8 +2251,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// Performs x = M⁻¹⋅b
   void MultiplyByMassMatrixInverse(
     const systems::Context<T>& context,
-    const Eigen::Ref<const VectorX<T>>& b, 
-    EigenPtr<VectorX<T>> x) const {
+    const Eigen::Ref<const MatrixX<T>>& b, 
+    EigenPtr<MatrixX<T>> x) const {
       internal_tree().MultiplyByMassMatrixInverse(context, b, x);
   }
 
@@ -3062,7 +3062,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // approximated to be constant, a first order approximation.
   ImplicitStribeckSolverResult SolveUsingSubStepping(
       int num_substeps,
-      const MatrixX<T>& M0, const MatrixX<T>& Jn, const MatrixX<T>& Jt,
+      std::function<MatrixX<T>(const Eigen::Ref<const MatrixX<T>>&)> Mi,
+      const MatrixX<T>& Jn, const MatrixX<T>& Jt,
       const VectorX<T>& minus_tau,
       const VectorX<T>& stiffness, const VectorX<T>& damping,
       const VectorX<T>& mu,

@@ -305,18 +305,18 @@ void ImplicitStribeckSolver<T>::SetTwoWayCoupledProblemData(
     std::function<MatrixX<T>(const Eigen::Ref<const MatrixX<T>>&)>
         forward_dynamics,
     EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
-    EigenPtr<const VectorX<T>> p_star, EigenPtr<const VectorX<T>> x0,
+    EigenPtr<const VectorX<T>> v_star, EigenPtr<const VectorX<T>> x0,
     EigenPtr<const VectorX<T>> stiffness,
     EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
   nc_ = x0->size();
-  DRAKE_THROW_UNLESS(p_star->size() == nv_);
+  DRAKE_THROW_UNLESS(v_star->size() == nv_);
   DRAKE_THROW_UNLESS(Jn->rows() == nc_ && Jn->cols() == nv_);
   DRAKE_THROW_UNLESS(Jt->rows() == 2 * nc_ && Jt->cols() == nv_);
   DRAKE_THROW_UNLESS(mu->size() == nc_);
   DRAKE_THROW_UNLESS(stiffness->size() == nc_);
   DRAKE_THROW_UNLESS(dissipation->size() == nc_);
   // Keep references to the problem data.
-  problem_data_aliases_.SetTwoWayCoupledData(nullptr, Jn, Jt, p_star, x0,
+  problem_data_aliases_.SetTwoWayCoupledData(nullptr, Jn, Jt, v_star, x0,
                                              stiffness, dissipation, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
 
@@ -645,8 +645,7 @@ ImplicitStribeckSolverResult ImplicitStribeckSolver<T>::SolveWithGuess(
   // SolveWithGuess().
   statistics_.Reset();
 
-  const auto p_star = problem_data_aliases_.p_star();
-  const VectorX<T> v_star = forward_dynamics_(p_star);
+  const VectorX<T> v_star = problem_data_aliases_.v_star();
 
   // If there are no contact points return a zero generalized friction force
   // vector, i.e. tau_f = 0.

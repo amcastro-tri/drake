@@ -1611,8 +1611,8 @@ void MultibodyTree<T>::MultiplyByMassMatrixInverse(
       tree_system_->EvalAcrossNodeGeometricJacobianExpressedInWorld(context);
 
   // Compute articulated body inertia cache.
-  ArticulatedBodyInertiaCache<T> abic(this->topology_);
-  CalcArticulatedBodyInertiaCache(context, pc, &abic);
+  const ArticulatedBodyInertiaCache<T>& abic =
+      EvalArticulatedBodyInertiaCache(context);
 
   // Workspace.
   std::vector<SpatialAcceleration<T>> A_WB(num_bodies());

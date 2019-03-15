@@ -7,6 +7,7 @@
 
 #include "drake/common/default_scalars.h"
 #include "drake/common/eigen_types.h"
+#include "drake/multibody/tree/articulated_body_inertia_cache.h"
 #include "drake/multibody/tree/position_kinematics_cache.h"
 #include "drake/multibody/tree/velocity_kinematics_cache.h"
 #include "drake/systems/framework/cache_entry.h"
@@ -89,6 +90,12 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
       const systems::Context<T>& context) const {
     return this->get_cache_entry(velocity_kinematics_cache_index_)
         .template Eval<VelocityKinematicsCache<T>>(context);
+  }
+
+  const ArticulatedBodyInertiaCache<T>& EvalArticulatedBodyInertiaCache(
+      const systems::Context<T>& context) const {
+    return this->get_cache_entry(abi_cache_index_)
+        .template Eval<ArticulatedBodyInertiaCache<T>>(context);
   }
 
   /** Returns a reference to the up to date cached value for the
@@ -184,6 +191,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   systems::CacheIndex position_kinematics_cache_index_;
   systems::CacheIndex velocity_kinematics_cache_index_;
   systems::CacheIndex H_PB_W_cache_index_;
+  systems::CacheIndex abi_cache_index_;
 
   // Used to enforce "finalize once" restriction for protected-API users.
   bool already_finalized_{false};

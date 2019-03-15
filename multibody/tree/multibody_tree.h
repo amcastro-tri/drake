@@ -1377,6 +1377,34 @@ class MultibodyTree {
       const VectorX<T>& known_vdot,
       AccelerationKinematicsCache<T>* ac) const;
 
+    // Computes some quantities that are required in the final pass of the
+  // articulated body algorithm which depend only on generalized positions and
+  // stores them in the articulated body inertia cache `abic`.
+  //
+  // Note that because this method only depends on the generalized positions,
+  // computing forward dynamics with different forces under the same context
+  // would only require one call to this method but multiple evaluations of
+  // MultibodyTree::CalcArticulatedBodyAlgorithmCache().
+  //
+  // These include:
+  // - Articulated body inertia `P_B_W` of the body taken about Bo and
+  //   expressed in W.
+  // - Articulated body inertia `Pplus_PB_W`, which can be thought of as the
+  //   articulated body inertia of parent body P as though it were inertialess,
+  //   but taken about Bo and expressed in W.
+  // - LDLT factorization `ldlt_D_B` of the articulated body hinge inertia.
+  // - The Kalman gain `g_PB_W` of the body.
+  //
+  // This method assumes:
+  // - The position kinematics `pc` is already updated to be in sync with
+  //   `context`.
+  // - `abic` is a pointer to a valid, non nullptr, articulated body inertia
+  //    cache. This method will throw an exception if `abic` is nullptr.
+  void CalcArticulatedBodyInertiaCache(
+      const systems::Context<T>& context,
+      const PositionKinematicsCache<T>& pc,
+      ArticulatedBodyInertiaCache<T>* abic) const;    
+
   /// See MultibodyPlant method.
   /// @warning The output parameter `A_WB_array` is indexed by BodyNodeIndex,
   /// while MultibodyPlant's method returns accelerations indexed by BodyIndex.
@@ -1845,6 +1873,12 @@ class MultibodyTree {
       const systems::Context<T>& context) const {
     DRAKE_ASSERT(tree_system_ != nullptr);
     return tree_system_->EvalVelocityKinematics(context);
+  }
+
+  const ArticulatedBodyInertiaCache<T>& EvalArticulatedBodyInertiaCache(
+      const systems::Context<T>& context) const {
+    DRAKE_ASSERT(tree_system_ != nullptr);
+    return tree_system_->EvalArticulatedBodyInertiaCache(context);
   }
 
   /// @name                 State access methods
@@ -2327,34 +2361,6 @@ class MultibodyTree {
   // TODO(amcastro-tri): In future PR's adding MBT computational methods, write
   // a method that verifies the state of the topology with a signature similar
   // to RoadGeometry::CheckHasRightSizeForModel().
-
-  // Computes some quantities that are required in the final pass of the
-  // articulated body algorithm which depend only on generalized positions and
-  // stores them in the articulated body inertia cache `abic`.
-  //
-  // Note that because this method only depends on the generalized positions,
-  // computing forward dynamics with different forces under the same context
-  // would only require one call to this method but multiple evaluations of
-  // MultibodyTree::CalcArticulatedBodyAlgorithmCache().
-  //
-  // These include:
-  // - Articulated body inertia `P_B_W` of the body taken about Bo and
-  //   expressed in W.
-  // - Articulated body inertia `Pplus_PB_W`, which can be thought of as the
-  //   articulated body inertia of parent body P as though it were inertialess,
-  //   but taken about Bo and expressed in W.
-  // - LDLT factorization `ldlt_D_B` of the articulated body hinge inertia.
-  // - The Kalman gain `g_PB_W` of the body.
-  //
-  // This method assumes:
-  // - The position kinematics `pc` is already updated to be in sync with
-  //   `context`.
-  // - `abic` is a pointer to a valid, non nullptr, articulated body inertia
-  //    cache. This method will throw an exception if `abic` is nullptr.
-  void CalcArticulatedBodyInertiaCache(
-      const systems::Context<T>& context,
-      const PositionKinematicsCache<T>& pc,
-      ArticulatedBodyInertiaCache<T>* abic) const;
 
   // Computes some quantities that are required in the final pass of the
   // articulated body algorithm which depend on both the generalized positions

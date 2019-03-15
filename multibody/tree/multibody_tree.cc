@@ -17,6 +17,10 @@
 #include "drake/multibody/tree/rigid_body.h"
 #include "drake/multibody/tree/spatial_inertia.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+
 namespace drake {
 namespace multibody {
 namespace internal {
@@ -1610,12 +1614,6 @@ void MultibodyTree<T>::MultiplyByMassMatrixInverse(
   ArticulatedBodyInertiaCache<T> abic(this->topology_);
   CalcArticulatedBodyInertiaCache(context, pc, &abic);
 
-  // Calculate force element contribution and add in applied forces.
-  // TODO: this is zero and should not even be here.
-  MultibodyForces<T> forces(*this);
-  ArticulatedBodyAlgorithmCache<T> abac(this->topology_);
-  AccelerationKinematicsCache<T> ac(this->get_topology());
-
   // Workspace.
   std::vector<SpatialAcceleration<T>> A_WB(num_bodies());
   A_WB[world_index()].SetZero();   
@@ -1623,7 +1621,7 @@ void MultibodyTree<T>::MultiplyByMassMatrixInverse(
   std::vector<VectorUpTo6<T>> e_B(num_bodies());
 
   for (int icol = 0; icol < b.cols(); ++icol) {
-    const auto& rhs = b.col(icol);
+    const auto rhs = b.col(icol);
     auto vmdot = x->col(icol);
 
     // Tip-to-base recursion.
@@ -1689,7 +1687,8 @@ void MultibodyTree<T>::MultiplyByMassMatrixInverse2(
   std::vector<VectorUpTo6<T>> e_B(num_bodies());  
 
   for (int icol = 0; icol < b.cols(); ++icol) {
-    const auto& rhs = b.col(icol);    
+    const auto& rhs = b.col(icol);
+    auto vmdot = x->col(icol);   
     forces.mutable_generalized_forces() = rhs;
     CalcArticulatedBodyAlgorithmCache(context, pc, nullptr, abic, forces, &abac);
 
@@ -1709,8 +1708,7 @@ void MultibodyTree<T>::MultiplyByMassMatrixInverse2(
 
     //auto vmdot = x->col(icol);
     //vmdot = ac->get_vdot();
-    x->col(icol) = ac.get_vdot();
-
+    vmdot = ac.get_vdot();
   }  // icol
 }
 

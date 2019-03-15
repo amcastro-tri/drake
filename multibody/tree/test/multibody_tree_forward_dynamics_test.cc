@@ -178,16 +178,21 @@ class KukaIiwaModelForwardDynamicsTests : public ::testing::Test {
 
     PRINT_VARn(M);
     PRINT_VARn(b);
-
-    MatrixX<double> x(nv, kNumColumns);
-    tree().MultiplyByMassMatrixInverse2(*context_, b, &x);
-
-    PRINT_VARn(x);
     PRINT_VARn(x_expected);
 
     const double kTolerance = 50 * kEpsilon;
+    MatrixX<double> x(nv, kNumColumns);
+    tree().MultiplyByMassMatrixInverse(*context_, b, &x);
+    PRINT_VARn(x);    
     EXPECT_TRUE(CompareMatrices(
         x, x_expected, kTolerance, MatrixCompareType::relative));
+
+#if 0
+    tree().MultiplyByMassMatrixInverse2(*context_, b, &x);
+    PRINT_VARn(x);
+    EXPECT_TRUE(CompareMatrices(
+        x, x_expected, kTolerance, MatrixCompareType::relative));
+#endif
   }
 
   // Acceleration of gravity:

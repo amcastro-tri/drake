@@ -19,6 +19,10 @@
 #include "drake/multibody/tree/spatial_inertia.h"
 #include "drake/multibody/tree/velocity_kinematics_cache.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+
 namespace drake {
 namespace multibody {
 
@@ -1473,7 +1477,7 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
       // e_B,
       // according to (4).
       VectorUpTo6<T>& e_B = (*e_B_all)[this->index()];
-      const auto& rhs = get_velocities_from_array(rhs_array);
+      const auto rhs = get_velocities_from_array(rhs_array);
       e_B = rhs - H_PB_W.transpose() * Z_Bo_W.get_coeffs();
 
       // Get the Kalman gain from cache.
@@ -2001,8 +2005,8 @@ class BodyNode : public MultibodyTreeElement<BodyNode<T>, BodyNodeIndex> {
   // tree. Useful for the implementation of operator forms where the generalized
   // velocity (or time derivatives of the generalized velocities) is an argument
   // to the operator.
-  Eigen::VectorBlock<const VectorX<T>> get_velocities_from_array(
-      const VectorX<T>& v) const {
+  Eigen::VectorBlock<const Eigen::Ref<const VectorX<T>>>
+  get_velocities_from_array(const Eigen::Ref<const VectorX<T>>& v) const {
     return v.segment(topology_.mobilizer_velocities_start_in_v,
                      topology_.num_mobilizer_velocities);
   }

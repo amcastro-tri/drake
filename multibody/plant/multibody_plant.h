@@ -2253,7 +2253,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     const systems::Context<T>& context,
     const Eigen::Ref<const MatrixX<T>>& b, 
     EigenPtr<MatrixX<T>> x) const {
-      internal_tree().MultiplyByMassMatrixInverse2(context, b, x);
+      internal_tree().MultiplyByMassMatrixInverse(context, b, x);
   }
 
   // TODO(amcastro-tri): Add state accessors for free body spatial velocities.

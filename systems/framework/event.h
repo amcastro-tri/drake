@@ -601,7 +601,7 @@ UnrestrictedUpdateEvent<T>::UnrestrictedUpdateEvent(
 /**
  * This class represents a raw Context update event. As noted in
  * System::CalcRawContextUpdate(), this kind of update is just a special
- * unrestricted update. This event has an optional
+ * unrestricted update that takes place immediately. This event has an optional
  * callback function to do custom handling of this event given a Context pointer
  * and a const RawContextUpdateEvent object reference. See strong warnings about
  * raw updates to the Context in System::CalcRawContextUpdate().
@@ -620,12 +620,16 @@ class RawContextUpdateEvent final : public Event<T> {
   typedef std::function<void(Context<T>*, const RawContextUpdateEvent<T>&)>
       RawContextUpdateCallback;
 
-  /// Makes an RawContextUpdateEvent with no trigger type, no event data, and
-  /// no specified callback function.
+  /**
+   * Makes an RawContextUpdateEvent with no trigger type, no event data, and
+   * no specified callback function.
+   */
   RawContextUpdateEvent() : Event<T>() {}
 
-  /// Makes a RawContextUpdateEvent with no trigger type, no event data, and
-  /// the specified callback function.
+  /**
+   * Makes a RawContextUpdateEvent with no trigger type, no event data, and
+   * the specified callback function.
+   */
   explicit RawContextUpdateEvent(const RawContextUpdateCallback& callback)
       : Event<T>(), callback_(callback) {}
 

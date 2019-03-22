@@ -46,6 +46,7 @@ drake_cc_package_library(
         ":nice_type_name",
         ":pointer_cast",
         ":polynomial",
+        ":profiler",
         ":random",
         ":reset_after_move",
         ":reset_on_copy",
@@ -192,6 +193,13 @@ drake_cc_library(
         ":essential",
         ":symbolic",
     ],
+)
+
+drake_cc_library(
+    name = "profiler",
+    srcs = ["profiler.cc"],
+    hdrs = ["profiler.h"],
+    deps = [":type_safe_index"],
 )
 
 drake_cc_library(
@@ -1117,7 +1125,22 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "profiler_test",
+    deps = [":profiler"],
+)
+
+drake_cc_googletest(
     name = "polynomial_test",
+    deps = [
+        ":essential",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_no_throw",
+        "//common/test_utilities:random_polynomial_matrix",
+    ],
+)
+
+drake_cc_googletest(
+    name = "sorted_vectors_have_intersection_test",
     deps = [
         ":essential",
         "//common/test_utilities:eigen_matrix_compare",

@@ -218,6 +218,7 @@ struct JointLimitsPenaltyParametersEstimator {
     return PickLessStiffPenaltyParameters(parent_params, child_params);
   }
 };
+
 }  // namespace internal
 
 namespace {
@@ -971,6 +972,7 @@ void MultibodyPlant<T>::CopyContactResultsOutput(
     const systems::Context<T>& context,
     ContactResults<T>* contact_results) const {
   DRAKE_DEMAND(contact_results != nullptr);
+  DRAKE_DEMAND(is_discrete());
   *contact_results = EvalContactResults(context);
 }
 
@@ -987,7 +989,7 @@ void MultibodyPlant<T>::CalcContactResults(
   const std::vector<RotationMatrix<T>>& R_WC_set =
       EvalContactJacobians(context).R_WC_list;
   const internal::ImplicitStribeckSolverResults<T>& solver_results =
-      EvalImplicitStribeckResults(context);
+      GetImplicitStribeckResults(context);
 
   const VectorX<T>& fn = solver_results.fn;
   const VectorX<T>& ft = solver_results.ft;
@@ -1555,7 +1557,7 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
 
   // Solve for contact.
   const internal::ImplicitStribeckSolverResults<T>& solver_results =
-      EvalImplicitStribeckResults(context0);
+      GetImplicitStribeckResults(context0);
 
   // Retrieve the solution velocity for the next time step.
   const VectorX<T>& v_next = solver_results.v_next;
@@ -1612,6 +1614,7 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
 
   if (is_discrete()) {
     this->DeclarePeriodicDiscreteUpdate(time_step_);
+    DeclarePeriodicContactComputationsUpdate();
   }
 
   DeclareCacheEntries();
@@ -1708,6 +1711,35 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
 }
 
 template <typename T>
+void MultibodyPlant<T>::DeclarePeriodicContactComputationsUpdate() {
+  DRAKE_DEMAND(is_discrete());
+  // Declare state for the implicit Stribeck contact results.
+  implicit_stribeck_results_index_ =
+      this->DeclareAbstractState(AbstractValue::Make(
+          internal::ImplicitStribeckSolverResults<T>()));
+
+  auto update_callback = [this](Context<T>* context,
+                                const systems::RawContextUpdateEvent<T>&) {
+    auto& implicit_stribeck_results =
+        context->template get_mutable_abstract_state<
+            internal::ImplicitStribeckSolverResults<T>>(
+            implicit_stribeck_results_index_);
+    this->CalcImplicitStribeckResults(*context, &implicit_stribeck_results);
+  };
+
+  this->DeclareInitializationEvent(systems::RawContextUpdateEvent<T>(
+      systems::TriggerType::kInitialization, update_callback));
+
+  // Declare a periodic update for the implicit stribeck contact results.
+  // TODO(amcastro-tri): Split the update of solver results from that of the
+  // contact results.
+  this->DeclarePeriodicEvent(
+      time_step(), 0.,
+      systems::RawContextUpdateEvent<T>(systems::TriggerType::kPeriodic,
+                                        update_callback));
+}
+
+template <typename T>
 void MultibodyPlant<T>::DeclareCacheEntries() {
   DRAKE_DEMAND(this->is_finalized());
 
@@ -1749,6 +1781,7 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
   cache_indexes_.contact_jacobians =
       contact_jacobians_cache_entry.cache_index();
 
+#if 0
   // Cache ImplicitStribeckSolver computations.
   auto& implicit_stribeck_solver_cache_entry = this->DeclareCacheEntry(
       std::string("Implicit Stribeck solver computations."),
@@ -1788,23 +1821,25 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
       {this->xd_ticket()});
   cache_indexes_.implicit_stribeck_solver_results =
       implicit_stribeck_solver_cache_entry.cache_index();
+#endif
 
-  // Cache contact results.
-  auto& contact_results_cache_entry = this->DeclareCacheEntry(
-      std::string("Contact results."),
-      []() { return AbstractValue::Make(ContactResults<T>()); },
-      [this](const systems::ContextBase& context_base,
-             AbstractValue* cache_value) {
-        auto& context = dynamic_cast<const Context<T>&>(context_base);
-        auto& contact_results_cache =
-            cache_value->get_mutable_value<ContactResults<T>>();
-        this->CalcContactResults(context, &contact_results_cache);
-      },
-      // We explicitly declare the dependence on the implicit Stribeck solver
-      // even though the Eval() above does the evaluation.
-      {this->cache_entry_ticket(
-          cache_indexes_.implicit_stribeck_solver_results)});
-  cache_indexes_.contact_results = contact_results_cache_entry.cache_index();
+  // Cache contact results (only supported for discrete plants).
+  if (is_discrete()) {
+    // Sanity check that we already declared this abstract state.
+    DRAKE_DEMAND(implicit_stribeck_results_index_.is_valid());
+    auto& contact_results_cache_entry = this->DeclareCacheEntry(
+        std::string("Contact results."),
+        []() { return AbstractValue::Make(ContactResults<T>()); },
+        [this](const systems::ContextBase& context_base,
+               AbstractValue* cache_value) {
+          auto& context = dynamic_cast<const Context<T>&>(context_base);
+          auto& contact_results_cache =
+              cache_value->get_mutable_value<ContactResults<T>>();
+          this->CalcContactResults(context, &contact_results_cache);
+        },
+        {this->abstract_state_ticket(implicit_stribeck_results_index_)});
+    cache_indexes_.contact_results = contact_results_cache_entry.cache_index();
+  }
 }
 
 template <typename T>
@@ -1846,7 +1881,7 @@ void MultibodyPlant<T>::CopyGeneralizedContactForcesOut(
   // Vector of generalized contact forces for the entire plant's multibody
   // system.
   const internal::ImplicitStribeckSolverResults<T>& solver_results =
-      EvalImplicitStribeckResults(context);
+      GetImplicitStribeckResults(context);
   const VectorX<T>& tau_contact = solver_results.tau_contact;
 
   // Generalized velocities and generalized forces are ordered in the same way.

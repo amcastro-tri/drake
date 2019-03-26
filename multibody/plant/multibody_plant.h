@@ -2954,7 +2954,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   struct CacheIndexes {
     systems::CacheIndex contact_jacobians;
     systems::CacheIndex contact_results;
-    systems::CacheIndex implicit_stribeck_solver_results;
+    //systems::CacheIndex implicit_stribeck_solver_results;
     systems::CacheIndex point_pairs;
   };
 
@@ -3049,6 +3049,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Declare the system-level cache entries specific to MultibodyPlant.
   void DeclareCacheEntries();
 
+  void DeclarePeriodicContactComputationsUpdate();
+
   // Helper method to assemble actuation input vector from the appropriate
   // ports.
   VectorX<T> AssembleActuationInput(
@@ -3102,11 +3104,11 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       internal::ImplicitStribeckSolverResults<T>* results) const;
 
   // Eval version of the method CalcImplicitStribeckResults().
-  const internal::ImplicitStribeckSolverResults<T>& EvalImplicitStribeckResults(
+  const internal::ImplicitStribeckSolverResults<T>& GetImplicitStribeckResults(
       const systems::Context<T>& context) const {
-    return this
-        ->get_cache_entry(cache_indexes_.implicit_stribeck_solver_results)
-        .template Eval<internal::ImplicitStribeckSolverResults<T>>(context);
+    return context.template get_abstract_state<
+        internal::ImplicitStribeckSolverResults<T>>(
+        implicit_stribeck_results_index_);
   }
 
   // Helper method to fill in the ContactResults given the current context.
@@ -3490,6 +3492,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // velocities and thus no generalized forces.
   std::vector<systems::OutputPortIndex>
       instance_generalized_contact_forces_output_ports_;
+
+  systems::AbstractStateIndex implicit_stribeck_results_index_{};
 
   // If the plant is modeled as a discrete system with periodic updates,
   // time_step_ corresponds to the period of those updates. Otherwise, if the

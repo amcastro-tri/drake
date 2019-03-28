@@ -5,16 +5,16 @@
 #include <chrono>
 #include <random>
 
+#include <fmt/format.h>
 #include <gflags/gflags.h>
 
+#include "drake/examples/multibody/benchmarks/flops_estimator.h"
+
+#if 0
 #include "drake/common/find_resource.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/math/autodiff.h"
 #include "drake/multibody/parsing/parser.h"
-
-#include <iostream>
-#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
-#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
 
 using drake::multibody::MultibodyPlant;
 using drake::multibody::SpatialAcceleration;
@@ -25,393 +25,55 @@ DEFINE_bool(mbp_inertia, false, "Compute M with MBP.");
 DEFINE_bool(mbp_inverse_dyn, true, "Compute ID with MBP.");
 DEFINE_bool(mbp_enable_caching, true, "Enable caching for MBP.");
 
+#endif
+
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+
 namespace drake {
 namespace examples {
 namespace {
 
-typedef std::chrono::steady_clock the_clock;
+int do_main() {
+  FlopsEstimator estimator;
 
-class Timer {
- public:
-  Timer() : beg_(Clock::now()) {}
-  void reset() { beg_ = Clock::now(); }
-  double elapsed() const {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() -
-                                                                 beg_)
-        .count();
-#if 0              
-              return std::chrono::duration_cast<second_>(Clock::now() -
-                                                                beg_)
-              .count();
-#endif
-  }
+  // One billion of floating point operations would usually take in the order
+  // of a second. We perform 10 tries of 1e8 operations each in order to
+  // collects statistics.
+  estimator.RunTests(10, 1e8);
 
- private:
-  // typedef std::chrono::high_resolution_clock Clock;
-  typedef std::chrono::steady_clock Clock;
-  typedef std::chrono::duration<double, std::ratio<1>> second_;
-  std::chrono::time_point<Clock> beg_;
-};
+  std::cout << " Timer resolution [s]: " << BenchTimer::resolution()
+            << std::endl;
 
-double AdditionTime() {
-  double addRes = 1;
-  auto start = the_clock::now();
-  for (int i = 0; i < 5 * 100000000; i++) {
-    addRes += double(1.1);
-    addRes += double(1.2);
-    addRes += double(1.3);
-    addRes += double(1.4);
-    addRes += double(1.501);
-    addRes += double(1.6);
-    addRes += double(1.7);
-    addRes += double(1.8);
-    addRes += double(1.9);
-    addRes += double(2.007);
-  }
-  auto stop = the_clock::now();
-  auto duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(stop - start) / 5.0;
-  std::cout << "AdditionTime: " << duration.count() << " ms.\n";
-  return addRes;
-}
+  std::cout << "Addition:\n";
+  std::cout << fmt::format(" Total: {:.5f} s\n", estimator.add_timer().total());
+  std::cout << fmt::format(" Best:  {:.5f} s\n", estimator.add_timer().best());
+  std::cout << fmt::format(" Worst: {:.5f} s\n", estimator.add_timer().worst());
+  std::cout << fmt::format(" FLOPS: {:.3e}\n", estimator.add_flops());
 
-double MultiplicationTime() {
-  double mulRes = 1;
-  auto start = the_clock::now();
-  for (int i = 0; i < 100000000; i++) {
-    mulRes *= double(0.501);
-    mulRes *= double(0.2501);
-    mulRes *= double(0.201);
-    mulRes *= double(0.101);
-    mulRes *= double(1.000000001);
-    mulRes *= double(1 / 1.000000002);  // done at compile time
-    mulRes *= double(1 / .101);
-    mulRes *= double(1 / .201);
-    mulRes *= double(1 / .2501);
-    mulRes *= double(1 / .501);
-  }
-  auto stop = the_clock::now();
-  auto duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  std::cout << "MultiplicationTime: " << duration.count() << " ms.\n";
-  return mulRes;
-}
-#if 0
-double DoNothing(double, double) {
+  std::cout << "Multiplication:\n";
+  std::cout << fmt::format(" Total: {:.5f} s\n", estimator.mul_timer().total());
+  std::cout << fmt::format(" Best:  {:.5f} s\n", estimator.mul_timer().best());
+  std::cout << fmt::format(" Worst: {:.5f} s\n", estimator.mul_timer().worst());
+  std::cout << fmt::format(" FLOPS: {:.3e}\n", estimator.mul_flops());
+
+  std::cout << "Division:\n";
+  std::cout << fmt::format(" Total: {:.5f} s\n", estimator.div_timer().total());
+  std::cout << fmt::format(" Best:  {:.5f} s\n", estimator.div_timer().best());
+  std::cout << fmt::format(" Worst: {:.5f} s\n", estimator.div_timer().worst());
+  std::cout << fmt::format(" FLOPS: {:.3e}\n", estimator.div_flops());
+
   return 0;
 }
 
-double DoAddition(double a, double b) {
-  return a + b;
-}
+}  // namespace
+}  // namespace examples
+}  // namespace drake
 
-double DoMultiplication(double a, double b) {
-  return a * b;
-}
-
-double DoSqrt(double a, double b) {
-  return std::sqrt(b);
-}
-#endif
-
-class OperationsTest {
- public:
-  OperationsTest(int num_reps) : num_reps_(num_reps),samples_(GenerateSamples()) {
-  }
-
-  void RunTests() {
-    // Send the results somewhere so that the compile doesn't turn our loops
-    // into no-ops.
-    std::ofstream gonowhere("/dev/null");
-    gonowhere << DoAddition() << std::endl;
-    gonowhere << DoMultiplication() << std::endl;
-    gonowhere << DoDivision() << std::endl;
-    gonowhere << DoSqrt() << std::endl;
-    gonowhere << DoExp() << std::endl;
-    gonowhere << DoCos() << std::endl;
-    gonowhere << DoSin() << std::endl;
-    gonowhere << DoSinCos() << std::endl;
-  }
-
-  double DoAddition() {
-    const int num_samples = samples_.size();
-    double result = 0.0;
-    auto start = the_clock::now();    
-    for (int i = 0; i < num_reps_; i++) {
-      result += samples_[i % num_samples];
-    }
-    auto stop = the_clock::now();
-    auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    std::cout << "Addition: " << duration.count() << " ms.\n";
-
-    return result;
-  }
-
-  double DoMultiplication() {
-    const int num_samples = samples_.size();
-    double result = 1.0;
-    auto start = the_clock::now();    
-    for (int i = 0; i < num_reps_; i++) {
-      result *= samples_[i % num_samples];
-    }
-    auto stop = the_clock::now();
-    auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    std::cout << "Multiplication: " << duration.count() << " ms.\n";
-
-    return result;
-  }
-
-  double DoDivision() {
-    const int num_samples = samples_.size();
-    double result = 1.0;
-    auto start = the_clock::now();    
-    for (int i = 0; i < num_reps_; i++) {
-      result /= samples_[i % num_samples];
-    }
-    auto stop = the_clock::now();
-    auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    std::cout << "Division: " << duration.count() << " ms.\n";
-
-    return result;
-  }
-
-  double DoSqrt() {
-    const int num_samples = samples_.size();
-    double result = 0.0;
-    auto start = the_clock::now();    
-    for (int i = 0; i < num_reps_; i++) {
-      result += sqrt(samples_[i % num_samples]);
-    }
-    auto stop = the_clock::now();
-    auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    std::cout << "Sqrt: " << duration.count() << " ms.\n";
-
-    return result;
-  }
-
-  double DoExp() {
-    const int num_samples = samples_.size();
-    double result = 0.0;
-    auto start = the_clock::now();    
-    for (int i = 0; i < num_reps_; i++) {
-      result += exp(samples_[i % num_samples]);
-    }
-    auto stop = the_clock::now();
-    auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    std::cout << "Exp: " << duration.count() << " ms.\n";
-
-    return result;
-  }
-
-  double DoCos() {
-    const int num_samples = samples_.size();
-    double result = 0.0;
-    auto start = the_clock::now();    
-    for (int i = 0; i < num_reps_; i++) {
-      result += cos(samples_[i % num_samples]);
-    }
-    auto stop = the_clock::now();
-    auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    std::cout << "Cos: " << duration.count() << " ms.\n";
-
-    return result;
-  }
-
-  double DoSin() {
-    const int num_samples = samples_.size();
-    double result = 0.0;
-    auto start = the_clock::now();    
-    for (int i = 0; i < num_reps_; i++) {
-      result += sin(samples_[i % num_samples]);
-    }
-    auto stop = the_clock::now();
-    auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    std::cout << "Sin: " << duration.count() << " ms.\n";
-
-    return result;
-  }
-
-  double DoSinCos() {
-    const int num_samples = samples_.size();
-    double result = 0.0;
-    auto start = the_clock::now();    
-    for (int i = 0; i < num_reps_; i++) {
-      result += sin(samples_[i % num_samples]);
-      result += cos(samples_[i % num_samples]);
-    }
-    auto stop = the_clock::now();
-    auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    std::cout << "SinCos: " << duration.count() << " ms.\n";
-
-    return result;
-  }
-
- private:
-  static constexpr int half_samples_ = 8;
-  static constexpr int num_samples_ = 2 * half_samples_;
-  static std::array<double, num_samples_> GenerateSamples() {
-    unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-    std::default_random_engine generator(seed);
-    std::uniform_real_distribution<double> distribution(0.0, 1.0);
-
-    // This must fit in cache or else it'll affect performance measurements.
-    const int half_samples = half_samples_;
-    const int num_samples = 2 * half_samples;
-    std::array<double, num_samples_> samples;
-    for (int i = 0; i < num_samples; i+=2) {
-      double s = distribution(generator);
-      samples[i] = s;
-      samples[i+1] = 1.00000001 / s;
-    }
-    return samples;
-  }
-  const int num_reps_;  
-  const std::array<double, num_samples_> samples_;
-};
-
-#if 0
-double OperationTest(const std::string& name,
-                     double(*op)(double, double)) {
-  unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-  std::default_random_engine generator(seed);
-  std::uniform_real_distribution<double> distribution(0.0, 1.0);
-
-  const int num_samples = 1024 * distribution(generator) + 1024;
-  auto generate_samples = [&]() {
-    std::vector<double> samples(num_samples);
-    std::generate(
-        samples.begin(), samples.end(),
-        [&generator, &distribution]() { return distribution(generator); });
-    return samples;
-  };
-
-  const std::vector<double> samples1 = generate_samples();
-  const std::vector<double> samples2 = generate_samples();
-
-  //auto mult = [](double a, double b) { return a*b; };
-
-  auto start = the_clock::now();
-  double result = 1.0;
-  for (int i = 0; i < 100000000; i++) {
-    //result += op(samples1[i%num_samples], samples2[i%num_samples]);
-    result = op(result, 1.000000001);
-    #if 0
-    result = op(result, samples1[(i+1)%num_samples]);
-    result = op(result, samples1[(i+2)%num_samples]);
-    result = op(result, samples1[(i+3)%num_samples]);
-    result = op(result, samples1[(i+4)%num_samples]);
-    result = op(result, samples1[(i+5)%num_samples]);
-    result = op(result, samples1[(i+6)%num_samples]);
-    result = op(result, samples1[(i+7)%num_samples]);
-    result = op(result, samples1[(i+8)%num_samples]);
-    result = op(result, samples1[(i+9)%num_samples]);
-#endif
-    //result = std::max(result,
-     //                 op(samples1[i % num_samples], samples2[i % num_samples]));
-  }
-  auto stop = the_clock::now();
-  auto duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  std::cout << name << ": " << duration.count() << " ms.\n";
-
-  return result;
-}
-#endif
-
-int do_main()
-{
-#if 0  
-    double total;
-    Timer tmr;
-
-    unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-    std::default_random_engine generator(seed);
-    std::uniform_real_distribution<double> distribution(0.0, 1.0);
-
-    const int num_samples = 1024;
-    std::vector<double> samples(num_samples);
-    std::generate(
-        samples.begin(), samples.end(),
-        [&generator, &distribution]() { return distribution(generator); });
-
-
-#define randf() ((double) rand()) / ((double) (RAND_MAX))
-#define OP_TEST(name, expr)               \
-    total = 0.0;                          \
-    srand(42);                            \
-    tmr.reset();                          \
-    for (int i = 0; i < 100000000; i++) { \
-        double r1 = samples[i%num_samples]; \
-        double r2 = samples[(i+100)%num_samples]; \
-        (void) r1;                        \
-        (void) r2;                        \
-        total += expr;                    \
-    }                                     \
-    double name = tmr.elapsed();          \
-    printf(#name);                        \
-    printf(" %.7f  %.7f %.7f\n", total, name, name - baseline);
-
-#endif
-
-    //std::cout << AdditionTime() << std::endl;
-    (void)AdditionTime;
-    std::cout << MultiplicationTime() << std::endl;
-
-    OperationsTest(1e9).RunTests();
-#if 0
-
-  (void) DoNothing;
-  (void) DoAddition;
-  (void)DoSqrt;
-  (void)OperationTest;
-  (void)DoMultiplication;
-    //std::cout << OperationTest("NoOp",
-    //                           [](double a, double b) { return 0; }) << std::endl;
-    std::cout << OperationTest("DoNothing", DoNothing) << std::endl;
-    (void) DoAddition;
-    std::cout << OperationTest("Summation", DoAddition) << std::endl;
-    std::cout << OperationTest("Multiplication", DoMultiplication) << std::endl;
-    std::cout << OperationTest("Sqrt", DoSqrt) << std::endl;
-    #if 0
-    std::cout << OperationTest("Summation",
-                               [](double a, double b) { return a + b; }) << std::endl;
-    std::cout << OperationTest("Subtraction",
-                               [](double a, double b) { return a - b; }) << std::endl;
-    std::cout << OperationTest("Multiplication",
-                               [](double a, double b) { return a * b; }) << std::endl;
-    std::cout << OperationTest("Division",
-                               [](double a, double b) { return a / b; }) << std::endl;
-                               #endif
-#endif
-
-    // time the baseline code:
-    //   for loop with no extra math op
-    //OP_TEST(baseline, 1.0)
-
-    // time various floating point operations.
-    //   subtracts off the baseline time to give
-    //   a better approximation of the cost
-    //   for just the specified operation
-    //OP_TEST(plus, r1 + r2)
-    //OP_TEST(minus, r1 - r2)
-    //OP_TEST(mult, r1 * r2)    
-    //OP_TEST(div, r1 / r2)
-    //OP_TEST(sqrt, sqrt(r1))
-    //OP_TEST(sin, sin(r1))
-    //OP_TEST(cos, cos(r1))
-    //OP_TEST(tan, tan(r1))
-    //OP_TEST(atan, atan(r1))
-    //OP_TEST(exp, exp(r1))
-
-    return 0; 
+int main(int argc, char* argv[]) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  return drake::examples::do_main();
 }
 
 #if 0
@@ -628,11 +290,3 @@ int do_main() {
 }
 #endif
 
-}  // namespace
-}  // namespace examples
-}  // namespace drake
-
-int main(int argc, char* argv[]) {
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
-  return drake::examples::do_main();
-}

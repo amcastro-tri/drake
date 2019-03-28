@@ -15,6 +15,13 @@ load("//tools/lint:lint.bzl", "add_lint_tests")
 
 package(default_visibility = ["//visibility:private"])
 
+drake_cc_library(
+    name = "flops_estimator",
+    hdrs = ["flops_estimator.h"],
+#    visibility = ["//visibility:public"],
+    deps = [],
+)
+
 drake_cc_binary(
     name = "performance_measures",
     srcs = ["performance_measures.cc"],
@@ -24,10 +31,12 @@ drake_cc_binary(
     #    "-simulation_sec=1.0",
     #    "-realtime_factor=0.0",
     #],
-    deps = [    
+    deps = [
+        ":flops_estimator",
         "//common:find_resource",
-        "//multibody/parsing:parser",
-        "//multibody/plant",
+        #"//multibody/parsing:parser",
+        #"//multibody/plant",
+        "@fmt",
         "@gflags",
     ],
 )

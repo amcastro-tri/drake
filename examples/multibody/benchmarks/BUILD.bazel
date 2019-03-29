@@ -41,6 +41,26 @@ drake_cc_binary(
     ],
 )
 
+drake_cc_binary(
+    name = "multibody_performance_measures",
+    srcs = ["multibody_performance_measures.cc"],
+    #add_test_rule = 1,
+    #data = ["//manipulation/models/iiwa_description:models"],
+    #test_rule_args = [
+    #    "-simulation_sec=1.0",
+    #    "-realtime_factor=0.0",
+    #],
+    deps = [
+        ":flops_estimator",
+        "//common:find_resource",
+        #"//multibody/parsing:parser",
+        "//math:geometric_transform",
+        "//multibody/plant",
+        "@fmt",
+        "@gflags",
+    ],
+)
+
 install_data()
 
 add_lint_tests()

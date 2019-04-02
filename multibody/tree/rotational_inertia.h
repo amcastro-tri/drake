@@ -486,21 +486,33 @@ class RotationalInertia {
   ///         calculated (eigenvalue solver) or if scalar type T cannot be
   ///         converted to a double.
   boolean<T> CouldBePhysicallyValid() const {
+    return CouldBePhysicallyValid(*this);
+  }
+
+  static boolean<T> CouldBePhysicallyValid(
+      const RotationalInertia<T>& I_SP_E,
+      std::vector<std::string>* failures = nullptr) {
     // To check the validity of rotational inertia use an epsilon value that is
     // a number related to machine precision multiplied by the largest possible
     // element that can appear in a valid `this` rotational inertia.  Note: The
     // largest product of inertia is at most half the largest moment of inertia.
     const double precision = 10 * std::numeric_limits<double>::epsilon();
-    const T max_possible_inertia_moment  = CalcMaximumPossibleMomentOfInertia();
+    const T max_possible_inertia_moment =
+        I_SP_E.CalcMaximumPossibleMomentOfInertia();
     const T epsilon = precision * max_possible_inertia_moment;
 
     // Calculate principal moments of inertia p and then test these principal
     // moments to be mostly non-negative and also satisfy triangle inequality.
-    const Vector3<double> p = CalcPrincipalMomentsOfInertia();
+    const Vector3<double> p = I_SP_E.CalcPrincipalMomentsOfInertia();
 
-    return !IsNaN() &&
-        AreMomentsOfInertiaNearPositiveAndSatisfyTriangleInequality(
-            p(0), p(1), p(2), epsilon);
+    const auto is_nan = I_SP_E.IsNaN();
+    if (failures && is_nan)
+      failures->push_back("RotationalInertia contains NaN entries.");
+    const auto moments_are_positive_and_satisfy_triangle_inequality =
+        I_SP_E.AreMomentsOfInertiaNearPositiveAndSatisfyTriangleInequality(
+            p(0), p(1), p(2), epsilon, failures);
+
+    return !is_nan && moments_are_positive_and_satisfy_triangle_inequality;
   }
 
   /// Re-expresses `this` rotational inertia `I_BP_E` to `I_BP_A`.
@@ -868,14 +880,27 @@ class RotationalInertia {
   //       rotational inertia (e.g., Ixx + Iyy + Izz), one can prove:
   //       0 <= Imin <= tr/3,   tr/3 <= Imed <= tr/2,   tr/3 <= Imax <= tr/2.
   //       If Imin == 0, then Imed == Imax == tr / 2.
-  static boolean<T>
-  AreMomentsOfInertiaNearPositiveAndSatisfyTriangleInequality(
-      const T& Ixx, const T& Iyy, const T& Izz, const T& epsilon) {
-    const auto are_moments_near_positive = AreMomentsOfInertiaNearPositive(
-        Ixx, Iyy, Izz, epsilon);
-    const auto is_triangle_inequality_satisified = Ixx + Iyy + epsilon >= Izz &&
-                                                   Ixx + Iyy + epsilon >= Iyy &&
-                                                   Iyy + Izz + epsilon >= Ixx;
+  static boolean<T> AreMomentsOfInertiaNearPositiveAndSatisfyTriangleInequality(
+      const T& Ixx, const T& Iyy, const T& Izz, const T& epsilon,
+      std::vector<std::string>* failures) {
+    const auto are_moments_near_positive =
+        AreMomentsOfInertiaNearPositive(Ixx, Iyy, Izz, epsilon);
+    const auto satisfies_xx_triangle_inequality = Iyy + Izz + epsilon >= Ixx;
+    const auto satisfies_yy_triangle_inequality = Ixx + Izz + epsilon >= Iyy;
+    const auto satisfies_zz_triangle_inequality = Ixx + Iyy + epsilon >= Izz;
+    if (failures) {
+      if (!are_moments_near_positive)
+        failures->push_back("Not all principal moments are positive.");
+      if (!satisfies_xx_triangle_inequality)
+        failures->push_back("Iyy + Izz >= Ixx is not satisfied.");
+      if (!satisfies_yy_triangle_inequality)
+        failures->push_back("Ixx + Iyy >= Iyy is not satisfied.");
+      if (!satisfies_zz_triangle_inequality)
+        failures->push_back("Ixx + Iyy >= Izz is not satisfied.");
+    }
+    const auto is_triangle_inequality_satisified =
+        satisfies_xx_triangle_inequality && satisfies_yy_triangle_inequality &&
+        satisfies_zz_triangle_inequality;
     return are_moments_near_positive && is_triangle_inequality_satisified;
   }
 
@@ -907,9 +932,16 @@ class RotationalInertia {
   template <typename T1 = T>
   typename std::enable_if_t<scalar_predicate<T1>::is_bool>
   ThrowIfNotPhysicallyValid() {
-    if (!CouldBePhysicallyValid()) {
-      throw std::logic_error("Error: Rotational inertia did not pass test: "
-                             "CouldBePhysicallyValid().");
+    std::vector<std::string> failures;
+    const auto valid = CouldBePhysicallyValid(*this, &failures);
+    if (!valid) {
+      std::stringstream ss;
+      ss << "Error: Rotational inertia did not pass test: "
+            "CouldBePhysicallyValid().\n";
+      for (const auto& s : failures) {
+        ss << " - " << s << std::endl;
+      }
+      throw std::logic_error(ss.str());
     }
   }
 

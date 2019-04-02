@@ -1,6 +1,7 @@
 #include "drake/multibody/tree/rotational_inertia.h"
 
 #include <iomanip>
+#include <regex>
 #include <sstream>
 #include <string>
 
@@ -392,6 +393,47 @@ GTEST_TEST(RotationalInertia, CouldBePhysicallyValidD) {
 GTEST_TEST(RotationalInertia, CouldBePhysicallyValidE) {
   EXPECT_THROW_IF_ARMED(RotationalInertia<double>
                        bad_inertia(2, 2, 2, -0.8, 0, -0.8), std::logic_error);
+}
+
+// Tests we can verify invariants in Release mode and collect useful statistics.
+GTEST_TEST(RotationalInertia, StaticCouldBePhysicallyValid) {
+  std::vector<std::string> failures;
+  auto matcher = [](const std::string str, const std::string re) {
+    return std::regex_match(str, std::regex(re));
+  };
+
+  auto verify_failures = [](const std::vector<std::string> failures,
+                            const std::string re) {
+    std::stringstream ss;
+    for (const auto& s : failures) {
+      ss << s;
+    }
+    std::cout << ss.str() << std::endl;
+    std::cout << re << std::endl;
+    return std::regex_match(ss.str(), std::regex(re));
+  };
+
+  (void) matcher;
+  // We can only perform these tests when Drake assert is not armed so that we
+  // can create invalid rotational inertia objets.
+  if (!kDrakeAssertIsArmed) {
+    RotationalInertia<double> bad_inertia(10, 10, 30);
+    RotationalInertia<double>::CouldBePhysicallyValid(bad_inertia, &failures);
+    for (const auto& s : failures) {
+      std::cout << s << std::endl;
+      std::cout << std::flush;
+    }
+    EXPECT_TRUE(verify_failures(failures, "Ixx + Iyy >= Izz"));
+
+    #if 0
+DRAKE_EXPECT_THROWS_MESSAGE(
+      plant->AddRigidBody("AnotherBody", default_model_instance(),
+                          SpatialInertia<double>()),
+      std::logic_error,
+      "Post-finalize calls to '.*' are not allowed; "
+      "calls to this method must happen before Finalize\\(\\).");
+      #endif
+  }
 }
 
 // Test the method RotationalInertia::CalcPrincipalMomentsOfInertia() that

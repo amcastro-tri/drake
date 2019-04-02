@@ -33,8 +33,7 @@ namespace {
 const char* kWorldName = "world";
 
 SpatialInertia<double> ExtractSpatialInertiaAboutBoExpressedInB(
-    XMLElement* node) {
-
+    const std::string& body_name, XMLElement* node) {
   Isometry3d X_BBi = Isometry3d::Identity();
 
   XMLElement* origin = node->FirstChildElement("origin");
@@ -46,6 +45,10 @@ SpatialInertia<double> ExtractSpatialInertiaAboutBoExpressedInB(
   XMLElement* mass = node->FirstChildElement("mass");
   if (mass) {
     ParseScalarAttribute(mass, "value", &body_mass);
+  }
+  std::vector<std::string> failures;
+  if (body_mass < 0) {
+    failures.push_back("Mass is negative.");
   }
 
   double ixx = 0;
@@ -66,6 +69,19 @@ SpatialInertia<double> ExtractSpatialInertiaAboutBoExpressedInB(
   }
 
   const RotationalInertia<double> I_BBcm_Bi(ixx, iyy, izz, ixy, ixz, iyz);
+
+  // The tests in RotationalInertia become a sufficient condition when
+  // performed on a rotational inertia computed about a body's center of mass.
+  // We perform this test in the Bi frame so that we can report errors in the
+  // same frame used in the original URDF.
+  RotationalInertia<double>::CouldBePhysicallyValid(I_BBcm_Bi, &failures);
+  if (failures.size() != 0) {
+    std::stringstream ss;
+    ss << "Inertia properties are not physically valid.\n";
+    ss << "For link '" << body_name << "'.\n";
+    for (const auto& s : failures) ss << " - " << s << std::endl;
+    throw std::runtime_error(ss.str());
+  }
 
   // B and Bi are not necessarily aligned.
   const math::RotationMatrix<double> R_BBi(X_BBi.linear());
@@ -110,7 +126,8 @@ void ParseBody(const multibody::PackageMap& package_map,
     M_BBo_B = SpatialInertia<double>(
         0, Vector3d::Zero(), UnitInertia<double>(0, 0, 0));
   } else {
-    M_BBo_B = ExtractSpatialInertiaAboutBoExpressedInB(inertial_node);
+    M_BBo_B =
+        ExtractSpatialInertiaAboutBoExpressedInB(body_name, inertial_node);
   }
 
   // Add a rigid body to model each link.

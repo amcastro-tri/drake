@@ -48,18 +48,27 @@ int do_main() {
 
   std::cout << "Addition:\n";
   std::cout << fmt::format(" Total: {:.5f} s\n", estimator.add_timer().total());
+  std::cout << fmt::format(" Mean:  {:.5f} s\n", estimator.add_timer().mean());
+  std::cout << fmt::format(" StDv.: {:.5f} %\n",
+      estimator.add_timer().std_dev() / estimator.add_timer().mean() * 100);
   std::cout << fmt::format(" Best:  {:.5f} s\n", estimator.add_timer().best());
   std::cout << fmt::format(" Worst: {:.5f} s\n", estimator.add_timer().worst());
   std::cout << fmt::format(" FLOPS: {:.3e}\n", estimator.add_flops());
 
   std::cout << "Multiplication:\n";
   std::cout << fmt::format(" Total: {:.5f} s\n", estimator.mul_timer().total());
+  std::cout << fmt::format(" Mean:  {:.5f} s\n", estimator.mul_timer().mean());
+  std::cout << fmt::format(" StDv.: {:.5f} %\n",
+      estimator.mul_timer().std_dev() / estimator.mul_timer().mean() * 100);
   std::cout << fmt::format(" Best:  {:.5f} s\n", estimator.mul_timer().best());
   std::cout << fmt::format(" Worst: {:.5f} s\n", estimator.mul_timer().worst());
   std::cout << fmt::format(" FLOPS: {:.3e}\n", estimator.mul_flops());
 
   std::cout << "Division:\n";
   std::cout << fmt::format(" Total: {:.5f} s\n", estimator.div_timer().total());
+  std::cout << fmt::format(" Mean:  {:.5f} s\n", estimator.div_timer().mean());
+  std::cout << fmt::format(" StDv.: {:.5f} %\n",
+      estimator.div_timer().std_dev() / estimator.div_timer().mean() * 100);
   std::cout << fmt::format(" Best:  {:.5f} s\n", estimator.div_timer().best());
   std::cout << fmt::format(" Worst: {:.5f} s\n", estimator.div_timer().worst());
   std::cout << fmt::format(" FLOPS: {:.3e}\n", estimator.div_flops());

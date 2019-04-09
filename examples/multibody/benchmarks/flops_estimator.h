@@ -25,10 +25,21 @@ class BenchTimer {
     best_ = std::min(best_, duration);
     worst_ = std::max(worst_, duration);
     total_ += duration;
+    const double duration_secs = to_seconds(duration);
+    total_squared_ += duration_secs * duration_secs;
+    ++num_tries_;
   }
+
+  int num_tries() const { return num_tries_; }
 
   // Total time in seconds.
   double total() const { return to_seconds(total_); }
+
+  double mean() const { return total() / num_tries(); }
+
+  double std_dev() const {
+    return std::sqrt(total_squared_ / num_tries() - mean() * mean());
+  }
 
   // Best time in seconds.
   double best() const { return to_seconds(best_); }
@@ -54,6 +65,8 @@ class BenchTimer {
   the_clock::duration best_{std::chrono::hours(114)};  // the universe's age.
   the_clock::duration worst_{0};
   the_clock::duration total_{0};
+  int num_tries_{0};
+  double total_squared_{0};
 };
 
 class FlopsEstimator {

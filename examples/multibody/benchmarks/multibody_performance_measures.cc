@@ -12,9 +12,11 @@
 
 #include "drake/examples/multibody/benchmarks/flops_estimator.h"
 
+#include "drake/common/autodiff.h"
 #include "drake/common/drake_optional.h"
 #include "drake/common/nice_type_name.h"
 #include "drake/common/text_logging.h"
+#include "drake/math/autodiff_gradient.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/tree/revolute_joint.h"
@@ -199,9 +201,17 @@ class MultibodyBench {
   using Benchmark = std::function<void(const MultibodyPlant<T>&, Context<T>*)>;
 
   template <typename T>
+  static std::unique_ptr<Context<T>> CreateContext(
+      const MultibodyPlant<T>& plant) {
+    throw std::runtime_error(
+        "No implementation available for scalar of type '" +
+        drake::NiceTypeName::Get<T>() + "'.");
+  }
+
+  template <typename T>
   void TimeBenchmark(const std::string& name, const MultibodyPlant<T>& plant,
                      Benchmark<T> benchmark, int num_reps, int num_tries = 5) const {
-    auto context = plant.CreateDefaultContext();
+    auto context = CreateContext(plant);
     BenchTimer timer;
     for (int try_number = 0; try_number < num_tries; ++try_number) {
       timer.start();
@@ -223,23 +233,25 @@ class MultibodyBench {
   double flops_;
 };
 
-template <typename T>
-using Benchmark = std::function<void(const MultibodyPlant<T>&, Context<T>*)>;
+// Specialization for T = double.
+template <>
+std::unique_ptr<Context<double>> MultibodyBench::CreateContext<double>(
+    const MultibodyPlant<double>& plant) {
+  return plant.CreateDefaultContext();
+}
 
-template <typename T>
-void TimeBenchmark(
-    const MultibodyPlant<T>& plant,
-    Benchmark<T> benchmark,
-    int num_reps, int num_tries = 5) {
+// Specialization for T = AutoDiffXd.
+// Set the state x so that we take gradients with respect to it.
+template <>
+std::unique_ptr<Context<AutoDiffXd>> MultibodyBench::CreateContext<AutoDiffXd>(
+    const MultibodyPlant<AutoDiffXd>& plant) {
   auto context = plant.CreateDefaultContext();
-  BenchTimer timer;
-  for (int try_number = 0; try_number < num_tries; ++try_number) {
-    timer.start();
-    for (int rep = 0; rep < num_reps; ++rep) {
-      benchmark(plant, context.get());
-    }
-    timer.stop();
-  }
+  const VectorX<double> x =
+      math::autoDiffToValueMatrix(plant.GetPositionsAndVelocities(*context));
+  VectorX<AutoDiffXd> x_ad(plant.num_multibody_states());
+  math::initializeAutoDiff(x, x_ad);
+  plant.SetPositionsAndVelocities(context.get(), x_ad);
+  return context;
 }
 
 template <typename T>

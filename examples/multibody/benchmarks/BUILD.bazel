@@ -55,6 +55,7 @@ drake_cc_binary(
         "//common:find_resource",
         #"//multibody/parsing:parser",
         "//math:geometric_transform",
+        "//math:gradient",
         "//multibody/plant",
         "@fmt",
         "@gflags",

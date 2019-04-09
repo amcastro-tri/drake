@@ -1,9 +1,11 @@
 #include <algorithm>
 #include <iostream>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <chrono>
 #include <random>
+#include <type_traits>
 
 #include <fmt/format.h>
 #include <gflags/gflags.h>
@@ -11,6 +13,8 @@
 #include "drake/examples/multibody/benchmarks/flops_estimator.h"
 
 #include "drake/common/drake_optional.h"
+#include "drake/common/nice_type_name.h"
+#include "drake/common/text_logging.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/tree/revolute_joint.h"
@@ -53,6 +57,7 @@ using drake::multibody::SpatialAcceleration;
 using drake::multibody::SpatialForce;
 using drake::multibody::SpatialVelocity;
 using Eigen::Vector3d;
+using systems::Context;
 
 double EstimateFLOPS() {
   // We'll perform a FLOPS estimation to later on normalize our performance
@@ -63,7 +68,7 @@ double EstimateFLOPS() {
   // of a second. We perform several tries with a large number of operations
   // each in order to collects statistics.
   const int num_tries = 15;
-  const int num_ops = 5e7;
+  const int num_ops = 1e7;
   estimator.RunTests(num_tries, num_ops);
 
   // Some stats printed out.
@@ -120,6 +125,7 @@ std::unique_ptr<MultibodyPlant<double>> MakeChainWithRevoluteJoints(int num_link
       SpatialInertia<double>::MakeFromCentralInertia(link_mass, p_BoBcm, I_Bcm);
 
   auto plant = std::make_unique<MultibodyPlant<double>>();
+  plant->set_name("ChainWithRevoluteJoints_" + std::to_string(num_links));
 
   // RigidTransform's implicit conversion confuses the compiler and we cannot
   // pass {} or nullopt directly. See #9865.
@@ -155,13 +161,157 @@ std::unique_ptr<MultibodyPlant<double>> MakeChainWithRevoluteJoints(int num_link
   return plant;
 }
 
+// Explicitly declaring benchmark_method helps the compiler figure out
+// template parameters.
+#define TIME_BENCHMARK(plant, benchmark, reps)    \
+  {                                               \
+    Benchmark<T> benchmark_method = benchmark<T>; \
+    TimeBenchmark(#benchmark, plant, benchmark_method, reps); \
+  }
+
+class MultibodyBench {
+ public:
+  MultibodyBench() { flops_ = EstimateFLOPS(); }
+
+  template <typename T>
+  static void CalcPositionKinematics(const MultibodyPlant<T>& plant,
+                                     Context<T>* context) {
+    plant.GetMutablePositionsAndVelocities(context);
+    plant.EvalPositionKinematics(*context);
+  }
+
+  template <typename T>
+  void RunBenchmarks(const MultibodyPlant<T>& plant) const {
+    std::cout << std::endl;
+    std::cout << fmt::format(" {}<{}>: nq = {}. nv = {}\n", plant.get_name(),
+                             drake::NiceTypeName::Get<T>(),
+                             plant.num_positions(), plant.num_velocities());
+
+    constexpr int num_reps = std::is_same<T, double>::value ? 5000 : 50;
+
+    //Benchmark<T> benchmark = CalcPositionKinematics<T>;
+    //TimeBenchmark(plant, benchmark, 10000);
+    TIME_BENCHMARK(plant, CalcPositionKinematics, num_reps);
+  }
+
+ private:
+  template <typename T>
+  using Benchmark = std::function<void(const MultibodyPlant<T>&, Context<T>*)>;
+
+  template <typename T>
+  void TimeBenchmark(const std::string& name, const MultibodyPlant<T>& plant,
+                     Benchmark<T> benchmark, int num_reps, int num_tries = 5) const {
+    auto context = plant.CreateDefaultContext();
+    BenchTimer timer;
+    for (int try_number = 0; try_number < num_tries; ++try_number) {
+      timer.start();
+      for (int rep = 0; rep < num_reps; ++rep) {
+        benchmark(plant, context.get());
+      }
+      timer.stop();
+    }
+
+    const double benchmark_time = timer.best()  / num_reps;
+    const double benchmark_flops = benchmark_time * flops_;
+    const double benchmark_flops_per_dof =
+        benchmark_flops / plant.num_velocities();
+
+    std::cout << fmt::format("   {}: {:.2f} #/s. {:.3f} FLOPS/dof\n", name,
+                             1.0 / benchmark_time, benchmark_flops_per_dof);
+  }
+
+  double flops_;
+};
+
+template <typename T>
+using Benchmark = std::function<void(const MultibodyPlant<T>&, Context<T>*)>;
+
+template <typename T>
+void TimeBenchmark(
+    const MultibodyPlant<T>& plant,
+    Benchmark<T> benchmark,
+    int num_reps, int num_tries = 5) {
+  auto context = plant.CreateDefaultContext();
+  BenchTimer timer;
+  for (int try_number = 0; try_number < num_tries; ++try_number) {
+    timer.start();
+    for (int rep = 0; rep < num_reps; ++rep) {
+      benchmark(plant, context.get());
+    }
+    timer.stop();
+  }
+}
+
+template <typename T>
+std::unique_ptr<MultibodyPlant<T>> MakePlantOnT(
+    std::unique_ptr<MultibodyPlant<double>> plant_on_double) {
+  throw std::runtime_error("No implementation available for this type.");
+}
+
+// Specialization for double.
+template <>
+std::unique_ptr<MultibodyPlant<double>> MakePlantOnT<double>(
+    std::unique_ptr<MultibodyPlant<double>> plant_on_double) {
+  return plant_on_double;
+}
+
+// Specialization for AutoDiffXd.
+template <>
+std::unique_ptr<MultibodyPlant<AutoDiffXd>> MakePlantOnT<AutoDiffXd>(
+    std::unique_ptr<MultibodyPlant<double>> plant_on_double) {
+  return systems::System<double>::ToAutoDiffXd(*plant_on_double);
+}
+
+// Specialization for symbolic::Expression.
+template <>
+std::unique_ptr<MultibodyPlant<symbolic::Expression>>
+MakePlantOnT<symbolic::Expression>(
+    std::unique_ptr<MultibodyPlant<double>> plant_on_double) {
+  return systems::System<double>::ToSymbolic(*plant_on_double);
+}
+
+#if 0
+std::unique_ptr<MultibodyPlant<T>> plant_on_T;
+if (std::is_same<T, double>::value) {
+  plant_on_T = std::move(plant_on_double);
+  } else {
+    plant_on_T = dynamic_pointer_cast_or_throw<MultibodyPlant<T>>(
+        plant_on_double->get_system_scalar_converter().Convert<T, double>(
+            *plant_on_double));
+  }
+  return plant_on_T;
+}
+#endif
+
+template <typename T>
+void BenchTestAllModels(const MultibodyBench& bench) {
+  // ChainWithRevoluteJoints.
+  for (int num_links = 8; num_links <= 512; num_links *= 4) {
+    auto plant = MakeChainWithRevoluteJoints(num_links);
+    auto plant_on_T = MakePlantOnT<T>(std::move(plant));
+    bench.RunBenchmarks(*plant_on_T);
+  }
+}
+
 int do_main() {
-  const double flops = EstimateFLOPS();
+  // const double flops = EstimateFLOPS();
+  
+  MultibodyBench bench;
 
-  auto plant = MakeChainWithRevoluteJoints(8);
-  (void) plant;
+  BenchTestAllModels<double>(bench);
+  BenchTestAllModels<AutoDiffXd>(bench);
+  BenchTestAllModels<symbolic::Expression>(bench);
 
-  (void) flops;
+#if 0
+  for (int num_links = 8; num_links <= 512; num_links *= 4) {
+    auto plant = MakeChainWithRevoluteJoints(num_links);
+    bench.RunBenchmarks(*plant);
+    auto plant_ad = systems::System<double>::ToAutoDiffXd(*plant);
+    bench.RunBenchmarks(*plant_ad);
+    auto plant_sym = systems::System<double>::ToSymbolic(*plant);
+    bench.RunBenchmarks(*plant_sym);
+  }
+#endif
 
   return 0;
 }

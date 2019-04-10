@@ -30,6 +30,13 @@ class BenchTimer {
     ++num_tries_;
   }
 
+  /// Elapsed time since the last call to start(), in seconds.
+  double elapsed() const {
+    const the_clock::time_point end = the_clock::now();
+    the_clock::duration duration = end - start_;
+    return to_seconds(duration);
+  }
+
   int num_tries() const { return num_tries_; }
 
   // Total time in seconds.

@@ -168,18 +168,19 @@ std::unique_ptr<MultibodyPlant<double>> MakeChainWithRevoluteJoints(int num_link
 
 // Explicitly declaring benchmark_method helps the compiler figure out
 // template parameters.
-#define TIME_BENCHMARK(plant, benchmark, reps, tries)    \
+#define TIME_BENCHMARK(plant, benchmark, params)    \
   {                                               \
     Benchmark<T> benchmark_method = benchmark<T>; \
-    TimeBenchmark(#benchmark, plant, benchmark_method, reps, tries); \
+    TimeBenchmark(#benchmark, plant, benchmark_method, params); \
   }
 
 struct BenchmarkParams {
-  int num_tries{5};
+  int num_tries{5};  
   int num_reps{5000};
   // The benchmarks will not be run if the model's dof's is larger than
   // max_dofs. Useful to dissable expensive tests on specific scalar types.
   int max_dofs{64};
+  double max_time_secs{0.2};
 };
 
 class MultibodyBench {
@@ -199,14 +200,10 @@ class MultibodyBench {
     //  return;
     //}
 
-    TIME_BENCHMARK(plant, CalcPositionKinematics, params.num_reps,
-                   params.num_tries);
-    TIME_BENCHMARK(plant, CalcVelocityKinematics, params.num_reps,
-                   params.num_tries);
-    TIME_BENCHMARK(plant, CalcInverseDynamics, params.num_reps,
-                   params.num_tries);               
-    TIME_BENCHMARK(plant, CalcMassMatrixViaInverseDynamics, params.num_reps,
-                   params.num_tries);                                  
+    TIME_BENCHMARK(plant, CalcPositionKinematics, params);
+    TIME_BENCHMARK(plant, CalcVelocityKinematics, params);
+    TIME_BENCHMARK(plant, CalcInverseDynamics, params);
+    TIME_BENCHMARK(plant, CalcMassMatrixViaInverseDynamics, params);   
   }
 
  private:
@@ -257,16 +254,28 @@ class MultibodyBench {
 
   template <typename T>
   void TimeBenchmark(const std::string& name, const MultibodyPlant<T>& plant,
-                     Benchmark<T> benchmark, int num_reps, int num_tries = 5) const {
+                     Benchmark<T> benchmark, const BenchmarkParams& params) const {
     auto context = CreateContext(plant);
     context->EnableCaching();
     BenchTimer timer;
-    for (int try_number = 0; try_number < num_tries; ++try_number) {
+    int num_reps = params.num_reps;
+    for (int try_number = 1; try_number <= params.num_tries; ++try_number) {
       timer.start();
-      for (int rep = 0; rep < num_reps; ++rep) {
+      int rep;
+      BenchTimer reps_timer;
+      reps_timer.start();
+      for (rep = 1; rep <= num_reps; ++rep) {
         benchmark(plant, context.get());
+
+        if (try_number == 1) {
+          if (reps_timer.elapsed() > params.max_time_secs) {
+            // overwrite num_reps so that the next tries use the same number.
+            num_reps = rep;
+            break;
+          }
+        }
       }
-      timer.stop();
+      timer.stop();      
     }
 
     const double benchmark_time = timer.best()  / num_reps;
@@ -275,8 +284,8 @@ class MultibodyBench {
         benchmark_flops / plant.num_velocities();
 
     std::cout << fmt::format(
-        "   {}: {:.2e} s. {:.2e} s/rep. {:.2f} reps/s. {:.3f} FLOPS/dof\n",
-        name, timer.total(), benchmark_time, 1.0 / benchmark_time,
+        "   {}: {} reps. {:.2e} s. {:.2e} s/rep. {:.2f} reps/s. {:.3f} FLOPS/dof\n",
+        name, num_reps, timer.total(), benchmark_time, 1.0 / benchmark_time,
         benchmark_flops_per_dof);
   }
 
@@ -363,9 +372,9 @@ int do_main() {
   
   MultibodyBench bench;
 
-  BenchTestAllModels<double>(bench, BenchmarkParams{5, 500, 1024});
-  BenchTestAllModels<AutoDiffXd>(bench, BenchmarkParams{5, 50, 256});
-  BenchTestAllModels<symbolic::Expression>(bench, BenchmarkParams{5, 5, 256});
+  BenchTestAllModels<double>(bench, BenchmarkParams{5, 500, 1024, 0.1});
+  BenchTestAllModels<AutoDiffXd>(bench, BenchmarkParams{5, 50, 256, 1.0});
+  BenchTestAllModels<symbolic::Expression>(bench, BenchmarkParams{5, 5, 256, 0.1});
 
   return 0;
 }

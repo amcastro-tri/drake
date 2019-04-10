@@ -165,11 +165,19 @@ std::unique_ptr<MultibodyPlant<double>> MakeChainWithRevoluteJoints(int num_link
 
 // Explicitly declaring benchmark_method helps the compiler figure out
 // template parameters.
-#define TIME_BENCHMARK(plant, benchmark, reps)    \
+#define TIME_BENCHMARK(plant, benchmark, reps, tries)    \
   {                                               \
     Benchmark<T> benchmark_method = benchmark<T>; \
-    TimeBenchmark(#benchmark, plant, benchmark_method, reps); \
+    TimeBenchmark(#benchmark, plant, benchmark_method, reps, tries); \
   }
+
+struct BenchmarkParams {
+  int num_tries{5};
+  int num_reps{5000};
+  // The benchmarks will not be run if the model's dof's is larger than
+  // max_dofs. Useful to dissable expensive tests on specific scalar types.
+  int max_dofs{64};
+};
 
 class MultibodyBench {
  public:
@@ -183,17 +191,22 @@ class MultibodyBench {
   }
 
   template <typename T>
-  void RunBenchmarks(const MultibodyPlant<T>& plant) const {
+  void RunBenchmarks(const MultibodyPlant<T>& plant,
+                     const BenchmarkParams& params) const {
     std::cout << std::endl;
     std::cout << fmt::format(" {}<{}>: nq = {}. nv = {}\n", plant.get_name(),
                              drake::NiceTypeName::Get<T>(),
                              plant.num_positions(), plant.num_velocities());
-
-    constexpr int num_reps = std::is_same<T, double>::value ? 5000 : 50;
+    if (plant.num_multibody_states() > params.max_dofs) {
+      std::cout << fmt::format(
+          " Benchmark is too large and won't get executed\n");
+      return;
+    }
 
     //Benchmark<T> benchmark = CalcPositionKinematics<T>;
     //TimeBenchmark(plant, benchmark, 10000);
-    TIME_BENCHMARK(plant, CalcPositionKinematics, num_reps);
+    TIME_BENCHMARK(plant, CalcPositionKinematics, params.num_reps,
+                   params.num_tries);
   }
 
  private:
@@ -226,8 +239,10 @@ class MultibodyBench {
     const double benchmark_flops_per_dof =
         benchmark_flops / plant.num_velocities();
 
-    std::cout << fmt::format("   {}: {:.2f} #/s. {:.3f} FLOPS/dof\n", name,
-                             1.0 / benchmark_time, benchmark_flops_per_dof);
+    std::cout << fmt::format(
+        "   {}: {:.2e} s. {:.2e} s/rep. {:.2f} reps/s. {:.3f} FLOPS/dof\n",
+        name, timer.total(), benchmark_time, 1.0 / benchmark_time,
+        benchmark_flops_per_dof);
   }
 
   double flops_;
@@ -251,6 +266,21 @@ std::unique_ptr<Context<AutoDiffXd>> MultibodyBench::CreateContext<AutoDiffXd>(
   VectorX<AutoDiffXd> x_ad(plant.num_multibody_states());
   math::initializeAutoDiff(x, x_ad);
   plant.SetPositionsAndVelocities(context.get(), x_ad);
+  return context;
+}
+
+// Specialization for T = symbolic::Expression.
+// Set the state x so that each entry is an independent variable.
+template <>
+std::unique_ptr<Context<symbolic::Expression>>
+MultibodyBench::CreateContext<symbolic::Expression>(
+    const MultibodyPlant<symbolic::Expression>& plant) {
+  auto context = plant.CreateDefaultContext();
+  VectorX<symbolic::Expression> x_sym(plant.num_multibody_states());
+  for (int i = 0; i < plant.num_multibody_states(); ++i) {
+    x_sym[i] = symbolic::Variable("x_" + std::to_string(i));
+  }
+  plant.SetPositionsAndVelocities(context.get(), x_sym);
   return context;
 }
 
@@ -296,12 +326,13 @@ if (std::is_same<T, double>::value) {
 #endif
 
 template <typename T>
-void BenchTestAllModels(const MultibodyBench& bench) {
+void BenchTestAllModels(const MultibodyBench& bench,
+                        const BenchmarkParams& params) {
   // ChainWithRevoluteJoints.
   for (int num_links = 8; num_links <= 512; num_links *= 4) {
     auto plant = MakeChainWithRevoluteJoints(num_links);
     auto plant_on_T = MakePlantOnT<T>(std::move(plant));
-    bench.RunBenchmarks(*plant_on_T);
+    bench.RunBenchmarks(*plant_on_T, params);
   }
 }
 
@@ -310,20 +341,9 @@ int do_main() {
   
   MultibodyBench bench;
 
-  BenchTestAllModels<double>(bench);
-  BenchTestAllModels<AutoDiffXd>(bench);
-  BenchTestAllModels<symbolic::Expression>(bench);
-
-#if 0
-  for (int num_links = 8; num_links <= 512; num_links *= 4) {
-    auto plant = MakeChainWithRevoluteJoints(num_links);
-    bench.RunBenchmarks(*plant);
-    auto plant_ad = systems::System<double>::ToAutoDiffXd(*plant);
-    bench.RunBenchmarks(*plant_ad);
-    auto plant_sym = systems::System<double>::ToSymbolic(*plant);
-    bench.RunBenchmarks(*plant_sym);
-  }
-#endif
+  BenchTestAllModels<double>(bench, BenchmarkParams{5, 5000, 1024});
+  BenchTestAllModels<AutoDiffXd>(bench, BenchmarkParams{5, 50, 512});
+  BenchTestAllModels<symbolic::Expression>(bench, BenchmarkParams{5, 5, 512});
 
   return 0;
 }

@@ -49,6 +49,7 @@ namespace examples {
 namespace {
 
 using drake::math::RigidTransform;
+using drake::multibody::MultibodyForces;
 using drake::multibody::MultibodyPlant;
 using drake::multibody::UnitInertia;
 using drake::multibody::RevoluteJoint;
@@ -58,7 +59,9 @@ using drake::multibody::SpatialInertia;
 using drake::multibody::SpatialAcceleration;
 using drake::multibody::SpatialForce;
 using drake::multibody::SpatialVelocity;
+using Eigen::MatrixXd;
 using Eigen::Vector3d;
+using Eigen::VectorXd;
 using systems::Context;
 
 double EstimateFLOPS() {
@@ -184,6 +187,33 @@ class MultibodyBench {
   MultibodyBench() { flops_ = EstimateFLOPS(); }
 
   template <typename T>
+  void RunBenchmarks(const MultibodyPlant<T>& plant,
+                     const BenchmarkParams& params) const {
+    std::cout << std::endl;
+    std::cout << fmt::format(" {}<{}>: nq = {}. nv = {}\n", plant.get_name(),
+                             drake::NiceTypeName::Get<T>(),
+                             plant.num_positions(), plant.num_velocities());
+    //if (plant.num_multibody_states() > params.max_dofs) {
+    //  std::cout << fmt::format(
+    //      " Benchmark is too large and won't get executed\n");
+    //  return;
+    //}
+
+    TIME_BENCHMARK(plant, CalcPositionKinematics, params.num_reps,
+                   params.num_tries);
+    TIME_BENCHMARK(plant, CalcVelocityKinematics, params.num_reps,
+                   params.num_tries);
+    TIME_BENCHMARK(plant, CalcInverseDynamics, params.num_reps,
+                   params.num_tries);               
+    TIME_BENCHMARK(plant, CalcMassMatrixViaInverseDynamics, params.num_reps,
+                   params.num_tries);                                  
+  }
+
+ private:
+  template <typename T>
+  using Benchmark = std::function<void(const MultibodyPlant<T>&, Context<T>*)>;
+
+  template <typename T>
   static void CalcPositionKinematics(const MultibodyPlant<T>& plant,
                                      Context<T>* context) {
     plant.GetMutablePositionsAndVelocities(context);
@@ -191,27 +221,31 @@ class MultibodyBench {
   }
 
   template <typename T>
-  void RunBenchmarks(const MultibodyPlant<T>& plant,
-                     const BenchmarkParams& params) const {
-    std::cout << std::endl;
-    std::cout << fmt::format(" {}<{}>: nq = {}. nv = {}\n", plant.get_name(),
-                             drake::NiceTypeName::Get<T>(),
-                             plant.num_positions(), plant.num_velocities());
-    if (plant.num_multibody_states() > params.max_dofs) {
-      std::cout << fmt::format(
-          " Benchmark is too large and won't get executed\n");
-      return;
-    }
-
-    //Benchmark<T> benchmark = CalcPositionKinematics<T>;
-    //TimeBenchmark(plant, benchmark, 10000);
-    TIME_BENCHMARK(plant, CalcPositionKinematics, params.num_reps,
-                   params.num_tries);
+  static void CalcVelocityKinematics(const MultibodyPlant<T>& plant,
+                                     Context<T>* context) {
+    // Force invalidation.                                       
+    plant.GetMutableVelocities(context);
+    plant.EvalVelocityKinematics(*context);
   }
 
- private:
   template <typename T>
-  using Benchmark = std::function<void(const MultibodyPlant<T>&, Context<T>*)>;
+  static void CalcInverseDynamics(const MultibodyPlant<T>& plant,
+                                  Context<T>* context) {
+    // Force invalidation.
+    //plant.GetMutablePositionsAndVelocities(context);
+    const VectorX<T> vdot = VectorX<T>::Ones(plant.num_velocities());
+    const MultibodyForces<T> external_forces(plant);
+    plant.CalcInverseDynamics(*context, vdot, external_forces);
+  }
+
+  template <typename T>
+  static void CalcMassMatrixViaInverseDynamics(const MultibodyPlant<T>& plant,
+                                               Context<T>* context) {
+    // Force invalidation.
+    plant.GetMutablePositionsAndVelocities(context);
+    MatrixX<T> M(plant.num_velocities(), plant.num_velocities());
+    plant.CalcMassMatrixViaInverseDynamics(*context, &M);
+  }
 
   template <typename T>
   static std::unique_ptr<Context<T>> CreateContext(
@@ -225,6 +259,7 @@ class MultibodyBench {
   void TimeBenchmark(const std::string& name, const MultibodyPlant<T>& plant,
                      Benchmark<T> benchmark, int num_reps, int num_tries = 5) const {
     auto context = CreateContext(plant);
+    context->EnableCaching();
     BenchTimer timer;
     for (int try_number = 0; try_number < num_tries; ++try_number) {
       timer.start();
@@ -312,24 +347,11 @@ MakePlantOnT<symbolic::Expression>(
   return systems::System<double>::ToSymbolic(*plant_on_double);
 }
 
-#if 0
-std::unique_ptr<MultibodyPlant<T>> plant_on_T;
-if (std::is_same<T, double>::value) {
-  plant_on_T = std::move(plant_on_double);
-  } else {
-    plant_on_T = dynamic_pointer_cast_or_throw<MultibodyPlant<T>>(
-        plant_on_double->get_system_scalar_converter().Convert<T, double>(
-            *plant_on_double));
-  }
-  return plant_on_T;
-}
-#endif
-
 template <typename T>
 void BenchTestAllModels(const MultibodyBench& bench,
                         const BenchmarkParams& params) {
   // ChainWithRevoluteJoints.
-  for (int num_links = 8; num_links <= 512; num_links *= 4) {
+  for (int num_links = 8; num_links <= 64; num_links *= 2) {
     auto plant = MakeChainWithRevoluteJoints(num_links);
     auto plant_on_T = MakePlantOnT<T>(std::move(plant));
     bench.RunBenchmarks(*plant_on_T, params);
@@ -341,9 +363,9 @@ int do_main() {
   
   MultibodyBench bench;
 
-  BenchTestAllModels<double>(bench, BenchmarkParams{5, 5000, 1024});
-  BenchTestAllModels<AutoDiffXd>(bench, BenchmarkParams{5, 50, 512});
-  BenchTestAllModels<symbolic::Expression>(bench, BenchmarkParams{5, 5, 512});
+  BenchTestAllModels<double>(bench, BenchmarkParams{5, 500, 1024});
+  BenchTestAllModels<AutoDiffXd>(bench, BenchmarkParams{5, 50, 256});
+  BenchTestAllModels<symbolic::Expression>(bench, BenchmarkParams{5, 5, 256});
 
   return 0;
 }

@@ -782,17 +782,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   const JointType<T>& AddJoint(std::unique_ptr<JointType<T>> joint) {
     static_assert(std::is_convertible<JointType<T>*, Joint<T>*>::value,
                   "JointType must be a sub-class of Joint<T>.");
-
-    const std::string type_name = joint->type_name();
-    if (!multibody_graph_.IsJointTypeRegistered(type_name)) {
-      multibody_graph_.RegisterJointType(type_name);
-    }
-
-    // Note changes in the graph.
-    multibody_graph_.AddJoint(joint->name(), joint->model_instance(), type_name,
-                              joint->parent_body().index(),
-                              joint->child_body().index());
-
+    RegisterJointInGraph(*joint);
     return this->mutable_tree().AddJoint(std::move(joint));
   }
 
@@ -877,16 +867,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     const JointType<T>& joint =
         this->mutable_tree().template AddJoint<JointType>(
             name, parent, X_PF, child, X_BM, std::forward<Args>(args)...);
-
-    const std::string type_name = joint.type_name();
-    if (!multibody_graph_.IsJointTypeRegistered(type_name)) {
-      multibody_graph_.RegisterJointType(type_name);
-    }
-
-    // Note changes in the graph.
-    multibody_graph_.AddJoint(joint.name(), joint.model_instance(), type_name,
-                              parent.index(), child.index());
-
+    RegisterJointInGraph(joint);
     return joint;
   }
 
@@ -3020,8 +3001,10 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
         X_BM ? optional<math::RigidTransform<T>>(math::RigidTransform<T>(*X_BM))
              : nullopt;
 
-    return this->mutable_tree().template AddJoint<JointType>(
+    auto& joint = AddJoint<JointType>(
         name, parent, X_PF_rt, child, X_BM_rt, std::forward<Args>(args)...);
+    RegisterJointInGraph(joint);
+    return joint;
   }
 
   // Allows having a nullopt X_PF and a non-empty X_BM isometry.
@@ -3036,14 +3019,15 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
                                const Isometry3<double>& X_BM,
                                Args&&... args) {
     DRAKE_MBP_THROW_IF_FINALIZED();
-
     optional<math::RigidTransform<double>> X_PF_rt =
         X_PF ? optional<math::RigidTransform<T>>(math::RigidTransform<T>(*X_PF))
              : nullopt;
     const math::RigidTransform<double> X_BM_rt(X_BM);
 
-    return this->mutable_tree().template AddJoint<JointType>(
+    auto& joint = AddJoint<JointType>(
         name, parent, X_PF_rt, child, X_BM_rt, std::forward<Args>(args)...);
+    RegisterJointInGrpah(joint);
+    return joint;
   }
 
   DRAKE_DEPRECATED(
@@ -3499,6 +3483,18 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     DRAKE_MBP_THROW_IF_NOT_FINALIZED();
     return this->get_cache_entry(cache_indexes_.contact_jacobians)
         .template Eval<internal::ContactJacobians<T>>(context);
+  }
+
+  // Registers a joint in the graph.
+  void RegisterJointInGraph(const Joint<T>& joint) {
+    const std::string type_name = joint.type_name();
+    if (!multibody_graph_.IsJointTypeRegistered(type_name)) {
+      multibody_graph_.RegisterJointType(type_name);
+    }
+    // Note changes in the graph.
+    multibody_graph_.AddJoint(joint.name(), joint.model_instance(), type_name,
+                              joint.parent_body().index(),
+                              joint.child_body().index());
   }
 
   // The gravity field force element.

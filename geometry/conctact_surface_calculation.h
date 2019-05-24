@@ -8,6 +8,8 @@
 //#include "drake/common/autodiff.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/drake_optional.h"
+#include "drake/common/sorted_pair.h"
+#include "drake/common/type_safe_index.h"
 #include "drake/geometry/geometry_ids.h"
 #include "drake/geometry/geometry_index.h"
 #include "drake/geometry/query_results/contact_surface.h"
@@ -23,6 +25,51 @@ template <typename T>
 class ContactSurfaceCalculator {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(ContactSurfaceCalculator)
+
+  ContactSurfaceCalculator() {
+    //marching_tets_table_
+    // We'll encode the table indexes in binary so that a "1" corresponds to a
+    // positive value at that vertex and conversely "0" corresponds to a
+    // negative value.
+
+    // As we have only 4 points, we have 16 cases to consider (positive or
+    // negative values at each vertex). With parity this number is reduced to 8
+    // cases.
+
+    // Case 0: All vertices have the same sign. Two cases.
+    marching_tets_table_[ 0 /* 0000 */] = {};  // empty.
+    marching_tets_table_[15 /* 1111 */] = {};  // empty.
+
+    // Case I: Three vertices have the same sign. This leads to 8 cases. Due to
+    // parity, we can reduce them to 4.
+    // We provide the ordering of the opposite face so that the normal to this
+    // face points towards the positive vertex.
+    marching_tets_table_[ 1 /* 0001 */] = {1, 4, 5};
+    marching_tets_table_[14 /* 1110 */] = {1, 5, 4};
+    marching_tets_table_[ 2 /* 0010 */] = {2, 3, 4};
+    marching_tets_table_[13 /* 1101 */] = {2, 4, 3};    
+    marching_tets_table_[ 4 /* 0100 */] = {0, 5, 3};
+    marching_tets_table_[11 /* 1011 */] = {0, 3, 5};    
+    marching_tets_table_[ 8 /* 1000 */] = {0, 2, 1};
+    marching_tets_table_[ 7 /* 0111 */] = {0, 1, 2};
+
+    // Case II: Two vertices are positive and two are negative. This leads to 6
+    // different cases.
+    // Each case is given by  4 zero-crossings, forming an edge on each face.
+    // We list the original edges in marching_tets_table_ in an order given by
+    // the right hand rule such that the "positive" side is consistent with the
+    // edge defined by the two vertices with positive values.    
+    marching_tets_table_[12 /* 1100 */] = {3, 4, 1, 2};
+    marching_tets_table_[ 3 /* 0011 */] = {2, 1, 4, 3};
+    marching_tets_table_[ 6 /* 0110 */] = {4, 5, 2, 0};
+    marching_tets_table_[ 9 /* 1001 */] = {0, 2, 5, 4};
+    marching_tets_table_[ 5 /* 0101 */] = {0, 3, 5, 1};
+    marching_tets_table_[10 /* 1010 */] = {1, 5, 3, 0};
+
+
+
+  }
+  
 
   static SurfaceMesh<T> CalcContactSurfaceBetweenMeshAndLevelSet(
       const TetrahedralVolumeMesh<T>& mesh_M,
@@ -59,8 +106,8 @@ class ContactSurfaceCalculator {
         Vector3<T> p_MC = Vector3<T>::Zero();
         for (const auto& e : edges_) {
           // phi_N evaluated at the two vertices of the edge.
-          const T phi_v1 = tet_phi[e.first];
-          const T phi_v2 = tet_phi[e.second];
+          const T phi_v1 = tet_phi[e.first()];
+          const T phi_v2 = tet_phi[e.second()];
 
           // There is intersection. Compute the zero-crossing on phi_N.
           if (phi_v1 * phi_v2 < 0.0) {
@@ -73,8 +120,8 @@ class ContactSurfaceCalculator {
             const T w2 = 1.0 - w1;
 
             // Get edge vertices.
-            const int v1 = tet[e.first];
-            const int v2 = tet[e.second];
+            const int v1 = tet[e.first()];
+            const int v2 = tet[e.second()];
             const auto& p_MV1 = mesh_M.vertices[v1];
             const auto& p_MV2 = mesh_M.vertices[v1];
 
@@ -101,8 +148,12 @@ class ContactSurfaceCalculator {
   }
 
  private:
+  using Edge = SortedPair<int>;
+  using EdgeIndex = TypeSafeIndex<class EdgeTag>;
+  std::array<std::vector<EdgeIndex>, 16> marching_tets_table_;
+
   // The six edges of a tetrahedra
-  const std::array<std::pair<int, int>, 6> edges_{
+  const std::array<Edge, 6> edges_{
       {0, 1}, {1, 2}, {2, 0},   // base formed by vertices 0, 1, 2.
       {0, 3}, {1, 3}, {2, 3}};  // pyramid with top at node 3.
 };

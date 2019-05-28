@@ -93,6 +93,29 @@ class ContactSurfaceCalculator {
       Vector4<T> tet_phi;
       for (int i = 0; i < 4; ++i) tet_phi[i] = phiN_at_V[tet[i]];
 
+      // Find out the marching tests case.
+      int case_index = 0;
+      for (int i = 0, int e = 1; i < 3; i++, e *= 2) {
+        case_index += (tet_phi[i] > 0) * e
+      }
+      const std::vector<int> intersected_edges = marching_tets_table_[case_index];
+      
+      if (intersected_edges.size() == 3) { // Case I.
+        
+
+      } else if (intersected_edges.size() == 4) { // Case II.
+      }
+
+      for (int edge_index : intersected_edges) {
+        const Edge& edge = edges_[edge_index];
+
+      }
+
+      if (intersected_edges.size() > 0) {  // There is intersection.
+
+        const Edge& e = edges
+      }
+
       const bool tet_is_outside_N = (tet_phi.array() > 0.0).all();
       const bool tet_is_inside_N = (tet_phi.array() < 0.0).all();
       const bool tet_is_intersected = !tet_is_inside_N && !tet_is_outside_N;

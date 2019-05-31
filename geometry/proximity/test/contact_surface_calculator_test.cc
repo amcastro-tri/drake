@@ -51,10 +51,12 @@ class ContactSurfaceCalculatorTester {
  public:
   int IntersectTetWithLevelSet(const std::vector<Vector3<T>>& tet_vertices_N,
                                const Vector4<T>& phi_N,
+                               const Vector4<T>& e_M,
                                std::vector<SurfaceVertex<T>>* vertices,
-                               std::vector<SurfaceFace>* faces) const {
+                               std::vector<SurfaceFace>* faces,
+                               std::vector<T>* e_M_surface) const {
     return ContactSurfaceCalculator<T>::IntersectTetWithLevelSet(
-        tet_vertices_N, phi_N, vertices, faces);
+        tet_vertices_N, phi_N, e_M, vertices, faces, e_M_surface);
   }
 };
 
@@ -94,16 +96,19 @@ class TetrahedronIntersectionTest : public ::testing::Test {
 TEST_F(TetrahedronIntersectionTest, EmptyIntersection) {
   std::vector<SurfaceVertex<double>> vertices;
   std::vector<SurfaceFace> faces;
+  std::vector<double> e_M_surface;
 
   // All positive vertices.
   Vector4<double> phi_N = Vector4<double>::Ones();
-  EXPECT_EQ(
-      tester_.IntersectTetWithLevelSet(unit_tet_, phi_N, &vertices, &faces), 0);
+  EXPECT_EQ(tester_.IntersectTetWithLevelSet(unit_tet_, phi_N, phi_N, &vertices,
+                                             &faces, &e_M_surface),
+            0);
 
   // All negative vertices.
   phi_N = -Vector4<double>::Ones();
-  EXPECT_EQ(
-      tester_.IntersectTetWithLevelSet(unit_tet_, phi_N, &vertices, &faces), 0);
+  EXPECT_EQ(tester_.IntersectTetWithLevelSet(unit_tet_, phi_N, phi_N, &vertices,
+                                             &faces, &e_M_surface),
+            0);
 }
 
 // Case I of marching tetrahedra: only one of the vertices has a sign different
@@ -111,6 +116,7 @@ TEST_F(TetrahedronIntersectionTest, EmptyIntersection) {
 TEST_F(TetrahedronIntersectionTest, CaseI) {
   std::vector<SurfaceVertex<double>> vertices;
   std::vector<SurfaceFace> faces;
+  std::vector<double> e_M_surface;
   const double kTolerance = 5.0 * std::numeric_limits<double>::epsilon();
 
   const int expected_num_intersections = 3;
@@ -131,11 +137,12 @@ TEST_F(TetrahedronIntersectionTest, CaseI) {
   for (int i = 0; i < 4; ++i) {
     vertices.clear();
     faces.clear();
+    e_M_surface.clear();
     Vector4<double> phi_N = Vector4<double>::Ones();
     phi_N[i] = -1.0;
-    ASSERT_EQ(
-        tester_.IntersectTetWithLevelSet(unit_tet_, phi_N, &vertices, &faces),
-        expected_num_intersections);
+    ASSERT_EQ(tester_.IntersectTetWithLevelSet(unit_tet_, phi_N, phi_N,
+                                               &vertices, &faces, &e_M_surface),
+              expected_num_intersections);
 
     ASSERT_EQ(faces.size(), 1);
     const Vector3<int> expected_face(0, 1, 2);
@@ -148,17 +155,24 @@ TEST_F(TetrahedronIntersectionTest, CaseI) {
     const Vector3<double> expected_normal = -CalcUnitVectorFromBaseToTop(i);
     const Vector3<double> normal = CalcTriangleNormal(vertices);
     EXPECT_TRUE(CompareMatrices(normal, expected_normal, kTolerance));
+
+    // We expect the field e_M to be zero at the surface.
+    ASSERT_EQ(e_M_surface.size(), 3);
+    const Vector3<double> e_M_as_vector(e_M_surface.data());
+    EXPECT_TRUE(
+        CompareMatrices(e_M_as_vector, Vector3<double>::Zero(), kTolerance));
   }
 
   // All vertices are negative but the i-th vertex.
   for (int i = 0; i < 4; ++i) {
     vertices.clear();
     faces.clear();
+    e_M_surface.clear();
     Vector4<double> phi_N = -Vector4<double>::Ones();
     phi_N[i] = 1.0;
-    ASSERT_EQ(
-        tester_.IntersectTetWithLevelSet(unit_tet_, phi_N, &vertices, &faces),
-        expected_num_intersections);
+    ASSERT_EQ(tester_.IntersectTetWithLevelSet(unit_tet_, phi_N, phi_N,
+                                               &vertices, &faces, &e_M_surface),
+              expected_num_intersections);
 
     ASSERT_EQ(faces.size(), 1);
     const Vector3<int> expected_face(0, 1, 2);
@@ -171,6 +185,12 @@ TEST_F(TetrahedronIntersectionTest, CaseI) {
     const Vector3<double> expected_normal = CalcUnitVectorFromBaseToTop(i);
     const Vector3<double> normal = CalcTriangleNormal(vertices);
     EXPECT_TRUE(CompareMatrices(normal, expected_normal, kTolerance));
+
+    // We expect the field e_M to be zero at the surface.
+    ASSERT_EQ(e_M_surface.size(), 3);
+    const Vector3<double> e_M_as_vector(e_M_surface.data());
+    EXPECT_TRUE(
+        CompareMatrices(e_M_as_vector, Vector3<double>::Zero(), kTolerance));
   }
 }
 
@@ -197,9 +217,10 @@ TEST_F(TetrahedronIntersectionTest, CaseII) {
 
     std::vector<SurfaceVertex<double>> vertices;
     std::vector<SurfaceFace> faces;
-    ASSERT_EQ(
-        tester_.IntersectTetWithLevelSet(unit_tet_, phi_N, &vertices, &faces),
-        expected_num_vertices);
+    std::vector<double> e_M_surface;
+    ASSERT_EQ(tester_.IntersectTetWithLevelSet(unit_tet_, phi_N, phi_N,
+                                               &vertices, &faces, &e_M_surface),
+              expected_num_vertices);
 
     ASSERT_EQ(faces.size(), 4);
     ASSERT_EQ(vertices.size(), 5);
@@ -214,6 +235,12 @@ TEST_F(TetrahedronIntersectionTest, CaseII) {
       const Vector3<double> normal = CalcTriangleNormal(triangle_vertices);
       EXPECT_TRUE(CompareMatrices(normal, expected_normal, kTolerance));
     }
+
+    // We expect the field e_M to be zero at the surface.
+    ASSERT_EQ(e_M_surface.size(), 5);
+    using Vector5d = Eigen::Matrix<double, 5, 1>;
+    const Vector5d e_M_as_vector(e_M_surface.data());
+    EXPECT_TRUE(CompareMatrices(e_M_as_vector, Vector5d::Zero(), kTolerance));
   };
 
   // Verify case II for the six different cases.
@@ -239,6 +266,9 @@ class BoxPlaneIntersectionTest : public ::testing::Test {
     box_B_ = std::make_unique<VolumeMesh<double>>(std::move(elements),
                                                   std::move(vertices));
     half_space_H_ = [](const Vector3<double>& p_HQ) { return p_HQ[2]; };
+
+    // Not relevant for this test since all vertices are on the surface.
+    e_B_ = std::vector<double>(8, 0.0);
   }
 
   double CalcSurfaceArea(const SurfaceMesh<double>& mesh) {
@@ -252,6 +282,9 @@ class BoxPlaneIntersectionTest : public ::testing::Test {
   // Mesh modeling a box, with its vertex positions expressed in the frame of
   // the box B.
   std::unique_ptr<VolumeMesh<double>> box_B_;
+
+  // Value of a scalar field e_M defined on the volume mesh box_B_.
+  std::vector<double> e_B_;
 
   // A level set function, chosen to be the distance function, for a half space.
   // It is defined as a function φ: ℝ³ → ℝ with the input position vector
@@ -269,18 +302,18 @@ TEST_F(BoxPlaneIntersectionTest, ImminentContact) {
   {
     const math::RigidTransformd X_HB =
         Translation3<double>(0.0, 0.0, -kEpsilon);
-    const SurfaceMesh<double> contact_surface =
+    const SurfaceMesh<double> contact_surface = std::get<0>(
         ContactSurfaceCalculator<double>::CalcZeroLevelSetInMeshDomain(
-            *box_B_, half_space_H_, X_HB);
+            *box_B_, half_space_H_, X_HB, e_B_));
     EXPECT_NEAR(CalcSurfaceArea(contact_surface), 1.0, kTolerance);
   }
 
   // The box is on top of the plane by kEpsilon. Expect no intersection.
   {
     const math::RigidTransformd X_HB = Translation3<double>(0.0, 0.0, kEpsilon);
-    const SurfaceMesh<double> contact_surface =
+    const SurfaceMesh<double> contact_surface = std::get<0>(
         ContactSurfaceCalculator<double>::CalcZeroLevelSetInMeshDomain(
-            *box_B_, half_space_H_, X_HB);
+            *box_B_, half_space_H_, X_HB, e_B_));
     EXPECT_NEAR(CalcSurfaceArea(contact_surface), 0.0, kTolerance);
   }
 }
@@ -320,9 +353,9 @@ TEST_F(BoxPlaneIntersectionTest, VerifyContactArea) {
       RigidTransformd(Ry_pi, Vector3d(0.0, 0.0, 1.0 - 0.1))};
 
   for (const auto& X_HB : poses) {
-    const SurfaceMesh<double> contact_surface =
+    const SurfaceMesh<double> contact_surface = std::get<0>(
         ContactSurfaceCalculator<double>::CalcZeroLevelSetInMeshDomain(
-            *box_B_, half_space_H_, X_HB);
+            *box_B_, half_space_H_, X_HB, e_B_));
 
     EXPECT_NEAR(CalcSurfaceArea(contact_surface), 1.0, kTolerance);
   }
@@ -358,9 +391,9 @@ TEST_F(BoxPlaneIntersectionTest, NoIntersection) {
       RigidTransformd(Ry_pi, Vector3d(0.0, 0.0, 1.0 + 0.1))};
 
   for (const auto& X_HB : poses) {
-    const SurfaceMesh<double> contact_surface =
+    const SurfaceMesh<double> contact_surface = std::get<0>(
         ContactSurfaceCalculator<double>::CalcZeroLevelSetInMeshDomain(
-            *box_B_, half_space_H_, X_HB);
+            *box_B_, half_space_H_, X_HB, e_B_));
     EXPECT_NEAR(CalcSurfaceArea(contact_surface), 0.0, kTolerance);
   }
 }

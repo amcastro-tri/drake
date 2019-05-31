@@ -74,9 +74,11 @@ class ContactSurfaceCalculator {
   ///
   /// Bloomenthal, J., 1994. An Implicit Surface Polygonizer. Graphics Gems IV,
   /// pp. 324-349.
-  static SurfaceMesh<T> CalcZeroLevelSetInMeshDomain(
-      const VolumeMesh<T>& mesh_M, std::function<T(const Vector3<T>&)> phi_N,
-      const math::RigidTransform<T>& X_NM);
+  static std::tuple<SurfaceMesh<T>, const std::vector<T>>
+  CalcZeroLevelSetInMeshDomain(const VolumeMesh<T>& mesh_M,
+                               std::function<T(const Vector3<T>&)> phi_N,
+                               const math::RigidTransform<T>& X_NM,
+                               const std::vector<T>& e_M);
 
  private:
   using Edge = std::pair<int, int>;
@@ -106,7 +108,8 @@ class ContactSurfaceCalculator {
   // one used in VolumeMesh.
   static int IntersectTetWithLevelSet(
       const std::vector<Vector3<T>>& tet_vertices_N, const Vector4<T>& phi_N,
-      std::vector<SurfaceVertex<T>>* vertices, std::vector<SurfaceFace>* faces);
+      const Vector4<T>& e_M, std::vector<SurfaceVertex<T>>* vertices,
+      std::vector<SurfaceFace>* faces, std::vector<T>* e_M_surface);
 };
 
 }  // namespace internal.

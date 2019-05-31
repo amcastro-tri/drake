@@ -47,7 +47,8 @@ const std::array<std::vector<EdgeIndex>, 16>
 template <typename T>
 int ContactSurfaceCalculator<T>::IntersectTetWithLevelSet(
     const std::vector<Vector3<T>>& tet_vertices_N, const Vector4<T>& phi_N,
-    std::vector<SurfaceVertex<T>>* vertices, std::vector<SurfaceFace>* faces) {
+    const Vector4<T>& e_M, std::vector<SurfaceVertex<T>>* vertices,
+    std::vector<SurfaceFace>* faces, std::vector<T>* e_M_surface) {
   DRAKE_ASSERT(tet_vertices_N.size() == 4);
   DRAKE_ASSERT(phi_N.size() == 4);
   DRAKE_ASSERT(vertices != nullptr);
@@ -79,15 +80,22 @@ int ContactSurfaceCalculator<T>::IntersectTetWithLevelSet(
   Vector3<T> pc_N = Vector3<T>::Zero();  // Geometric center.
   for (int edge_index : intersected_edges) {
     const Edge& edge = ContactSurfaceCalculatorConstants::kEdges[edge_index];
-    const Vector3<T>& p1_N = tet_vertices_N[edge.first];
-    const Vector3<T>& p2_N = tet_vertices_N[edge.second];
-    const T& phi1 = phi_N[edge.first];
-    const T& phi2 = phi_N[edge.second];
+    const int e1 = edge.first;
+    const int e2 = edge.second;
+    const Vector3<T>& p1_N = tet_vertices_N[e1];
+    const Vector3<T>& p2_N = tet_vertices_N[e2];
+    const T& phi1 = phi_N[e1];
+    const T& phi2 = phi_N[e2];
     using std::abs;
     const T w2 = abs(phi1) / (abs(phi1) + abs(phi2));
     const T w1 = 1.0 - w2;
     const Vector3<T> pz_N = w1 * p1_N + w2 * p2_N;
     vertices->emplace_back(pz_N);
+
+    // Interpolate scalar field e_M at the zero crossing.
+    const T e_M_at_z = w1 * e_M[e1] + w2 * e_M[e2];
+    e_M_surface->emplace_back(e_M_at_z);
+
     // The geometric center is only needed for Case II.
     if (num_intersections == 4) pc_N += pz_N;
   }
@@ -109,6 +117,12 @@ int ContactSurfaceCalculator<T>::IntersectTetWithLevelSet(
     pc_N /= 4.0;
     vertices->emplace_back(pc_N);
 
+    // Find scalar field e_M at pc_N as the average of the values at the zero
+    // crossings.
+    const T e_M_at_c =
+        std::accumulate(e_M_surface->end() - 4, e_M_surface->end(), T(0));
+    e_M_surface->emplace_back(e_M_at_c);
+
     // Make four triangles sharing the geometric center. All oriented such
     // that their right-handed normal points towards the positive side.
     faces->emplace_back(Vector3i(0, 1, 4) + num_vertices * kOnes3);
@@ -122,23 +136,27 @@ int ContactSurfaceCalculator<T>::IntersectTetWithLevelSet(
 }
 
 template <typename T>
-SurfaceMesh<T> ContactSurfaceCalculator<T>::CalcZeroLevelSetInMeshDomain(
+std::tuple<SurfaceMesh<T>, const std::vector<T>>
+ContactSurfaceCalculator<T>::CalcZeroLevelSetInMeshDomain(
     const VolumeMesh<T>& mesh_M,
     std::function<T(const Vector3<T>&)> level_set_N,
-    const math::RigidTransform<T>& X_NM) {
+    const math::RigidTransform<T>& X_NM, const std::vector<T>& e_M_volume) {
   std::vector<SurfaceVertex<T>> vertices;
   std::vector<SurfaceFace> faces;
+  std::vector<T> e_M_surface;
 
   // We scan each tetrahedra in the mesh and compute the zero level set with
   // IntersectTetWithLevelSet().
   std::vector<Vector3<T>> tet_vertices_N(4);
   Vector4<T> phi_N;
+  Vector4<T> e_M;
   for (const auto& tet_indexes : mesh_M.tetrahedra()) {
     // Collect data for each vertex of the tetrahedron.
     for (int i = 0; i < 4; ++i) {
       const auto& p_MV = mesh_M.vertex(tet_indexes.vertex(i)).r_MV();
       tet_vertices_N[i] = X_NM * p_MV;
       phi_N[i] = level_set_N(tet_vertices_N[i]);
+      e_M[i] = e_M_volume[tet_indexes.vertex(i)];
     }
     // IntersectTetWithLevelSet() uses a different convention than VolumeMesh
     // to index the vertices of a tetrahedra and therefore we swap vertexes 1
@@ -147,10 +165,13 @@ SurfaceMesh<T> ContactSurfaceCalculator<T>::CalcZeroLevelSetInMeshDomain(
     // IntersectTetWithLevelSet() to use the convention in VolumeMesh.
     std::swap(tet_vertices_N[1], tet_vertices_N[2]);
     std::swap(phi_N[1], phi_N[2]);
-    IntersectTetWithLevelSet(tet_vertices_N, phi_N, &vertices, &faces);
+    std::swap(e_M[1], e_M[2]);
+    IntersectTetWithLevelSet(tet_vertices_N, phi_N, e_M, &vertices, &faces,
+                             &e_M_surface);
   }
 
-  return SurfaceMesh<T>(std::move(faces), std::move(vertices));
+  return std::make_tuple(SurfaceMesh<T>(std::move(faces), std::move(vertices)),
+                         e_M_surface);
 }
 
 }  // namespace internal.

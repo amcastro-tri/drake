@@ -39,6 +39,9 @@ class VolumeVertex {
   explicit VolumeVertex(const Vector3<T>& r_MV)
       : r_MV_(r_MV) {}
 
+  /** Constructs VolumeVertex from the xyz components of a point V in a frame
+   M.
+   */
   VolumeVertex(const T& Vx_M, const T& Vy_M, const T& Vz_M)
       : r_MV_(Vx_M, Vy_M, Vz_M) {}
 
@@ -117,7 +120,7 @@ class VolumeElement {
 template <class T>
 class VolumeMesh {
  public:
-  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(VolumeMesh)
+  DRAKE_DECLARE_COPY_AND_MOVE_AND_ASSIGN(VolumeMesh)
 
   /**
    @name Mesh type traits
@@ -184,6 +187,7 @@ class VolumeMesh {
   // The vertices that are shared between the tetrahedral elements.
   std::vector<VolumeVertex<T>> vertices_;
 };
+DRAKE_DEFINE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN_T(VolumeMesh)
 
 DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     class VolumeMesh)

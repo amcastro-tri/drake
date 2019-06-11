@@ -197,9 +197,25 @@ class SurfaceMesh {
    */
   const T& area(SurfaceFaceIndex f) const { return area_[f]; }
 
-  const std::vector<SurfaceVertex<T>>& vertices() const { return vertices_; }
+  /** 
+   Maps the barycentric coordinates `Q_barycentric` of a point Q in
+   `element_index` to its position vector p_MQ.
+  */
+  Vector3<T> CalcCartesianFromBarycentric(
+      ElementIndex element_index, const Vector3<T>& Q_barycentric) const {
+    const SurfaceVertex<T> va = vertex(element(element_index).vertex(0));
+    const SurfaceVertex<T> vb = vertex(element(element_index).vertex(1));
+    const SurfaceVertex<T> vc = vertex(element(element_index).vertex(2));
 
-  const std::vector<SurfaceFace>& faces() const { return faces_; }
+    // This is just a linear transformation between the two coordinates,
+    // Cartesian (C) and Barycentric (B). Form the transformation matrix:
+    Matrix3<T> T_CB;
+    T_CB.col(0) = va.r_MV();
+    T_CB.col(1) = vb.r_MV();
+    T_CB.col(2) = vc.r_MV();
+
+    return T_CB * Q_barycentric;
+  }
 
  private:
   // Initialization.

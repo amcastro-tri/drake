@@ -42,7 +42,7 @@ class DummyRenderEngine final : public render::RenderEngine {
 
   /** @group No-op implementation of RenderEngine interface.  */
   //@{
-  void UpdateViewpoint(const math::RigidTransformd&) const final {}
+  void UpdateViewpoint(const math::RigidTransformd&) final {}
   void RenderColorImage(const render::CameraProperties&, bool,
                         systems::sensors::ImageRgba8U*) const final {}
   void RenderDepthImage(const render::DepthCameraProperties&,
@@ -72,6 +72,13 @@ class DummyRenderEngine final : public render::RenderEngine {
    to _reject_ geometry during registration.  */
   PerceptionProperties rejecting_properties() const {
     return PerceptionProperties();
+  }
+
+  /** Resets all state to the initially constructed state.  */
+  void reset() {
+    updated_indices_.clear();
+    moved_index_ = nullopt;
+    register_count_ = 0;
   }
 
   /** Reports the number of geometries that have been _accepted_ in

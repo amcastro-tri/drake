@@ -18,6 +18,7 @@ drake_cc_package_library(
         ":distance_to_point",
         ":distance_to_point_with_gradient",
         ":distance_to_shape",
+        ":make_unit_sphere_mesh",
         ":mesh_field",
         ":proximity_utilities",
         ":volume_mesh",
@@ -102,6 +103,15 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "make_unit_sphere_mesh",
+    hdrs = ["make_unit_sphere_mesh.h"],
+    deps = [
+        "//common:essential",
+        "//geometry/proximity:volume_mesh",
+    ],
+)
+
+drake_cc_library(
     name = "volume_mesh",
     srcs = [
         "volume_mesh.cc",
@@ -120,9 +130,6 @@ drake_cc_library(
 
 drake_cc_library(
     name = "contact_surface_calculator",
-    srcs = [
-        "contact_surface_calculator.cc",
-    ],
     hdrs = [
         "contact_surface_calculator.h",
     ],
@@ -172,6 +179,17 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "contact_surface_calculator_test",
+    deps = [
+        ":contact_surface_calculator",
+        ":make_unit_sphere_mesh",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
+        "//math",
+    ],
+)
+
+drake_cc_googletest(
     name = "volume_mesh_test",
     deps = [
         "//geometry/proximity:volume_mesh",
@@ -193,11 +211,9 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
-    name = "contact_surface_calculator_test",
+    name = "make_unit_sphere_mesh_test",
     deps = [
-        ":contact_surface_calculator",
-        "//common/test_utilities:eigen_matrix_compare",
-        "//math",
+        ":make_unit_sphere_mesh",
     ],
 )
 

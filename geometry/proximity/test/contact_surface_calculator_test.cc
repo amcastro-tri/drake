@@ -263,13 +263,14 @@ class BoxPlaneIntersectionTest : public ::testing::Test {
 // verify this.
 TEST_F(BoxPlaneIntersectionTest, ImminentContact) {
   const double kEpsilon = std::numeric_limits<double>::epsilon();
+  std::vector<double> e_mn_surface;
 
   // The box overlaps the plane by kEpsilon. Expect intersection.
   {
     const math::RigidTransformd X_HB =
         Translation3<double>(0.0, 0.0, 0.5 - 5 * kEpsilon);
     DRAKE_EXPECT_THROWS_MESSAGE(CalcZeroLevelSetInMeshDomain(
-            *box_B_, half_space_H_, X_HB, e_B_),
+            *box_B_, half_space_H_, X_HB, e_B_, &e_mn_surface),
         std::logic_error,
         "One or more faces of this tetrahedron are close to being a zero "
         "crossing.*");
@@ -280,7 +281,7 @@ TEST_F(BoxPlaneIntersectionTest, ImminentContact) {
     const math::RigidTransformd X_HB =
         Translation3<double>(0.0, 0.0, 0.5 + 5 * kEpsilon);
     DRAKE_EXPECT_THROWS_MESSAGE(CalcZeroLevelSetInMeshDomain(
-            *box_B_, half_space_H_, X_HB, e_B_),
+            *box_B_, half_space_H_, X_HB, e_B_, &e_mn_surface),
         std::logic_error,
         "One or more faces of this tetrahedron are close to being a zero "
         "crossing.*");
@@ -324,9 +325,10 @@ TEST_F(BoxPlaneIntersectionTest, VerifyContactArea) {
       RigidTransformd(Ry_pi, middle),
       RigidTransformd(Ry_pi, highest)};
 
+  std::vector<double> e_mn_surface;
   for (const auto& X_HB : poses) {
-    const SurfaceMesh<double> contact_surface = std::get<0>(
-        CalcZeroLevelSetInMeshDomain(*box_B_, half_space_H_, X_HB, e_B_));
+    const SurfaceMesh<double> contact_surface = CalcZeroLevelSetInMeshDomain(
+        *box_B_, half_space_H_, X_HB, e_B_, &e_mn_surface);
     EXPECT_NEAR(CalcSurfaceArea(contact_surface), 1.0, kTolerance);
   }
 }
@@ -363,24 +365,29 @@ TEST_F(BoxPlaneIntersectionTest, NoIntersection) {
       RigidTransformd(Ry_pi, highest)};
 
   for (const auto& X_HB : poses) {
-    const SurfaceMesh<double> contact_surface = std::get<0>(
-        CalcZeroLevelSetInMeshDomain(*box_B_, half_space_H_, X_HB, e_B_));
+    std::vector<double> e_mn_surface;
+    const SurfaceMesh<double> contact_surface = CalcZeroLevelSetInMeshDomain(
+        *box_B_, half_space_H_, X_HB, e_B_, &e_mn_surface);
     EXPECT_NEAR(CalcSurfaceArea(contact_surface), 0.0, kTolerance);
   }
 }
 
-#if 0
 // This test verifies the computation of the contact surface between a
 // tessellated sphere and a half-space represented by a level set function.
 // In particular, we verify that the vertices on the contact surface are
 // properly interpolated to lie on the plane within a circle of the expected
 // radius, and normals point towards the positive side of the plane.
-GTEST_TEST(SpherePlaneIntersectionTest, VerticesProperlyInterpolated) {
+GTEST_TEST(SpherePlaneIntersectionTest, VerifyInterpolations) {
   const double kTolerance = 5.0 * std::numeric_limits<double>::epsilon();
 
   // A tessellation of a unit sphere. Vertices are in the mesh frame M.
   // This creates a volume mesh with over 32K tetrahedra.
-  const VolumeMesh<double> sphere_M = MakeUnitSphereMesh<double>(4);
+  //const VolumeMesh<double> sphere_M = MakeUnitSphereMesh<double>(4);
+  std::unique_ptr<HydroelasticField<double>> sphere_field =
+      MakeUnitSphereHydroelasticField<double>(4);
+  const VolumeMesh<double>& sphere_M = sphere_field->volume_mesh();
+  const std::vector<double>& e_mn = sphere_field->scalar_field().values();
+
   // A level set for a half-space, as a function of the position vector p_WQ for
   // points Q in the world frame W.
   std::function<double(const Vector3<double>&)> half_space_W =
@@ -394,8 +401,9 @@ GTEST_TEST(SpherePlaneIntersectionTest, VerticesProperlyInterpolated) {
 
   // The contact surface is expressed in the frame of the level set, in this
   // case the world frame W.
-  const SurfaceMesh<double> contact_surface_W = std::get<0>(
-      CalcZeroLevelSetInMeshDomain(sphere_M, half_space_W, X_WM, e_B_));
+  std::vector<double> e_mn_surface;
+  const SurfaceMesh<double> contact_surface_W = CalcZeroLevelSetInMeshDomain(
+      sphere_M, half_space_W, X_WM, e_mn, &e_mn_surface);
   // Assert non-empty intersection.
   ASSERT_GT(contact_surface_W.num_faces(), 0);
 
@@ -430,7 +438,6 @@ GTEST_TEST(SpherePlaneIntersectionTest, VerticesProperlyInterpolated) {
     EXPECT_TRUE(CompareMatrices(normal_W, Vector3d::UnitZ(), 40 * kTolerance));
   }
 }
-#endif
 
 }  // namespace
 }  // namespace internal

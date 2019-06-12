@@ -87,10 +87,10 @@ int IntersectTetWithLevelSet(const std::array<Vector3<T>, 4>& tet_vertices_N,
                              const Vector4<T>& phi_N, const Vector4<T>& e_M,
                              std::vector<SurfaceVertex<T>>* vertices,
                              std::vector<SurfaceFace>* faces,
-                             std::vector<T>* e_M_surface) {
+                             std::vector<T>* e_mn_surface) {
   DRAKE_ASSERT(vertices != nullptr);
   DRAKE_ASSERT(faces != nullptr);
-  DRAKE_ASSERT(e_M_surface != nullptr);
+  DRAKE_ASSERT(e_mn_surface != nullptr);
 
   const double kZeroTolerance = 20 * std::numeric_limits<double>::epsilon();
   using std::abs;
@@ -142,7 +142,7 @@ int IntersectTetWithLevelSet(const std::array<Vector3<T>, 4>& tet_vertices_N,
 
     // Interpolate scalar field e_M at the zero crossing.
     const T e_M_at_z = w1 * e_M[e1] + w2 * e_M[e2];
-    e_M_surface->emplace_back(e_M_at_z);
+    e_mn_surface->emplace_back(e_M_at_z);
 
     // The geometric center is only needed for Case II.
     if (num_intersections == 4) pc_N += pz_N;
@@ -170,8 +170,8 @@ int IntersectTetWithLevelSet(const std::array<Vector3<T>, 4>& tet_vertices_N,
     // Find scalar field e_M at pc_N as the average of the values at the zero
     // crossings.
     const T e_M_at_c =
-        std::accumulate(e_M_surface->end() - 4, e_M_surface->end(), T(0));
-    e_M_surface->emplace_back(e_M_at_c);
+        std::accumulate(e_mn_surface->end() - 4, e_mn_surface->end(), T(0));
+    e_mn_surface->emplace_back(e_M_at_c);
 
     // Make four triangles sharing the geometric center. All oriented such
     // that their right-handed normal points towards the positive side.
@@ -225,26 +225,28 @@ int IntersectTetWithLevelSet(const std::array<Vector3<T>, 4>& tet_vertices_N,
 /// Bloomenthal, J., 1994. An Implicit Surface Polygonizer. Graphics Gems IV,
 /// pp. 324-349.
 template <typename T>
-std::tuple<SurfaceMesh<T>, const std::vector<T>> CalcZeroLevelSetInMeshDomain(
+SurfaceMesh<T> CalcZeroLevelSetInMeshDomain(
     const VolumeMesh<T>& mesh_M,
     std::function<T(const Vector3<T>&)> level_set_N,
-    const math::RigidTransform<T>& X_NM, const std::vector<T>& e_M_volume) {
+    const math::RigidTransform<T>& X_NM, const std::vector<T>& e_mn_volume,
+    std::vector<T>* e_mn_surface) {
+  DRAKE_DEMAND(e_mn_surface != nullptr);
   std::vector<SurfaceVertex<T>> vertices;
   std::vector<SurfaceFace> faces;
-  std::vector<T> e_M_surface;
+  e_mn_surface->clear();
 
   // We scan each tetrahedron in the mesh and compute the zero level set with
   // IntersectTetWithLevelSet().
   std::array<Vector3<T>, 4> tet_vertices_N;
   Vector4<T> phi_N;
-  Vector4<T> e_M;
+  Vector4<T> e_mn;
   for (const auto& tet_indexes : mesh_M.tetrahedra()) {
     // Collect data for each vertex of the tetrahedron.
     for (int i = 0; i < 4; ++i) {
       const auto& p_MV = mesh_M.vertex(tet_indexes.vertex(i)).r_MV();
       tet_vertices_N[i] = X_NM * p_MV;
       phi_N[i] = level_set_N(tet_vertices_N[i]);
-      e_M[i] = e_M_volume[tet_indexes.vertex(i)];
+      e_mn[i] = e_mn_volume[tet_indexes.vertex(i)];
     }
     // IntersectTetWithLevelSet() uses a different convention than VolumeMesh
     // to index the vertices of a tetrahedra and therefore we swap vertexes 1
@@ -253,13 +255,12 @@ std::tuple<SurfaceMesh<T>, const std::vector<T>> CalcZeroLevelSetInMeshDomain(
     // IntersectTetWithLevelSet() to use the convention in VolumeMesh.
     std::swap(tet_vertices_N[1], tet_vertices_N[2]);
     std::swap(phi_N[1], phi_N[2]);
-    std::swap(e_M[1], e_M[2]);
-    IntersectTetWithLevelSet(tet_vertices_N, phi_N, e_M, &vertices, &faces,
-                             &e_M_surface);
+    std::swap(e_mn[1], e_mn[2]);
+    IntersectTetWithLevelSet(tet_vertices_N, phi_N, e_mn, &vertices, &faces,
+                             e_mn_surface);
   }
 
-  return std::make_tuple(SurfaceMesh<T>(std::move(faces), std::move(vertices)),
-                         e_M_surface);
+  return SurfaceMesh<T>(std::move(faces), std::move(vertices));
 }
 
 }  // namespace internal

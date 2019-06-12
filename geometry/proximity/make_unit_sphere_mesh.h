@@ -1,11 +1,13 @@
 #pragma once
 
 #include <algorithm>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
+#include "drake/geometry/proximity/hydroelastic_field.h"
 #include "drake/geometry/proximity/volume_mesh.h"
 
 namespace drake {
@@ -251,8 +253,30 @@ VolumeMesh<T> MakeUnitSphereMesh(int refinement_level) {
     is_boundary = split_pair.second;
     DRAKE_DEMAND(mesh.vertices().size() == is_boundary.size());
   }
+  return mesh;
+}
 
-  return std::move(mesh);
+template <typename T>
+std::unique_ptr<HydroelasticField<T>> MakeUnitSphereHydroelasticField(
+    int refinement_level) {
+  auto mesh = std::make_unique<VolumeMesh<T>>(
+      std::move(MakeUnitSphereMesh<T>(refinement_level)));
+  //auto mesh =
+  //    std::make_unique<VolumeMesh<T>>(std::move(std::get<0>(field_tuple)));
+
+  // Analytic strain field.
+  std::vector<T> e_mn_values(mesh->vertices().size());
+  for (VolumeVertexIndex v(0); v < mesh->num_vertices(); ++v) {
+    const VolumeVertex<T>& p_MV = mesh->vertex(v);
+    const T radius = p_MV.r_MV().norm();
+    // Distance function for the unit sphere.
+    e_mn_values[v] = 1.0 - radius;
+  }
+  auto e_mn = std::make_unique<VolumeMeshFieldLinear<T, T>>(
+      "Strain Field", std::move(e_mn_values), mesh.get());
+
+  return std::make_unique<HydroelasticField<T>>(std::move(mesh),
+                                                std::move(e_mn));
 }
 
 }  // namespace internal

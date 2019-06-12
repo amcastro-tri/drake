@@ -57,7 +57,7 @@ double CalcTetrahedronMeshVolume(const VolumeMesh<double>& mesh) {
 GTEST_TEST(MakeSphereMesh, VolumeConvergence) {
   const double kTolerance = 5.0 * std::numeric_limits<double>::epsilon();
 
-  auto mesh0 = MakeUnitSphereMesh<double>(0);
+  auto mesh0 = get<0>(MakeUnitSphereMesh<double>(0));
   const double volume0 = CalcTetrahedronMeshVolume(mesh0);
   const double sphere_volume = 4.0 / 3.0 * M_PI;
   // Initial error in the computation of the volume.
@@ -71,7 +71,7 @@ GTEST_TEST(MakeSphereMesh, VolumeConvergence) {
   EXPECT_NEAR(volume0, expected_volume, kTolerance);
 
   for (int level = 1; level < 6; ++level) {
-    auto mesh = MakeUnitSphereMesh<double>(level);
+    auto mesh = get<0>(MakeUnitSphereMesh<double>(level));
 
     // Verify correct size.
     const size_t num_tetrahedra = std::pow(8, level + 1);

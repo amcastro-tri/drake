@@ -231,6 +231,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     geometry_id_to_visual_index_ = other.geometry_id_to_visual_index_;
     geometry_id_to_collision_index_ = other.geometry_id_to_collision_index_;
     default_coulomb_friction_ = other.default_coulomb_friction_;
+    default_modulus_of_elasticity_ = other.default_modulus_of_elasticity_;
     visual_geometries_ = other.visual_geometries_;
     collision_geometries_ = other.collision_geometries_;
     if (geometry_source_is_registered())
@@ -2708,6 +2709,18 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     return default_coulomb_friction_[collision_index];
   }
 
+  void SetModulusOfElasticity(geometry::GeometryId id, double E) {
+    DRAKE_DEMAND(is_collision_geometry(id));
+    const int collision_index = geometry_id_to_collision_index_.at(id);
+    default_modulus_of_elasticity_[collision_index] = E;
+  }
+
+  double default_modulus_of_elasticity(geometry::GeometryId id) const {
+    DRAKE_DEMAND(is_collision_geometry(id));
+    const int collision_index = geometry_id_to_collision_index_.at(id);
+    return default_modulus_of_elasticity_[collision_index];
+  }
+
   /// @name Retrieving ports for communication with a SceneGraph.
   /// @{
 
@@ -3899,6 +3912,10 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Friction coefficients ordered by collision index.
   // See geometry_id_to_collision_index_.
   std::vector<CoulombFriction<double>> default_coulomb_friction_;
+
+  // Modulus of elasticity coefficients ordered by collision index.
+  // See geometry_id_to_collision_index_.
+  std::vector<double> default_modulus_of_elasticity_;
 
   // Port handles for geometry:
   systems::InputPortIndex geometry_query_port_;

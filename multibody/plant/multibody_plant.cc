@@ -395,7 +395,12 @@ geometry::GeometryId MultibodyPlant<T>::RegisterCollisionGeometry(
   geometry_id_to_collision_index_[id] = collision_index;
   DRAKE_ASSERT(
       static_cast<int>(default_coulomb_friction_.size()) == collision_index);
+  DRAKE_ASSERT(static_cast<int>(default_modulus_of_elasticity_.size()) ==
+               collision_index);
   default_coulomb_friction_.push_back(coulomb_friction);
+  // By default geometries are specified to be rigid.
+  default_modulus_of_elasticity_.push_back(
+      std::numeric_limits<double>::infinity());
   DRAKE_ASSERT(num_bodies() == static_cast<int>(collision_geometries_.size()));
   collision_geometries_[body.index()].push_back(id);
   return id;

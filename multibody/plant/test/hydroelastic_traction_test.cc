@@ -73,7 +73,7 @@ public ::testing::TestWithParam<RigidTransform<double>> {
       SpatialForce<double>* Ft_Bo_W) {
     // Instantiate the traction calculator data.
     HydroelasticTractionCalculator<double>::HydroelasticTractionCalculatorData
-        calculator_data(*plant_context_, *plant_, contact_surface_.get());
+        calculator_data = MakeCalculatorData(dissipation, mu_coulomb);
 
     // First compute the traction applied to Body A at point Q, expressed in the
     // world frame.
@@ -99,13 +99,46 @@ public ::testing::TestWithParam<RigidTransform<double>> {
             calculator_data, p_WQ, traction_Aq_W);
 
     // Shift to body origins. Traction on body B is equal and opposite.
-    const Vector3<double>& p_WC = calculator_data.p_WC();
-    const Vector3<double>& p_WAo = calculator_data.X_WA().translation();
-    const Vector3<double>& p_WBo = calculator_data.X_WB().translation();
+    const Vector3<double>& p_WC = calculator_data.p_WC;
+    const Vector3<double>& p_WAo = calculator_data.X_WA.translation();
+    const Vector3<double>& p_WBo = calculator_data.X_WB.translation();
     const Vector3<double> p_CAo_W = p_WAo - p_WC;
     const Vector3<double> p_CBo_W = p_WBo - p_WC;
     *Ft_Ao_W = Ft_Ac_W.Shift(p_CAo_W);
     *Ft_Bo_W = -(Ft_Ac_W.Shift(p_CBo_W));
+  }
+
+  HydroelasticTractionCalculator<double>::HydroelasticTractionCalculatorData
+  MakeCalculatorData(double dissipation, double mu_coulomb) {
+    // Get the transform of the geometry for M to the world frame.
+    const auto& query_object =
+        plant_->get_geometry_query_input_port()
+            .template Eval<geometry::QueryObject<double>>(*plant_context_);
+    const RigidTransform<double> X_WM =
+        query_object.X_WG(contact_surface_->id_M());
+
+    // Get the bodies that the two geometries are affixed to. We'll call these
+    // A and B.
+    const geometry::FrameId frameM_id =
+        query_object.inspector().GetFrameId(contact_surface_->id_M());
+    const geometry::FrameId frameN_id =
+        query_object.inspector().GetFrameId(contact_surface_->id_N());
+    const Body<double>& bodyA = *plant_->GetBodyFromFrameId(frameM_id);
+    const Body<double>& bodyB = *plant_->GetBodyFromFrameId(frameN_id);
+
+    // The the poses and spatial velocities of bodies A and B.
+    const RigidTransform<double> X_WA = bodyA.EvalPoseInWorld(*plant_context_);
+    const RigidTransform<double> X_WB = bodyB.EvalPoseInWorld(*plant_context_);
+    const SpatialVelocity<double> V_WA =
+        bodyA.EvalSpatialVelocityInWorld(*plant_context_);
+    const SpatialVelocity<double> V_WB =
+        bodyB.EvalSpatialVelocityInWorld(*plant_context_);
+
+    return HydroelasticTractionCalculator<
+        double>::HydroelasticTractionCalculatorData(contact_surface_.get(),
+                                                    X_WM, X_WA, X_WB, V_WA,
+                                                    V_WB, dissipation,
+                                                    mu_coulomb);
   }
 
   void SetBoxTranslationalVelocity(const Vector3<double>& v) {
@@ -366,11 +399,13 @@ TEST_P(MultibodyPlantHydroelasticTractionTests, VanillaTractionOverPatch) {
   if (!GetParam().IsExactlyIdentity())
     return;
 
+  HydroelasticTractionCalculator<double>::HydroelasticTractionCalculatorData
+      calculator_data = MakeCalculatorData(dissipation, mu_coulomb);
+
   // Compute the spatial forces at the origins of the body frames.
   multibody::SpatialForce<double> F_Mo_W, F_No_W;
   traction_calculator().ComputeSpatialForcesAtBodyOriginsFromHydroelasticModel(
-      plant_context(), plant(), contact_surface(), dissipation, mu_coulomb,
-      &F_Mo_W, &F_No_W);
+      calculator_data, &F_Mo_W, &F_No_W);
 
   // Check the spatial force. We know that geometry M is the halfspace,
   // so we'll check the spatial force for geometry N instead.
@@ -399,11 +434,13 @@ TEST_P(MultibodyPlantHydroelasticTractionTests, FrictionalTractionOverPatch) {
   const math::RotationMatrix<double>& R_WY = GetParam().rotation();
   SetBoxTranslationalVelocity(R_WY * Vector3<double>(1, 0, 0));
 
+  HydroelasticTractionCalculator<double>::HydroelasticTractionCalculatorData
+      calculator_data = MakeCalculatorData(dissipation, mu_coulomb);
+
   // Compute the spatial forces at the origins of the body frames.
   multibody::SpatialForce<double> F_Mo_W, F_No_W;
   traction_calculator().ComputeSpatialForcesAtBodyOriginsFromHydroelasticModel(
-      plant_context(), plant(), contact_surface(), dissipation, mu_coulomb,
-      &F_Mo_W, &F_No_W);
+      calculator_data, &F_Mo_W, &F_No_W);
 
   // Check the spatial force. We know that geometry M is the halfspace,
   // so we'll check the spatial force for geometry N instead.  Note that the
@@ -448,11 +485,13 @@ TEST_P(MultibodyPlantHydroelasticTractionTests,
   SetBoxTranslationalVelocity(R_WY *
       Vector3<double>(0, 0, separating_velocity));
 
+  HydroelasticTractionCalculator<double>::HydroelasticTractionCalculatorData
+      calculator_data = MakeCalculatorData(dissipation, mu_coulomb);
+
   // Compute the spatial forces at the origins of the body frames.
   multibody::SpatialForce<double> F_Mo_W, F_No_W;
   traction_calculator().ComputeSpatialForcesAtBodyOriginsFromHydroelasticModel(
-      plant_context(), plant(), contact_surface(), dissipation, mu_coulomb,
-      &F_Mo_W, &F_No_W);
+      calculator_data, &F_Mo_W, &F_No_W);
 
   // Compute the magnitude of the normal traction. Note that the damping
   // constant at each point will be field value * dissipation coefficient.

@@ -14,6 +14,10 @@ using geometry::SurfaceFaceIndex;
 using geometry::SurfaceMesh;
 using math::RigidTransform;
 
+#include <iostream>
+//#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VAR(a) (void) a;
+
 namespace multibody {
 namespace internal {
 
@@ -101,6 +105,7 @@ ComputeSpatialForcesAtBodyOriginsFromHydroelasticModel(
           Vector3<T> p_WQ;
           const Vector3<T> traction_Aq_W = CalcTractionAtPoint(
               data, i, Q_barycentric, dissipation, mu_coulomb, &p_WQ);
+          PRINT_VAR(traction_Aq_W.transpose());    
           return ComputeSpatialTractionAtAcFromTractionAtAq(data, p_WQ,
                                                             traction_Aq_W);
         };
@@ -163,6 +168,10 @@ Vector3<T> HydroelasticTractionCalculator<T>::CalcTractionAtPoint(
     const typename SurfaceMesh<T>::Barycentric& Q_barycentric,
     double dissipation, double mu_coulomb, Vector3<T>* p_WQ) const {
   DRAKE_DEMAND(p_WQ != nullptr);
+
+  PRINT_VAR("-------------------------");
+  PRINT_VAR("-------------------------");
+
   // Compute the point of contact in the world frame.
   const Vector3<T> p_MQ = data.surface.mesh().CalcCartesianFromBarycentric(
       face_index, Q_barycentric);
@@ -182,6 +191,9 @@ Vector3<T> HydroelasticTractionCalculator<T>::CalcTractionAtPoint(
   const Vector3<T> nhat_M = h_M.normalized();
   const Vector3<T> nhat_W = data.X_WM.rotation() * nhat_M;
 
+  PRINT_VAR(E);
+  PRINT_VAR(nhat_W.transpose());
+
   // Get the relative spatial velocity at the point Q between the
   // two bodies A and B (to which M and N are affixed, respectively) by
   // subtracting the spatial velocity of a point (Bq) coincident with p_WQ on
@@ -196,11 +208,18 @@ Vector3<T> HydroelasticTractionCalculator<T>::CalcTractionAtPoint(
   const Vector3<T> p_BoBq_W = *p_WQ - data.X_WB.translation();
   const SpatialVelocity<T> V_WBq = data.V_WB.Shift(p_BoBq_W);
 
+  PRINT_VAR(data.V_WA);
+  PRINT_VAR(data.V_WB);
+
   // Finally compute the relative velocity of Frame Aq relative to Frame Bq,
   // expressed in the world frame, and then the translational component of this
   // velocity.
   const SpatialVelocity<T> V_BqAq_W = V_WAq - V_WBq;
   const Vector3<T>& v_BqAq_W = V_BqAq_W.translational();
+
+  PRINT_VAR(V_WAq);     
+  PRINT_VAR(V_WBq);
+  PRINT_VAR(v_BqAq_W);   
 
   // Get the velocity along the normal to the contact surface. Note that a
   // positive value indicates that bodies are separating at Q while a negative
@@ -214,7 +233,7 @@ Vector3<T> HydroelasticTractionCalculator<T>::CalcTractionAtPoint(
 
   // Determine the normal traction at the point.
   using std::max;
-  const T normal_traction = max(E - vn_BqAq_W * c, T(0));
+  const T normal_traction = max(E + vn_BqAq_W * c, T(0));
 
   // Get the slip velocity at the point.
   const Vector3<T> vt_BqAq_W = v_BqAq_W - nhat_W * vn_BqAq_W;
@@ -229,11 +248,32 @@ Vector3<T> HydroelasticTractionCalculator<T>::CalcTractionAtPoint(
 
   // Get the regularized direction of slip.
   const Vector3<T> vt_hat_BqAq_W = vt_BqAq_W / soft_norm_vt;
+  
+  PRINT_VAR(vt_BqAq_W);  
+  PRINT_VAR(norm_vt);
+
+  const T mu_dimensionless = 2.0 / M_PI * atan(norm_vt / T(vslip_regularizer_));
+  const T mu_regularized = mu_coulomb * mu_dimensionless;
+  const T tangent_traction_norm = mu_regularized * normal_traction;
+
+  // The normal force has a negative sign since we want the force on M. The
+  // normal points from M to N.  
+  const Vector3<T> fn_M_W = -normal_traction * nhat_W;
+  const Vector3<T> ft_M_W = -tangent_traction_norm * vt_hat_BqAq_W;
+
+  PRINT_VAR(mu_dimensionless);
+  PRINT_VAR(mu_regularized);
+  PRINT_VAR(tangent_traction_norm);
+  PRINT_VAR(vt_hat_BqAq_W.transpose());
+  PRINT_VAR(fn_M_W.transpose());
+  PRINT_VAR(ft_M_W.transpose());
+
+  return fn_M_W + ft_M_W;
 
   // Compute the traction.
-  const T frictional_scalar = mu_coulomb * normal_traction *
-      2.0 / M_PI * atan(norm_vt / T(vslip_regularizer_));
-  return nhat_W * normal_traction - vt_hat_BqAq_W * frictional_scalar;
+  //const T frictional_scalar = mu_coulomb * normal_traction *
+  //    2.0 / M_PI * atan(norm_vt / T(vslip_regularizer_));
+  //return nhat_W * normal_traction - vt_hat_BqAq_W * frictional_scalar;
 }
 
 }  // namespace internal

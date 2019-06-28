@@ -135,8 +135,12 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
     const int refinement_level = 2;
     auto sphere_field = MakeUnitSphereHydroelasticField<T>(refinement_level,
                                                            sphere.get_radius());
-    model_data_.geometry_id_to_model_[specs.id] =
+    auto model =
         std::make_unique<HydroelasticModel<T>>(std::move(sphere_field));
+    model->set_modulus_of_elasticity(E);
+
+    model_data_.geometry_id_to_model_[specs.id] = std::move(model);
+        
   }
 
   void ImplementGeometry(const Cylinder& cylinder, void* user_data) override {
@@ -241,6 +245,10 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
     if (surface_R->num_vertices() == 0) return nullopt;
     // Compute pressure field.
     for (T& e_s : e_s_surface) e_s *= soft_model_S.modulus_of_elasticity();
+
+
+    PRINT_VAR(soft_model_S.modulus_of_elasticity());
+
 
     auto e_s = std::make_unique<geometry::SurfaceMeshFieldLinear<T, T>>(
         "scalar field", std::move(e_s_surface), surface_R.get());

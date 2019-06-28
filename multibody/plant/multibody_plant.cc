@@ -1288,9 +1288,9 @@ void MultibodyPlant<T>::CalcAndAddHydroelasticsContactForces(
 
     // Simple utility to detect 0 / 0. As it is used in this method, denom
     // can only be zero if num is also zero, so we'll simply return zero.
-    auto safe_divide = [](double num, double denom) {
-      return denom == 0.0 ? 0.0 : num / denom;
-    };
+    //auto safe_divide = [](double num, double denom) {
+    //  return denom == 0.0 ? 0.0 : num / denom;
+    //};
 
 #if 0
     const double Em = default_modulus_of_elasticity_[collision_indexM];
@@ -1302,7 +1302,8 @@ void MultibodyPlant<T>::CalcAndAddHydroelasticsContactForces(
     const double dm = default_dissipation_[collision_indexM];
     const double dn = default_dissipation_[collision_indexN];
     // Dissipation must be positive. It can be zero.
-    const double dissipation = safe_divide(dm * dn, dm + dn);
+    //const double dissipation = safe_divide(2 * dm * dn, dm + dn);
+    const double dissipation = dm + dn;
 
     // Get the transform of the geometry for M to the world frame.
     const RigidTransform<T> X_WM = query_object.X_WG(surface.id_M());
@@ -1331,6 +1332,15 @@ void MultibodyPlant<T>::CalcAndAddHydroelasticsContactForces(
 
     const internal::BodyNodeIndex bodyA_node_index = bodyA.node_index();
     const internal::BodyNodeIndex bodyB_node_index = bodyB.node_index();
+
+    PRINT_VAR(bodyA.name());
+    PRINT_VAR(bodyB.name());
+    PRINT_VAR(F_Ao_W);
+    PRINT_VAR(F_Bo_W);
+    PRINT_VAR(dissipation);
+    PRINT_VAR(surface.mesh().total_area());
+    PRINT_VAR(surface.mesh().centroid());
+
 
     if (bodyA_index != world_index()) {
       F_BBo_W_array->at(bodyA_node_index) += F_Ao_W;

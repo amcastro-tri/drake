@@ -2719,6 +2719,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     DRAKE_MBP_THROW_IF_FINALIZED();
     DRAKE_DEMAND(is_collision_geometry(id));
     const int collision_index = geometry_id_to_collision_index_.at(id);
+    // TODO: get rid of default_modulus_of_elasticity_.
     default_modulus_of_elasticity_[collision_index] = elastic_modulus;
 
     geometry::ProximityProperties* properties =
@@ -2731,10 +2732,23 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
 
     properties->AddProperty("hydroelastics", "elastic modulus",
                             elastic_modulus);
+  }
 
-    PRINT_VAR(properties);
-    PRINT_VAR(properties->template GetProperty<double>("hydroelastics",
-                                                       "elastic modulus"));
+  void set_hydroelastics_dissipation(geometry::GeometryId id,
+                                     double dissipation) {
+    // It must not be finalized so that member_scene_graph() is valid.
+    DRAKE_MBP_THROW_IF_FINALIZED();
+    DRAKE_DEMAND(is_collision_geometry(id));
+    const int collision_index = geometry_id_to_collision_index_.at(id);
+    // TODO: get rid of default_dissipation_.
+    default_dissipation_[collision_index] = dissipation;
+    geometry::ProximityProperties* properties =
+        member_scene_graph().GetMutableProximityProperties(*source_id_, id);
+    if (!properties) {
+      throw std::runtime_error("The geometry with this id " 
+                               " does not have a proximity role.");
+    }
+    properties->AddProperty("hydroelastics", "dissipation", dissipation);
   }
 
   double default_modulus_of_elasticity(geometry::GeometryId id) const {

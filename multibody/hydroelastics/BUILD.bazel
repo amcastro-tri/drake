@@ -50,8 +50,7 @@ drake_cc_library(
         ":hydroelastic_field_sphere",
         ":level_set_field",
         "//common:essential",
-        "//geometry/proximity",
-        "//multibody/plant",
+        "//geometry:scene_graph",
     ],
 )
 

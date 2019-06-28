@@ -34,28 +34,28 @@ class SphereVsPlaneTest : public ::testing::Test {
         "drake/multibody/hydroelastics/test/sphere_vs_plane.sdf");
     std::tie(plant_, scene_graph_) = AddMultibodyPlantSceneGraph(&builder);
     Parser(plant_).AddModelFromFile(full_name);
+
+    // Retrieve bodies and geometry ids.
+    sphere_ = &plant_->GetBodyByName("sphere");
+    ground_ = &plant_->GetBodyByName("ground");    
+    ASSERT_EQ(plant_->GetCollisionGeometriesForBody(*sphere_).size(), 1u);
+    sphere_geometry_id_ = plant_->GetCollisionGeometriesForBody(*sphere_)[0];
+    ASSERT_EQ(plant_->GetCollisionGeometriesForBody(*ground_).size(), 1u);
+    ground_geometry_id_ = plant_->GetCollisionGeometriesForBody(*ground_)[0];
+
+    // Set elastic properties pre-finalize.
+    const double E = 10.0;
+    plant_->set_elastic_modulus(sphere_geometry_id_, E);
+
     plant_->Finalize();
     diagram_ = builder.Build();
     // Sanity check on the availability of the optional source id before using
     // it.
     DRAKE_DEMAND(plant_->get_source_id() != nullopt);
 
-    sphere_ = &plant_->GetBodyByName("sphere");
-    ground_ = &plant_->GetBodyByName("ground");
+    MakeNewContext();
 
-    const double E = 10.0;
-    ASSERT_EQ(plant_->GetCollisionGeometriesForBody(*sphere_).size(), 1u);
-    sphere_geometry_id_ = plant_->GetCollisionGeometriesForBody(*sphere_)[0];
-    plant_->SetModulusOfElasticity(sphere_geometry_id_, E);
-
-    ASSERT_EQ(plant_->GetCollisionGeometriesForBody(*ground_).size(), 1u);
-    ground_geometry_id_ = plant_->GetCollisionGeometriesForBody(*ground_)[0];
-
-    context_ = diagram_->CreateDefaultContext();
-    plant_context_ =
-        &diagram_->GetMutableSubsystemContext(*plant_, context_.get());
-
-    engine_ = std::make_unique<HydroelasticEngine<double>>(plant_);
+    engine_ = std::make_unique<HydroelasticEngine<double>>();
 
     SetInContactConfiguration();
   }
@@ -68,6 +68,16 @@ class SphereVsPlaneTest : public ::testing::Test {
     plant_->SetFreeBodyPoseInWorldFrame(plant_context_, *sphere_, X_WS);
   }
 
+  void MakeNewContext() {
+    context_ = diagram_->CreateDefaultContext();
+    plant_context_ =
+        &diagram_->GetMutableSubsystemContext(*plant_, context_.get());
+
+    const auto& query_port = plant_->get_geometry_query_input_port();
+    query_object_ = &query_port.template Eval<geometry::QueryObject<double>>(
+        *plant_context_);
+  }
+
  protected:
   MultibodyPlant<double>* plant_{nullptr};
   geometry::SceneGraph<double>* scene_graph_{nullptr};
@@ -77,7 +87,8 @@ class SphereVsPlaneTest : public ::testing::Test {
   const Body<double>* ground_{nullptr};
   geometry::GeometryId sphere_geometry_id_, ground_geometry_id_;
   std::unique_ptr<systems::Context<double>> context_;
-  systems::Context<double>* plant_context_;
+  systems::Context<double>* plant_context_{nullptr};
+  const geometry::QueryObject<double>* query_object_{nullptr};
   std::unique_ptr<HydroelasticEngine<double>> engine_;
   // Numerical parameters of the problem.
   double height_{0.04};
@@ -86,7 +97,7 @@ class SphereVsPlaneTest : public ::testing::Test {
 
 TEST_F(SphereVsPlaneTest, RespectsCollisionFilter) {
   // Before filtering is applied the engine should report contact.
-  EXPECT_EQ(engine_->ComputeContactSurfaces(*plant_context_).size(), 1u);
+  EXPECT_EQ(engine_->ComputeContactSurfaces(*query_object_).size(), 1u);
 
   // Add filter to exclude collisions between the ground and the sphere.
   optional<geometry::FrameId> ground_id =
@@ -98,14 +109,12 @@ TEST_F(SphereVsPlaneTest, RespectsCollisionFilter) {
   scene_graph_->ExcludeCollisionsBetween(geometry::GeometrySet(*ground_id),
                                          geometry::GeometrySet(*sphere_id));
   // We need a new context for the changes to take effect.
-  context_ = diagram_->CreateDefaultContext();
-  plant_context_ =
-      &diagram_->GetMutableSubsystemContext(*plant_, context_.get());
+  MakeNewContext();
 
   // Set objects to be in contact.
   SetInContactConfiguration();
 
-  EXPECT_EQ(engine_->ComputeContactSurfaces(*plant_context_).size(), 0u);
+  EXPECT_EQ(engine_->ComputeContactSurfaces(*query_object_).size(), 0u);
 }
 
 TEST_F(SphereVsPlaneTest, VerifyModelSizeAndResults) {
@@ -117,7 +126,7 @@ TEST_F(SphereVsPlaneTest, VerifyModelSizeAndResults) {
   // First query will create the underlying hydroelastic models including
   // tetrahedral meshes, fields and level sets.
   const std::vector<ContactSurface<double>> all_surfaces =
-      engine_->ComputeContactSurfaces(*plant_context_);
+      engine_->ComputeContactSurfaces(*query_object_);
 
   // Expect a model for the sphere and for the half-space.
   EXPECT_EQ(engine_->num_models(), 2);
@@ -157,7 +166,7 @@ TEST_F(SphereVsPlaneTest, VerifyModelSizeAndResults) {
   }
 
   // The number of models should not change on further queries.
-  engine_->ComputeContactSurfaces(*plant_context_);
+  engine_->ComputeContactSurfaces(*query_object_);
   EXPECT_EQ(engine_->num_models(), 2);
 }
 

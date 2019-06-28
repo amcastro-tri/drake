@@ -8,10 +8,9 @@
 #include "drake/common/eigen_types.h"
 #include "drake/geometry/proximity/volume_mesh.h"
 #include "drake/geometry/query_results/contact_surface.h"
+#include "drake/geometry/query_object.h"
 #include "drake/multibody/hydroelastics/hydroelastic_field.h"
 #include "drake/multibody/hydroelastics/level_set_field.h"
-#include "drake/multibody/plant/multibody_plant.h"
-#include "drake/systems/framework/context.h"
 
 namespace drake {
 namespace multibody {
@@ -80,8 +79,7 @@ class HydroelasticModel {
 ///  - Creates the internal representation of the geometric models as
 ///    HydroelasticModel instances. This creation takes place on the first
 ///    context-based query.
-///  - Owns the HydroelasticModel instances for each geometry in the
-///    MultibodyPlant mode.
+///  - Owns the HydroelasticModel instances for each geometry in the model.
 ///  - Provides API to perform hydroelastic model specific geometric queries.
 ///
 /// Instantiated templates for the following kinds of T's are provided:
@@ -105,7 +103,7 @@ class HydroelasticEngine {
   /// `ComputeContactSurfaces()`.
   ///
   /// @throws std::exception if `plant` is nullptr.
-  explicit HydroelasticEngine(const MultibodyPlant<T>* plant);
+  HydroelasticEngine();
 
   ~HydroelasticEngine();
 
@@ -123,11 +121,36 @@ class HydroelasticEngine {
   /// computational representation for each geometry in the model, which is then
   /// used in future queries.
   std::vector<geometry::ContactSurface<T>> ComputeContactSurfaces(
-      const systems::Context<T>& plant_context) const;
+      const geometry::QueryObject<T>& query_object) const;
 
  private:
   class Impl;
   Impl* impl_{};
+};
+
+template <>
+class HydroelasticEngine<symbolic::Expression> {
+ public:
+  //  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(HydroelasticEngine<symbolic::Expression>)
+
+  using T = symbolic::Expression;
+
+  HydroelasticEngine() {}
+
+  ~HydroelasticEngine() {}
+
+  std::vector<geometry::ContactSurface<T>> ComputeContactSurfaces(
+      const geometry::QueryObject<T>& query_object) const {
+    Throw("ComputeContactSurfaces");
+    return std::vector<geometry::ContactSurface<T>>();
+  }
+
+ private:
+  static void Throw(const char* operation_name) {
+    throw std::logic_error(
+        fmt::format("Cannot {} on a HydroelasticEngine<symbolic::Expression>",
+                    operation_name));
+  }
 };
 
 }  // namespace internal

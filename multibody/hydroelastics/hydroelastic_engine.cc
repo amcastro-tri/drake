@@ -19,11 +19,15 @@ using drake::geometry::Cylinder;
 using drake::geometry::GeometryId;
 using drake::geometry::HalfSpace;
 using drake::geometry::Mesh;
+using drake::geometry::QueryObject;
 using drake::geometry::Shape;
 using drake::geometry::Sphere;
 using drake::geometry::SurfaceMesh;
 using drake::math::RigidTransform;
-using drake::systems::Context;
+
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 
 namespace drake {
 namespace multibody {
@@ -46,7 +50,7 @@ HydroelasticModel<T>::HydroelasticModel(
 template <typename T>
 class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
  public:
-  Impl(const MultibodyPlant<T>* plant) : plant_(*plant) {}
+  Impl() {}
 
   int num_models() const {
     return static_cast<int>(model_data_.geometry_id_to_model_.size());
@@ -57,17 +61,22 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
   }
 
   std::vector<ContactSurface<T>> ComputeContactSurfaces(
-      const Context<T>& plant_context) const {
+      const geometry::QueryObject<T>& query_object) const {
     // Models are built the first time this method is called.
     if (!model_data_.models_are_initialized_) {
       Impl* nonconst_this = const_cast<Impl*>(this);
-      nonconst_this->MakeModels(plant_context);
+      nonconst_this->MakeModels(query_object);
     }
 
+#if 0
     const auto& query_port = plant_.get_geometry_query_input_port();
     const auto& query_object =
         query_port.template Eval<geometry::QueryObject<T>>(plant_context);
     const std::vector<SortedPair<GeometryId>>& geometry_pairs =
+        query_object.FindCollisionCandidates();
+#endif
+
+  const std::vector<SortedPair<GeometryId>>& geometry_pairs =
         query_object.FindCollisionCandidates();
 
     std::vector<ContactSurface<T>> all_contact_surfaces;
@@ -185,29 +194,24 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
 
   // This method is invoked the first time ComputeContactSurfaces() is called in
   // order to create the underlying computational representation for each
-  // geometry in the MultibodyPlant model.
-  void MakeModels(const systems::Context<T>& plant_context) {
-    const auto& query_port = plant_.get_geometry_query_input_port();
-    if (!query_port.HasValue(plant_context)) {
-      throw std::invalid_argument(
-          "HydroelasticEngine: Cannot get a valid geometry::QueryObject. "
-          "Either the plant geometry_query_input_port() is not properly "
-          "connected to the SceneGraph's output port, or the plant_context is "
-          "incorrect. Please refer to AddMultibodyPlantSceneGraph on "
-          "connecting "
-          "MultibodyPlant to SceneGraph.");
-    }
+  // geometry in the model.
+  void MakeModels(const geometry::QueryObject<T>& query_object) {
     const geometry::SceneGraphInspector<T>& inspector =
-        query_port.template Eval<geometry::QueryObject<T>>(plant_context)
-            .inspector();
+        query_object.inspector();
 
     // Only reify geometries with proximity roles.
     for (const geometry::GeometryId geometry_id :
          inspector.all_geometry_ids()) {
-      if (inspector.GetProximityProperties(geometry_id) != nullptr) {
+      if (const geometry::ProximityProperties* properties =
+              inspector.GetProximityProperties(geometry_id)) {
         const Shape& shape = inspector.GetShape(geometry_id);
-        const double E = plant_.default_modulus_of_elasticity(geometry_id);
-        GeometryImplementationData specs{geometry_id, E};
+        PRINT_VAR(properties);
+        const double elastic_modulus =
+            properties->template GetPropertyOrDefault<double>(
+                "hydroelastics", "elastic modulus",
+                std::numeric_limits<double>::infinity());
+
+        GeometryImplementationData specs{geometry_id, elastic_modulus};
         shape.Reify(this, &specs);
       }
     }
@@ -235,6 +239,9 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
             soft_field_S.scalar_field().values(), &e_s_surface,
             &grad_level_set_R_surface);
     if (surface_R->num_vertices() == 0) return nullopt;
+    // Compute pressure field.
+    for (T& e_s : e_s_surface) e_s *= soft_model_S.modulus_of_elasticity();
+
     auto e_s = std::make_unique<geometry::SurfaceMeshFieldLinear<T, T>>(
         "scalar field", std::move(e_s_surface), surface_R.get());
     auto grad_level_set_R =
@@ -249,14 +256,12 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
                              std::move(grad_level_set_R));
   }
 
-  const MultibodyPlant<T>& plant_;
   mutable ModelData model_data_;
 };
 
 template <typename T>
-HydroelasticEngine<T>::HydroelasticEngine(const MultibodyPlant<T>* plant)
-    : impl_(new Impl(plant)) {
-  DRAKE_THROW_UNLESS(plant != nullptr);
+HydroelasticEngine<T>::HydroelasticEngine()
+    : impl_(new Impl()) {
 }
 
 template <typename T>
@@ -266,8 +271,8 @@ HydroelasticEngine<T>::~HydroelasticEngine() {
 
 template <typename T>
 std::vector<ContactSurface<T>> HydroelasticEngine<T>::ComputeContactSurfaces(
-    const Context<T>& plant_context) const {
-  return impl_->ComputeContactSurfaces(plant_context);
+    const geometry::QueryObject<T>& query_object) const {
+  return impl_->ComputeContactSurfaces(query_object);
 }
 
 template <typename T>

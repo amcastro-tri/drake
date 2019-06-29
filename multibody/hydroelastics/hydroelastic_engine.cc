@@ -217,8 +217,62 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
         std::make_unique<HydroelasticModel<T>>(std::move(level_set));
   }
 
-  void ImplementGeometry(const Box&, void*) override {
-    //throw std::logic_error("There is no support for boxes yet.");
+  void ImplementGeometry(const Box& box, void* user_data) override {
+#if 0        
+    // Box: correct distance to corners
+float fBox(vec3 p, vec3 b) {
+	vec3 d = abs(p) - b;
+	return length(max(d, vec3(0))) + vmax(min(d, vec3(0)));
+}
+#endif
+    // No-op. Enable this when  needed.
+    return;
+
+    const GeometryImplementationData& specs =
+        *reinterpret_cast<GeometryImplementationData*>(user_data);
+    const double E = specs.effective_young_modulus;
+    if (E != std::numeric_limits<double>::infinity()) {
+      throw std::runtime_error(
+          "Currently only rigid boxes spaces are supported");
+    }
+
+    const Vector3<double> half_sizes = box.size() / 2.0;
+
+    std::function<T(const Vector3<T>&)> box_sdf =
+        [&half_sizes](const Vector3<T>& p_WQ) {
+          const Vector3<T> slabs_sdf = p_WQ.cwiseAbs() - half_sizes;
+          // SDF inside the box. It is negative inside and zero outside.
+          const T inside_sdf = slabs_sdf.cwiseMin(T(0)).maxCoeff();
+          // SDF outside the box. It is zero inside and positive outside.
+          const T outside_sdf = slabs_sdf.cwiseMax(T(0)).norm();
+          return inside_sdf + outside_sdf;
+        };
+
+    std::function<Vector3<T>(const Vector3<T>&)> grad_box_sdf =
+        [&half_sizes](const Vector3<T>& p_WQ) {
+          const Vector3<T> slabs_sdf = p_WQ.cwiseAbs() - half_sizes;
+          // SDF inside the box. It is negative inside and zero outside.
+          int max_index;
+          const T inside_sdf = slabs_sdf.cwiseMin(T(0)).maxCoeff(&max_index);
+          if (inside_sdf <= T(0)) {
+            if (p_WQ[max_index] > 0)
+              return Vector3<T>(Vector3<T>::Unit(max_index));
+            else
+              return Vector3<T>(-Vector3<T>::Unit(max_index));
+          } else {
+            // SDF outside the box. It is zero inside and positive outside.
+            //const T outside_sdf = slabs_sdf.cwiseMax(T(0)).norm();
+            const Vector3<T> x_plus = slabs_sdf.cwiseMax(T(0));
+            const Vector3<T> grad = x_plus.normalized();
+            return grad;
+          }
+          DRAKE_UNREACHABLE();
+        };
+
+    auto level_set =
+        std::make_unique<geometry::LevelSetField<T>>(box_sdf, grad_box_sdf);
+    model_data_.geometry_id_to_model_[specs.id] =
+        std::make_unique<HydroelasticModel<T>>(std::move(level_set));
   }
 
   void ImplementGeometry(const Mesh& mesh, void* user_data) override {

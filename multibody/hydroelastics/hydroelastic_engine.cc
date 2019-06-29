@@ -151,8 +151,54 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
         
   }
 
-  void ImplementGeometry(const Cylinder&, void*) override {
-    //throw std::logic_error("There is no support for cylinders yet.");
+  void ImplementGeometry(const Cylinder& cylinder, void* user_data) override {
+    const GeometryImplementationData& specs =
+        *reinterpret_cast<GeometryImplementationData*>(user_data);
+    const double E = specs.effective_young_modulus;
+    if (E != std::numeric_limits<double>::infinity()) {
+      throw std::runtime_error(
+          "Currently only rigid cylinders spaces are supported");
+    }
+    const double radius = cylinder.get_radius();
+    const double half_length = cylinder.get_length() / 2.0;
+    
+    // Cylinder centered at the origin with its axis along the y axis.
+    std::function<T(const Vector3<T>&)> cylinder_sdf =
+        [radius, half_length](const Vector3<T>& p_WQ) {
+          // from: http://mercury.sexy/hg_sdf/. fCylinder().
+          const Vector2<T> p_xy(p_WQ[0], p_WQ[1]);
+          const T sdf_cylinder_shell = p_xy.norm() - radius;
+          using std::abs;
+          using std::max;
+          const T sdf_sides = abs(p_WQ[2]) - half_length;
+          return max(sdf_cylinder_shell, sdf_sides);
+        };
+
+    std::function<Vector3<T>(const Vector3<T>&)> grad_cylinder_sdf =
+        [radius, half_length](const Vector3<T>& p_WQ) {          
+          const Vector2<T> p_xy(p_WQ[0], p_WQ[1]);
+          const T sdf_cylinder_shell = p_xy.norm() - radius;
+          using std::abs;
+          using std::max;
+          const T sdf_sides = abs(p_WQ[2]) - half_length;
+
+          if (sdf_cylinder_shell > sdf_sides) {
+            const Vector2<T> n_xy = p_xy.normalized();
+            return Vector3<T>(n_xy[0], n_xy[1], 0.0);
+          } else {
+            if (p_WQ[2] > 0.0)
+              return Vector3<T>(0., 0., 1.);
+            else   
+              return Vector3<T>(0., 0., -1.);
+          }
+          DRAKE_UNREACHABLE();
+        };
+
+    auto level_set = std::make_unique<geometry::LevelSetField<T>>(
+        cylinder_sdf, grad_cylinder_sdf);
+    model_data_.geometry_id_to_model_[specs.id] =
+        std::make_unique<HydroelasticModel<T>>(std::move(level_set));
+    // throw std::logic_error("There is no support for cylinders yet.");
   }
 
   void ImplementGeometry(const HalfSpace& half_space,

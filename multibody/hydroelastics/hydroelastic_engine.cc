@@ -56,8 +56,11 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
     return static_cast<int>(model_data_.geometry_id_to_model_.size());
   }
 
-  const HydroelasticModel<T>& get_model(GeometryId id) const {
-    return *model_data_.geometry_id_to_model_.at(id);
+  const HydroelasticModel<T>* get_model(GeometryId id) const {
+    auto it = model_data_.geometry_id_to_model_.find(id);
+    if (it != model_data_.geometry_id_to_model_.end())
+      return it->second.get();
+    return nullptr;  
   }
 
   std::vector<ContactSurface<T>> ComputeContactSurfaces(
@@ -83,10 +86,15 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
     for (const auto& pair : geometry_pairs) {
       GeometryId id_M = pair.first();
       GeometryId id_N = pair.second();
-      const HydroelasticModel<T>& model_M = get_model(id_M);
-      const HydroelasticModel<T>& model_N = get_model(id_N);
+      const HydroelasticModel<T>* model_M = get_model(id_M);
+      const HydroelasticModel<T>* model_N = get_model(id_N);
+
+      // Skip contact surface computation if these ids do not have a hydrostatic
+      // model.
+      if (!model_M || !model_N) continue;
+
       // Thus far we only support rigid vs. soft.
-      if (model_M.is_soft() == model_N.is_soft()) {
+      if (model_M->is_soft() == model_N->is_soft()) {
         throw std::runtime_error(
             "The current implementation of the hydroelastic model only "
             "supports soft vs. rigid contact.");
@@ -101,13 +109,13 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
       // corresponds to the soft (rigid) geometry, the order still is guaranteed
       // to be the same on successive calls.
       const RigidTransform<T> X_NM = X_WN.inverse() * X_WM;
-      const RigidTransform<T> X_RS = model_M.is_soft() ? X_NM : X_NM.inverse();
-      const GeometryId id_S = model_M.is_soft() ? id_M : id_N;
-      const GeometryId id_R = model_M.is_soft() ? id_N : id_M;
+      const RigidTransform<T> X_RS = model_M->is_soft() ? X_NM : X_NM.inverse();
+      const GeometryId id_S = model_M->is_soft() ? id_M : id_N;
+      const GeometryId id_R = model_M->is_soft() ? id_N : id_M;
       const HydroelasticModel<T>& model_S =
-          model_M.is_soft() ? model_M : model_N;
+          model_M->is_soft() ? *model_M : *model_N;
       const HydroelasticModel<T>& model_R =
-          model_M.is_soft() ? model_N : model_M;
+          model_M->is_soft() ? *model_N : *model_M;
 
       optional<ContactSurface<T>> surface =
           CalcContactSurface(id_S, model_S, id_R, model_R, X_RS);
@@ -143,8 +151,8 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
         
   }
 
-  void ImplementGeometry(const Cylinder& cylinder, void* user_data) override {
-    throw std::logic_error("There is no support for cylinders yet.");
+  void ImplementGeometry(const Cylinder&, void*) override {
+    //throw std::logic_error("There is no support for cylinders yet.");
   }
 
   void ImplementGeometry(const HalfSpace& half_space,
@@ -163,8 +171,8 @@ class HydroelasticEngine<T>::Impl final : public geometry::ShapeReifier {
         std::make_unique<HydroelasticModel<T>>(std::move(level_set));
   }
 
-  void ImplementGeometry(const Box& box, void* user_data) override {
-    throw std::logic_error("There is no support for boxes yet.");
+  void ImplementGeometry(const Box&, void*) override {
+    //throw std::logic_error("There is no support for boxes yet.");
   }
 
   void ImplementGeometry(const Mesh& mesh, void* user_data) override {
@@ -291,7 +299,7 @@ int HydroelasticEngine<T>::num_models() const {
 template <typename T>
 const HydroelasticModel<T>& HydroelasticEngine<T>::get_model(
     geometry::GeometryId id) const {
-  return impl_->get_model(id);
+  return *impl_->get_model(id);
 }
 
 }  // namespace internal

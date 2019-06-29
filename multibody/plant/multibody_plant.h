@@ -2734,6 +2734,11 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
                             elastic_modulus);
   }
 
+  void set_elastic_modulus(const Body<T>& body, double elastic_modulus) {
+    for (geometry::GeometryId id : GetCollisionGeometriesForBody(body))
+      set_elastic_modulus(id, elastic_modulus);
+  }
+
   void set_hydroelastics_dissipation(geometry::GeometryId id,
                                      double dissipation) {
     // It must not be finalized so that member_scene_graph() is valid.
@@ -2749,6 +2754,11 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
                                " does not have a proximity role.");
     }
     properties->AddProperty("hydroelastics", "dissipation", dissipation);
+  }
+
+  void set_hydroelastics_dissipation(const Body<T>& body, double dissipation) {
+    for (geometry::GeometryId id : GetCollisionGeometriesForBody(body))
+      set_hydroelastics_dissipation(id, dissipation);
   }
 
   double default_modulus_of_elasticity(geometry::GeometryId id) const {

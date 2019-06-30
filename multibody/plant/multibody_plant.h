@@ -34,7 +34,8 @@
 #include "drake/systems/framework/scalar_conversion_traits.h"
 
 #include <iostream>
-#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+//#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VAR(a) (void) a;
 
 namespace drake {
 namespace multibody {

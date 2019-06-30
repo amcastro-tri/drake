@@ -317,7 +317,6 @@ float fBox(vec3 p, vec3 b) {
       if (const geometry::ProximityProperties* properties =
               inspector.GetProximityProperties(geometry_id)) {
         const Shape& shape = inspector.GetShape(geometry_id);
-        PRINT_VAR(properties);
         const double elastic_modulus =
             properties->template GetPropertyOrDefault<double>(
                 "hydroelastics", "elastic modulus",
@@ -353,10 +352,6 @@ float fBox(vec3 p, vec3 b) {
     if (surface_R->num_vertices() == 0) return nullopt;
     // Compute pressure field.
     for (T& e_s : e_s_surface) e_s *= soft_model_S.modulus_of_elasticity();
-
-
-    PRINT_VAR(soft_model_S.modulus_of_elasticity());
-
 
     auto e_s = std::make_unique<geometry::SurfaceMeshFieldLinear<T, T>>(
         "scalar field", std::move(e_s_surface), surface_R.get());

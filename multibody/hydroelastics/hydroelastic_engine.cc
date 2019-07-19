@@ -91,8 +91,11 @@ std::vector<ContactSurface<T>> HydroelasticEngine<T>::ComputeContactSurfaces(
     // Skip contact surface computation if these ids do not have a hydrostatic
     // model.
     if (!model_M || !model_N) {
+      const std::string name_M = query_object.inspector().GetName(id_M);
+      const std::string name_N = query_object.inspector().GetName(id_N);
       throw std::runtime_error(
           "HydroelasticEngine. Unsupported geometries possibly in contact. "
+          "For the geometry pair ('" + name_M + "', '" + name_N + "')."
           "You can remove the unsupported geometries, replace them with "
           "supported geometry, or filter collisions on them.");
     }
@@ -146,6 +149,13 @@ optional<ContactSurface<T>> HydroelasticEngine<T>::CalcContactSurface(
   if (surface_R->num_vertices() == 0) return nullopt;
   // Compute pressure field.
   for (T& e_s : e_s_surface) e_s *= soft_model_S.elastic_modulus();
+
+  // ∇hₘₙ is a vector that points from N (in this case S) into M (in this case
+  // R). However, the gradient of the level set function points into S (N).
+  // Therefore we flip its direction.
+  for (Vector3<T>& grad_level_set_R : grad_level_set_R_surface) {
+    grad_level_set_R = -grad_level_set_R;
+  }
 
   auto e_s = std::make_unique<geometry::SurfaceMeshFieldLinear<T, T>>(
       "e_MN", std::move(e_s_surface), surface_R.get());
@@ -203,22 +213,118 @@ void HydroelasticEngine<T>::ImplementGeometry(const HalfSpace&,
       std::make_unique<HydroelasticGeometry<T>>(std::move(level_set));
 }
 
+template <typename T>
+void HydroelasticEngine<T>::ImplementGeometry(const Cylinder& cylinder,
+                                              void* user_data) {
+  const GeometryImplementationData& specs =
+      *reinterpret_cast<GeometryImplementationData*>(user_data);
+  const double E = specs.elastic_modulus;
+  if (E != std::numeric_limits<double>::infinity()) {
+    throw std::runtime_error(
+        "Currently only rigid cylinders spaces are supported");
+  }
+  const double radius = cylinder.get_radius();
+  const double half_length = cylinder.get_length() / 2.0;
+
+  // Cylinder centered at the origin with its axis along the y axis.
+  std::function<T(const Vector3<T>&)> cylinder_sdf =
+      [radius, half_length](const Vector3<T>& p_WQ) {
+        // from: http://mercury.sexy/hg_sdf/. fCylinder().
+        const Vector2<T> p_xy(p_WQ[0], p_WQ[1]);
+        const T sdf_cylinder_shell = p_xy.norm() - radius;
+        using std::abs;
+        using std::max;
+        const T sdf_sides = abs(p_WQ[2]) - half_length;
+        return max(sdf_cylinder_shell, sdf_sides);
+      };
+
+  std::function<Vector3<T>(const Vector3<T>&)> grad_cylinder_sdf =
+      [radius, half_length](const Vector3<T>& p_WQ) {
+        const Vector2<T> p_xy(p_WQ[0], p_WQ[1]);
+        const T sdf_cylinder_shell = p_xy.norm() - radius;
+        using std::abs;
+        using std::max;
+        const T sdf_sides = abs(p_WQ[2]) - half_length;
+
+        if (sdf_cylinder_shell > sdf_sides) {
+          const Vector2<T> n_xy = p_xy.normalized();
+          return Vector3<T>(n_xy[0], n_xy[1], 0.0);
+        } else {
+          if (p_WQ[2] > 0.0)
+            return Vector3<T>(0., 0., 1.);
+          else
+            return Vector3<T>(0., 0., -1.);
+        }
+        DRAKE_UNREACHABLE();
+      };
+
+  auto level_set = std::make_unique<LevelSetField<T>>(
+      cylinder_sdf, grad_cylinder_sdf);
+  model_data_.geometry_id_to_model_[specs.id] =
+      std::make_unique<HydroelasticGeometry<T>>(std::move(level_set));
+  // throw std::logic_error("There is no support for cylinders yet.");
+}
+
+template <typename T>
+void HydroelasticEngine<T>::ImplementGeometry(const Box& box, void* user_data) {
+#if 0        
+    // Box: correct distance to corners
+float fBox(vec3 p, vec3 b) {
+	vec3 d = abs(p) - b;
+	return length(max(d, vec3(0))) + vmax(min(d, vec3(0)));
+}
+#endif
+  // No-op. Enable this when  needed.
+  //return;
+
+  const GeometryImplementationData& specs =
+      *reinterpret_cast<GeometryImplementationData*>(user_data);
+  const double E = specs.elastic_modulus;
+  if (E != std::numeric_limits<double>::infinity()) {
+    throw std::runtime_error("Currently only rigid boxes spaces are supported");
+  }
+
+  const Vector3<double> half_sizes = box.size() / 2.0;
+
+  std::function<T(const Vector3<T>&)> box_sdf =
+      [half_sizes](const Vector3<T>& p_WQ) {
+        const Vector3<T> slabs_sdf = p_WQ.cwiseAbs() - half_sizes;
+        // SDF inside the box. It is negative inside and zero outside.
+        const T inside_sdf = slabs_sdf.cwiseMin(T(0)).maxCoeff();
+        // SDF outside the box. It is zero inside and positive outside.
+        const T outside_sdf = slabs_sdf.cwiseMax(T(0)).norm();
+        return inside_sdf + outside_sdf;
+      };
+
+  std::function<Vector3<T>(const Vector3<T>&)> grad_box_sdf =
+      [half_sizes](const Vector3<T>& p_WQ) {
+        const Vector3<T> slabs_sdf = p_WQ.cwiseAbs() - half_sizes;
+        // SDF inside the box. It is negative inside and zero outside.
+        int max_index;
+        const T inside_sdf = slabs_sdf.cwiseMin(T(0)).maxCoeff(&max_index);
+        if (inside_sdf <= T(0)) {
+          if (p_WQ[max_index] > 0)
+            return Vector3<T>(Vector3<T>::Unit(max_index));
+          else
+            return Vector3<T>(-Vector3<T>::Unit(max_index));
+        } else {
+          // SDF outside the box. It is zero inside and positive outside.
+          // const T outside_sdf = slabs_sdf.cwiseMax(T(0)).norm();
+          const Vector3<T> x_plus = slabs_sdf.cwiseMax(T(0));
+          const Vector3<T> grad = x_plus.normalized();
+          return grad;
+        }
+        DRAKE_UNREACHABLE();
+      };
+
+  auto level_set =
+      std::make_unique<LevelSetField<T>>(box_sdf, grad_box_sdf);
+  model_data_.geometry_id_to_model_[specs.id] =
+      std::make_unique<HydroelasticGeometry<T>>(std::move(level_set));
+}
+
 // The following overrides are no-ops given that currently HydroelasticEngine
 // does not support these geometries.
-template <typename T>
-void HydroelasticEngine<T>::ImplementGeometry(const Cylinder&, void*) {
-  drake::log()->warn(
-      "HydroelasticEngine. The current hydroelastic model implementation "
-      "does not support cylinder geometries. Geometry ignored.");
-}
-
-template <typename T>
-void HydroelasticEngine<T>::ImplementGeometry(const Box&, void*) {
-  drake::log()->warn(
-      "HydroelasticEngine. The current hydroelastic model implementation "
-      "does not support box geometries. Geometry ignored.");
-}
-
 template <typename T>
 void HydroelasticEngine<T>::ImplementGeometry(const Mesh&, void*) {
   drake::log()->warn(

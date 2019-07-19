@@ -180,6 +180,35 @@ class HydroelasticEngine final : public geometry::ShapeReifier {
   ModelData model_data_;
 };
 
+template <>
+class HydroelasticEngine<symbolic::Expression> {
+ public:
+  //  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(HydroelasticEngine<symbolic::Expression>)
+
+  using T = symbolic::Expression;
+
+  HydroelasticEngine() {}
+
+  ~HydroelasticEngine() {}
+
+  void MakeModels(const geometry::SceneGraphInspector<T>&) {
+    Throw("MakeModels");
+  }
+
+  std::vector<geometry::ContactSurface<T>> ComputeContactSurfaces(
+      const geometry::QueryObject<T>&) const {
+    Throw("ComputeContactSurfaces");
+    return std::vector<geometry::ContactSurface<T>>();
+  }
+
+ private:
+  static void Throw(const char* operation_name) {
+    throw std::logic_error(
+        fmt::format("Cannot {} on a HydroelasticEngine<symbolic::Expression>",
+                    operation_name));
+  }
+};
+
 }  // namespace internal
 }  // namespace hydroelastics
 }  // namespace multibody

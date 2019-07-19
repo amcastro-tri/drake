@@ -17,6 +17,7 @@
 #include "drake/common/random.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/math/rigid_transform.h"
+#include "drake/multibody/hydroelastics/hydroelastic_engine.h"
 #include "drake/multibody/plant/contact_jacobians.h"
 #include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/coulomb_friction.h"
@@ -31,6 +32,10 @@
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/framework/leaf_system.h"
 #include "drake/systems/framework/scalar_conversion_traits.h"
+
+#include <iostream>
+//#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VAR(a) (void) a;
 
 namespace drake {
 namespace multibody {
@@ -231,6 +236,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     geometry_id_to_visual_index_ = other.geometry_id_to_visual_index_;
     geometry_id_to_collision_index_ = other.geometry_id_to_collision_index_;
     default_coulomb_friction_ = other.default_coulomb_friction_;
+    default_modulus_of_elasticity_ = other.default_modulus_of_elasticity_;
+    default_dissipation_ = other.default_dissipation_;
     visual_geometries_ = other.visual_geometries_;
     collision_geometries_ = other.collision_geometries_;
     if (geometry_source_is_registered())
@@ -2723,6 +2730,16 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     return default_coulomb_friction_[collision_index];
   }
 
+  /// If `use_hydro` MBP uses the hydroelastic model. Otherwise it uses point
+  /// contact model.
+  void use_hydroelastic_model(bool use_hydro = true) {
+    if (is_discrete() && use_hydro) {
+      throw std::runtime_error(
+          "The hydroelastic model is only supported in continuous mode.");
+    }
+    use_hydroelastic_model_ = use_hydro;
+  }
+
   /// Specifies the `elastic_modulus` for a geometry identified by its `id`.
   /// @throws std::exception if `id` does not correspond to a collision
   /// geometry previously registered with this model.
@@ -2739,6 +2756,26 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     new_props.AddProperty("hydroelastics", "elastic modulus", elastic_modulus);
     member_scene_graph().AssignRole(*get_source_id(), id, new_props,
                                     geometry::RoleAssign::kReplace);
+  }
+
+  void set_hydroelastics_dissipation(geometry::GeometryId id,
+                                     double dissipation) {
+    // It must not be finalized so that member_scene_graph() is valid.
+    DRAKE_MBP_THROW_IF_FINALIZED();
+    DRAKE_DEMAND(is_collision_geometry(id));
+    const int collision_index = geometry_id_to_collision_index_.at(id);
+    // TODO: get rid of default_dissipation_.
+    default_dissipation_[collision_index] = dissipation;
+  }
+
+  void set_elastic_modulus(const Body<T>& body, double elastic_modulus) {
+    for (geometry::GeometryId id : GetCollisionGeometriesForBody(body))
+      set_elastic_modulus(id, elastic_modulus);
+  }
+
+  void set_hydroelastics_dissipation(const Body<T>& body, double dissipation) {
+    for (geometry::GeometryId id : GetCollisionGeometriesForBody(body))
+      set_hydroelastics_dissipation(id, dissipation);
   }
 
   /// @name Retrieving ports for communication with a SceneGraph.
@@ -3532,6 +3569,12 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs,
       std::vector<SpatialForce<T>>* F_BBo_W_array) const;
 
+  void MakeHydroelasticModels();
+
+  void CalcAndAddHydroelasticsContactForces(
+    const systems::Context<T>& context,
+    std::vector<SpatialForce<T>>* F_BBo_W_array) const;
+
   // Helper method to add the contribution of external actuation forces to the
   // set of multibody `forces`. External actuation is applied through the
   // plant's input ports.
@@ -3767,6 +3810,16 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // See geometry_id_to_collision_index_.
   std::vector<CoulombFriction<double>> default_coulomb_friction_;
 
+  // If true we use the hydroelastic model. Only available in continuous mode.
+  bool use_hydroelastic_model_{false};
+
+  // Modulus of elasticity coefficients ordered by collision index.
+  // See geometry_id_to_collision_index_.
+  std::vector<double> default_modulus_of_elasticity_;
+
+  // Hydroelastic model dissipation, in s/m.
+  std::vector<double> default_dissipation_;
+
   // Port handles for geometry:
   systems::InputPortIndex geometry_query_port_;
   systems::OutputPortIndex geometry_pose_port_;
@@ -3820,6 +3873,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
 
   // The solver used when the plant is modeled as a discrete system.
   std::unique_ptr<ImplicitStribeckSolver<T>> implicit_stribeck_solver_;
+
+  std::unique_ptr<hydroelastics::internal::HydroelasticEngine<T>>
+      hydroelastics_engine_;
 
   // All MultibodyPlant cache indexes are stored in cache_indexes_.
   CacheIndexes cache_indexes_;
@@ -3954,6 +4010,14 @@ template <>
 std::vector<geometry::PenetrationAsPointPair<AutoDiffXd>>
 MultibodyPlant<AutoDiffXd>::CalcPointPairPenetrations(
     const systems::Context<AutoDiffXd>&) const;
+
+template <>
+void MultibodyPlant<symbolic::Expression>::MakeHydroelasticModels();
+
+template <>
+void MultibodyPlant<symbolic::Expression>::CalcAndAddHydroelasticsContactForces(
+    const systems::Context<symbolic::Expression>& context,
+    std::vector<SpatialForce<symbolic::Expression>>* F_BBo_W_array) const;
 #endif
 
 }  // namespace multibody

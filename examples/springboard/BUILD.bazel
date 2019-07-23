@@ -1,0 +1,51 @@
+# -*- python -*-
+
+load(
+    "@drake//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
+    "drake_cc_googletest",
+    "drake_cc_library",
+    "drake_cc_package_library",
+)
+load("@drake//tools/skylark:test_tags.bzl", "vtk_test_tags")
+load("//tools/install:install_data.bzl", "install_data")
+load("//tools/lint:lint.bzl", "add_lint_tests")
+load("//tools/skylark:test_tags.bzl", "vtk_test_tags")
+
+drake_cc_library(
+    name = "easy_force",
+    srcs = [
+        "easy_force.cc",
+    ],
+    hdrs = [
+        "easy_force.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//multibody/plant",
+        "//multibody/parsing",
+    ],
+)
+
+drake_cc_binary(
+    name = "easy_force_box_test",
+    srcs = ["easy_force_box_test.cc"],
+    add_test_rule = 1,
+    test_rule_args = [
+        "--simulation_time=0.1",
+        "--target_realtime_rate=0.0",
+    ],
+    deps = [
+        "//common:find_resource",
+        "//common:text_logging_gflags",
+        "//geometry:geometry_visualization",
+        "//multibody/parsing",
+        "//multibody/plant",
+        "//systems/analysis:simulator",
+        "//systems/framework:diagram",
+        "//examples/springboard:easy_force",
+        "@gflags",
+    ],
+)
+
+add_lint_tests()

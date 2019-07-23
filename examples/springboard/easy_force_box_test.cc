@@ -111,10 +111,6 @@ int do_main() {
     // Sanity check on the availability of the optional source id before using it.
     DRAKE_DEMAND(plant.geometry_source_is_registered());
 
-    // drake::multibody::ConnectContactResultsToDrakeVisualizer(&builder, plant);
-    geometry::ConnectDrakeVisualizer(&builder, scene_graph);
-    auto diagram = builder.Build();
-
     // Add EasyForce
     auto easy_force = builder.AddSystem(std::make_unique<EasyForce>(
         plant.GetBodyByName("Box").index(),
@@ -127,6 +123,12 @@ int do_main() {
     builder.Connect(
         easy_force->get_externally_applied_spatial_force_output_port(),
         plant.get_applied_spatial_force_input_port());
+
+    // drake::multibody::ConnectContactResultsToDrakeVisualizer(&builder,
+    // plant);
+    // This MUST happen AFTER all connections are made.
+    geometry::ConnectDrakeVisualizer(&builder, scene_graph);
+    auto diagram = builder.Build();    
 
     // Create a context for this system:
     std::unique_ptr<systems::Context<double>> diagram_context =

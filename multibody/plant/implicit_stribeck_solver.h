@@ -553,6 +553,14 @@ class ImplicitStribeckSolver {
       EigenPtr<const VectorX<T>> p_star,
       EigenPtr<const VectorX<T>> fn, EigenPtr<const VectorX<T>> mu);
 
+  void SetTwoWayCoupledProblemData(
+    std::function<MatrixX<T>(const Eigen::Ref<const MatrixX<T>>&)>
+        forward_dynamics,
+    EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
+    EigenPtr<const VectorX<T>> p_star, EigenPtr<const VectorX<T>> x0,
+    EigenPtr<const VectorX<T>> stiffness,
+    EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu);    
+
   /// Sets the problem data to solve the problem outlined in Eq. (10) in this
   /// class's documentation using a two-way coupled approach: <pre>
   ///   (10)  M(qˢ) vˢ⁺¹ = p* + δt [Jₙᵀ(qˢ) fₙ(vˢ⁺¹) + Jₜᵀ(qˢ) fₜ(vˢ⁺¹)]
@@ -748,7 +756,7 @@ class ImplicitStribeckSolver {
         EigenPtr<const VectorX<T>> x0,
         EigenPtr<const VectorX<T>> stiffness,
         EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
-      DRAKE_DEMAND(M != nullptr);
+      //DRAKE_DEMAND(M != nullptr);
       DRAKE_DEMAND(Jn != nullptr);
       DRAKE_DEMAND(Jt != nullptr);
       DRAKE_DEMAND(p_star != nullptr);
@@ -775,10 +783,10 @@ class ImplicitStribeckSolver {
       return coupling_scheme_ == kTwoWayCoupled;
     }
 
-    Eigen::Ref<const MatrixX<T>> M() const { return *M_ptr_; }
+    //Eigen::Ref<const MatrixX<T>> M() const { return *M_ptr_; }
     Eigen::Ref<const MatrixX<T>> Jn() const { return *Jn_ptr_; }
     Eigen::Ref<const MatrixX<T>> Jt() const { return *Jt_ptr_; }
-    Eigen::Ref<const VectorX<T>> p_star() const { return *p_star_ptr_; }
+    Eigen::Ref<const VectorX<T>> v_star() const { return *p_star_ptr_; }
 
     // For the one-way coupled scheme, it returns a constant reference to the
     // data for the normal forces. It aborts if called on data for the two-way
@@ -853,7 +861,7 @@ class ImplicitStribeckSolver {
   class FixedSizeWorkspace {
    public:
     // Constructs a workspace with size only dependent on nv.
-    explicit FixedSizeWorkspace(int nv) : J_ldlt_(nv), J_lu_(nv) {
+    explicit FixedSizeWorkspace(int nv) : J_ldlt_(nv), J_lu_(nv), M_ldlt_(nv) {
       J_ldlt_.setZero();
       v_.setZero(nv);
       residual_.setZero(nv);
@@ -870,6 +878,9 @@ class ImplicitStribeckSolver {
     VectorX<T>& mutable_tau() { return tau_; }
     Eigen::LDLT<MatrixX<T>>& mutable_J_ldlt() { return J_ldlt_; }
     Eigen::PartialPivLU<MatrixX<T>>& mutable_J_lu() { return J_lu_; }
+
+    const Eigen::LDLT<MatrixX<T>>& M_ldlt() const { return M_ldlt_; }
+    Eigen::LDLT<MatrixX<T>>& mutable_M_ldlt() { return M_ldlt_; }    
 
    private:
     // Vector of generalized velocities.
@@ -890,6 +901,8 @@ class ImplicitStribeckSolver {
     // LU Factorization of the Newton-Raphson Jacobian J. Only used for
     // two-way coupled problems with non-symmetric Jacobian.
     Eigen::PartialPivLU<MatrixX<T>> J_lu_;
+
+    Eigen::LDLT<MatrixX<T>> M_ldlt_;
   };
 
   // The variables in this workspace can change size with each invocation of
@@ -1097,13 +1110,14 @@ class ImplicitStribeckSolver {
   // Helper method to compute the Newton-Raphson Jacobian, J = ∇ᵥR, as a
   // function of M, Jn, Jt, Gn, dft_dvt, t_hat, mu_vt and dt.
   void CalcJacobian(
-      const Eigen::Ref<const MatrixX<T>>& M,
       const Eigen::Ref<const MatrixX<T>>& Jn,
       const Eigen::Ref<const MatrixX<T>>& Jt,
       const Eigen::Ref<const MatrixX<T>>& Gn,
       const std::vector<Matrix2<T>>& dft_dvt,
       const Eigen::Ref<const VectorX<T>>& t_hat,
       const Eigen::Ref<const VectorX<T>>& mu_vt, double dt,
+      const Eigen::Ref<const MatrixX<T>>& Mi_x_JnT,
+      const Eigen::Ref<const MatrixX<T>>& Mi_x_JtT,
       EigenPtr<MatrixX<T>> J) const;
 
   // Limit the per-iteration angle change between vₜᵏ⁺¹ and vₜᵏ for
@@ -1144,6 +1158,9 @@ class ImplicitStribeckSolver {
   ProblemDataAliases problem_data_aliases_;
   mutable FixedSizeWorkspace fixed_size_workspace_;
   mutable VariableSizeWorkspace variable_size_workspace_;
+
+  std::function<MatrixX<T>(const Eigen::Ref<const MatrixX<T>>&)>
+      forward_dynamics_;
 
   // Precomputed value of cos(theta_max), used by DirectionChangeLimiter.
   double cos_theta_max_{std::cos(parameters_.theta_max)};

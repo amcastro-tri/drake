@@ -140,9 +140,11 @@ VectorX<U> CalcResidual(
   // Friction forces.
   VectorX<U> ft = CalcFrictionForces(v_stiction, epsilon_v, mu, vt, fn);
 
+  const auto& M_ldlt = M.ldlt();
+
   // Newton-Raphson residual
-  VectorX<U> residual =
-      M * v - p_star - dt * Jt.transpose() * ft - dt * Jn.transpose() * fn;
+  VectorX<U> residual = v - M_ldlt.solve(p_star + dt * Jt.transpose() * ft +
+                                         dt * Jn.transpose() * fn);
 
   return residual;
 }

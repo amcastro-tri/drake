@@ -1436,7 +1436,8 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
 template<typename T>
 ImplicitStribeckSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
     int num_substeps,
-    const MatrixX<T>& M0, const MatrixX<T>& Jn, const MatrixX<T>& Jt,
+    std::function<MatrixX<T>(const Eigen::Ref<const MatrixX<T>>&)> Mi,
+    const MatrixX<T>& Jn, const MatrixX<T>& Jt,
     const VectorX<T>& minus_tau,
     const VectorX<T>& stiffness, const VectorX<T>& damping,
     const VectorX<T>& mu,
@@ -1455,12 +1456,12 @@ ImplicitStribeckSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
     // Discrete update before applying friction forces.
     // We denote this state x* = [q*, v*], the "star" state.
     // Generalized momentum "star", before contact forces are applied.
-    VectorX<T> p_star_substep = M0 * v0_substep - dt_substep * minus_tau;
+    VectorX<T> v_star_substep = v0_substep - dt_substep * Mi(minus_tau);
 
     // Update the data.
     implicit_stribeck_solver_->SetTwoWayCoupledProblemData(
-        &M0, &Jn, &Jt,
-        &p_star_substep, &phi0_substep,
+        Mi, &Jn, &Jt,
+        &v_star_substep, &phi0_substep,
         &stiffness, &damping, &mu);
 
     info = implicit_stribeck_solver_->SolveWithGuess(dt_substep,
@@ -1497,11 +1498,6 @@ void MultibodyPlant<T>::CalcImplicitStribeckResults(
   auto x0 = context0.get_discrete_state(0).get_value();
   VectorX<T> q0 = x0.topRows(nq);
   VectorX<T> v0 = x0.bottomRows(nv);
-
-  // Mass matrix and its factorization.
-  MatrixX<T> M0(nv, nv);
-  internal_tree().CalcMassMatrixViaInverseDynamics(context0, &M0);
-  auto M0_ldlt = M0.ldlt();
 
   // Forces at the previous time step.
   MultibodyForces<T> forces0(internal_tree());
@@ -1592,6 +1588,20 @@ void MultibodyPlant<T>::CalcImplicitStribeckResults(
   params.max_iterations = 20;
   implicit_stribeck_solver_->set_solver_parameters(params);
 
+  // Forward dynamics operator.
+  auto Mi = [this, &context0](
+                const Eigen::Ref<const MatrixX<T>>& tau) -> MatrixX<T> {
+    MatrixX<T> x(this->num_velocities(), tau.cols());
+    this->MultiplyByMassMatrixInverse(context0, tau, &x);
+    return x;
+  };
+
+#if 0
+  auto Mi = [&M0_ldlt](const Eigen::Ref<const MatrixX<T>>& tau) -> MatrixX<T> {
+    return M0_ldlt.solve(tau);
+  };
+#endif
+
   // We attempt to compute the update during the time interval dt using a
   // progressively larger number of sub-steps (i.e each using a smaller time
   // step than in the previous attempt). This loop breaks on the first
@@ -1603,7 +1613,7 @@ void MultibodyPlant<T>::CalcImplicitStribeckResults(
   int num_substeps = 0;
   do {
     ++num_substeps;
-    info = SolveUsingSubStepping(num_substeps, M0, contact_jacobians.Jn,
+    info = SolveUsingSubStepping(num_substeps, Mi, contact_jacobians.Jn,
                                  contact_jacobians.Jt, minus_tau, stiffness,
                                  damping, mu, v0, phi0);
   } while (info != ImplicitStribeckSolverResult::kSuccess &&

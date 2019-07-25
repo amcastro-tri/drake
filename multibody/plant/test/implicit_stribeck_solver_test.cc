@@ -7,6 +7,8 @@
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/multibody/plant/test/implicit_stribeck_solver_test_util.h"
 
+#include <iostream>
+
 namespace drake {
 namespace multibody {
 
@@ -21,7 +23,8 @@ class ImplicitStribeckSolverTester {
     const int nv = solver.nv_;
 
     // Problem data.
-    const auto& M = solver.problem_data_aliases_.M();
+    //const auto& M = solver.problem_data_aliases_.M();
+    const auto& Mi = solver.forward_dynamics_;
     const auto& Jn = solver.problem_data_aliases_.Jn();
     const auto& Jt = solver.problem_data_aliases_.Jt();
 
@@ -62,9 +65,14 @@ class ImplicitStribeckSolverTester {
     // t_hat and v_slip.
     solver.CalcFrictionForcesGradient(fn, mus, t_hat, v_slip, &dft_dvt);
 
+    //const auto& M_ldlt = M.ldlt();
+    const MatrixX<double> Mi_x_JnT = Mi(Jn.transpose());
+    const MatrixX<double> Mi_x_JtT = Mi(Jt.transpose());
+
     // Newton-Raphson Jacobian, J = ∇ᵥR, as a function of M, dft_dvt, Jt, dt.
     MatrixX<double> J(nv, nv);
-    solver.CalcJacobian(M, Jn, Jt, Gn, dft_dvt, t_hat, mus, dt, &J);
+    solver.CalcJacobian(Jn, Jt, Gn, dft_dvt, t_hat, mus, dt, Mi_x_JnT,
+                        Mi_x_JtT, &J);
 
     return J;
   }
@@ -437,6 +445,7 @@ class PizzaSaver : public ::testing::Test {
                   double mu, double theta, double dt) {
     // Next time step generalized momentum if there are no friction forces.
     p_star_ = M_ * v0 + dt * tau;
+    v_star_ = v0 + dt * M_.ldlt().solve(tau);
 
     // Normal forces. Assume they are equally distributed.
     fn_ = m_ * g_ / 3.0 * Vector3<double>::Ones();
@@ -450,7 +459,7 @@ class PizzaSaver : public ::testing::Test {
 
     Jt_ = ComputeTangentialJacobian(theta);
 
-    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &fn_, &mu_);
+    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &v_star_, &fn_, &mu_);
   }
 
   void SetNoContactProblem(const Vector3<double>& v0,
@@ -458,6 +467,7 @@ class PizzaSaver : public ::testing::Test {
                            double dt) {
     // Next time step generalized momentum if there are no friction forces.
     p_star_ = M_ * v0 + dt * tau;
+    v_star_ = v0 + dt * M_.ldlt().solve(tau);
 
     // No contact points.
     fn_.resize(0);
@@ -465,7 +475,7 @@ class PizzaSaver : public ::testing::Test {
     Jn_.resize(0, nv_);
     Jt_.resize(0, nv_);
 
-    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &fn_, &mu_);
+    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &v_star_, &fn_, &mu_);
   }
 
  protected:
@@ -497,6 +507,7 @@ class PizzaSaver : public ::testing::Test {
 
   // Additional solver data that must outlive solver_ during solution.
   Vector3<double> p_star_;  // Generalized momentum.
+  Vector3<double> v_star_;  // v = v_star if contact forces are zero.
   VectorX<double> fn_;      // Normal forces at each contact point.
   VectorX<double> mu_;      // Friction coefficient at each contact point.
 };
@@ -529,7 +540,7 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
   solver_.set_solver_parameters(parameters);
 
   ImplicitStribeckSolverResult info = solver_.SolveWithGuess(dt, v0);
-  ASSERT_EQ(info, ImplicitStribeckSolverResult::kSuccess);
+  EXPECT_EQ(info, ImplicitStribeckSolverResult::kSuccess);
 
   VectorX<double> tau_f = solver_.get_generalized_friction_forces();
 
@@ -828,6 +839,7 @@ class RollingCylinder : public ::testing::Test {
                         double mu, double height, double dt) {
     // Next time step generalized momentum if there are no contact forces.
     p_star_ = M_ * v0 + dt * tau;
+    v_star_ = v0 + dt * M_.ldlt().solve(tau);
 
     // Friction coefficient for the only contact point in the problem.
     mu_vector_(0) = mu;
@@ -848,7 +860,12 @@ class RollingCylinder : public ::testing::Test {
         damping_ratio * time_scale / penetration_allowance;
     dissipation_(0) = dissipation;
 
-    solver_.SetTwoWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &x0_,
+    auto& M = M_;
+    auto Mi = [&M](const Eigen::Ref<const MatrixX<double>>& tau) -> MatrixX<double> {
+      std::cout << "Inside Mi()\n";
+      return M.ldlt().solve(tau);
+    };
+    solver_.SetTwoWayCoupledProblemData(Mi, &Jn_, &Jt_, &v_star_, &x0_,
                                         &stiffness_, &dissipation_,
                                         &mu_vector_);
   }
@@ -869,7 +886,7 @@ class RollingCylinder : public ::testing::Test {
   // vx_transition =  μ (1 + m R²/I) pn/m as described in the documentation of
   // this test fixture.
   const double m_{1.0};   // Mass of the cylinder, kg.
-  const double R_{1.0};   // Radius of the cylinder, m.
+  const double R_{1.5};   // Radius of the cylinder, m.
   const double g_{9.0};   // Acceleration of gravity, m/s².
   // For a thin cylindrical shell the moment of inertia is I = m R². We use this
   // inertia so that numbers are simpler for debugging purposes
@@ -899,6 +916,7 @@ class RollingCylinder : public ::testing::Test {
 
   // Additional solver data that must outlive solver_ during solution.
   VectorX<double> p_star_{nv_};  // Generalized momentum.
+  VectorX<double> v_star_{nv_};  // v = v_star if contact forces are zero.
   VectorX<double> mu_vector_{nc_};  // Friction at each contact point.
 };
 

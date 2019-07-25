@@ -270,6 +270,15 @@ void ImplicitStribeckSolver<T>::SetOneWayCoupledProblemData(
   // Keep references to the problem data.
   problem_data_aliases_.SetOneWayCoupledData(M, Jn, Jt, p_star, fn, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
+
+  // Setup forward dynamics solver.
+  // TODO(amcastro-tri): Make this method to take functor to an actual O(n)
+  // forward dynamics.
+  fixed_size_workspace_.mutable_M_ldlt().compute(*M);
+  const auto& M_ldlt = fixed_size_workspace_.M_ldlt();
+  forward_dynamics_ = [&M_ldlt](const Eigen::Ref<const MatrixX<T>>& tau) {
+    return M_ldlt.solve(tau);
+  };
 }
 
 template <typename T>
@@ -278,18 +287,40 @@ void ImplicitStribeckSolver<T>::SetTwoWayCoupledProblemData(
     EigenPtr<const MatrixX<T>> Jt, EigenPtr<const VectorX<T>> p_star,
     EigenPtr<const VectorX<T>> x0, EigenPtr<const VectorX<T>> stiffness,
     EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
+  DRAKE_THROW_UNLESS(M->rows() == nv_ && M->cols() == nv_);    
+  // Setup forward dynamics solver.
+  // TODO(amcastro-tri): Make this method to take functor to an actual O(n)
+  // forward dynamics.
+  fixed_size_workspace_.mutable_M_ldlt().compute(*M);
+  const auto& M_ldlt = fixed_size_workspace_.M_ldlt();
+  auto forward_dynamics = [&M_ldlt](const Eigen::Ref<const MatrixX<T>>& tau) {
+    return M_ldlt.solve(tau);
+  };
+  SetTwoWayCoupledProblemData(
+        forward_dynamics, Jn, Jt, p_star, x0, stiffness, dissipation, mu);
+}
+
+template <typename T>
+void ImplicitStribeckSolver<T>::SetTwoWayCoupledProblemData(
+    std::function<MatrixX<T>(const Eigen::Ref<const MatrixX<T>>&)>
+        forward_dynamics,
+    EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
+    EigenPtr<const VectorX<T>> v_star, EigenPtr<const VectorX<T>> x0,
+    EigenPtr<const VectorX<T>> stiffness,
+    EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
   nc_ = x0->size();
-  DRAKE_THROW_UNLESS(p_star->size() == nv_);
-  DRAKE_THROW_UNLESS(M->rows() == nv_ && M->cols() == nv_);
+  DRAKE_THROW_UNLESS(v_star->size() == nv_);
   DRAKE_THROW_UNLESS(Jn->rows() == nc_ && Jn->cols() == nv_);
   DRAKE_THROW_UNLESS(Jt->rows() == 2 * nc_ && Jt->cols() == nv_);
   DRAKE_THROW_UNLESS(mu->size() == nc_);
   DRAKE_THROW_UNLESS(stiffness->size() == nc_);
   DRAKE_THROW_UNLESS(dissipation->size() == nc_);
   // Keep references to the problem data.
-  problem_data_aliases_.SetTwoWayCoupledData(M, Jn, Jt, p_star, x0, stiffness,
-                                             dissipation, mu);
+  problem_data_aliases_.SetTwoWayCoupledData(nullptr, Jn, Jt, v_star, x0,
+                                             stiffness, dissipation, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
+
+  forward_dynamics_ = forward_dynamics;
 }
 
 template <typename T>
@@ -515,13 +546,14 @@ void ImplicitStribeckSolver<T>::CalcNormalForces(
 
 template <typename T>
 void ImplicitStribeckSolver<T>::CalcJacobian(
-    const Eigen::Ref<const MatrixX<T>>& M,
     const Eigen::Ref<const MatrixX<T>>& Jn,
     const Eigen::Ref<const MatrixX<T>>& Jt,
     const Eigen::Ref<const MatrixX<T>>& Gn,
     const std::vector<Matrix2<T>>& dft_dvt,
     const Eigen::Ref<const VectorX<T>>& t_hat,
     const Eigen::Ref<const VectorX<T>>& mu_vt, double dt,
+    const Eigen::Ref<const MatrixX<T>>& Mi_x_JnT,
+    const Eigen::Ref<const MatrixX<T>>& Mi_x_JtT,
     EigenPtr<MatrixX<T>> J) const {
   // Problem sizes.
   const int nv = nv_;  // Number of generalized velocities.
@@ -570,11 +602,17 @@ void ImplicitStribeckSolver<T>::CalcJacobian(
     }
   }
 
+  // Form J = Id − dt * M⁻¹(Jnᵀ Gn + Jtᵀ Gt) 
+  //      J = Id − dt * (M⁻¹Jnᵀ) Gn - dt * (M⁻¹Jtᵀ) Gt
+  MatrixX<T> W = Mi_x_JtT * Gt;
+  if (has_two_way_coupling()) W += Mi_x_JnT * Gn;
+  *J = MatrixX<T>::Identity(nv, nv) - dt * W;
+
   // Form J = M − Jnᵀ Gn − dt Jtᵀ Gt:
-  *J = M - dt * Jt.transpose() * Gt;
-  if (has_two_way_coupling()) {
-    *J -= dt * Jn.transpose() * Gn;
-  }
+  //*J = M - dt * Jt.transpose() * Gt;
+  //if (has_two_way_coupling()) {
+  //  *J -= dt * Jn.transpose() * Gn;
+  //}
 }
 
 template <typename T>
@@ -607,17 +645,17 @@ ImplicitStribeckSolverResult ImplicitStribeckSolver<T>::SolveWithGuess(
   // SolveWithGuess().
   statistics_.Reset();
 
+  const VectorX<T> v_star = problem_data_aliases_.v_star();
+
   // If there are no contact points return a zero generalized friction force
   // vector, i.e. tau_f = 0.
   if (nc_ == 0) {
     fixed_size_workspace_.mutable_tau_f().setZero();
     fixed_size_workspace_.mutable_tau().setZero();
-    const auto M = problem_data_aliases_.M();
-    const auto p_star = problem_data_aliases_.p_star();
     auto& v = fixed_size_workspace_.mutable_v();
     // With no friction forces Eq. (3) in the documentation reduces to
     // M vˢ⁺¹ = p*.
-    v = M.ldlt().solve(p_star);
+    v = v_star;
     // "One iteration" with exactly "zero" vt_error.
     statistics_.Update(0.0);
     return ImplicitStribeckSolverResult::kSuccess;
@@ -633,10 +671,8 @@ ImplicitStribeckSolverResult ImplicitStribeckSolver<T>::SolveWithGuess(
       parameters_.relative_tolerance * parameters_.stiction_tolerance;
 
   // Convenient aliases to problem data.
-  const auto M = problem_data_aliases_.M();
   const auto Jn = problem_data_aliases_.Jn();
   const auto Jt = problem_data_aliases_.Jt();
-  const auto p_star = problem_data_aliases_.p_star();
 
   // Convenient aliases to fixed size workspace variables.
   auto& v = fixed_size_workspace_.mutable_v();
@@ -669,6 +705,10 @@ ImplicitStribeckSolverResult ImplicitStribeckSolver<T>::SolveWithGuess(
   // Initialize iteration with the guess provided.
   v = v_guess;
 
+  // Precompute M⁻¹⋅Jₙᵀ and M^{-1}\cdotJ_t^T:
+  const MatrixX<T> Mi_x_JnT = forward_dynamics_(Jn.transpose());
+  const MatrixX<T> Mi_x_JtT = forward_dynamics_(Jt.transpose());
+
   for (int iter = 0; iter < max_iterations; ++iter) {
     // Update normal and tangential velocities.
     vn = Jn * v;
@@ -697,15 +737,15 @@ ImplicitStribeckSolverResult ImplicitStribeckSolver<T>::SolveWithGuess(
     }
 
     // Newton-Raphson residual.
-    residual =
-        M * v - p_star - dt * Jn.transpose() * fn - dt * Jt.transpose() * ft;
+    residual = v - v_star - dt * (Mi_x_JnT * fn + Mi_x_JtT * ft);
 
     // Compute gradient dft_dvt = ∇ᵥₜfₜ(vₜ) as a function of fn, mus,
     // t_hat and v_slip.
     CalcFrictionForcesGradient(fn, mu_vt, t_hat, v_slip, &dft_dvt);
 
     // Newton-Raphson Jacobian, J = ∇ᵥR, as a function of M, dft_dvt, Jt, dt.
-    CalcJacobian(M, Jn, Jt, Gn, dft_dvt, t_hat, mu_vt, dt, &J);
+    CalcJacobian(Jn, Jt, Gn, dft_dvt, t_hat, mu_vt, dt, Mi_x_JnT, Mi_x_JtT,
+                 &J);
 
     // TODO(amcastro-tri): Consider using a cheap iterative solver like CG.
     // Since we are in a non-linear iteration, an approximate cheap solution

@@ -13,6 +13,7 @@ using drake::multibody::RigidBody;
 using drake::multibody::SpatialInertia;
 using drake::multibody::UnitInertia;
 using math::RigidTransformd;
+using geometry::Box;
 using geometry::Sphere;
 using geometry::HalfSpace;
 using geometry::SceneGraph;
@@ -45,11 +46,14 @@ MakeBouncingBallPlant(double radius, double mass,
     plant->RegisterVisualGeometry(plant->world_body(), X_WG, HalfSpace(),
                                   "visual");
 
+    //const geometry::Shape& shape = Sphere(radius);
+    const geometry::Shape& shape = Box(radius, radius, radius);
+
     // Add sphere geometry for the ball.
     // Pose of sphere geometry S in body frame B.
     const RigidTransformd X_BS = RigidTransformd::Identity();
     geometry::GeometryId sphere_collision_id = plant->RegisterCollisionGeometry(
-        ball, X_BS, Sphere(radius), "collision", surface_friction);
+        ball, X_BS, shape, "collision", surface_friction);
 
     // set modulus of elasticity.
     plant->set_elastic_modulus(sphere_collision_id, elastic_modulus);
@@ -57,7 +61,7 @@ MakeBouncingBallPlant(double radius, double mass,
 
     // Add visual for the ball.
     const Vector4<double> orange(1.0, 0.55, 0.0, 1.0);
-    plant->RegisterVisualGeometry(ball, X_BS, Sphere(radius), "visual", orange);
+    plant->RegisterVisualGeometry(ball, X_BS, shape, "visual", orange);
 
     const Vector4<double> purple(0.6, 0.2, 0.8, 1.0);
     const double visual_radius = 0.2 * radius;

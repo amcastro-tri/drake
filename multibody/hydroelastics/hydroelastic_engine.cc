@@ -10,6 +10,7 @@
 #include "drake/geometry/shape_specification.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/hydroelastics/contact_surface_from_level_set.h"
+#include "drake/multibody/hydroelastics/hydroelastic_field_box.h"
 #include "drake/multibody/hydroelastics/hydroelastic_field_sphere.h"
 
 using drake::geometry::Box;
@@ -279,48 +280,55 @@ float fBox(vec3 p, vec3 b) {
 
   const GeometryImplementationData& specs =
       *reinterpret_cast<GeometryImplementationData*>(user_data);
-  const double E = specs.elastic_modulus;
-  if (E != std::numeric_limits<double>::infinity()) {
-    throw std::runtime_error("Currently only rigid boxes spaces are supported");
-  }
+  const double elastic_modulus = specs.elastic_modulus;
+  
+  if (elastic_modulus != std::numeric_limits<double>::infinity()) {
+      // Soft mesh field model
+      const T mesh_size = box.size().maxCoeff() / 5;
+      auto box_field = MakeBoxHydroelasticField<T>(box, mesh_size);
+      auto model =
+          std::make_unique<HydroelasticGeometry<T>>(std::move(box_field));
+      model->set_elastic_modulus(elastic_modulus);
+      model_data_.geometry_id_to_model_[specs.id] = std::move(model);
+  } else {
+    // Rigid level set model.
+    const Vector3<double> half_sizes = box.size() / 2.0;
 
-  const Vector3<double> half_sizes = box.size() / 2.0;
-
-  std::function<T(const Vector3<T>&)> box_sdf =
-      [half_sizes](const Vector3<T>& p_WQ) {
-        const Vector3<T> slabs_sdf = p_WQ.cwiseAbs() - half_sizes;
-        // SDF inside the box. It is negative inside and zero outside.
-        const T inside_sdf = slabs_sdf.cwiseMin(T(0)).maxCoeff();
-        // SDF outside the box. It is zero inside and positive outside.
-        const T outside_sdf = slabs_sdf.cwiseMax(T(0)).norm();
-        return inside_sdf + outside_sdf;
-      };
-
-  std::function<Vector3<T>(const Vector3<T>&)> grad_box_sdf =
-      [half_sizes](const Vector3<T>& p_WQ) {
-        const Vector3<T> slabs_sdf = p_WQ.cwiseAbs() - half_sizes;
-        // SDF inside the box. It is negative inside and zero outside.
-        int max_index;
-        const T inside_sdf = slabs_sdf.cwiseMin(T(0)).maxCoeff(&max_index);
-        if (inside_sdf <= T(0)) {
-          if (p_WQ[max_index] > 0)
-            return Vector3<T>(Vector3<T>::Unit(max_index));
-          else
-            return Vector3<T>(-Vector3<T>::Unit(max_index));
-        } else {
+    std::function<T(const Vector3<T>&)> box_sdf =
+        [half_sizes](const Vector3<T>& p_WQ) {
+          const Vector3<T> slabs_sdf = p_WQ.cwiseAbs() - half_sizes;
+          // SDF inside the box. It is negative inside and zero outside.
+          const T inside_sdf = slabs_sdf.cwiseMin(T(0)).maxCoeff();
           // SDF outside the box. It is zero inside and positive outside.
-          // const T outside_sdf = slabs_sdf.cwiseMax(T(0)).norm();
-          const Vector3<T> x_plus = slabs_sdf.cwiseMax(T(0));
-          const Vector3<T> grad = x_plus.normalized();
-          return grad;
-        }
-        DRAKE_UNREACHABLE();
-      };
+          const T outside_sdf = slabs_sdf.cwiseMax(T(0)).norm();
+          return inside_sdf + outside_sdf;
+        };
 
-  auto level_set =
-      std::make_unique<LevelSetField<T>>(box_sdf, grad_box_sdf);
-  model_data_.geometry_id_to_model_[specs.id] =
-      std::make_unique<HydroelasticGeometry<T>>(std::move(level_set));
+    std::function<Vector3<T>(const Vector3<T>&)> grad_box_sdf =
+        [half_sizes](const Vector3<T>& p_WQ) {
+          const Vector3<T> slabs_sdf = p_WQ.cwiseAbs() - half_sizes;
+          // SDF inside the box. It is negative inside and zero outside.
+          int max_index;
+          const T inside_sdf = slabs_sdf.cwiseMin(T(0)).maxCoeff(&max_index);
+          if (inside_sdf <= T(0)) {
+            if (p_WQ[max_index] > 0)
+              return Vector3<T>(Vector3<T>::Unit(max_index));
+            else
+              return Vector3<T>(-Vector3<T>::Unit(max_index));
+          } else {
+            // SDF outside the box. It is zero inside and positive outside.
+            // const T outside_sdf = slabs_sdf.cwiseMax(T(0)).norm();
+            const Vector3<T> x_plus = slabs_sdf.cwiseMax(T(0));
+            const Vector3<T> grad = x_plus.normalized();
+            return grad;
+          }
+          DRAKE_UNREACHABLE();
+        };
+
+    auto level_set = std::make_unique<LevelSetField<T>>(box_sdf, grad_box_sdf);
+    model_data_.geometry_id_to_model_[specs.id] =
+        std::make_unique<HydroelasticGeometry<T>>(std::move(level_set));
+  }
 }
 
 // The following overrides are no-ops given that currently HydroelasticEngine

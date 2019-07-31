@@ -3292,6 +3292,12 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     internal_tree().SetRandomState(context, state, generator);
   }
 
+  /// TODO(amcastro-tri): Make this a private Calc() method. Create an output
+  /// port instead that you can Eval().
+  void CalcAndAddHydroelasticsContactForces(
+      const systems::Context<T>& context,
+      std::vector<SpatialForce<T>>* F_BBo_W_array) const;
+
   using internal::MultibodyTreeSystem<T>::is_discrete;
   using internal::MultibodyTreeSystem<T>::EvalPositionKinematics;
   using internal::MultibodyTreeSystem<T>::EvalVelocityKinematics;
@@ -3570,10 +3576,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       std::vector<SpatialForce<T>>* F_BBo_W_array) const;
 
   void MakeHydroelasticModels();
-
-  void CalcAndAddHydroelasticsContactForces(
-    const systems::Context<T>& context,
-    std::vector<SpatialForce<T>>* F_BBo_W_array) const;
 
   // Helper method to add the contribution of external actuation forces to the
   // set of multibody `forces`. External actuation is applied through the

@@ -2965,6 +2965,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @throws std::exception if called pre-finalize, see Finalize().
   const systems::OutputPort<T>& get_contact_results_output_port() const;
 
+  const systems::OutputPort<T>& get_contact_surfaces_output_port() const;
+
   /// Returns a constant reference to the *world* body.
   const RigidBody<T>& world_body() const {
     return internal_tree().world_body();
@@ -3577,6 +3579,11 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
 
   void MakeHydroelasticModels();
 
+  // Calc() method for contact_surfaces_output_port().
+  void CalcContactSurfaces(
+      const systems::Context<T>& context,
+      std::vector<geometry::ContactSurface<T>>* all_surfaces) const;
+
   // Helper method to add the contribution of external actuation forces to the
   // set of multibody `forces`. External actuation is applied through the
   // plant's input ports.
@@ -3857,6 +3864,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Index for the output port of ContactResults.
   systems::OutputPortIndex contact_results_port_;
 
+  systems::OutputPortIndex contact_surfaces_port_;
+
   // A vector containing the index for the generalized contact forces port for
   // each model instance. This vector is indexed by ModelInstanceIndex. An
   // invalid value indicates that the model instance has no generalized
@@ -4020,6 +4029,11 @@ template <>
 void MultibodyPlant<symbolic::Expression>::CalcAndAddHydroelasticsContactForces(
     const systems::Context<symbolic::Expression>& context,
     std::vector<SpatialForce<symbolic::Expression>>* F_BBo_W_array) const;
+
+template <>
+void MultibodyPlant<symbolic::Expression>::CalcContactSurfaces(
+    const systems::Context<symbolic::Expression>& context,
+    std::vector<geometry::ContactSurface<symbolic::Expression>>* all_surfaces) const;
 #endif
 
 }  // namespace multibody

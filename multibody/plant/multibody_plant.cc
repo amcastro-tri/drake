@@ -1271,6 +1271,25 @@ void MultibodyPlant<T>::MakeHydroelasticModels() {
   hydroelastics_engine_->MakeModels(scene_graph_->model_inspector());
 }
 
+template <typename T>
+void MultibodyPlant<T>::CalcContactSurfaces(
+    const Context<T>& context,
+    std::vector<ContactSurface<T>>* all_surfaces) const {
+  DRAKE_DEMAND(all_surfaces != nullptr);
+  const auto& query_object =
+      this->get_geometry_query_input_port()
+          .template Eval<geometry::QueryObject<T>>(context);    
+  *all_surfaces = hydroelastics_engine_->ComputeContactSurfaces(query_object);
+}
+
+template <>
+void MultibodyPlant<symbolic::Expression>::CalcContactSurfaces(
+    const Context<symbolic::Expression>&,
+    std::vector<ContactSurface<symbolic::Expression>>*) const {
+  throw std::domain_error(
+      "This method doesn't support T = symbolic::Expression.");
+}
+
 template <>
 void MultibodyPlant<symbolic::Expression>::CalcAndAddHydroelasticsContactForces(
     const Context<symbolic::Expression>&,
@@ -1289,8 +1308,9 @@ void MultibodyPlant<T>::CalcAndAddHydroelasticsContactForces(
       this->get_geometry_query_input_port()
           .template Eval<geometry::QueryObject<T>>(context);
 
-  const std::vector<ContactSurface<T>> all_surfaces =
-      hydroelastics_engine_->ComputeContactSurfaces(query_object);
+  const std::vector<ContactSurface<T>>& all_surfaces =
+      get_contact_surfaces_output_port()
+          .template Eval<std::vector<ContactSurface<T>>>(context);
 
   internal::HydroelasticTractionCalculator<T> traction_calculator(
       stribeck_model_.stiction_tolerance());
@@ -1959,6 +1979,13 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
                                   &MultibodyPlant<T>::CopyContactResultsOutput,
                                   {contact_results_cache_entry.ticket()})
                               .get_index();
+
+  contact_surfaces_port_ =
+      this->DeclareAbstractOutputPort("contact_surfaces",
+                                      std::vector<ContactSurface<T>>(),
+                                      &MultibodyPlant<T>::CalcContactSurfaces,
+                                      {this->configuration_ticket()})
+          .get_index();
 }
 
 template <typename T>
@@ -2192,6 +2219,15 @@ MultibodyPlant<T>::get_contact_results_output_port() const {
   DRAKE_MBP_THROW_IF_NOT_FINALIZED();
   DRAKE_THROW_UNLESS(is_discrete());
   return this->get_output_port(contact_results_port_);
+}
+
+template <typename T>
+const systems::OutputPort<T>&
+MultibodyPlant<T>::get_contact_surfaces_output_port() const {
+  DRAKE_MBP_THROW_IF_NOT_FINALIZED();
+  DRAKE_THROW_UNLESS(use_hydroelastic_model_);
+  DRAKE_THROW_UNLESS(!is_discrete());
+  return this->get_output_port(contact_surfaces_port_);
 }
 
 namespace {

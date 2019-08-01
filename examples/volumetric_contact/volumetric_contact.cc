@@ -6,6 +6,8 @@
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/text_logging_gflags.h"
+#include "drake/geometry/query_results/contact_surface.h"
+#include "drake/geometry/proximity/surface_mesh.h"
 #include "drake/geometry/geometry_visualization.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/lcm/drake_lcm.h"
@@ -23,6 +25,8 @@
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/primitives/sine.h"
 
+#include "drake/examples/volumetric_contact/write_meshes.h"
+
 #include <iostream>
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
 
@@ -32,8 +36,10 @@ namespace simple_gripper {
 namespace {
 
 using Eigen::Vector3d;
+using geometry::ContactSurface;
 using geometry::SceneGraph;
 using geometry::Sphere;
+using geometry::SurfaceMesh;
 using lcm::DrakeLcm;
 using math::RigidTransformd;
 using math::RollPitchYawd;
@@ -69,6 +75,8 @@ DEFINE_double(elastic_modulus, 2.5e5, "Ground's elastic modulus, in Pa.");
 DEFINE_double(dissipation, 5.0, "Ground's dissipation, in s/m.");
 DEFINE_double(ground_size, 0.5,
               "The size of the box used to model the ground.");
+DEFINE_double(ground_height, 0.1,
+              "The size of the box used to model the ground.");              
 
 
 // Rigid object type and parameters.
@@ -81,14 +89,14 @@ DEFINE_double(length, 0.5, "Length.");  // cylinder. L >> R.
 
 void AddSoftGround(double size, double friction_coefficient,
                    MultibodyPlant<double>* plant) {
-  const Vector3d p_WG(0.0, 0.0, -size / 2.0);
+  const Vector3d p_WG(0.0, 0.0, -FLAGS_ground_height / 2.0);
   const RigidTransformd X_WG(p_WG);
   const Vector4<double> green(0.5, 1.0, 0.5, 1.0);
   plant->RegisterVisualGeometry(plant->world_body(), X_WG,
-                                geometry::Box(size, size, size),
+                                geometry::Box(size, size, FLAGS_ground_height),
                                 "SoftGroundVisualGeometry", green);
   geometry::GeometryId ground_id = plant->RegisterCollisionGeometry(
-      plant->world_body(), X_WG, geometry::Box(size, size, size),
+      plant->world_body(), X_WG, geometry::Box(size, size, FLAGS_ground_height),
       "SoftGroundCollisionGeometry",
       CoulombFriction<double>(friction_coefficient, friction_coefficient));
 
@@ -187,6 +195,15 @@ int do_main() {
 
   const SpatialForce<double>& F_BBo_W = F_BBo_W_array[body.node_index()];
   PRINT_VAR(F_BBo_W);
+
+  const std::vector<ContactSurface<double>>& all_surfaces =
+      plant.get_contact_surfaces_output_port()
+          .template Eval<std::vector<ContactSurface<double>>>(plant_context);
+  DRAKE_DEMAND(all_surfaces.size() == 1u);
+  const auto& surface = all_surfaces[0];
+  const SurfaceMesh<double>& surface_mesh = surface.mesh();
+
+  vtkio::write_vtk_mesh("intersection.vtk", surface_mesh);
 
   return 0;
 }

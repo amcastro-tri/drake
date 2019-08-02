@@ -49,6 +49,7 @@ drake_cc_library(
         ":hydroelastic_field",
         ":hydroelastic_field_sphere",
         ":level_set_field",
+        ":write_meshes",
         "//common:essential",
         "//geometry:scene_graph",
     ],
@@ -81,6 +82,17 @@ drake_cc_library(
     name = "level_set_field",
     hdrs = ["level_set_field.h"],
     deps = ["//common:essential"],
+)
+
+drake_cc_library(
+    name = "write_meshes",
+    srcs = ["write_meshes.cc"],
+    hdrs = ["write_meshes.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//geometry/proximity:surface_mesh",
+        "//geometry/proximity:volume_mesh",
+    ],
 )
 
 drake_cc_googletest(

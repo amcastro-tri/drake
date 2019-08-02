@@ -86,29 +86,32 @@ DEFINE_string(rigid_object_shape, "sphere",
               "'sphere','vertical_cylinder','parallel_cylinder'");
 DEFINE_double(radius, 0.05, "Radius.");  // sphere, cylinder.
 DEFINE_double(length, 0.5, "Length.");  // cylinder. L >> R.
+DEFINE_double(size, 0.1, "Box size.");  // box
 
-void AddSoftGround(double size, double friction_coefficient,
+void AddGround(double size, double friction_coefficient,
                    MultibodyPlant<double>* plant) {
-  const Vector3d p_WG(0.0, 0.0, -FLAGS_ground_height / 2.0);
-  const RigidTransformd X_WG(p_WG);
+  //const Vector3d p_WG(0.0, 0.0, -FLAGS_ground_height / 2.0);
+  //const RigidTransformd X_WG(p_WG);
+  const RigidTransformd X_WG;
   const Vector4<double> green(0.5, 1.0, 0.5, 1.0);
+  //geometry::HalfSpace::MakePose(Vector3d::UnitZ(), Vector3d::Zero())
   plant->RegisterVisualGeometry(plant->world_body(), X_WG,
-                                geometry::Box(size, size, FLAGS_ground_height),
-                                "SoftGroundVisualGeometry", green);
+                                geometry::HalfSpace(),
+                                "GroundVisualGeometry", green);
   geometry::GeometryId ground_id = plant->RegisterCollisionGeometry(
-      plant->world_body(), X_WG, geometry::Box(size, size, FLAGS_ground_height),
-      "SoftGroundCollisionGeometry",
+      plant->world_body(), X_WG, geometry::HalfSpace(),
+      "GroundCollisionGeometry",
       CoulombFriction<double>(friction_coefficient, friction_coefficient));
-
-  plant->set_elastic_modulus(ground_id, FLAGS_elastic_modulus);
-  plant->set_hydroelastics_dissipation(ground_id, FLAGS_dissipation);    
+  (void)ground_id;
 }
 
-const RigidBody<double>& AddRigidObject(MultibodyPlant<double>* plant) {
+const RigidBody<double>& AddObject(MultibodyPlant<double>* plant) {
   auto make_shape = []() -> std::unique_ptr<geometry::Shape> {
     if (FLAGS_rigid_object_shape == "sphere") {
       return std::make_unique<geometry::Sphere>(FLAGS_radius);
-    } else if (FLAGS_rigid_object_shape == "vertical_cylinder") {
+    } else if (FLAGS_rigid_object_shape == "box") {
+      return std::make_unique<geometry::Box>(FLAGS_size, FLAGS_size, FLAGS_size);
+    } else if (FLAGS_rigid_object_shape == "vertical_cylinder" || FLAGS_rigid_object_shape == "parallel_cylinder") {
       return std::make_unique<geometry::Cylinder>(FLAGS_radius, FLAGS_length);
     } else {
       DRAKE_UNREACHABLE();
@@ -131,10 +134,10 @@ const RigidBody<double>& AddRigidObject(MultibodyPlant<double>* plant) {
   auto shape = make_shape();
   const RigidTransformd X_BG;  // Identity transform.
   const Vector4<double> lightBlue(0.5, 0.8, 1.0, 1.0);
-  plant->RegisterVisualGeometry(body, X_BG, *shape, "RigidBodyVisualGeometry",
+  plant->RegisterVisualGeometry(body, X_BG, *shape, "BodyVisualGeometry",
                                 lightBlue);
   plant->RegisterCollisionGeometry(
-      body, X_BG, *shape, "RigidBodyCollisionGeometry",
+      body, X_BG, *shape, "BodyCollisionGeometry",
       CoulombFriction<double>(FLAGS_friction_coefficient,
                               FLAGS_friction_coefficient));
   return body;
@@ -148,10 +151,18 @@ int do_main() {
   SceneGraph<double>& scene_graph = items.scene_graph;
   scene_graph.set_name("scene_graph");
 
-  AddSoftGround(FLAGS_ground_size, FLAGS_friction_coefficient, &plant);
-  const auto& body = AddRigidObject(&plant);
+  AddGround(FLAGS_ground_size, FLAGS_friction_coefficient, &plant);
+  const auto& body = AddObject(&plant);
   plant.use_hydroelastic_model(true);
   plant.set_stiction_tolerance(FLAGS_v_stiction_tolerance);
+
+  const std::vector<geometry::GeometryId>& geometries =
+      plant.GetCollisionGeometriesForBody(body);
+  DRAKE_DEMAND(geometries.size() == 1u);
+  const geometry::GeometryId body_geometry_id = geometries[0];
+  plant.set_elastic_modulus(body_geometry_id, FLAGS_elastic_modulus);
+  plant.set_hydroelastics_dissipation(body_geometry_id, FLAGS_dissipation);    
+
   plant.Finalize();  
 
 #if 0
@@ -178,10 +189,28 @@ int do_main() {
 
   const auto& draw_publisher = diagram->GetSubsystemByName("draw_publisher");
   const systems::Context<double>& publisher_context =
-      diagram->GetMutableSubsystemContext(draw_publisher, diagram_context.get());  
+      diagram->GetMutableSubsystemContext(draw_publisher, diagram_context.get());
+
+  auto make_pose = []() -> RigidTransformd {
+    if (FLAGS_rigid_object_shape == "sphere") {
+      return RigidTransformd(
+          Vector3d(0.0, 0.0, FLAGS_radius - FLAGS_penetration));
+    } else if (FLAGS_rigid_object_shape == "vertical_cylinder") {
+      return RigidTransformd(
+          Vector3d(0.0, 0.0, FLAGS_length / 2.0 - FLAGS_penetration));
+    } else if (FLAGS_rigid_object_shape == "parallel_cylinder") {
+      return RigidTransformd(math::RollPitchYawd(0, M_PI_2, 0),
+          Vector3d(0.0, 0.0, FLAGS_radius - FLAGS_penetration));
+    } else if (FLAGS_rigid_object_shape == "box") {
+      return RigidTransformd(
+          Vector3d(0.0, 0.0, FLAGS_size / 2.0 - FLAGS_penetration));
+    } else {
+      DRAKE_UNREACHABLE();
+    }
+  };
 
   // For vertical cylinder. Modify for other shapes.
-  RigidTransformd X_WB(Vector3d(0.0, 0.0, FLAGS_length / 2.0 - FLAGS_penetration));
+  RigidTransformd X_WB(make_pose());
   plant.SetFreeBodyPose(&plant_context, body, X_WB);
 
   // PRINT_VAR();
@@ -202,6 +231,8 @@ int do_main() {
   DRAKE_DEMAND(all_surfaces.size() == 1u);
   const auto& surface = all_surfaces[0];
   const SurfaceMesh<double>& surface_mesh = surface.mesh();
+
+  PRINT_VAR(surface.mesh().total_area());
 
   vtkio::write_vtk_mesh("intersection.vtk", surface_mesh);
 

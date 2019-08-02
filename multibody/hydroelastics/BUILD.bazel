@@ -48,6 +48,7 @@ drake_cc_library(
         ":contact_surface_from_level_set",
         ":hydroelastic_field",
         ":hydroelastic_field_box",
+        ":hydroelastic_field_cylinder",
         ":hydroelastic_field_sphere",
         ":level_set_field",
         "//common:essential",
@@ -75,6 +76,18 @@ drake_cc_library(
         ":hydroelastic_field",
         "//common:essential",
         "//geometry/proximity:make_box_mesh",
+    ],
+)
+
+drake_cc_library(
+    name = "hydroelastic_field_cylinder",
+    hdrs = [
+        "hydroelastic_field_cylinder.h",
+    ],
+    deps = [
+        ":hydroelastic_field",
+        "//common:essential",
+        "//geometry/proximity:make_cylinder_mesh",
     ],
 )
 

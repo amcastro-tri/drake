@@ -11,7 +11,9 @@
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/hydroelastics/contact_surface_from_level_set.h"
 #include "drake/multibody/hydroelastics/hydroelastic_field_box.h"
+#include "drake/multibody/hydroelastics/hydroelastic_field_cylinder.h"
 #include "drake/multibody/hydroelastics/hydroelastic_field_sphere.h"
+#include "drake/multibody/hydroelastics/write_meshes.h"
 
 using drake::geometry::Box;
 using drake::geometry::ContactSurface;
@@ -24,7 +26,12 @@ using drake::geometry::QueryObject;
 using drake::geometry::Shape;
 using drake::geometry::Sphere;
 using drake::geometry::SurfaceMesh;
+using drake::geometry::VolumeMesh;
 using drake::math::RigidTransform;
+
+#include <iostream>
+#include <fstream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
 
 namespace drake {
 namespace multibody {
@@ -125,6 +132,9 @@ std::vector<ContactSurface<T>> HydroelasticEngine<T>::ComputeContactSurfaces(
     const HydroelasticGeometry<T>& model_R =
         model_M->is_soft() ? *model_N : *model_M;
 
+    PRINT_VAR(model_S.hydroelastic_field().volume_mesh().num_vertices());
+    PRINT_VAR(model_S.hydroelastic_field().volume_mesh().num_elements());
+
     optional<ContactSurface<T>> surface =
         CalcContactSurface(id_S, model_S, id_R, model_R, X_RS);
     if (surface) all_contact_surfaces.emplace_back(std::move(*surface));
@@ -220,10 +230,13 @@ void HydroelasticEngine<T>::ImplementGeometry(const Cylinder& cylinder,
   const GeometryImplementationData& specs =
       *reinterpret_cast<GeometryImplementationData*>(user_data);
   const double E = specs.elastic_modulus;
+
+  // Model of a soft cylinder.
   if (E != std::numeric_limits<double>::infinity()) {
     throw std::runtime_error(
         "Currently only rigid cylinders spaces are supported");
   }
+
   const double radius = cylinder.get_radius();
   const double half_length = cylinder.get_length() / 2.0;
 

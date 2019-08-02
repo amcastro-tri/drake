@@ -31,7 +31,8 @@ using drake::math::RigidTransform;
 
 #include <iostream>
 #include <fstream>
-#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+//#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VAR(a) (void) (a);
 
 namespace drake {
 namespace multibody {
@@ -137,6 +138,11 @@ std::vector<ContactSurface<T>> HydroelasticEngine<T>::ComputeContactSurfaces(
 
     optional<ContactSurface<T>> surface =
         CalcContactSurface(id_S, model_S, id_R, model_R, X_RS);
+    //if (surface) {
+    //  vtkio::write_vtk_mesh("vol_mesh_from_calc_method.vtk",
+    //                model_S.hydroelastic_field().volume_mesh());
+    //}
+
     if (surface) all_contact_surfaces.emplace_back(std::move(*surface));
   }
 
@@ -233,8 +239,17 @@ void HydroelasticEngine<T>::ImplementGeometry(const Cylinder& cylinder,
 
   // Model of a soft cylinder.
   if (E != std::numeric_limits<double>::infinity()) {
-    throw std::runtime_error(
-        "Currently only rigid cylinders spaces are supported");
+    const int refinement_level = 2;
+    auto cylinder_field =
+        MakeCylinderHydroelasticField<T>(cylinder, refinement_level);
+    //vtkio::write_vtk_mesh("vol_mesh_from_implement_geometry.vtk",
+    //                cylinder_field->volume_mesh());    
+    auto model =
+        std::make_unique<HydroelasticGeometry<T>>(std::move(cylinder_field));
+    model->set_elastic_modulus(E);
+    model_data_.geometry_id_to_model_[specs.id] = std::move(model);
+    std::cout << "MakeCylinderHydroelasticField() called\n";
+    return;
   }
 
   const double radius = cylinder.get_radius();

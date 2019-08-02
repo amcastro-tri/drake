@@ -23,8 +23,9 @@ class MakeBoxVolumeMesh {
 
  private:
   static std::vector<T> UniformSample(T first, T last, int num) {
+    DRAKE_DEMAND(num >= 2);
     T sample = first;
-    const T delta = (last - first) / num;
+    const T delta = (last - first) / (num - 1);
     std::vector<T> samples(num);
     // We could have assigned samples[num - 1] in this for loop by "i < num", but
     // accumulation errors in "sample += delta" may deviate `sample` from `last`.

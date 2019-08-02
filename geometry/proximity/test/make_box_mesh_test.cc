@@ -1,11 +1,59 @@
 #include "drake/geometry/proximity/make_box_mesh.h"
 
+#include <fstream>
+#include <string>
+
 #include <gtest/gtest.h>
+
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
 
 namespace drake {
 namespace geometry {
 namespace internal {
 namespace {
+
+
+void vtk_write_header(std::ofstream& out, const std::string& title) {
+    out << "# vtk DataFile Version 3.0\n";
+    out << title << std::endl;
+    out << "ASCII\n";
+    out << std::endl;
+}
+void vtk_write_unstructured_grid(std::ofstream& out,
+                                 const std::vector<VolumeVertex<double>>& v,
+                                 const std::vector<VolumeElement>& t) {
+    char message[512];
+    const int numPoints = v.size();
+    out << "DATASET UNSTRUCTURED_GRID\n";
+    out << "POINTS " << numPoints << " double\n";
+    for (int i = 0; i < numPoints; ++i) {
+        const Vector3<double>& vertex = v[i].r_MV();
+        sprintf(message, "%+12.8f %+12.8f %+12.8f", vertex[0], vertex[1],
+                vertex[2]);
+        out << message << std::endl;
+    }
+    const int num_tets = t.size();
+    out << "CELLS " << num_tets << " " << num_tets * 5 << std::endl;
+    for (int i = 0; i < num_tets; ++i) {
+        const auto& tet = t[i];
+        out << "4 " << tet.vertex(0) << ' ' << tet.vertex(1) << ' ' << tet.vertex(2)
+            << ' ' << tet.vertex(3) << std::endl;
+    }
+    out << "CELL_TYPES " << num_tets << std::endl;
+    for (int i = 0; i < num_tets; ++i) {
+        out << "10\n";
+    }
+}
+
+void write_vtk_mesh(const std::string& file_name,
+                    const VolumeMesh<double>& mesh,
+                    const std::string& title = "mesh") {
+    std::ofstream file(file_name);
+    vtk_write_header(file, title);
+    vtk_write_unstructured_grid(file, mesh.vertices(), mesh.tetrahedra());
+    file.close();
+}
 
 // TODO(DamrongGuoy): Move the following two functions to the appropriate
 //  place, so they can be shared by both make_unit_sphere_mesh_test.cc and
@@ -42,6 +90,8 @@ double CalcTetrahedronMeshVolume(const VolumeMesh<double>& mesh) {
 GTEST_TEST(MakeBoxMeshTest, Simple) {
   Box box(0.2, 0.4, 0.8);
   VolumeMesh<double> box_mesh = MakeBoxVolumeMesh<double>::generate(box, 0.1);
+
+  write_vtk_mesh("box.vtk", box_mesh);
 
   const int rectangular_cells = 2 * 4 * 8;
   const int elements_per_cell = 6;

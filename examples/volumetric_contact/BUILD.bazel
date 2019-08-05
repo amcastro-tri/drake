@@ -23,6 +23,7 @@ drake_cc_library(
 drake_cc_binary(
     name = "volumetric_contact",
     srcs = ["volumetric_contact.cc"],
+    add_test_rule = 1,
     deps = [
         ":write_meshes",
         "//common:text_logging_gflags",

@@ -286,6 +286,7 @@ systems::lcm::LcmPublisherSystem* ConnectDrakeVisualizer(
           "DRAKE_VIEWER_DRAW",
           std::make_unique<Serializer<drake::lcmt_viewer_draw>>(),
           lcm_optional, 1 / 60.0 /* publish period */);
+  publisher->set_name("draw_publisher");
 
   // The functor we create in publisher here holds a reference to scene_graph,
   // which must therefore live as long as publisher does. We can count on that

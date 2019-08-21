@@ -47,8 +47,11 @@ drake_cc_library(
     deps = [
         ":contact_surface_from_level_set",
         ":hydroelastic_field",
+        ":hydroelastic_field_box",
+        ":hydroelastic_field_cylinder",
         ":hydroelastic_field_sphere",
         ":level_set_field",
+        ":write_meshes",
         "//common:essential",
         "//geometry:scene_graph",
     ],
@@ -62,6 +65,30 @@ drake_cc_library(
     deps = [
         "//common:essential",
         "//geometry/proximity:mesh_field",
+    ],
+)
+
+drake_cc_library(
+    name = "hydroelastic_field_box",
+    hdrs = [
+        "hydroelastic_field_box.h",
+    ],
+    deps = [
+        ":hydroelastic_field",
+        "//common:essential",
+        "//geometry/proximity:make_box_mesh",
+    ],
+)
+
+drake_cc_library(
+    name = "hydroelastic_field_cylinder",
+    hdrs = [
+        "hydroelastic_field_cylinder.h",
+    ],
+    deps = [
+        ":hydroelastic_field",
+        "//common:essential",
+        "//geometry/proximity:make_cylinder_mesh",
     ],
 )
 
@@ -81,6 +108,17 @@ drake_cc_library(
     name = "level_set_field",
     hdrs = ["level_set_field.h"],
     deps = ["//common:essential"],
+)
+
+drake_cc_library(
+    name = "write_meshes",
+    srcs = ["write_meshes.cc"],
+    hdrs = ["write_meshes.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//geometry/proximity:surface_mesh",
+        "//geometry/proximity:volume_mesh",
+    ],
 )
 
 drake_cc_googletest(

@@ -20,6 +20,10 @@
 #include "drake/multibody/tree/prismatic_joint.h"
 #include "drake/multibody/tree/revolute_joint.h"
 
+#include "drake/geometry/proximity/surface_mesh.h"
+#include "drake/geometry/query_results/contact_surface.h"
+#include "drake/multibody/plant/hydroelastic_traction_calculator.h"
+
 namespace drake {
 namespace multibody {
 
@@ -31,12 +35,14 @@ namespace multibody {
 // pre-finalize.
 #define DRAKE_MBP_THROW_IF_NOT_FINALIZED() ThrowIfNotFinalized(__func__)
 
+using geometry::ContactSurface;
 using geometry::FrameId;
 using geometry::FramePoseVector;
 using geometry::GeometryFrame;
 using geometry::GeometryId;
 using geometry::GeometryInstance;
 using geometry::PenetrationAsPointPair;
+using geometry::ProximityProperties;
 using geometry::render::RenderLabel;
 using geometry::SceneGraph;
 using geometry::SourceId;
@@ -408,7 +414,15 @@ geometry::GeometryId MultibodyPlant<T>::RegisterCollisionGeometry(
   geometry_id_to_collision_index_[id] = collision_index;
   DRAKE_ASSERT(
       static_cast<int>(default_coulomb_friction_.size()) == collision_index);
+  DRAKE_ASSERT(static_cast<int>(default_modulus_of_elasticity_.size()) ==
+               collision_index);
+  DRAKE_ASSERT(static_cast<int>(default_dissipation_.size()) ==
+               collision_index);               
   default_coulomb_friction_.push_back(coulomb_friction);
+  // By default geometries are specified to be rigid and perfectly elastic.
+  default_modulus_of_elasticity_.push_back(
+      std::numeric_limits<double>::infinity());
+  default_dissipation_.push_back(0.0);    
   DRAKE_ASSERT(num_bodies() == static_cast<int>(collision_geometries_.size()));
   collision_geometries_[body.index()].push_back(id);
   return id;
@@ -672,7 +686,6 @@ void MultibodyPlant<T>::SetUpJointLimitsParameters() {
 template<typename T>
 void MultibodyPlant<T>::FinalizePlantOnly() {
   DeclareStateCacheAndPorts();
-  scene_graph_ = nullptr;  // must not be used after Finalize().
   if (num_collision_geometries() > 0 &&
       penalty_method_contact_parameters_.time_scale < 0)
     set_penetration_allowance();
@@ -689,8 +702,13 @@ void MultibodyPlant<T>::FinalizePlantOnly() {
     solver_parameters.stiction_tolerance =
         stribeck_model_.stiction_tolerance();
     implicit_stribeck_solver_->set_solver_parameters(solver_parameters);
+  } else {
+    // We only build hydroelastics if the user requested it AND if geometry was
+    // registerd with a SceneGraph.
+    if(uses_hydroelastic_model() && get_source_id()) MakeHydroelasticModels();
   }
   SetUpJointLimitsParameters();
+  scene_graph_ = nullptr;  // must not be used after Finalize().
 }
 
 template <typename T>
@@ -733,6 +751,10 @@ struct MultibodyPlant<T>::SceneGraphStub {
   template <typename... Args>                   \
   Ret Name(Args...) const { Throw(#Name); return Ret(); }
 
+#define DRAKE_STUB_PTR(Ret, Name)                   \
+  template <typename... Args>                   \
+  Ret Name(Args...) const { Throw(#Name); return nullptr; }
+
   DRAKE_STUB(void, AssignRole)
   DRAKE_STUB(void, ExcludeCollisionsBetween)
   DRAKE_STUB(void, ExcludeCollisionsWithin)
@@ -745,6 +767,7 @@ struct MultibodyPlant<T>::SceneGraphStub {
   }
 
 #undef DRAKE_STUB
+#undef DRAKE_STUB_PTR
 };
 
 template <typename T>
@@ -1143,18 +1166,25 @@ void MultibodyPlant<T>::CalcContactResults(
   }
 }
 
-template<typename T>
-void MultibodyPlant<T>::CalcAndAddContactForcesByPenaltyMethod(
-    const systems::Context<T>&,
-    const internal::PositionKinematicsCache<T>& pc,
-    const internal::VelocityKinematicsCache<T>& vc,
-    const std::vector<PenetrationAsPointPair<T>>& point_pairs,
-    std::vector<SpatialForce<T>>* F_BBo_W_array) const {
+template <typename T>
+void MultibodyPlant<T>::CalcContactResultsByPenaltyMethod(
+    const systems::Context<T>& context,
+    ContactResults<T>* contact_results) const {
+  DRAKE_DEMAND(contact_results != nullptr);
   if (num_collision_geometries() == 0) return;
+
+  const std::vector<PenetrationAsPointPair<T>>& point_pairs =
+      EvalPointPairPenetrations(context);
 
   std::vector<CoulombFriction<double>> combined_friction_pairs =
       CalcCombinedFrictionCoefficients(point_pairs);
 
+  const internal::PositionKinematicsCache<T>& pc =
+      EvalPositionKinematics(context);
+  const internal::VelocityKinematicsCache<T>& vc =
+      EvalVelocityKinematics(context);
+
+  contact_results->Clear();
   for (size_t icontact = 0; icontact < point_pairs.size(); ++icontact) {
     const auto& pair = point_pairs[icontact];
     const GeometryId geometryA_id = pair.id_A;
@@ -1218,13 +1248,14 @@ void MultibodyPlant<T>::CalcAndAddContactForcesByPenaltyMethod(
       const T kNonZeroSqd = 1e-14 * 1e-14;
       // Tangential friction force on A at C, expressed in W.
       Vector3<T> ft_AC_W = Vector3<T>::Zero();
+      T slip_velocity = 0;
       if (vt_squared > kNonZeroSqd) {
-        const T vt = sqrt(vt_squared);
+        slip_velocity = sqrt(vt_squared);
         // Stribeck friction coefficient.
         const T mu_stribeck = stribeck_model_.ComputeFrictionCoefficient(
-            vt, combined_friction_pairs[icontact]);
+            slip_velocity, combined_friction_pairs[icontact]);
         // Tangential direction.
-        const Vector3<T> that_W = vt_AcBc_W / vt;
+        const Vector3<T> that_W = vt_AcBc_W / slip_velocity;
 
         // Magnitude of the friction force on A at C.
         const T ft_AC = mu_stribeck * fn_AC;
@@ -1234,20 +1265,201 @@ void MultibodyPlant<T>::CalcAndAddContactForcesByPenaltyMethod(
       // Spatial force on body A at C, expressed in the world frame W.
       const SpatialForce<T> F_AC_W(Vector3<T>::Zero(),
                                    fn_AC_W + ft_AC_W);
+      
+      const Vector3<T> f_Bc_W = -F_AC_W.translational();
+      contact_results->AddContactInfo(
+          {bodyA_index, bodyB_index, f_Bc_W, p_WC, vn, slip_velocity, pair});
+    }
+  }
+}
 
-      if (F_BBo_W_array != nullptr) {
-        if (bodyA_index != world_index()) {
-          // Spatial force on body A at Ao, expressed in W.
-          const SpatialForce<T> F_AAo_W = F_AC_W.Shift(p_CoAo_W);
-          F_BBo_W_array->at(bodyA_node_index) += F_AAo_W;
-        }
+template <typename T>
+void MultibodyPlant<T>::CalcAndAddContactForcesByPenaltyMethod(
+    const systems::Context<T>& context,
+    std::vector<SpatialForce<T>>* F_BBo_W_array) const {
+  DRAKE_DEMAND(F_BBo_W_array != nullptr);
+  if (num_collision_geometries() == 0) return;
 
-        if (bodyB_index != world_index()) {
-          // Spatial force on body B at Bo, expressed in W.
-          const SpatialForce<T> F_BBo_W = -F_AC_W.Shift(p_CoBo_W);
-          F_BBo_W_array->at(bodyB_node_index) += F_BBo_W;
-        }
+  const ContactResults<T>& contact_results = EvalContactResults(context);
+
+  const internal::PositionKinematicsCache<T>& pc =
+      EvalPositionKinematics(context);
+
+  for (int pair_index = 0; pair_index < contact_results.num_contacts();
+       ++pair_index) {
+    const PointPairContactInfo<T>& contact_info =
+        contact_results.point_pair_contact_info(pair_index);
+    const PenetrationAsPointPair<T>& pair = contact_info.point_pair();
+
+    const GeometryId geometryA_id = pair.id_A;
+    const GeometryId geometryB_id = pair.id_B;
+
+    BodyIndex bodyA_index = geometry_id_to_body_index_.at(geometryA_id);
+    BodyIndex bodyB_index = geometry_id_to_body_index_.at(geometryB_id);
+
+    internal::BodyNodeIndex bodyA_node_index =
+        internal_tree().get_body(bodyA_index).node_index();
+    internal::BodyNodeIndex bodyB_node_index =
+        internal_tree().get_body(bodyB_index).node_index();
+
+    // Contact point C.
+    const Vector3<T> p_WC = contact_info.contact_point();
+
+    // Contact point position on body A.
+    const Vector3<T>& p_WAo = pc.get_X_WB(bodyA_node_index).translation();
+    const Vector3<T>& p_CoAo_W = p_WAo - p_WC;
+
+    // Contact point position on body B.
+    const Vector3<T>& p_WBo = pc.get_X_WB(bodyB_node_index).translation();
+    const Vector3<T>& p_CoBo_W = p_WBo - p_WC;
+
+    const Vector3<T> f_Bc_W = contact_info.contact_force();
+    const SpatialForce<T> F_AC_W(Vector3<T>::Zero(), -f_Bc_W);
+
+    if (F_BBo_W_array != nullptr) {
+      if (bodyA_index != world_index()) {
+        // Spatial force on body A at Ao, expressed in W.
+        const SpatialForce<T> F_AAo_W = F_AC_W.Shift(p_CoAo_W);
+        F_BBo_W_array->at(bodyA_node_index) += F_AAo_W;
       }
+
+      if (bodyB_index != world_index()) {
+        // Spatial force on body B at Bo, expressed in W.
+        const SpatialForce<T> F_BBo_W = -F_AC_W.Shift(p_CoBo_W);
+        F_BBo_W_array->at(bodyB_node_index) += F_BBo_W;
+      }
+    }
+  }
+}
+
+template <>
+void MultibodyPlant<symbolic::Expression>::MakeHydroelasticModels() {
+  // This is a no-op for symbolic::Expression to allow building the plant even
+  // if the user requested the use of the hydroelastic model.
+  // However, CalcAndAddHydroelasticsContactForces() will throw an exception at
+  // runtime if force computations are invoked with symbolic::Expression.
+}
+
+template <typename T>
+void MultibodyPlant<T>::MakeHydroelasticModels() {
+  hydroelastics_engine_ =
+      std::make_unique<hydroelastics::internal::HydroelasticEngine<T>>();
+  hydroelastics_engine_->MakeModels(scene_graph_->model_inspector());
+}
+
+template <typename T>
+void MultibodyPlant<T>::CalcContactSurfaces(
+    const Context<T>& context,
+    std::vector<ContactSurface<T>>* all_surfaces) const {
+  DRAKE_DEMAND(all_surfaces != nullptr);
+  const auto& query_object =
+      this->get_geometry_query_input_port()
+          .template Eval<geometry::QueryObject<T>>(context);    
+  *all_surfaces = hydroelastics_engine_->ComputeContactSurfaces(query_object);
+}
+
+template <>
+void MultibodyPlant<symbolic::Expression>::CalcContactSurfaces(
+    const Context<symbolic::Expression>&,
+    std::vector<ContactSurface<symbolic::Expression>>*) const {
+  throw std::domain_error(
+      "This method doesn't support T = symbolic::Expression.");
+}
+
+template <>
+void MultibodyPlant<symbolic::Expression>::CalcAndAddHydroelasticsContactForces(
+    const Context<symbolic::Expression>&,
+    std::vector<SpatialForce<symbolic::Expression>>*) const {
+  throw std::domain_error(
+      "This method doesn't support T = symbolic::Expression.");
+}
+
+template <typename T>
+void MultibodyPlant<T>::CalcAndAddHydroelasticsContactForces(
+    const Context<T>& context,
+    std::vector<SpatialForce<T>>* F_BBo_W_array) const {
+  if (num_collision_geometries() == 0) return;
+
+  const auto& query_object =
+      this->get_geometry_query_input_port()
+          .template Eval<geometry::QueryObject<T>>(context);
+
+  const std::vector<ContactSurface<T>>& all_surfaces =
+      get_contact_surfaces_output_port()
+          .template Eval<std::vector<ContactSurface<T>>>(context);
+
+  internal::HydroelasticTractionCalculator<T> traction_calculator(
+      stribeck_model_.stiction_tolerance());
+  SpatialForce<T> F_Ao_W, F_Bo_W;
+  for (const ContactSurface<T>& surface : all_surfaces) {
+    const GeometryId geometryM_id = surface.id_M();
+    const GeometryId geometryN_id = surface.id_N();
+    const int collision_indexM =
+        geometry_id_to_collision_index_.at(geometryM_id);
+    const int collision_indexN =
+        geometry_id_to_collision_index_.at(geometryN_id);
+    const CoulombFriction<double>& geometryM_friction =
+        default_coulomb_friction_[collision_indexM];
+    const CoulombFriction<double>& geometryN_friction =
+        default_coulomb_friction_[collision_indexN];
+
+    // Compute combined friction coefficient.
+    const CoulombFriction<double> combined_friction =
+        CalcContactFrictionFromSurfaceProperties(geometryM_friction,
+                                                 geometryN_friction);
+    const double static_friction = combined_friction.static_friction();
+
+    // Simple utility to detect 0 / 0. As it is used in this method, denom
+    // can only be zero if num is also zero, so we'll simply return zero.
+    //auto safe_divide = [](double num, double denom) {
+    //  return denom == 0.0 ? 0.0 : num / denom;
+    //};
+
+#if 0
+    const double Em = default_modulus_of_elasticity_[collision_indexM];
+    const double En = default_modulus_of_elasticity_[collision_indexN];
+    // Em, En must be strictly positive, maybe infinite.
+    const double Estar = 1.0 / (1.0 / Em + 1.0 / En);
+#endif
+
+    const double dm = default_dissipation_[collision_indexM];
+    const double dn = default_dissipation_[collision_indexN];
+    // Dissipation must be positive. It can be zero.
+    //const double dissipation = safe_divide(2 * dm * dn, dm + dn);
+    const double dissipation = dm + dn;
+
+    // Get the transform of the geometry for M to the world frame.
+    const RigidTransform<T> X_WM = query_object.X_WG(surface.id_M());
+
+    // Get the bodies that the two geometries are affixed to. We'll call these
+    // A and B.
+    const BodyIndex bodyA_index = geometry_id_to_body_index_.at(geometryM_id);
+    const BodyIndex bodyB_index = geometry_id_to_body_index_.at(geometryN_id);
+    const Body<T>& bodyA = internal_tree().get_body(bodyA_index);
+    const Body<T>& bodyB = internal_tree().get_body(bodyB_index);
+
+    // The the poses and spatial velocities of bodies A and B.
+    const RigidTransform<T> X_WA = bodyA.EvalPoseInWorld(context);
+    const RigidTransform<T> X_WB = bodyB.EvalPoseInWorld(context);
+    const SpatialVelocity<T> V_WA = bodyA.EvalSpatialVelocityInWorld(context);
+    const SpatialVelocity<T> V_WB = bodyB.EvalSpatialVelocityInWorld(context);
+
+    // Pack everything for the calculator needs.
+    typename internal::HydroelasticTractionCalculator<T>::Data data(
+        X_WA, X_WB, V_WA, V_WB, X_WM, &surface);
+
+    traction_calculator.ComputeSpatialForcesAtBodyOriginsFromHydroelasticModel(
+        data, dissipation, static_friction, &F_Ao_W, &F_Bo_W);
+
+    const internal::BodyNodeIndex bodyA_node_index = bodyA.node_index();
+    const internal::BodyNodeIndex bodyB_node_index = bodyB.node_index();
+
+    if (bodyA_index != world_index()) {
+      F_BBo_W_array->at(bodyA_node_index) += F_Ao_W;
+    }
+
+    if (bodyB_index != world_index()) {
+      F_BBo_W_array->at(bodyB_node_index) += F_Bo_W;
     }
   }
 }
@@ -1436,12 +1648,14 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
   std::vector<SpatialForce<T>>& F_BBo_W_array = forces.mutable_body_forces();
   VectorX<T>& tau_array = forces.mutable_generalized_forces();
 
-  // Compute contact forces on each body by penalty method.
-  if (num_collision_geometries() > 0) {
-    const std::vector<PenetrationAsPointPair<T>>& point_pairs =
-        EvalPointPairPenetrations(context);
-    CalcAndAddContactForcesByPenaltyMethod(
-        context, pc, vc, point_pairs, &F_BBo_W_array);
+  if (use_hydroelastic_model_) {
+    CalcAndAddHydroelasticsContactForces(context, &F_BBo_W_array);
+  } else {
+    // We use point contact.
+    // Compute contact forces on each body by penalty method.
+    if (num_collision_geometries() > 0) {
+      CalcAndAddContactForcesByPenaltyMethod(context, &F_BBo_W_array);
+    }
   }
 
   internal_tree().CalcInverseDynamics(
@@ -1795,7 +2009,7 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
 
   // Declare per model instance output port of generalized contact forces.
   instance_generalized_contact_forces_output_ports_.resize(
-      num_model_instances());
+      num_model_instances());      
   for (ModelInstanceIndex model_instance_index(0);
        model_instance_index < num_model_instances(); ++model_instance_index) {
     const int instance_num_velocities =
@@ -1807,28 +2021,85 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
         this->get_cache_entry(cache_indexes_.implicit_stribeck_solver_results);
     auto calc = [this, model_instance_index](const systems::Context<T>& context,
                                              systems::BasicVector<T>* result) {
-      const internal::ImplicitStribeckSolverResults<T>& solver_results =
-          EvalImplicitStribeckResults(context);
-      this->CopyGeneralizedContactForcesOut(
-          solver_results, model_instance_index, result);
+      if (is_discrete()) {
+        const internal::ImplicitStribeckSolverResults<T>& solver_results =
+            EvalImplicitStribeckResults(context);
+        this->CopyGeneralizedContactForcesOut(solver_results,
+                                              model_instance_index, result);
+      } else {
+        // Compute tau_c = J^T * Fc.
+        // TODO(amcastro-tri): cache the computation of the generalized forces
+        // due to contact tau_c.
+        std::vector<SpatialForce<T>> F_BBo_W_array(num_bodies(),
+                                                   SpatialForce<T>::Zero());
+        if (!uses_hydroelastic_model()) {
+          CalcAndAddContactForcesByPenaltyMethod(context, &F_BBo_W_array);
+        } else {
+          CalcAndAddHydroelasticsContactForces(context, &F_BBo_W_array);
+        }
+
+        const VectorX<T> zero_vdot = VectorX<T>::Zero(num_velocities());
+        std::vector<SpatialAcceleration<T>> A_WB_array(num_bodies());
+        std::vector<SpatialForce<T>> F_BMo_W_array(num_bodies());
+        VectorX<T> tau_contact(num_velocities());
+        internal_tree().CalcInverseDynamics(
+            context, zero_vdot, F_BBo_W_array, zero_vdot,
+            true /* ignore velocities */, &A_WB_array, &F_BMo_W_array,
+            &tau_contact);
+
+        tau_contact = -tau_contact;
+
+        for (BodyIndex i(0); i < num_bodies(); ++i) {
+          PRINT_VAR(get_body(i).name());
+          PRINT_VAR(F_BBo_W_array[get_body(i).node_index()]);
+        }
+
+        PRINT_VAR(tau_contact.transpose());
+
+        // Add to proper model instance.
+        // Generalized velocities and generalized forces are ordered in the same
+        // way. Thus we can call get_velocities_from_array().
+        const VectorX<T> instance_tau_contact =
+            internal_tree().GetVelocitiesFromArray(model_instance_index,
+                                                   tau_contact);
+        PRINT_VAR(instance_tau_contact.transpose());                                           
+        
+        result->set_value(instance_tau_contact);
+      }
     };
+
+    const systems::DependencyTicket& dependency_ticket =
+        is_discrete() ? implicit_stribeck_solver_results_cache_entry.ticket()
+                      : this->kinematics_ticket();
     instance_generalized_contact_forces_output_ports_[model_instance_index] =
         this->DeclareVectorOutputPort(
                 internal_tree().GetModelInstanceName(model_instance_index) +
                     "_generalized_contact_forces",
                 BasicVector<T>(instance_num_velocities), calc,
-                {implicit_stribeck_solver_results_cache_entry.ticket()})
+                {dependency_ticket})
             .get_index();
   }
 
   // Contact results output port.
-  const auto& contact_results_cache_entry =
-      this->get_cache_entry(cache_indexes_.contact_results);
-  contact_results_port_ = this->DeclareAbstractOutputPort(
-                                  "contact_results", ContactResults<T>(),
-                                  &MultibodyPlant<T>::CopyContactResultsOutput,
-                                  {contact_results_cache_entry.ticket()})
-                              .get_index();
+  if (!uses_hydroelastic_model()) {
+    const auto& contact_results_cache_entry =
+        this->get_cache_entry(cache_indexes_.contact_results);
+    contact_results_port_ =
+        this->DeclareAbstractOutputPort(
+                "contact_results", ContactResults<T>(),
+                &MultibodyPlant<T>::CopyContactResultsOutput,
+                {contact_results_cache_entry.ticket()})
+            .get_index();
+  }
+
+  if (uses_hydroelastic_model()) {
+    contact_surfaces_port_ =
+        this->DeclareAbstractOutputPort("contact_surfaces",
+                                        std::vector<ContactSurface<T>>(),
+                                        &MultibodyPlant<T>::CalcContactSurfaces,
+                                        {this->configuration_ticket()})
+            .get_index();
+  }
 }
 
 template <typename T>
@@ -1913,22 +2184,35 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
   cache_indexes_.implicit_stribeck_solver_results =
       implicit_stribeck_solver_cache_entry.cache_index();
 
-  // Cache contact results.
-  auto& contact_results_cache_entry = this->DeclareCacheEntry(
-      std::string("Contact results."),
-      []() { return AbstractValue::Make(ContactResults<T>()); },
-      [this](const systems::ContextBase& context_base,
-             AbstractValue* cache_value) {
-        auto& context = dynamic_cast<const Context<T>&>(context_base);
-        auto& contact_results_cache =
-            cache_value->get_mutable_value<ContactResults<T>>();
-        this->CalcContactResults(context, &contact_results_cache);
-      },
-      // We explicitly declare the dependence on the implicit Stribeck solver
-      // even though the Eval() above does the evaluation.
-      {this->cache_entry_ticket(
-          cache_indexes_.implicit_stribeck_solver_results)});
-  cache_indexes_.contact_results = contact_results_cache_entry.cache_index();
+  // Cache contact results for point contact.
+  if (!uses_hydroelastic_model()) {
+    const systems::DependencyTicket& dependency_ticket =
+        is_discrete() ? this->cache_entry_ticket(
+                            cache_indexes_.implicit_stribeck_solver_results)
+                      : this->kinematics_ticket();
+    //systems::CacheIndex dependency_ticket =
+    //    is_discrete() ? cache_indexes_.implicit_stribeck_solver_results
+     //                 : this->kinematics_ticket();
+    auto& contact_results_cache_entry = this->DeclareCacheEntry(
+        std::string("Contact results."),
+        []() { return AbstractValue::Make(ContactResults<T>()); },
+        [this](const systems::ContextBase& context_base,
+               AbstractValue* cache_value) {
+          auto& context = dynamic_cast<const Context<T>&>(context_base);
+          auto& contact_results_cache =
+              cache_value->get_mutable_value<ContactResults<T>>();
+          if (is_discrete()) {
+            this->CalcContactResults(context, &contact_results_cache);
+          } else {
+            this->CalcContactResultsByPenaltyMethod(context,
+                                                    &contact_results_cache);
+          }
+        },
+        // We explicitly declare the dependence on the implicit Stribeck solver
+        // even though the Eval() above does the evaluation.
+        {dependency_ticket});
+    cache_indexes_.contact_results = contact_results_cache_entry.cache_index();
+  }
 }
 
 template <typename T>
@@ -2035,7 +2319,6 @@ const systems::OutputPort<T>&
 MultibodyPlant<T>::get_generalized_contact_forces_output_port(
     ModelInstanceIndex model_instance) const {
   DRAKE_MBP_THROW_IF_NOT_FINALIZED();
-  DRAKE_THROW_UNLESS(is_discrete());
   DRAKE_THROW_UNLESS(model_instance.is_valid());
   DRAKE_THROW_UNLESS(model_instance < num_model_instances());
   DRAKE_THROW_UNLESS(internal_tree().num_states(model_instance) > 0);
@@ -2047,8 +2330,16 @@ template <typename T>
 const systems::OutputPort<T>&
 MultibodyPlant<T>::get_contact_results_output_port() const {
   DRAKE_MBP_THROW_IF_NOT_FINALIZED();
-  DRAKE_THROW_UNLESS(is_discrete());
   return this->get_output_port(contact_results_port_);
+}
+
+template <typename T>
+const systems::OutputPort<T>&
+MultibodyPlant<T>::get_contact_surfaces_output_port() const {
+  DRAKE_MBP_THROW_IF_NOT_FINALIZED();
+  DRAKE_THROW_UNLESS(use_hydroelastic_model_);
+  DRAKE_THROW_UNLESS(!is_discrete());
+  return this->get_output_port(contact_surfaces_port_);
 }
 
 namespace {

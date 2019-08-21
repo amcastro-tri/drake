@@ -66,8 +66,8 @@ class HydroelasticGeometry {
   void set_elastic_modulus(double elastic_modulus) {
     DRAKE_THROW_UNLESS(is_soft());
     DRAKE_THROW_UNLESS(elastic_modulus > 0);
-    DRAKE_THROW_UNLESS(elastic_modulus !=
-                       std::numeric_limits<double>::infinity());
+    //DRAKE_THROW_UNLESS(elastic_modulus !=
+    //                   std::numeric_limits<double>::infinity());
     elastic_modulus_ = elastic_modulus;
   }
 
@@ -178,6 +178,35 @@ class HydroelasticEngine final : public geometry::ShapeReifier {
   void ImplementGeometry(const geometry::Convex&, void*) override;
 
   ModelData model_data_;
+};
+
+template <>
+class HydroelasticEngine<symbolic::Expression> {
+ public:
+  //  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(HydroelasticEngine<symbolic::Expression>)
+
+  using T = symbolic::Expression;
+
+  HydroelasticEngine() {}
+
+  ~HydroelasticEngine() {}
+
+  void MakeModels(const geometry::SceneGraphInspector<T>&) {
+    Throw("MakeModels");
+  }
+
+  std::vector<geometry::ContactSurface<T>> ComputeContactSurfaces(
+      const geometry::QueryObject<T>&) const {
+    Throw("ComputeContactSurfaces");
+    return std::vector<geometry::ContactSurface<T>>();
+  }
+
+ private:
+  static void Throw(const char* operation_name) {
+    throw std::logic_error(
+        fmt::format("Cannot {} on a HydroelasticEngine<symbolic::Expression>",
+                    operation_name));
+  }
 };
 
 }  // namespace internal

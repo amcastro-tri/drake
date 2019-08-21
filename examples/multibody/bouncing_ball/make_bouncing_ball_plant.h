@@ -31,8 +31,10 @@ namespace bouncing_ball {
 std::unique_ptr<drake::multibody::MultibodyPlant<double>>
 MakeBouncingBallPlant(
     double radius, double mass,
+    double elastic_modulus, double dissipation,
     const drake::multibody::CoulombFriction<double>& surface_friction,
     const Vector3<double>& gravity_W,
+    const std::string& contact_model,
     geometry::SceneGraph<double>* scene_graph = nullptr);
 
 }  // namespace bouncing_ball

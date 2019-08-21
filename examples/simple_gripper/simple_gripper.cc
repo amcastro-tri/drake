@@ -25,6 +25,9 @@
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/primitives/sine.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 namespace drake {
 namespace examples {
 namespace simple_gripper {
@@ -69,7 +72,7 @@ DEFINE_double(max_time_step, 1.0e-3,
               "Maximum time step used for the integrators. [s]. "
               "If negative, a value based on parameter penetration_allowance "
               "is used.");
-DEFINE_double(accuracy, 1.0e-2, "Sets the simulation accuracy for variable step"
+DEFINE_double(accuracy, 1.0e-4, "Sets the simulation accuracy for variable step"
               "size integrators with error control.");
 DEFINE_bool(time_stepping, true, "If 'true', the plant is modeled as a "
     "discrete system with periodic updates of period 'max_time_step'."
@@ -79,7 +82,7 @@ DEFINE_bool(time_stepping, true, "If 'true', the plant is modeled as a "
 DEFINE_double(penetration_allowance, 1.0e-2,
               "Penetration allowance. [m]. "
               "See MultibodyPlant::set_penetration_allowance().");
-DEFINE_double(v_stiction_tolerance, 1.0e-2,
+DEFINE_double(v_stiction_tolerance, 1.0e-4,
               "The maximum slipping speed allowed during stiction. [m/s]");
 
 // Pads parameters
@@ -110,6 +113,11 @@ DEFINE_double(amplitude, 0.15, "The amplitude of the harmonic oscillations "
 DEFINE_double(frequency, 2.0, "The frequency of the harmonic oscillations "
               "carried out by the gripper. [Hz].");
 
+DEFINE_string(contact_model, "point",
+              "Contact model. Options are: 'point', 'hydroelastic'.");              
+DEFINE_double(elastic_modulus, 2.5e5, "Elastic modulus, in Pa.");
+DEFINE_double(dissipation, 5.0, "dissipation, in s/m.");              
+
 // The pad was measured as a torus with the following major and minor radii.
 const double kPadMajorRadius = 14e-3;  // 14 mm.
 const double kPadMinorRadius = 6e-3;   // 6 mm.
@@ -128,6 +136,32 @@ void AddGripperPads(MultibodyPlant<double>* plant,
   const int sample_count = FLAGS_ring_samples;
   const double sample_rotation = FLAGS_ring_orient * M_PI / 180.0;  // radians.
   const double d_theta = 2 * M_PI / sample_count;
+  const double torus_center_y_position_F = 0.0265;
+  CoulombFriction<double> friction(
+        FLAGS_ring_static_friction, FLAGS_ring_static_friction);
+
+  if (FLAGS_contact_model == "hydroelastic") {
+    // we make the squishy red pads for the hydro model thicker so that, for the
+    // same level of penetration as for poiint contact (~5.6 mm), we don't get
+    // the mug to cross the center of the squishy box shapped pads (that'd make
+    // hydro fail).
+    double hydro_pad_offset = pad_offset > 0 ? pad_offset - kPadMinorRadius
+                                             : pad_offset + kPadMinorRadius;
+    // For the same reason, twice as thick as the point contact model effective
+    // thickness (the diameter of the spheres).
+    double hydro_pad_thickness = 4 * kPadMinorRadius;
+    Vector3d p_FSo(hydro_pad_offset, torus_center_y_position_F, 0.0);    
+    const RigidTransformd X_FS(p_FSo);
+    const double box_size = 2 * kPadMajorRadius;
+    const geometry::Box box(hydro_pad_thickness, box_size, box_size);
+    const auto box_id = plant->RegisterCollisionGeometry(finger, X_FS, box,
+                                     finger.name() + "_collision", friction);
+    const Vector4<double> red(0.8, 0.2, 0.2, 1.0);
+    plant->RegisterVisualGeometry(finger, X_FS, box, finger.name() + "_visual", red);
+    plant->set_elastic_modulus(box_id, FLAGS_elastic_modulus);
+    plant->set_hydroelastics_dissipation(box_id, FLAGS_dissipation);
+    return;
+  }
 
   Vector3d p_FSo;  // Position of the sphere frame S in the finger frame F.
   // The finger frame is defined in simpler_gripper.sdf so that:
@@ -136,8 +170,7 @@ void AddGripperPads(MultibodyPlant<double>* plant,
   //  - z axis points up.
   //  - It's origin Fo is right at the geometric center of the finger.
   for (int i = 0; i < sample_count; ++i) {
-    // The y-offset of the center of the torus in the finger frame F.
-    const double torus_center_y_position_F = 0.0265;
+    // The y-offset of the center of the torus in the finger frame F.    
     p_FSo(0) = pad_offset;  // Offset from the center of the gripper.
     p_FSo(1) =
         std::cos(d_theta * i + sample_rotation) * kPadMajorRadius +
@@ -146,10 +179,7 @@ void AddGripperPads(MultibodyPlant<double>* plant,
 
     // Pose of the sphere frame S in the finger frame F.
     const RigidTransformd X_FS(p_FSo);
-
-    CoulombFriction<double> friction(
-        FLAGS_ring_static_friction, FLAGS_ring_static_friction);
-
+  
     plant->RegisterCollisionGeometry(finger, X_FS, Sphere(kPadMinorRadius),
                                      "collision" + std::to_string(i), friction);
 
@@ -204,6 +234,15 @@ int do_main() {
   // Add the pads.
   const Body<double>& left_finger = plant.GetBodyByName("left_finger");
   const Body<double>& right_finger = plant.GetBodyByName("right_finger");
+
+  if (FLAGS_contact_model == "hydroelastic") {
+    plant.use_hydroelastic_model(true);
+  } else if (FLAGS_contact_model == "point") {
+    plant.use_hydroelastic_model(false);
+  } else {
+    throw std::runtime_error("Invalid contact model: '" + FLAGS_contact_model +
+                             "'.");
+  }
 
   // Pads offset from the center of a finger. pad_offset = 0 means the center of
   // the spheres is located right at the center of the finger.
@@ -315,7 +354,7 @@ int do_main() {
       plant.GetJointByName<PrismaticJoint>("finger_sliding_joint");
 
   // Set initial position of the left finger.
-  finger_slider.set_translation(&plant_context, -FLAGS_grip_width);
+  finger_slider.set_translation(&plant_context, -FLAGS_grip_width);  
 
   // Get mug body so we can set its initial pose.
   const Body<double>& mug = plant.GetBodyByName("main_body");
@@ -395,6 +434,13 @@ int do_main() {
                  integrator->get_num_step_shrinkages_from_error_control());
     }
   }
+
+  // Print out how much we are squishing.
+  // In particular useful to set compliance. Run with --amplitude=0.0 for a
+  // steady state computation.
+  // We matched hydroelastic compliance to get the same level of squishing that
+  // we get wit the point contact model.
+  PRINT_VAR(FLAGS_grip_width + finger_slider.get_translation(plant_context));  
 
   return 0;
 }

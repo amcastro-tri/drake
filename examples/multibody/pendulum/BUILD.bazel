@@ -27,4 +27,25 @@ drake_cc_binary(
     ],
 )
 
+drake_cc_binary(
+    name = "trajectory_optimization_simulation",
+    srcs = ["trajectory_optimization_simulation.cc"],
+    add_test_rule = 1,
+    test_rule_args = ["--target_realtime_rate=0.0"],
+    # Non-deterministic IPOPT-related failures on macOS, see #10276.
+    test_rule_flaky = 1,
+    deps = [
+        "//multibody/benchmarks/pendulum",
+        "//common:is_approx_equal_abstol",
+        "//geometry:geometry_visualization",
+        "//solvers:solve",
+        "//systems/analysis:simulator",
+        "//systems/controllers:pid_controlled_system",
+        "//systems/framework:diagram",
+        "//systems/primitives:trajectory_source",
+        "//systems/trajectory_optimization:direct_collocation",
+        "@gflags",
+    ],
+)
+
 add_lint_tests()

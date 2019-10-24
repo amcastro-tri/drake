@@ -659,12 +659,6 @@ void MultibodyPlant<T>::FinalizePlantOnly() {
     solver_parameters.stiction_tolerance =
         friction_model_.stiction_tolerance();
     tamsi_solver_->set_solver_parameters(solver_parameters);
-  } else {
-    // We only build hydroelastics if the user requested it AND if geometry was
-    // registered with a SceneGraph. Since by default bodies are rigid, we use
-    // point contact unless the user specifies otherwise.
-    if (contact_model_ != ContactModel::kPointContactOnly && get_source_id())
-      MakeHydroelasticModels();
   }
   SetUpJointLimitsParameters();
   scene_graph_ = nullptr;  // must not be used after Finalize().
@@ -1121,8 +1115,10 @@ void MultibodyPlant<T>::CalcContactResultsContinuousHydroelastic(
         X_WA, X_WB, V_WA, V_WB, &surface);
 
     // Combined Hunt & Crossley dissipation.
+    const auto& query_object = get_geometry_query_input_port().
+        template Eval<geometry::QueryObject<T>>(context);
     const double dissipation = hydroelastics_engine_.CalcCombinedDissipation(
-        geometryM_id, geometryN_id);
+        geometryM_id, geometryN_id, query_object.inspector());
 
     contact_results->AddContactInfo(traction_calculator.ComputeContactInfo(
        data, dissipation, dynamic_friction));
@@ -1352,11 +1348,6 @@ void MultibodyPlant<symbolic::Expression>::MakeHydroelasticModels() {
   // computations are invoked with symbolic::Expression.
 }
 
-template <typename T>
-void MultibodyPlant<T>::MakeHydroelasticModels() {
-  hydroelastics_engine_.MakeModels(scene_graph_->model_inspector());
-}
-
 template <>
 void MultibodyPlant<symbolic::Expression>::CalcHydroelasticContactForces(
     const Context<symbolic::Expression>&,
@@ -1417,8 +1408,10 @@ void MultibodyPlant<T>::CalcHydroelasticContactForces(
         X_WA, X_WB, V_WA, V_WB, &surface);
 
     // Combined Hunt & Crossley dissipation.
+    const auto& query_object = get_geometry_query_input_port().
+        template Eval<geometry::QueryObject<T>>(context);
     const double dissipation = hydroelastics_engine_.CalcCombinedDissipation(
-        geometryM_id, geometryN_id);
+        geometryM_id, geometryN_id, query_object.inspector());
 
     // Integrate the hydroelastic traction field over the contact surface.
     SpatialForce<T> F_Ao_W, F_Bo_W;
@@ -1646,7 +1639,8 @@ void MultibodyPlant<T>::CalcContactSurfaces(
       this->get_geometry_query_input_port()
           .template Eval<geometry::QueryObject<T>>(context);
 
-  *contact_surfaces = query_object.ComputeContactSurfaces();
+  *contact_surfaces =
+      hydroelastics_engine_.ComputeContactSurfaces(query_object);
 }
 
 template <typename T>

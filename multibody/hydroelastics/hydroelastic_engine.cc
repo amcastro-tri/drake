@@ -133,63 +133,13 @@ double HydroelasticEngine<T>::CalcCombinedDissipation(
 }
 
 template <typename T>
-std::vector<ContactSurface<T>> HydroelasticEngine<T>::ComputeContactSurfaces(
-    const geometry::QueryObject<T>& query_object) const {
-  const std::vector<SortedPair<GeometryId>>& geometry_pairs =
-      query_object.FindCollisionCandidates();
-
-  std::vector<ContactSurface<T>> all_contact_surfaces;
-  for (const auto& pair : geometry_pairs) {
-    GeometryId id_M = pair.first();
-    GeometryId id_N = pair.second();
-    const HydroelasticGeometry<T>* model_M = get_model(id_M);
-    const HydroelasticGeometry<T>* model_N = get_model(id_N);
-
-    // Skip contact surface computation if these ids do not have a hydrostatic
-    // model.
-    if (!model_M || !model_N) {
-      const std::string name_M = query_object.inspector().GetName(id_M);
-      const std::string name_N = query_object.inspector().GetName(id_N);
-      throw std::runtime_error(
-          "HydroelasticEngine. Unsupported geometries possibly in contact. "
-          "For the geometry pair ('" + name_M + "', '" + name_N + "')."
-          "You can remove the unsupported geometries, replace them with "
-          "supported geometry, or filter collisions on them.");
-    }
-
-    // Thus far we only support rigid vs. soft.
-    if (model_M->is_soft() == model_N->is_soft()) {
-      throw std::runtime_error(
-          "HydroelasticEngine. The current implementation of the "
-          "hydroelastic model only supports soft vs. rigid contact.");
-    }
-    const RigidTransform<T>& X_WM = query_object.X_WG(id_M);
-    const RigidTransform<T>& X_WN = query_object.X_WG(id_N);
-
-    // Determine the poses in the world frame of the soft and rigid models.
-    const RigidTransform<T> X_WR = model_M->is_soft() ? X_WN : X_WM;
-    const RigidTransform<T> X_WS = model_M->is_soft() ? X_WM : X_WN;
-    const GeometryId id_S = model_M->is_soft() ? id_M : id_N;
-    const GeometryId id_R = model_M->is_soft() ? id_N : id_M;
-    const HydroelasticGeometry<T>& model_S =
-        model_M->is_soft() ? *model_M : *model_N;
-    const HydroelasticGeometry<T>& model_R =
-        model_M->is_soft() ? *model_N : *model_M;
-
-    optional<ContactSurface<T>> surface =
-        CalcContactSurface(id_S, model_S, X_WS, id_R, model_R, X_WR);
-    if (surface) all_contact_surfaces.emplace_back(std::move(*surface));
-  }
-
-  return all_contact_surfaces;
-}
-
-template <typename T>
 optional<ContactSurface<T>> HydroelasticEngine<T>::CalcContactSurface(
     GeometryId id_S, const HydroelasticGeometry<T>& soft_model_S,
     const RigidTransform<T>& X_WS,
     GeometryId id_R, const HydroelasticGeometry<T>& rigid_model_R,
     const RigidTransform<T>& X_WR) const {
+  // TODO(SeanCurtis-TRI): This is no longer exercised. However, we are leaving
+  //  it here *for now*. A subsequent PR will move this logic into SceneGraph.
   DRAKE_DEMAND(soft_model_S.is_soft());
   DRAKE_DEMAND(!rigid_model_R.is_soft());
   const HydroelasticField<T>& soft_field_S = soft_model_S.hydroelastic_field();
@@ -284,10 +234,30 @@ void HydroelasticEngine<T>::ImplementGeometry(const Cylinder&, void*) {
 }
 
 template <typename T>
-void HydroelasticEngine<T>::ImplementGeometry(const Box&, void*) {
+#if 1
+void HydroelasticEngine<T>::ImplementGeometry(const Box&, void* user_data) {
+  const GeometryImplementationData& specs =
+      *reinterpret_cast<GeometryImplementationData*>(user_data);
+  const double elastic_modulus = specs.elastic_modulus;
+  if (elastic_modulus != std::numeric_limits<double>::infinity()) {
+    drake::log()->warn(
+        "HydroelasticEngine. The current hydroelastic model implementation "
+        "does not support soft boxes. Geometry ignored.");
+  }
+  // Note: This is just to make sure the hydroelastic engine has *some* geometry
+  // for the box so it can handle the dissipation rules. It won't actually do
+  // contact surface computation with this representation.
+  auto level_set = std::make_unique<LevelSetField<T>>(
+      [](const Vector3<T>& p) { return p[2]; },
+      [](const Vector3<T>&) { return Vector3<double>::UnitZ(); });
+  model_data_.geometry_id_to_model_[specs.id] =
+      std::make_unique<HydroelasticGeometry<T>>(std::move(level_set));
+#else
+  void HydroelasticEngine<T>::ImplementGeometry(const Box&, void*) {
   drake::log()->warn(
       "HydroelasticEngine. The current hydroelastic model implementation "
       "does not support box geometries. Geometry ignored.");
+#endif
 }
 
 template <typename T>

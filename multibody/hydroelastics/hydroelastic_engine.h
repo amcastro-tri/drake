@@ -156,14 +156,6 @@ class HydroelasticEngine final : public geometry::ShapeReifier {
   double CalcCombinedDissipation(geometry::GeometryId id_A,
                                  geometry::GeometryId id_B) const;
 
-  /// For a given state of `query_object`, this method computes the contact
-  /// surfaces for all geometries in contact.
-  /// @warning Unsupported geometries are ignored unless the broadphase pass
-  /// detects that they are possibly in contact. In this case an exception is
-  /// thrown.
-  std::vector<geometry::ContactSurface<T>> ComputeContactSurfaces(
-      const geometry::QueryObject<T>& query_object) const;
-
  private:
   // This struct stores additional data passed to ImplementGeometry() during
   // the reification process.
@@ -181,7 +173,7 @@ class HydroelasticEngine final : public geometry::ShapeReifier {
         geometry_id_to_model_;
   };
 
-  // Helper method to compute the contact surface betwen a soft model S and a
+  // Helper method to compute the contact surface between a soft model S and a
   // rigid model R given the poses of both R and S in the world frame.
   // Returns nullopt if soft_model_S and rigid_model_R do not intersect.
   optional<geometry::ContactSurface<T>> CalcContactSurface(
@@ -212,12 +204,6 @@ class HydroelasticEngine<symbolic::Expression> {
 
   void MakeModels(const geometry::SceneGraphInspector<T>&) {
     Throw("MakeModels");
-  }
-
-  std::vector<geometry::ContactSurface<T>> ComputeContactSurfaces(
-      const geometry::QueryObject<T>&) const {
-    Throw("ComputeContactSurfaces");
-    return std::vector<geometry::ContactSurface<T>>();
   }
 
   // TODO(amcastro-tri): Update this list of methods if the API in

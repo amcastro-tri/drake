@@ -59,6 +59,7 @@
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/tree/prismatic_joint.h"
 #include "drake/multibody/tree/revolute_joint.h"
+#include "drake/systems/analysis/implicit_euler_integrator.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/controllers/inverse_dynamics_controller.h"
 #include "drake/systems/framework/diagram_builder.h"
@@ -198,6 +199,7 @@ int DoMain() {
       FindResourceOrThrow("drake/examples/planar_gripper/planar_gripper.sdf");
   MultibodyPlant<double>& plant =
       *builder.AddSystem<MultibodyPlant>(FLAGS_time_step);
+  plant.set_contact_model(multibody::ContactModel::kHydroelasticsOnly);
   const ModelInstanceIndex gripper_index =
       Parser(&plant, &scene_graph).AddModelFromFile(full_name);
   WeldGripperFrames<double>(&plant);
@@ -237,6 +239,17 @@ int DoMain() {
 
   // Adds a thin floor that can provide friction against the brick.
   AddFloor(&plant, scene_graph);
+
+  // Set elastic modulus and dissipation for the fingers.
+  for (const std::string& body_name : {"finger1_link2", "finger2_link2",
+                                       "finger3_link2", "brick_link"}) {
+    std::cout << body_name << "\n";
+    for (const geometry::GeometryId id :
+        plant.GetCollisionGeometriesForBody(plant.GetBodyByName(body_name))) {
+      plant.set_elastic_modulus(id, 5.0e4);
+      plant.set_hunt_crossley_dissipation(id, 5.0);
+    }
+  }
 
   // Finalize the simulation and control plants.
   plant.Finalize();
@@ -364,6 +377,9 @@ int DoMain() {
   x_revolute.set_angle(&plant_context, brick_initial_2D_pose_G(2));
 
   systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
+  simulator.reset_integrator<systems::ImplicitEulerIntegrator<double>>(
+      *diagram, &simulator.get_mutable_context());
+  simulator.get_mutable_integrator().request_initial_step_size_target(1e-3);
   simulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
   simulator.Initialize();
   simulator.AdvanceTo(FLAGS_simulation_time);

@@ -1646,8 +1646,7 @@ void MultibodyPlant<T>::CalcContactSurfaces(
       this->get_geometry_query_input_port()
           .template Eval<geometry::QueryObject<T>>(context);
 
-  *contact_surfaces =
-      hydroelastics_engine_.ComputeContactSurfaces(query_object);
+  *contact_surfaces = query_object.ComputeContactSurfaces();
 }
 
 template <typename T>

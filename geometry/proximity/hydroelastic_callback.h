@@ -169,11 +169,17 @@ bool Callback(fcl::CollisionObjectd* object_A_ptr,
     const bool valid =(a_type == fcl::GEOM_BOX && b_type == fcl::GEOM_SPHERE) ||
         (a_type == fcl::GEOM_SPHERE && b_type == fcl::GEOM_BOX);
     if (!valid) {
+#if 1
+      // NOTE: For current expediency, we're simply ignoring geometry pairs we
+      // can't handle. Do not accidentally merge this into master.
+      return false;
+#else
       throw std::logic_error(fmt::format(
           "Can't compute a contact surface between geometries {} ({}) and "
           "{} ({})",
           to_string(encoding_a.id()), GetGeometryName(*object_A_ptr),
           to_string(encoding_b.id()), GetGeometryName(*object_B_ptr)));
+#endif
     }
 
     fcl::CollisionObjectd* object_box_ptr{};

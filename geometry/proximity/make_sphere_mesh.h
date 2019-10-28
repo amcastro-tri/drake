@@ -462,6 +462,21 @@ VolumeMesh<T> MakeSphereVolumeMesh(const Sphere& sphere,
   return VolumeMesh<T>(std::move(elements), std::move(vertices));
 }
 
+template <typename T>
+VolumeMesh<T> MakeSphereVolumeMesh(const Sphere& sphere,
+                                   int refinement_level) {
+  VolumeMesh<T> unit_mesh =
+      MakeUnitSphereMesh<T>(std::min(refinement_level, 8));
+  std::vector<VolumeVertex<T>> vertices;
+  vertices.reserve(unit_mesh.vertices().size());
+  const double r = sphere.get_radius();
+  for (auto& v : unit_mesh.vertices()) {
+    vertices.emplace_back(v.r_MV() * r);
+  }
+  std::vector<VolumeElement> elements(unit_mesh.tetrahedra());
+  return VolumeMesh<T>(std::move(elements), std::move(vertices));
+}
+
 /** Creates a surface mesh for the given `sphere`; the level of tessellation
  is guided by the `resolution_hint` parameter in the same way as
  MakeSphereVolumeMesh.

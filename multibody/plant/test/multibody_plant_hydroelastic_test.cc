@@ -16,6 +16,9 @@ using drake::systems::Context;
 using drake::systems::Diagram;
 using Eigen::Vector3d;
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 namespace drake {
 namespace multibody {
 
@@ -69,13 +72,14 @@ class HydroelasticModelTests : public ::testing::Test {
   }
 
   void AddGround(double friction_coefficient, MultibodyPlant<double>* plant) {
-    const RigidTransformd X_WG = RigidTransformd::Identity();
+    const RigidTransformd X_WG(Vector3d(0.0, 0.0, -kGroundSize_ / 2.0));
     const Vector4<double> green(0.5, 1.0, 0.5, 1.0);
+    const geometry::Box ground_shape(kGroundSize_, kGroundSize_, kGroundSize_);
     plant->RegisterVisualGeometry(plant->world_body(), X_WG,
-                                  geometry::HalfSpace(), "GroundVisualGeometry",
+                                  ground_shape, "GroundVisualGeometry",
                                   green);
     geometry::GeometryId ground_id = plant->RegisterCollisionGeometry(
-        plant->world_body(), X_WG, geometry::HalfSpace(),
+        plant->world_body(), X_WG, ground_shape,
         "GroundCollisionGeometry",
         CoulombFriction<double>(friction_coefficient, friction_coefficient));
     (void)ground_id;
@@ -142,6 +146,7 @@ class HydroelasticModelTests : public ::testing::Test {
 
   const double kFrictionCoefficient_{0.0};  // [-]
   const double kSphereRadius_{0.05};        // [m]
+  const double kGroundSize_{10.0};          // [m] 
   const double kElasticModulus_{1.e5};      // [Pa]
   const double kDissipation_{0.0};          // [s/m]
   const double kMass_{1.2};                 // [kg]
@@ -187,10 +192,14 @@ TEST_F(HydroelasticModelTests, ContactForce) {
         return 40.0 - 30.0 * penetration / R;
       };
 
-  for (double penetration : {0.01, 0.02, 0.03, 0.04}) {
+  for (double penetration : {0.0, 0.01, 0.02, 0.03, 0.04}) {
     const double analytical_force =
         CalcAnalyticalHydroelasticsForce(penetration);
     const double numerical_force = calc_force(penetration);
+
+    PRINT_VAR(analytical_force);
+    PRINT_VAR(numerical_force);
+
     const double percentile_error =
         (analytical_force - numerical_force) / analytical_force;
     const double observed_percentile_error =

@@ -22,6 +22,10 @@
 #include "drake/math/rigid_transform.h"
 #include "drake/math/rotation_matrix.h"
 
+#include <iostream>
+//#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VAR(a) (void) a;
+
 namespace drake {
 namespace geometry {
 namespace internal {
@@ -106,29 +110,40 @@ SoftGeometry MakeSphereFromFcl(fcl::CollisionObjectd* object_ptr,
   const fcl::Sphered* sphere_ptr =
       dynamic_cast<const fcl::Sphered*>(object_ptr->collisionGeometry().get());
   DRAKE_DEMAND(sphere_ptr != nullptr);
-  const double r = sphere_ptr->radius;
-  Sphere sphere(r);
+  const double R = sphere_ptr->radius;
+  Sphere sphere(R);
   // We arbitrarly choose to a coarse sphere approximation that has eight edges
   // around the equator. The length of such an edge, is the length of the chord
   // that spans 45 degrees (for a circle of radius r).
   SoftGeometry geometry;
-  double edge_length = 2 * r * std::sin(M_PI / 8.0);
-  edge_length =
-      properties.GetPropertyOrDefault(kHydroGroup, kRezHint, edge_length);
+  //double edge_length = 2 * r * std::sin(M_PI / 8.0);
+  //edge_length =
+  //    properties.GetPropertyOrDefault(kHydroGroup, kRezHint, edge_length);
+  const int kRefinementLevel = 2;  // For backward compatibility, just for testing.    
   geometry.mesh = std::make_unique<VolumeMesh<double>>(
-      MakeSphereVolumeMesh<double>(sphere, edge_length));
+      MakeSphereVolumeMesh<double>(sphere, kRefinementLevel));
 
   // Currently default to linear pressure with the given elastic_modulus (if it
   // exists, or default value).
   const double default_elastic_modulus = 1e8;
   const double elastic_modulus = properties.GetPropertyOrDefault(
-      kHydroGroup, kElastic, default_elastic_modulus);
+      kMaterialGroup, kElastic, default_elastic_modulus);
+  PRINT_VAR("MakeSphereFromFcl");
+  PRINT_VAR(elastic_modulus);
+
   auto pressure = [elastic_modulus](double e) { return elastic_modulus * e; };
+
+  auto extend = [R](double r) {
+    const double x = r * r / (R * R);
+    const double e = 0.5 * (1.0 - x);
+    return e;
+  };
+
   std::vector<double> p0_values;
   for (const auto& v : geometry.mesh->vertices()) {
     const Eigen::Vector3d& p_MV = v.r_MV();
     const double p_MV_len = p_MV.norm();
-    p0_values.push_back(pressure(1.0 - p_MV_len / r));
+    p0_values.push_back(pressure(extend(p_MV_len)));
   }
   geometry.p0 = std::make_unique<VolumeMeshFieldLinear<double, double>>(
       "p0", move(p0_values), geometry.mesh.get());

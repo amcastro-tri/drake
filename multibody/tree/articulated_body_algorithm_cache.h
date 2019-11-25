@@ -41,13 +41,13 @@ namespace internal {
 // TODO(amcastro-tri): maybe rename to ArticulatedBodyAlgorithmWorkspace?
 // It is not a cache entry really cause its value depends on external forces.
 template<typename T>
-class ArticulatedBodyAlgorithmCache {
+class ArticulatedBodyForceBiasCache {
  public:
-  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(ArticulatedBodyAlgorithmCache)
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(ArticulatedBodyForceBiasCache)
 
   /// Constructs an articulated body algorithm entry for the given
   /// MultibodyTreeTopology.
-  explicit ArticulatedBodyAlgorithmCache(
+  explicit ArticulatedBodyForceBiasCache(
       const MultibodyTreeTopology& topology) :
       num_nodes_(topology.num_bodies()) {
     Allocate();
@@ -124,4 +124,4 @@ class ArticulatedBodyAlgorithmCache {
 }  // namespace drake
 
 DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
-    class ::drake::multibody::internal::ArticulatedBodyAlgorithmCache)
+    class ::drake::multibody::internal::ArticulatedBodyForceBiasCache)

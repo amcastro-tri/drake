@@ -1671,13 +1671,13 @@ class MultibodyTree {
   1. CalcArticulatedBodyInertiaCache(): which performs a tip to base pass to
      compute the ArticulatedBodyInertia for each body along with other ABA
      quantities that are configuration dependent only.
-  2. CalcArticulatedBodyForceBiases(): a second tip to base pass which
+  2. CalcArticulatedBodyForceBiasCache(): a second tip to base pass which
      essentially computes the bias terms in the ABA equations. These are a
      function of the full state x = [q; v] and externally applied actuation and
      forces.
   3. CalcArticulatedBodyAccelerations(): which performs a final base to tip
      recursion to compute the acceleration of each body in the model. These
-     accelerations are a function of the ArticulatedBodyAlgorithmCache
+     accelerations are a function of the ArticulatedBodyForceBiasCache
      previously computed by CalcArticulatedBodyForces(). That is, accelerations
      are a function of state x and applied forces.
 
@@ -1935,14 +1935,14 @@ class MultibodyTree {
       const systems::Context<T>& context,
       ArticulatedBodyInertiaCache<T>* abc) const;
 
-  void CalcArticulatedBodyForceBiases(
+  void CalcArticulatedBodyForceBiasCache(
     const systems::Context<T>& context,
     const MultibodyForces<T>& forces,
-    ArticulatedBodyAlgorithmCache<T>* abac) const;
+    ArticulatedBodyForceBiasCache<T>* abac) const;
 
   void CalcArticulatedBodyAccelerations(
     const systems::Context<T>& context,
-    const ArticulatedBodyAlgorithmCache<T>& abac,
+    const ArticulatedBodyForceBiasCache<T>& abac,
     AccelerationKinematicsCache<T>* ac) const;
 
   /// @}

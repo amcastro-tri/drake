@@ -3388,15 +3388,15 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Zplus_B, among other quantities needed by ABA.
   // N.B. Please refer to @ref internal_forward_dynamics for further details on
   // the algorithm and implementation.
-  void CalcArticulatedBodyForceBiases(
+  void CalcArticulatedBodyForceBiasCache(
       const systems::Context<T>& context,
-      internal::ArticulatedBodyAlgorithmCache<T>* abac) const;
+      internal::ArticulatedBodyForceBiasCache<T>* abac) const;
 
-  // Eval version of the method CalcArticulatedBodyForceBiases().
-  const internal::ArticulatedBodyAlgorithmCache<T>&
-  EvalArticulatedBodyForceBiases(const systems::Context<T>& context) const {
+  // Eval version of the method CalcArticulatedBodyForceBiasCache().
+  const internal::ArticulatedBodyForceBiasCache<T>&
+  EvalArticulatedBodyForceBiasCache(const systems::Context<T>& context) const {
     return this->get_cache_entry(cache_indexes_.aba_cache)
-        .template Eval<internal::ArticulatedBodyAlgorithmCache<T>>(context);
+        .template Eval<internal::ArticulatedBodyForceBiasCache<T>>(context);
   }
 
   // Implements the system dynamics according to this class's documentation.

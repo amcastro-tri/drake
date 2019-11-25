@@ -1110,12 +1110,12 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   /// @pre The articulated body inertia cache `abic` was already updated to be
   /// in sync with `context` by
   /// MultibodyTree::CalcArticulatedBodyInertiaCache().
-  /// @pre CalcArticulatedBodyForceBiases_TipToBase() must have already been
+  /// @pre CalcArticulatedBodyForceBiasCache_TipToBase() must have already been
   /// called for all the child nodes of `this` node (and, by recursive
   /// precondition, all successor nodes in the tree.)
   ///
   /// @throws when called on the _root_ node or `abac` is nullptr.
-  void CalcArticulatedBodyForceBiases_TipToBase(
+  void CalcArticulatedBodyForceBiasCache_TipToBase(
       const systems::Context<T>& context,
       const PositionKinematicsCache<T>& pc,
       const VelocityKinematicsCache<T>* vc,
@@ -1123,7 +1123,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
       const SpatialForce<T>& Fapplied_Bo_W,
       const Eigen::Ref<const VectorX<T>>& tau_applied,
       const Eigen::Ref<const MatrixUpTo6<T>>& H_PB_W,
-      ArticulatedBodyAlgorithmCache<T>* abac) const {
+      ArticulatedBodyForceBiasCache<T>* abac) const {
     DRAKE_THROW_UNLESS(topology_.body != world_index());
     DRAKE_THROW_UNLESS(abac != nullptr);
 
@@ -1397,7 +1397,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
       const systems::Context<T>& /* context */,
       const PositionKinematicsCache<T>& pc,
       const ArticulatedBodyInertiaCache<T>& abic,
-      const ArticulatedBodyAlgorithmCache<T>& abac,
+      const ArticulatedBodyForceBiasCache<T>& abac,
       const Eigen::Ref<const MatrixUpTo6<T>>& H_PB_W,
       AccelerationKinematicsCache<T>* ac) const {
     DRAKE_THROW_UNLESS(ac != nullptr);
@@ -1720,45 +1720,45 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   }
 
   // =========================================================================
-  // ArticulatedBodyAlgorithmCache Accessors and Mutators.
+  // ArticulatedBodyForceBiasCache Accessors and Mutators.
 
   // Returns a const reference to the articulated body inertia residual force
   // `Zplus_PB_W` for this body projected across its inboard mobilizer to
   // frame P.
   const SpatialForce<T>& get_Zplus_PB_W(
-      const ArticulatedBodyAlgorithmCache<T>& abac) const {
+      const ArticulatedBodyForceBiasCache<T>& abac) const {
     return abac.get_Zplus_PB_W(topology_.index);
   }
 
   // Mutable version of get_Zplus_PB_W().
   SpatialForce<T>& get_mutable_Zplus_PB_W(
-      ArticulatedBodyAlgorithmCache<T>* abac) const {
+      ArticulatedBodyForceBiasCache<T>* abac) const {
     return abac->get_mutable_Zplus_PB_W(topology_.index);
   }
 
   // Returns a const reference to the Coriolis spatial acceleration `Ab_WB`
   // for this body due to the relative velocities of body B and body P.
   const SpatialAcceleration<T>& get_Ab_WB(
-      const ArticulatedBodyAlgorithmCache<T>& abac) const {
+      const ArticulatedBodyForceBiasCache<T>& abac) const {
     return abac.get_Ab_WB(topology_.index);
   }
 
   // Mutable version of get_Ab_WB().
   SpatialAcceleration<T>& get_mutable_Ab_WB(
-      ArticulatedBodyAlgorithmCache<T>* abac) const {
+      ArticulatedBodyForceBiasCache<T>* abac) const {
     return abac->get_mutable_Ab_WB(topology_.index);
   }
 
   // Returns a const reference to the Coriolis spatial acceleration `Ab_WB`
   // for this body due to the relative velocities of body B and body P.
   const VectorUpTo6<T>& get_e_B(
-      const ArticulatedBodyAlgorithmCache<T>& abac) const {
+      const ArticulatedBodyForceBiasCache<T>& abac) const {
     return abac.get_e_B(topology_.index);
   }
 
   // Mutable version of get_e_B().
   VectorUpTo6<T>& get_mutable_e_B(
-      ArticulatedBodyAlgorithmCache<T>* abac) const {
+      ArticulatedBodyForceBiasCache<T>* abac) const {
     return abac->get_mutable_e_B(topology_.index);
   }
 

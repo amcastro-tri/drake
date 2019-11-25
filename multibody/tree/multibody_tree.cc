@@ -1674,10 +1674,10 @@ void MultibodyTree<T>::CalcArticulatedBodyInertiaCache(
 }
 
 template <typename T>
-void MultibodyTree<T>::CalcArticulatedBodyForceBiases(
+void MultibodyTree<T>::CalcArticulatedBodyForceBiasCache(
     const systems::Context<T>& context,
     const MultibodyForces<T>& forces,
-    ArticulatedBodyAlgorithmCache<T>* abac) const {
+    ArticulatedBodyForceBiasCache<T>* abac) const {
   DRAKE_DEMAND(abac != nullptr);
   DRAKE_DEMAND(forces.CheckHasRightSizeForModel(*this));
 
@@ -1709,7 +1709,7 @@ void MultibodyTree<T>::CalcArticulatedBodyForceBiases(
       // Get hinge mapping matrix.
       const MatrixUpTo6<T> H_PB_W = node.GetJacobianFromArray(H_PB_W_cache);
 
-      node.CalcArticulatedBodyForceBiases_TipToBase(
+      node.CalcArticulatedBodyForceBiasCache_TipToBase(
           context, pc, &vc, abic, Fapplied_Bo_W, tau_applied, H_PB_W, abac);
     }
   }
@@ -1718,7 +1718,7 @@ void MultibodyTree<T>::CalcArticulatedBodyForceBiases(
 template <typename T>
 void MultibodyTree<T>::CalcArticulatedBodyAccelerations(
     const systems::Context<T>& context,
-    const ArticulatedBodyAlgorithmCache<T>& abac,
+    const ArticulatedBodyForceBiasCache<T>& abac,
     AccelerationKinematicsCache<T>* ac) const {
   DRAKE_DEMAND(ac != nullptr);    
   const PositionKinematicsCache<T>& pc = EvalPositionKinematics(context);

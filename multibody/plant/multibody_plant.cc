@@ -52,7 +52,7 @@ using systems::State;
 using drake::math::RigidTransform;
 using drake::math::RotationMatrix;
 using drake::multibody::internal::ArticulatedBodyInertiaCache;
-using drake::multibody::internal::ArticulatedBodyAlgorithmCache;
+using drake::multibody::internal::ArticulatedBodyForceBiasCache;
 using drake::multibody::internal::AccelerationKinematicsCache;
 using drake::multibody::internal::PositionKinematicsCache;
 using drake::multibody::internal::VelocityKinematicsCache;
@@ -1808,9 +1808,9 @@ void MultibodyPlant<T>::CalcTamsiResults(
 }
 
 template <typename T>
-void MultibodyPlant<T>::CalcArticulatedBodyForceBiases(
+void MultibodyPlant<T>::CalcArticulatedBodyForceBiasCache(
     const systems::Context<T>& context,
-    ArticulatedBodyAlgorithmCache<T>* abac) const {
+    ArticulatedBodyForceBiasCache<T>* abac) const {
   DRAKE_DEMAND(abac != nullptr);
 
   // Applied forces including force elements (function of state x) and external
@@ -1825,7 +1825,7 @@ void MultibodyPlant<T>::CalcArticulatedBodyForceBiases(
   for (int i = 0; i < static_cast<int>(Fapp_BBo_W_array.size()); ++i)
     Fapp_BBo_W_array[i] += Fcontact_BBo_W_array[i];
 
-  internal_tree().CalcArticulatedBodyForceBiases(context, forces, abac);
+  internal_tree().CalcArticulatedBodyForceBiasCache(context, forces, abac);
 }
 
 template <typename T>
@@ -1835,8 +1835,8 @@ void MultibodyPlant<T>::CalcForwardDynamics(
   DRAKE_DEMAND(ac != nullptr);
 
   // Evaluate the ABA cache, function of state x and inputs u.
-  const ArticulatedBodyAlgorithmCache<T>& abac =
-      EvalArticulatedBodyForceBiases(context);
+  const ArticulatedBodyForceBiasCache<T>& abac =
+      EvalArticulatedBodyForceBiasCache(context);
 
   // Perform the last base to tip pass to comute accelerations using the O(n)
   // ABA.
@@ -2406,15 +2406,15 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
   auto& aba_cache_entry = this->DeclareCacheEntry(
       std::string("Articulated Body Algorithm cache."),
       [this]() {
-        return AbstractValue::Make(ArticulatedBodyAlgorithmCache<T>(
+        return AbstractValue::Make(ArticulatedBodyForceBiasCache<T>(
             internal_tree().get_topology()));
       },
       [this](const systems::ContextBase& context_base,
              AbstractValue* cache_value) {
         auto& context = dynamic_cast<const Context<T>&>(context_base);
         auto& abac =
-            cache_value->get_mutable_value<ArticulatedBodyAlgorithmCache<T>>();
-        this->CalcArticulatedBodyForceBiases(context, &abac);
+            cache_value->get_mutable_value<ArticulatedBodyForceBiasCache<T>>();
+        this->CalcArticulatedBodyForceBiasCache(context, &abac);
       },
       // ABA computes quantities such as Zplus which are needed for the
       // computation of acceleration and thus depend on both state and inputs.

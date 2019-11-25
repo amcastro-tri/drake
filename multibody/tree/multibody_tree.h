@@ -1662,7 +1662,9 @@ class MultibodyTree {
       const Eigen::Ref<const VectorX<T>>& qdot,
       EigenPtr<VectorX<T>> v) const;
 
-  /** @name Articulated Body Algorithm Forward Dynamics.
+  /**
+  @anchor internal_forward_dynamics
+  @name Articulated Body Algorithm Forward Dynamics.
   The Articulated %Body Algorithm (ABA) implements a forward dynamics
   computation with O(n) complexity. The algorithm is implemented in terms of
   three main passes:

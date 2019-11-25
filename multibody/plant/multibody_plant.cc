@@ -1836,7 +1836,7 @@ void MultibodyPlant<T>::CalcForwardDynamics(
 
   // Evaluate the ABA cache, function of state x and inputs u.
   const ArticulatedBodyAlgorithmCache<T>& abac =
-      EvalArticulatedBodyAlgorithmCache(context);
+      EvalArticulatedBodyForceBiases(context);
 
   // Perform the last base to tip pass to comute accelerations using the O(n)
   // ABA.

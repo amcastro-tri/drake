@@ -2606,10 +2606,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
         user_to_actuator_index_map);
   }
 
-  // TODO(amcastro-tri): Add state accessors for free body spatial velocities.
-
-  /// @}
-
   /// This method creates an actuation matrix B mapping a vector of actuation
   /// values u into generalized forces `tau_u = B * u`, where B is a matrix of
   /// size `nv x nu` with `nu` equal to num_actuators() and `nv` equal to
@@ -3270,16 +3266,16 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // This struct stores in one single place all indexes related to
   // MultibodyPlant specific cache entries. These are initialized at Finalize()
   // when the plant declares its cache entries.
-  struct CacheIndexes {    
+  struct CacheIndexes {
     systems::CacheIndex aba_cache;
     systems::CacheIndex contact_jacobians;
     systems::CacheIndex contact_results;
     systems::CacheIndex contact_surfaces;
+    systems::CacheIndex contact_info_and_body_spatial_forces;
     systems::CacheIndex forward_dynamics;
     systems::CacheIndex generalized_accelerations;
     systems::CacheIndex generalized_contact_forces_continuous;
     systems::CacheIndex point_pairs;
-    systems::CacheIndex contact_info_and_body_spatial_forces;
     systems::CacheIndex spatial_contact_forces_continuous;
     systems::CacheIndex tamsi_solver_results;
   };
@@ -3374,52 +3370,34 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   void CalcAppliedForces(const drake::systems::Context<T>& context,
                          MultibodyForces<T>* forces) const;
 
-  /// Given a state for `this` model stored in `context` and a set of applied
-  /// forces `applied_forces`, this method uses the `O(n)` articulated body
-  /// algorithm first developed by [Featherstone 1983] to compute generalized
-  /// accelerations `vdot`, that is the time derivatives of the generalized
-  /// velocities `v` stored in context. This implementation uses many ideas and
-  /// terminology from [Jain 2010].
-  ///
-  /// @param[in] context
-  ///   The context containing the state of the %MultibodyTree model.
-  /// @param[in] applied_forces
-  ///   A multibody forces object representing external forces on `this` model.
-  ///   This method will abort if the `applied_forces` is not compatible with
-  ///   `this` %MultibodyTree. See MultibodyForces::CheckInvariants().
-  /// @param[out] ac
-  ///   A pointer to a valid, non nullptr, acceleration kinematics cache. This
-  ///   method aborts if `ac` is nullptr.
-  ///
-  /// References:
-  /// - [Featherstone 1983] Featherstone, R., 1983. The calculation of robot
-  ///                       dynamics using articulated-body inertias. The
-  ///                       International Journal of Robotics Research, 2(1),
-  ///                       pp. 13-30.
-  /// - [Jain 2010] Jain, A., 2010. Robot and multibody dynamics: analysis and
-  ///               algorithms. Springer Science & Business Media, pp. 123-130.
-  ///
-  void CalcForwardDynamics(
-      const systems::Context<T>& context,
-      internal::AccelerationKinematicsCache<T>* ac) const;
+  // Given the state x and inputs u in `context`, this method uses the `O(n)`
+  // Articulated Body Algorithm (ABA) to compute accelerations.
+  // N.B. Please refer to @ref internal_forward_dynamics for further details on
+  // the algorithm and implementation.
+  void CalcForwardDynamics(const systems::Context<T>& context,
+                           internal::AccelerationKinematicsCache<T>* ac) const;
 
-  // Eval version of the method CalcArticulatedBodyAccelerations().
-  const internal::AccelerationKinematicsCache<T>&
-  EvalForwardDynamics(const systems::Context<T>& context) const {
+  // Eval version of the method CalcForwardDynamics().
+  const internal::AccelerationKinematicsCache<T>& EvalForwardDynamics(
+      const systems::Context<T>& context) const {
     return this->get_cache_entry(cache_indexes_.forward_dynamics)
         .template Eval<internal::AccelerationKinematicsCache<T>>(context);
   }
-  
+
+  // Performs an O(n) tip to base recursion to compute bias forces Z_B and
+  // Zplus_B, among other quantities needed by ABA.
+  // N.B. Please refer to @ref internal_forward_dynamics for further details on
+  // the algorithm and implementation.
   void CalcArticulatedBodyForceBiases(
       const systems::Context<T>& context,
       internal::ArticulatedBodyAlgorithmCache<T>* abac) const;
 
-  // Calc version of the method CalcArticulatedBodyForceBiases().
+  // Eval version of the method CalcArticulatedBodyForceBiases().
   const internal::ArticulatedBodyAlgorithmCache<T>&
-  EvalArticulatedBodyAlgorithmCache(const systems::Context<T>& context) const {
+  EvalArticulatedBodyForceBiases(const systems::Context<T>& context) const {
     return this->get_cache_entry(cache_indexes_.aba_cache)
         .template Eval<internal::ArticulatedBodyAlgorithmCache<T>>(context);
-  }    
+  }
 
   // Implements the system dynamics according to this class's documentation.
   void DoCalcTimeDerivatives(

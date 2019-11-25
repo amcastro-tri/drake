@@ -375,12 +375,7 @@ drake_cc_googletest(
     deps = [
         ":kuka_iiwa_model_tests",
         ":plant",
-#        "//common:autodiff",
-#        "//common:find_resource",
         "//common/test_utilities:eigen_matrix_compare",
-#        "//math:geometric_transform",
-#        "//math:gradient",
-#        "//multibody/parsing",
     ],
 )
 

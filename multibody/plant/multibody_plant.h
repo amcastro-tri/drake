@@ -3390,7 +3390,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // the algorithm and implementation.
   void CalcArticulatedBodyForceBiasCache(
       const systems::Context<T>& context,
-      internal::ArticulatedBodyForceBiasCache<T>* abac) const;
+      internal::ArticulatedBodyForceBiasCache<T>* aba_force_bias_cache) const;
 
   // Eval version of the method CalcArticulatedBodyForceBiasCache().
   const internal::ArticulatedBodyForceBiasCache<T>&

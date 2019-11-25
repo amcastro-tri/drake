@@ -1938,11 +1938,11 @@ class MultibodyTree {
   void CalcArticulatedBodyForceBiasCache(
     const systems::Context<T>& context,
     const MultibodyForces<T>& forces,
-    ArticulatedBodyForceBiasCache<T>* abac) const;
+    ArticulatedBodyForceBiasCache<T>* aba_force_bias_cache) const;
 
   void CalcArticulatedBodyAccelerations(
     const systems::Context<T>& context,
-    const ArticulatedBodyForceBiasCache<T>& abac,
+    const ArticulatedBodyForceBiasCache<T>& aba_force_bias_cache,
     AccelerationKinematicsCache<T>* ac) const;
 
   /// @}

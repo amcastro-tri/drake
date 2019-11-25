@@ -3953,10 +3953,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Joint reactions forces port index.
   systems::OutputPortIndex reaction_forces_port_;
 
-  // Output port for the generalized accelerations, function of state and
-  // inputs.
-  systems::OutputPortIndex generalized_accelerations_port_;
-
   // A vector containing the index for the generalized contact forces port for
   // each model instance. This vector is indexed by ModelInstanceIndex. An
   // invalid value indicates that the model instance has no generalized

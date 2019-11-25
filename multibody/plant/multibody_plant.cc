@@ -2220,13 +2220,6 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
     }
   }
 
-  generalized_accelerations_port_ =
-      this->DeclareAbstractOutputPort(
-              "generalized_accelerations",
-              VectorX<T>(num_velocities()),
-              &MultibodyPlant<T>::CalcGeneralizedAccelerations,
-              {this->all_sources_ticket()}).get_index();
-
   // Joint reaction forces are a function of accelerations, which in turn depend
   // on both state and inputs.
   reaction_forces_port_ =

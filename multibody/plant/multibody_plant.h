@@ -3267,12 +3267,12 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // MultibodyPlant specific cache entries. These are initialized at Finalize()
   // when the plant declares its cache entries.
   struct CacheIndexes {
-    systems::CacheIndex aba_cache;
+    systems::CacheIndex aba_accelerations;
+    systems::CacheIndex aba_force_bias_cache;
     systems::CacheIndex contact_jacobians;
     systems::CacheIndex contact_results;
     systems::CacheIndex contact_surfaces;
     systems::CacheIndex contact_info_and_body_spatial_forces;
-    systems::CacheIndex forward_dynamics;
     systems::CacheIndex generalized_accelerations;
     systems::CacheIndex generalized_contact_forces_continuous;
     systems::CacheIndex point_pairs;
@@ -3380,7 +3380,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Eval version of the method CalcForwardDynamics().
   const internal::AccelerationKinematicsCache<T>& EvalForwardDynamics(
       const systems::Context<T>& context) const {
-    return this->get_cache_entry(cache_indexes_.forward_dynamics)
+    return this->get_cache_entry(cache_indexes_.aba_accelerations)
         .template Eval<internal::AccelerationKinematicsCache<T>>(context);
   }
 
@@ -3395,7 +3395,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Eval version of the method CalcArticulatedBodyForceBiasCache().
   const internal::ArticulatedBodyForceBiasCache<T>&
   EvalArticulatedBodyForceBiasCache(const systems::Context<T>& context) const {
-    return this->get_cache_entry(cache_indexes_.aba_cache)
+    return this->get_cache_entry(cache_indexes_.aba_force_bias_cache)
         .template Eval<internal::ArticulatedBodyForceBiasCache<T>>(context);
   }
 

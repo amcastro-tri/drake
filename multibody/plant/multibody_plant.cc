@@ -2405,12 +2405,12 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
       {dependency_ticket});
   cache_indexes_.contact_results = contact_results_cache_entry.cache_index();
 
-  // Articulated Body Algorithm (ABA) cache.
-  auto& aba_cache_entry = this->DeclareCacheEntry(
-      std::string("Articulated Body Algorithm cache."),
+  // Articulated Body Algorithm (ABA) force bias cache.
+  auto& aba_force_bias_cache_entry = this->DeclareCacheEntry(
+      std::string("ABA force bias cache."),
       [this]() {
-        return AbstractValue::Make(ArticulatedBodyForceBiasCache<T>(
-            internal_tree().get_topology()));
+        return AbstractValue::Make(
+            ArticulatedBodyForceBiasCache<T>(internal_tree().get_topology()));
       },
       [this](const systems::ContextBase& context_base,
              AbstractValue* cache_value) {
@@ -2424,11 +2424,12 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
       // All sources include: time, accuracy, state, input ports, and
       // parameters.
       {this->all_sources_ticket()});
-  cache_indexes_.aba_cache = aba_cache_entry.cache_index();  
+  cache_indexes_.aba_force_bias_cache =
+      aba_force_bias_cache_entry.cache_index();
 
-  // Cache acceleration kinematics (O(n) forward dynamics.)
-  auto& forward_dynamics_cache_entry = this->DeclareCacheEntry(
-      std::string("Forward dynamics (accelerations)."),
+  // Last pass of the ABA for forward dynamics.
+  auto& aba_accelerations_cache_entry = this->DeclareCacheEntry(
+      std::string("ABA accelerations."),
       [this]() {
         return AbstractValue::Make(AccelerationKinematicsCache<T>(
             internal_tree().get_topology()));
@@ -2444,7 +2445,8 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
       // All sources include: time, accuracy, state, input ports, and
       // parameters.
       {this->all_sources_ticket()});
-  cache_indexes_.forward_dynamics = forward_dynamics_cache_entry.cache_index();
+  cache_indexes_.aba_accelerations =
+      aba_accelerations_cache_entry.cache_index();
 
   // Cache generalized accelerations.
   auto& vdot_cache_entry = this->DeclareCacheEntry(

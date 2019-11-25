@@ -51,6 +51,11 @@ using systems::State;
 
 using drake::math::RigidTransform;
 using drake::math::RotationMatrix;
+using drake::multibody::internal::ArticulatedBodyInertiaCache;
+using drake::multibody::internal::ArticulatedBodyAlgorithmCache;
+using drake::multibody::internal::AccelerationKinematicsCache;
+using drake::multibody::internal::PositionKinematicsCache;
+using drake::multibody::internal::VelocityKinematicsCache;
 using drake::multibody::MultibodyForces;
 using drake::multibody::SpatialAcceleration;
 using drake::multibody::SpatialForce;
@@ -1803,6 +1808,42 @@ void MultibodyPlant<T>::CalcTamsiResults(
 }
 
 template <typename T>
+void MultibodyPlant<T>::CalcArticulatedBodyForceBiases(
+    const systems::Context<T>& context,
+    ArticulatedBodyAlgorithmCache<T>* abac) const {
+  DRAKE_DEMAND(abac != nullptr);
+
+  // Applied forces including force elements (function of state x) and external
+  // inputs u.
+  MultibodyForces<T> forces(*this);
+  CalcAppliedForces(context, &forces);
+
+  // Add the contribution of contact forces.
+  std::vector<SpatialForce<T>>& Fapp_BBo_W_array = forces.mutable_body_forces();
+  const std::vector<SpatialForce<T>>& Fcontact_BBo_W_array =
+      EvalSpatialContactForcesContinuous(context);
+  for (int i = 0; i < static_cast<int>(Fapp_BBo_W_array.size()); ++i)
+    Fapp_BBo_W_array[i] += Fcontact_BBo_W_array[i];
+
+  internal_tree().CalcArticulatedBodyForceBiases(context, forces, abac);
+}
+
+template <typename T>
+void MultibodyPlant<T>::CalcForwardDynamics(
+    const systems::Context<T>& context,
+    AccelerationKinematicsCache<T>* ac) const {
+  DRAKE_DEMAND(ac != nullptr);
+
+  // Evaluate the ABA cache, function of state x and inputs u.
+  const ArticulatedBodyAlgorithmCache<T>& abac =
+      EvalArticulatedBodyAlgorithmCache(context);
+
+  // Perform the last base to tip pass to comute accelerations using the O(n)
+  // ABA.
+  internal_tree().CalcArticulatedBodyAccelerations(context, abac, ac);
+}
+
+template <typename T>
 void MultibodyPlant<T>::CalcGeneralizedAccelerations(
     const drake::systems::Context<T>& context, VectorX<T>* vdot) const {
   DRAKE_DEMAND(vdot != nullptr);
@@ -2179,6 +2220,13 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
     }
   }
 
+  generalized_accelerations_port_ =
+      this->DeclareAbstractOutputPort(
+              "generalized_accelerations",
+              VectorX<T>(num_velocities()),
+              &MultibodyPlant<T>::CalcGeneralizedAccelerations,
+              {this->all_sources_ticket()}).get_index();
+
   // Joint reaction forces are a function of accelerations, which in turn depend
   // on both state and inputs.
   reaction_forces_port_ =
@@ -2360,6 +2408,47 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
       },
       {dependency_ticket});
   cache_indexes_.contact_results = contact_results_cache_entry.cache_index();
+
+  // Articulated Body Algorithm (ABA) cache.
+  auto& aba_cache_entry = this->DeclareCacheEntry(
+      std::string("Articulated Body Algorithm cache."),
+      [this]() {
+        return AbstractValue::Make(ArticulatedBodyAlgorithmCache<T>(
+            internal_tree().get_topology()));
+      },
+      [this](const systems::ContextBase& context_base,
+             AbstractValue* cache_value) {
+        auto& context = dynamic_cast<const Context<T>&>(context_base);
+        auto& abac =
+            cache_value->get_mutable_value<ArticulatedBodyAlgorithmCache<T>>();
+        this->CalcArticulatedBodyForceBiases(context, &abac);
+      },
+      // ABA computes quantities such as Zplus which are needed for the
+      // computation of acceleration and thus depend on both state and inputs.
+      // All sources include: time, accuracy, state, input ports, and
+      // parameters.
+      {this->all_sources_ticket()});
+  cache_indexes_.aba_cache = aba_cache_entry.cache_index();  
+
+  // Cache acceleration kinematics (O(n) forward dynamics.)
+  auto& forward_dynamics_cache_entry = this->DeclareCacheEntry(
+      std::string("Forward dynamics (accelerations)."),
+      [this]() {
+        return AbstractValue::Make(AccelerationKinematicsCache<T>(
+            internal_tree().get_topology()));
+      },
+      [this](const systems::ContextBase& context_base,
+             AbstractValue* cache_value) {
+        auto& context = dynamic_cast<const Context<T>&>(context_base);
+        auto& ac =
+            cache_value->get_mutable_value<AccelerationKinematicsCache<T>>();
+        this->CalcForwardDynamics(context, &ac);
+      },
+      // Accelerations depend on both state and inputs.
+      // All sources include: time, accuracy, state, input ports, and
+      // parameters.
+      {this->all_sources_ticket()});
+  cache_indexes_.forward_dynamics = forward_dynamics_cache_entry.cache_index();
 
   // Cache generalized accelerations.
   auto& vdot_cache_entry = this->DeclareCacheEntry(

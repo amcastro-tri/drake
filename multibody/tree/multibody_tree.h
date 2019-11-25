@@ -19,6 +19,7 @@
 #include "drake/common/random.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/tree/acceleration_kinematics_cache.h"
+#include "drake/multibody/tree/articulated_body_algorithm_cache.h"
 #include "drake/multibody/tree/articulated_body_inertia_cache.h"
 #include "drake/multibody/tree/multibody_forces.h"
 #include "drake/multibody/tree/multibody_tree_system.h"
@@ -1661,9 +1662,6 @@ class MultibodyTree {
       const Eigen::Ref<const VectorX<T>>& qdot,
       EigenPtr<VectorX<T>> v) const;
 
-  // TODO(amcastro-tri): fix references to CalcArticulatedBodyForces()
-  // and CalcArticulatedBodyAccelerations() when we push the complete forward
-  // dynamics.
   /** @name Articulated Body Algorithm Forward Dynamics.
   The Articulated %Body Algorithm (ABA) implements a forward dynamics
   computation with O(n) complexity. The algorithm is implemented in terms of
@@ -1933,8 +1931,17 @@ class MultibodyTree {
   /// call to CalcPositionKinematicsCache() using the same `context`  .
   void CalcArticulatedBodyInertiaCache(
       const systems::Context<T>& context,
-      const PositionKinematicsCache<T>& pc,
       ArticulatedBodyInertiaCache<T>* abc) const;
+
+  void CalcArticulatedBodyForceBiases(
+    const systems::Context<T>& context,
+    const MultibodyForces<T>& forces,
+    ArticulatedBodyAlgorithmCache<T>* abac) const;
+
+  void CalcArticulatedBodyAccelerations(
+    const systems::Context<T>& context,
+    const ArticulatedBodyAlgorithmCache<T>& abac,
+    AccelerationKinematicsCache<T>* ac) const;
 
   /// @}
 
@@ -2206,6 +2213,17 @@ class MultibodyTree {
       const systems::Context<T>& context) const {
     DRAKE_ASSERT(tree_system_ != nullptr);
     return tree_system_->EvalVelocityKinematics(context);
+  }
+
+  const ArticulatedBodyInertiaCache<T>& EvalArticulatedBodyInertiaCache(
+      const systems::Context<T>& context) const {
+    return tree_system_->EvalArticulatedBodyInertiaCache(context);
+  }      
+
+  const std::vector<Vector6<T>>&
+  EvalAcrossNodeJacobianWrtVExpressedInWorld(
+      const systems::Context<T>& context) const {
+    return tree_system_->EvalAcrossNodeJacobianWrtVExpressedInWorld(context);  
   }
 
   /// @name                 State access methods

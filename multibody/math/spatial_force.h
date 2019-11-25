@@ -203,7 +203,13 @@ class SpatialForce : public SpatialVector<SpatialForce, T> {
 template <typename T>
 inline SpatialForce<T> operator+(
     const SpatialForce<T>& F1_Sp_E, const SpatialForce<T>& F2_Sp_E) {
-  return SpatialForce<T>(F1_Sp_E.get_coeffs() + F2_Sp_E.get_coeffs());
+  return SpatialForce<T>(F1_Sp_E) += F2_Sp_E;
+}
+
+template <typename T>
+inline SpatialForce<T> operator-(
+    const SpatialForce<T>& F1_Sp_E, const SpatialForce<T>& F2_Sp_E) {
+  return SpatialForce<T>(F1_Sp_E) -= F2_Sp_E;
 }
 
 }  // namespace multibody

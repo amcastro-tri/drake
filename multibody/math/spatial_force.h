@@ -206,6 +206,9 @@ inline SpatialForce<T> operator+(
   return SpatialForce<T>(F1_Sp_E) += F2_Sp_E;
 }
 
+/// Substracts spatial force `F2_Sp_E ` from `F1_Sp_E`. Both spatial forces act
+/// on the same system or body S, at point P and are expressed in the same frame
+/// E.
 template <typename T>
 inline SpatialForce<T> operator-(
     const SpatialForce<T>& F1_Sp_E, const SpatialForce<T>& F2_Sp_E) {

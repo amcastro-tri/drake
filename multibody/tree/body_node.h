@@ -1263,8 +1263,10 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   }
 
   /// This method is used by MultibodyTree within a base-to-tip loop to compute
-  /// the generalized accelerations `vdot` and the spatial accelerations `A_WB`
-  /// in the acceleration kinematics cache.
+  /// the generalized accelerations `vdot` and the spatial accelerations `A_WB`.
+  /// Please refer to @ref internal_forward_dynamics "Articulated Body Algorithm
+  /// Forward Dynamics" for further mathematical background and implementation
+  /// details.
   ///
   /// @param[in] context
   ///   The context with the state of the MultibodyTree model.
@@ -1284,18 +1286,10 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   /// @param[out] ac
   ///   A pointer to a valid, non nullptr, acceleration kinematics cache.
   ///
-  /// @pre The position kinematics cache `pc` was already updated to be in sync
-  /// with `context` by MultibodyTree::CalcPositionKinematicsCache().
-  /// @pre The articulated body inertia cache `abic` was already updated to be
-  /// in sync with `context` by
-  /// MultibodyTree::CalcArticulatedBodyInertiaCache().
-  /// @pre The articulated body algorithm cache `aba_force_bias_cache` was already updated to be
-  /// in sync with `context` by
-  /// MultibodyTree::CalcArticulatedAlgorithmInertiaCache().
-  /// @pre CalcArticulatedBodyAccelerations_BaseToTip() must have already been called for all
-  /// the child nodes of `this` node (and, by recursive precondition, all
-  /// successor nodes in the tree.)
-  ///
+  /// @pre pc, vc, and abic previously computed to be in sync with `context.
+  /// @pre CalcArticulatedBodyAccelerations_BaseToTip() must have already been
+  /// called for the parent node (and, by recursive precondition, all
+  /// predecessor nodes in the tree.)
   /// @throws when called on the _root_ node of `ac` or `vdot` is nullptr.
   void CalcArticulatedBodyAccelerations_BaseToTip(
       const systems::Context<T>& /* context */,
@@ -1306,51 +1300,15 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
       AccelerationKinematicsCache<T>* ac) const {
     DRAKE_THROW_UNLESS(ac != nullptr);
 
-    // As a guideline for developers, a summary of the computations performed in
-    // this method is provided:
-    // Notation:
-    //  - B body frame associated with this node.
-    //  - P ("parent") body frame associated with this node's parent.
-    //  - Aplus_WB for the rigidly propagated spatial acceleration from the
-    //    parent frame to body frame. This is equivalent to shifting A_WP with
-    //    zero w_WP to the body frame.
-    //  - Φ(p_PQ) for Jain's rigid body transformation operator. In code,
-    //    V_MQ = Φᵀ(p_PQ) V_MP is equivalent to V_MP.Shift(p_PQ).
-    //
-    // The goal is to compute the generalized accelerations and populate the
-    // acceleration kinematics cache. This computation is recursive, and
-    // assumes that required kinematics quantities are already computed for the
-    // parent.
-    //
-    // We first rigidly propagate the spatial acceleration of the parent to the
-    // body frame. We define p_PoBo_W to be the shift vector from the parent
-    // origin to the body origin.
-    //   Aplus_WB = Φᵀ(p_PB) A_WP
-    //            = A_WP.Shift(p_PoBo_W, Vector3<T>::Zero())                (1)
-    //
-    // Using Aplus_WB, we can compute the generalized acceleration for this body's
-    // mobilizer. Note that we assume that any external forces have already been
-    // incorporated in the previous pass of the articulated body algorithm. In
-    // addition, [Jain 2010] computes nu_B, the articulated body inertia
-    // innovations generalized acceleration, in the first pass, while we compute
-    // it here.
-    //   vdot = D_B⁻¹ e_B - g_PB_Wᵀ Aplus_WB
-    //        = nu_B - g_PB_Wᵀ Aplus_WB                                     (2)
-    // with nu_B = D_B⁻¹ e_B.
-    //
-    // Note: e_B = 0 when v = 0? see 6.12 in Section 6.2.2 of Jain's book.
-    //
-    // Finally, we can compute the spatial acceleration for the current body.
-    // Instead of using SpatialAcceleration::ComposeWithMovingFrameAcceleration,
-    // we can take advantage of the fact that Coriolis acceleration was already
-    // computed in the first pass.
-    //   A_WB = Aplus_WB + H_PB_W vdot(B) + Ab_WB                          (3)
+    // As a guideline for developers, please refer to @ref
+    // abi_computing_accelerations for a detailed description of the algorithm
+    // and the notation in use.
 
     // Get the spatial acceleration of the parent.
     const SpatialAcceleration<T> A_WP = parent_node_->get_A_WB(*ac);
 
     // Compute shift vector p_PoBo_W from the parent origin to the body origin.
-    // TODO(bobbyluig): Consider getting this value from cache.
+    // TODO(amcastro-tri): Consider getting this value from cache.
     const Vector3<T> p_PoBo_W =
         get_X_WP(pc).linear() * get_X_PB(pc).translation();
 
@@ -1367,8 +1325,8 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
     get_mutable_A_WB(ac) = SpatialAcceleration<T>(
         Aplus_WB.get_coeffs() + Ab_WB.get_coeffs());
 
-    // Eigen goes crazae with zero sized stuff. Skip for weld joints.
-    // TODO(amcastro-tri): review this code.
+    // These quantities do not contribute when nv = 0. We skip them since Eigen
+    // does not allow certain operations on zero-sized objects.
     if (nv != 0) {
       // Compute nu_B, the articulated body inertia innovations generalized
       // acceleration.

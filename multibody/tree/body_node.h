@@ -1070,10 +1070,11 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
     get_mutable_Pplus_PB_W(abic) = ArticulatedBodyInertia<T>(
         0.5 * (Pplus_PB_W_mat + Pplus_PB_W_mat.transpose()));
   }
-  
+
   /// This method is used by MultibodyTree within a tip-to-base loop to compute
-  /// this node's articulated body algorithm quantities that depend on both
-  /// the generalized positions and generalized velocities.
+  /// the force bias terms in the articulated body algorithm. Please refer to
+  /// @ref internal_forward_dynamics "Articulated Body Algorithm Forward
+  /// Dynamics" for further mathematical background and implementation details.
   ///
   /// @param[in] context
   ///   The context with the state of the MultibodyTree model.
@@ -1090,27 +1091,22 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   /// @param[in] tau_applied
   ///   Externally applied generalized force at this node's mobilizer. It must
   ///   have a size equal to the number of generalized velocities for this
-  ///   node's mobilizer, see get_num_mobilizer_velocites().
+  ///   node's mobilizer, see get_num_mobilizer_velocities().
   /// @param[in] H_PB_W
   ///   The hinge mapping matrix that relates to the spatial velocity `V_PB_W`
   ///   of this node's body B in its parent node body P, expressed in the world
   ///   frame W, with this node's generalized velocities (or mobilities) `v_B`
   ///   by `V_PB_W = H_PB_W⋅v_B`.
   /// @param[out] aba_force_bias_cache
-  ///   A pointer to a valid, non nullptr, articulated algorithm cache.
+  ///   A pointer to a valid, non nullptr, force bias cache.
   ///
-  /// @pre The position kinematics cache `pc` was already updated to be in sync
-  /// with `context` by MultibodyTree::CalcPositionKinematicsCache().
-  /// @pre The velocity kinematics cache `vc` was already updated to be in sync
-  /// with `context` by MultibodyTree::CalcVelocityKinematicsCache().
-  /// @pre The articulated body inertia cache `abic` was already updated to be
-  /// in sync with `context` by
-  /// MultibodyTree::CalcArticulatedBodyInertiaCache().
+  /// @pre pc, vc, and abic previously computed to be in sync with `context.
   /// @pre CalcArticulatedBodyForceBiasCache_TipToBase() must have already been
   /// called for all the child nodes of `this` node (and, by recursive
   /// precondition, all successor nodes in the tree.)
   ///
-  /// @throws when called on the _root_ node or `aba_force_bias_cache` is nullptr.
+  /// @throws when called on the _root_ node or `aba_force_bias_cache` is
+  /// nullptr.
   void CalcArticulatedBodyForceBiasCache_TipToBase(
       const systems::Context<T>& context,
       const PositionKinematicsCache<T>& pc,
@@ -1123,85 +1119,9 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
     DRAKE_THROW_UNLESS(topology_.body != world_index());
     DRAKE_THROW_UNLESS(aba_force_bias_cache != nullptr);
 
-    // As a guideline for developers, a summary of the computations performed in
-    // this method is provided:
-    // Notation:
-    //  - B body frame associated with this node.
-    //  - P ("parent") body frame associated with this node's parent. This is
-    //    not to be confused with the articulated body inertia, which is also
-    //    named P.
-    //  - C within a loop over children, one of body B's children.
-    //  - P_B_W for the articulated body inertia of body B, about Bo, and
-    //    expressed in world frame W.
-    //  - Fb_Bo_W for the gyroscopic spatial force on body B, about Bo, and
-    //    expressed in world frame W.
-    // - The bias spatial acceleration `Ab_WB` for body B including centrifugal
-    //   and Coriolis terms due to the motion of P in W and of B in P.
-    //   This bias allows to write:
-    //     A_WB = Φᵀ(p_PB)A_PB + H_PB vdot_B + Ab_WB(w_WP, V_PB)
-    //  - Z_Bo_W for the residual spatial force, such that we can write
-    //    F_Bo_W = P_B_W A_WB + Z_Bo_W (true in [Featherstone 2008, Eq. 7.25]
-    //    but not for [Jain 2010, Eq. 7.34] who leaves accelerations bias terms
-    //    out. We prefer Featherstone's form.)
-    //  - Zplus_PB_W for the articulated body inertia residual force but
-    //    projected across B's inboard mobilizer to frame P.
-    //    See [Featherstone 2008, Eq. 7.24].
-    //    ([Jain 2010, Section 6.3, p. 108] introduces this term though Jain
-    //    includes Ab_WB into Z_Bo_W, leading to the variant in Eq. 7.34 to
-    //    compute reaction froces).
-    //  - Φ(p_PQ) for Jain's rigid body transformation operator. In code,
-    //    V_MQ = Φᵀ(p_PQ) V_MP is equivalent to V_MP.Shift(p_PQ).
-    //
-    // The goal is to populate the articulated body algorithm cache with values
-    // necessary for computing generalized accelerations in the second pass of
-    // the articulated body algorithm. This computation is recursive, and
-    // assumes that required articulated body quantities are already computed
-    // for all children.
-    //
-    // Given quantities relating to the articulated body inertia, we compute
-    // the residual spatial force of the current body by summing
-    // contributions from all its children with contributions from Coriolis
-    // acceleration, gyroscopic forces, and external forces. See derivations
-    // in Section 6.3, Pages 107 - 108 of [Jain 2010] for when the system is at
-    // rest (v = 0) and there are no joint forces (tau = 0), extended
-    // in pages 125-126 for the case with non-zero velocity into Algorithm 7.1,
-    // and the Algorithm 7.2 in p. 130 including externally applied forces.
-    //   Z_Bo_W = Fb_Bo_W - Fapplied_Bo_W + ΣᵢZplus_BCᵢb_W
-    //          = Fb_Bo_W - Fapplied_Bo_W + Σᵢ(Φ(p_BCᵢ_W) Zplus_BCᵢ_W)       (1)
-    //
-    // Note that this requires the computation of Fb_Bo_W and Ab_WB. Fb_Bo_W
-    // can be computed using CalcBodySpatialForceGivenItsSpatialAcceleration()
-    // with zero spatial acceleration. Ab_WB can be computed in a similar
-    // manner by using ComposeWithMovingFrameAcceleration() on zero spatial
-    // acceleration and adding shifted contributions from Hdot_FM * vm.
-    //
-    // We can compute them explicitly to improve performance, as the above
-    // methods perform a lot of unnecessary operations. We define Ab_PB_W
-    // to be the spatial acceleration of body B as measured from the parent
-    // and expressed in the world frame when vmdot = 0.
-    // Fb_Bo_W = | mass * w_WB x (G_B_W w_WB)      |
-    //           | mass * w_WB x (w_WBx p_BoBcm_W) |                         (2)
-    //
-    // Ab_WB =  | w_WB x w_PB_W                 | + Ab_PB_W
-    //          | w_WP x (v_WB - v_WP + v_PB_W) |                            (3)
-    //
-    // See detailed derivation of these bias terms below.
-    //
-    // Using the residual spatial force, we compute the articulated body
-    // inertia innovations generalized force as defined in Section 6.4.2, Pages
-    // 112 - 113 of [Jain 2010].
-    //   e_B = tau_applied - H_PB_Wᵀ Z_Bo_W                                 (4)
-    //
-    // Finally, we can compute the project articulated body inertia residual
-    // force. Note that g_PB_W is the Kalman gain from the articulated body
-    // inertia cache.
-    //   Zplus_PB_W = Z_B_W + g_PB_W e_B                                    (5)
-    //
-    // Derivation of Acceleration Bias Terms
-    //
-    // Our goal is to write the acceleration of B in W as
-    //   A_WB = Φᵀ(p_PB)A_PB + H_PB vdot_B + Ab_WB(w_WP, V_PB)              (6)
-    // See Eq. 5.8 of [Jain 2010].
+    // As a guideline for developers, please refer to @ref
+    // internal_forward_dynamics for a detailed description of the algorithm and
+    // notation inuse.
 
     // Body for this node.
     const Body<T>& body_B = body();
@@ -1233,11 +1153,11 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
       const Vector3<T>& w_WB = V_WB.rotational();
       const Vector3<T>& v_WB = V_WB.translational();
 
-      // Compute the gyroscopic spatial force using (2).
-      // TODO(amstro-tri): Get value from cache when available, since this is
+      // Compute the force bias in the Newton-Euler equations ;
+      //   Fapp_Bo_W = M_B * A_WB + Fb_Bo_W.
+      // TODO(amcastro-tri): Get value from cache when available, since this is
       // computed in
       // BodyNode::CalcBodySpatialForceGivenItsSpatialAcceleration().
-      // TODO: this cache entry already exists.
       Fb_Bo_W = mass * SpatialForce<T>(w_WB.cross(G_B_W * w_WB),
                                       w_WB.cross(w_WB.cross(p_BoBcm_W)));
 
@@ -1292,7 +1212,9 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
       const Vector3<T>& w_PB_W = V_PB_W.rotational();
       const Vector3<T>& v_PB_W = V_PB_W.translational();
 
-      // Compute Ab_WB, the centrifugal and Coriolis terms, according to (3).
+      // Compute Ab_WB according to:
+      // Ab_WB =  | w_WB x w_PB_W                 | + Ab_PB_W
+      //          | w_WP x (v_WB - v_WP + v_PB_W) |
       // See @note in SpatialAcceleration::ComposeWithMovingFrameAcceleration()
       // for a complete derivation.
       Ab_WB = SpatialAcceleration<T>(

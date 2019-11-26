@@ -326,15 +326,6 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
-    name = "multibody_tree_forward_dynamics_test",
-    deps = [
-        ":tree",
-        "//common/test_utilities:eigen_matrix_compare",
-        "//multibody/benchmarks/kuka_iiwa_robot",
-    ],
-)
-
-drake_cc_googletest(
     name = "multibody_tree_creation_test",
     deps = [
         ":tree",

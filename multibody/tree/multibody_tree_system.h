@@ -93,11 +93,15 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
         .template Eval<VelocityKinematicsCache<T>>(context);
   }
 
+  /** Returns a reference to the up to date ArticulatedBodyInertiaCache stored
+  in the given context, recalculating it first if necessary. 
+  See @ref internal_forward_dynamics "Articulated Body Algorithm Forward
+  Dynamics" for further. */
   const ArticulatedBodyInertiaCache<T>& EvalArticulatedBodyInertiaCache(
       const systems::Context<T>& context) const {
     return this->get_cache_entry(cache_indexes_.abi_cache_index)
         .template Eval<ArticulatedBodyInertiaCache<T>>(context);
-  }      
+  }
 
   /** Returns a reference to the up to date cache of per-body spatial inertias
   in the given Context, recalculating it first if necessary. */
@@ -196,12 +200,12 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   // This struct stores in one single place all indexes related to
   // MultibodyTreeSystem specific cache entries.
   struct CacheIndexes {
-    systems::CacheIndex dynamic_bias;
+    systems::CacheIndex abi_cache_index;
     systems::CacheIndex across_node_jacobians;
+    systems::CacheIndex dynamic_bias;
     systems::CacheIndex position_kinematics;
-    systems::CacheIndex velocity_kinematics;
     systems::CacheIndex spatial_inertia_in_world;
-    systems::CacheIndex abi_cache_index;    
+    systems::CacheIndex velocity_kinematics;
   };
 
   // This is the one real constructor. From the public API, a null tree is

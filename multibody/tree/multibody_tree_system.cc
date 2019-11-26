@@ -209,7 +209,7 @@ void MultibodyTreeSystem<T>::Finalize() {
 
   // Allocate articulated body inertia cache.
   auto& abi_cache_entry = this->DeclareCacheEntry(
-      std::string("articulated body inertia"),
+      std::string("Articulated Body Inertia."),
       [tree = tree_.get()]() {
         return AbstractValue::Make(
             ArticulatedBodyInertiaCache<T>(tree->get_topology()));
@@ -221,7 +221,7 @@ void MultibodyTreeSystem<T>::Finalize() {
             cache_value->get_mutable_value<ArticulatedBodyInertiaCache<T>>();
         tree->CalcArticulatedBodyInertiaCache(context, &abi_cache);
       },
-      {this->kinematics_ticket()});
+      {this->configuration_ticket()});
   cache_indexes_.abi_cache_index = abi_cache_entry.cache_index();
 
   already_finalized_ = true;

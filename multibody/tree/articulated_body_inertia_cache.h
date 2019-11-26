@@ -13,13 +13,11 @@ namespace drake {
 namespace multibody {
 namespace internal {
 
-/// This class is one of the cache entries in MultibodyTreeContext. It is used
+/// This class is one of the cache entries in the Context. It is used
 /// to store the results from the first pass of the articulated body algorithm
-/// for the computation of articulated body inertias. In addition to storing the
-/// articulated body inertias themselves, this cache entry also serves to store
-/// quantities computed during the first pass but that are also needed during
-/// the second pass. Quantities in this cache entry are function of the
-/// generalized position vector q only.
+/// for the computation of articulated body inertias. Please refer to @ref
+/// internal_forward_dynamics "Articulated Body Algorithm Forward Dynamics" for
+/// further mathematical background and implementation details. 
 ///
 /// Articulated body inertia cache entries include:
 /// - Articulated body inertia `P_B_W` of body B taken about Bo and expressed
@@ -28,7 +26,7 @@ namespace internal {
 ///   articulated body inertia of parent body P as though it were inertialess,
 ///   but taken about Bo and expressed in W.
 /// - LDLT factorization `ldlt_D_B` of the articulated body hinge inertia.
-/// - The Kalman gain `g_PB_W` of the body.
+/// - The Kalman gain `g_PB_W = P_B_W * H_PB_W * D_B⁻¹`.
 ///
 /// @tparam T The mathematical type of the context, which must be a valid Eigen
 ///           scalar.
@@ -97,19 +95,18 @@ class ArticulatedBodyInertiaCache {
   }
 
   /// The Kalman gain `g_PB_W` of the body.
-  const MatrixUpTo6<T>& get_g_PB_W(
+  const Matrix6xUpTo6<T>& get_g_PB_W(
       BodyNodeIndex body_node_index) const {
     DRAKE_ASSERT(0 <= body_node_index && body_node_index < num_nodes_);
     return g_PB_W_[body_node_index];
   }
 
   /// Mutable version of get_g_PB_W().
-  MatrixUpTo6<T>& get_mutable_g_PB_W(
+  Matrix6xUpTo6<T>& get_mutable_g_PB_W(
       BodyNodeIndex body_node_index) {
     DRAKE_ASSERT(0 <= body_node_index && body_node_index < num_nodes_);
     return g_PB_W_[body_node_index];
   }
-
 
  private:
   // The type of the pools for storing articulated body inertias.
@@ -119,10 +116,8 @@ class ArticulatedBodyInertiaCache {
   // 6x6.
   typedef std::vector<Eigen::LDLT<MatrixUpTo6<T>>> LDLT_MatrixUpTo6_PoolType;
 
-  // The type of the pools for storing matrices up to 6x6.
-  // TODO: g_PB_W is a matrix of 6 x m (with m number of mobilities). Therefore
-  // define Matrix6xUpTo6 = Eigen::Matrix<Scalar, 6, Eigen::Dynamic, 0, 6, 6>;
-  typedef std::vector<MatrixUpTo6<T>> MatrixUpTo6_PoolType;
+  // The type of the pools for storing matrices of 6 rows and up to 6 columns.
+  typedef std::vector<Matrix6xUpTo6<T>> Matrix6xUpTo6_PoolType;
 
   // Allocates resources for this articulated body cache.
   void Allocate() {
@@ -135,7 +130,6 @@ class ArticulatedBodyInertiaCache {
     // should not be used.
     P_B_W_[world_index()] = ArticulatedBodyInertia<T>();
     Pplus_PB_W_[world_index()] = ArticulatedBodyInertia<T>();
-    // ldlt_D_B_[world_index()] = MatrixUpTo6<T>::Constant(6, 1, nan()).ldlt();
     g_PB_W_[world_index()] = Matrix6<T>::Constant(nan());
   }
 
@@ -145,15 +139,14 @@ class ArticulatedBodyInertiaCache {
         typename Eigen::NumTraits<T>::Literal>::quiet_NaN();
   }
 
-
   // Number of body nodes in the corresponding MultibodyTree.
   int num_nodes_{0};
 
-  // Pools.
-  ABI_PoolType P_B_W_{};  // Indexed by BodyNodeIndex.
-  ABI_PoolType Pplus_PB_W_{};  // Indexed by BodyNodeIndex.
-  LDLT_MatrixUpTo6_PoolType ldlt_D_B_{};  // Indexed by BodyNodeIndex.
-  MatrixUpTo6_PoolType g_PB_W_{};  // Indexed by BodyNodeIndex.
+  // Pools indexed by BodyNodeIndex.
+  ABI_PoolType P_B_W_{};
+  ABI_PoolType Pplus_PB_W_{};
+  LDLT_MatrixUpTo6_PoolType ldlt_D_B_{};
+  Matrix6xUpTo6_PoolType g_PB_W_{};
 };
 
 DRAKE_DEFINE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN_T(ArticulatedBodyInertiaCache);

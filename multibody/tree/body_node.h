@@ -1061,7 +1061,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
       }
 
       // Compute the Kalman gain, g_PB_W, using (6).
-      MatrixUpTo6<T>& g_PB_W = get_mutable_g_PB_W(abic);
+      Matrix6xUpTo6<T>& g_PB_W = get_mutable_g_PB_W(abic);
       g_PB_W = ldlt_D_B.solve(HTxP).transpose();
 
       // Project P_B_W using (7) to obtain Pplus_PB_W, the articulated body
@@ -1350,7 +1350,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
       e_B = tau_applied - H_PB_W.transpose() * Z_Bo_W.get_coeffs();
 
       // Get the Kalman gain from cache.
-      const MatrixUpTo6<T>& g_PB_W = get_g_PB_W(abic);
+      const Matrix6xUpTo6<T>& g_PB_W = get_g_PB_W(abic);
 
       // Compute the projected articulated body residual spatial force,
       // Zplus_PB_W, according to (5).
@@ -1472,7 +1472,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
 
       // Compute the generalized acceleration using (2).
       auto vmdot = get_mutable_accelerations(ac);
-      const MatrixUpTo6<T>& g_PB_W = get_g_PB_W(abic);
+      const Matrix6xUpTo6<T>& g_PB_W = get_g_PB_W(abic);
       vmdot = nu_B -
               g_PB_W.transpose() * (Aplus_WB.get_coeffs() + Ab_WB.get_coeffs());
 
@@ -1708,13 +1708,13 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   }
 
   // Returns a const reference to the Kalman gain `g_PB_W` of the body.
-  const MatrixUpTo6<T>& get_g_PB_W(
+  const Matrix6xUpTo6<T>& get_g_PB_W(
       const ArticulatedBodyInertiaCache<T>& abic) const {
     return abic.get_g_PB_W(topology_.index);
   }
 
   // Mutable version of get_g_PB_W().
-  MatrixUpTo6<T>& get_mutable_g_PB_W(
+  Matrix6xUpTo6<T>& get_mutable_g_PB_W(
       ArticulatedBodyInertiaCache<T>* abic) const {
     return abic->get_mutable_g_PB_W(topology_.index);
   }

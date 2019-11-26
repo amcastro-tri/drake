@@ -910,6 +910,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
       const systems::Context<T>& context,
       const PositionKinematicsCache<T>& pc,
       const Eigen::Ref<const MatrixUpTo6<T>>& H_PB_W,
+      const SpatialInertia<T>& M_B_W,
       ArticulatedBodyInertiaCache<T>* abic) const {
     DRAKE_THROW_UNLESS(topology_.body != world_index());
     DRAKE_THROW_UNLESS(abic != nullptr);
@@ -991,10 +992,6 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
     // Get pose of B in W and its rotation matrix R_WB.
     const math::RigidTransform<T>& X_WB = get_X_WB(pc);
     const math::RotationMatrix<T>& R_WB = X_WB.rotation();
-
-    // Compute the spatial inertia for this body and re-express in W frame.
-    const SpatialInertia<T> M_B = body_B.CalcSpatialInertiaInBodyFrame(context);
-    const SpatialInertia<T> M_B_W = M_B.ReExpress(R_WB);
 
     // Compute articulated body inertia for body using (1).
     ArticulatedBodyInertia<T>& P_B_W = get_mutable_P_B_W(abic);
@@ -1111,6 +1108,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
       const systems::Context<T>& context,
       const PositionKinematicsCache<T>& pc,
       const VelocityKinematicsCache<T>* vc,
+      const SpatialInertia<T>& M_B_W,
       const ArticulatedBodyInertiaCache<T>& abic,
       const SpatialForce<T>& Fapplied_Bo_W,
       const Eigen::Ref<const VectorX<T>>& tau_applied,
@@ -1132,16 +1130,11 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
     // Get R_WB.
     const math::RotationMatrix<T> R_WB(X_WB.linear());
 
-    // Compute the spatial inertia for this body and re-express in W frame.
-    const SpatialInertia<T> M_B = body_B.CalcSpatialInertiaInBodyFrame(context);
-    const SpatialInertia<T> M_B_W = M_B.ReExpress(R_WB);    
-
     SpatialAcceleration<T>& Ab_WB = get_mutable_Ab_WB(aba_force_bias_cache);
     SpatialForce<T> Fb_Bo_W = SpatialForce<T>::Zero();
     Ab_WB.SetZero();
     if (vc != nullptr) {
       // B's mass.
-      // TODO: cache M_B_W.
       const T& mass = M_B_W.get_mass();
       // B's center of mass measured in B and expressed in W.
       const Vector3<T>& p_BoBcm_W = M_B_W.get_com();
@@ -1159,7 +1152,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
       // computed in
       // BodyNode::CalcBodySpatialForceGivenItsSpatialAcceleration().
       Fb_Bo_W = mass * SpatialForce<T>(w_WB.cross(G_B_W * w_WB),
-                                      w_WB.cross(w_WB.cross(p_BoBcm_W)));
+                                       w_WB.cross(w_WB.cross(p_BoBcm_W)));
 
       // Inboard frame F and outboard frame M of this node's mobilizer.
       const Frame<T>& frame_F = inboard_frame();
@@ -1172,8 +1165,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
       // Parent position in the world is available from the position kinematics.
       const Isometry3<T>& X_WP = get_X_WP(pc);
 
-      // Compute R_WF.
-      // TODO(amcastro-tri): cache this.
+      // TODO(amcastro-tri): consider caching R_WF.
       const math::RotationMatrix<T> R_WF(X_WP.linear() * X_PF.linear());
 
       // Compute shift vector p_MoBo_F.
@@ -1226,10 +1218,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
     //const ArticulatedBodyInertia<T>& P_B_W = get_P_B_W(abic);
 
     // Compute the residual spatial force, Z_Bo_W, according to (1).
-    SpatialForce<T> Z_Bo_W = Fb_Bo_W - Fapplied_Bo_W;    
-    //SpatialForce<T>(
-    ///    P_B_W * Ab_WB.get_coeffs() + Fb_Bo_W.get_coeffs()
-    //        - Fapplied_Bo_W.get_coeffs());
+    SpatialForce<T> Z_Bo_W = Fb_Bo_W - Fapplied_Bo_W;
 
     // Add residual spatial force contributions from all children.
     for (const BodyNode<T>* child : children_) {
@@ -1252,14 +1241,11 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
 
     const ArticulatedBodyInertia<T>& Pplus_PB_W = get_Pplus_PB_W(abic);
 
-    // See [Featherstone 2008, Eq. 7.24]. Note the appearance of Pplus_PB_W
-    // instead of just P_B_W
     get_mutable_Zplus_PB_W(aba_force_bias_cache) = Z_Bo_W + Pplus_PB_W * Ab_WB;
 
     const int nv = get_num_mobilizer_velocities();
 
-    // Eigen goes nuts with zero sized vectors (weld joints).
-    // TODO(amcastro-tri): review this code.
+    // These terms do not show up for zero mobilities (weld).
     if (nv != 0) {
       // Compute the articulated body inertia innovations generalized force,
       // e_B,

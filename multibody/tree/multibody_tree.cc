@@ -1654,17 +1654,21 @@ void MultibodyTree<T>::CalcArticulatedBodyInertiaCache(
   const PositionKinematicsCache<T>& pc = EvalPositionKinematics(context);
   const std::vector<Vector6<T>>& H_PB_W_cache =
       EvalAcrossNodeJacobianWrtVExpressedInWorld(context);
+  const std::vector<SpatialInertia<T>>& spatial_inertia_in_world_cache =
+      EvalSpatialInertiaInWorldCache(context);
 
   // Perform tip-to-base recursion, skipping the world.
   for (int depth = tree_height() - 1; depth > 0; depth--) {
     for (BodyNodeIndex body_node_index : body_node_levels_[depth]) {
       const BodyNode<T>& node = *body_nodes_[body_node_index];
 
-      // Get hinge mapping matrix.
+      // Get hinge matrix and spatial inertia for this node.
       const MatrixUpTo6<T> H_PB_W = node.GetJacobianFromArray(H_PB_W_cache);
+      const SpatialInertia<T>& M_B_W =
+          spatial_inertia_in_world_cache[body_node_index];
 
       node.CalcArticulatedBodyInertiaCache_TipToBase(
-          context, pc, H_PB_W, abic);
+          context, pc, H_PB_W, M_B_W, abic);
     }
   }
 }
@@ -1690,6 +1694,8 @@ void MultibodyTree<T>::CalcArticulatedBodyForceBiasCache(
 
   const std::vector<Vector6<T>>& H_PB_W_cache =
       EvalAcrossNodeJacobianWrtVExpressedInWorld(context);
+  const std::vector<SpatialInertia<T>>& spatial_inertia_in_world_cache =
+      EvalSpatialInertiaInWorldCache(context);
 
   // Perform tip-to-base recursion, skipping the world.
   for (int depth = tree_height() - 1; depth > 0; depth--) {
@@ -1702,11 +1708,13 @@ void MultibodyTree<T>::CalcArticulatedBodyForceBiasCache(
               generalized_forces);
       const SpatialForce<T>& Fapplied_Bo_W = body_forces[body_node_index];
 
-      // Get hinge mapping matrix.
+      // Get hinge matrix and spatial inertia for this node.
       const MatrixUpTo6<T> H_PB_W = node.GetJacobianFromArray(H_PB_W_cache);
+      const SpatialInertia<T>& M_B_W =
+          spatial_inertia_in_world_cache[body_node_index];
 
       node.CalcArticulatedBodyForceBiasCache_TipToBase(
-          context, pc, &vc, abic, Fapplied_Bo_W, tau_applied, H_PB_W,
+          context, pc, &vc, M_B_W, abic, Fapplied_Bo_W, tau_applied, H_PB_W,
           aba_force_bias_cache);
     }
   }

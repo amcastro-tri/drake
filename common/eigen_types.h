@@ -128,7 +128,7 @@ using MatrixUpTo6 =
 Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, 0, 6, 6>;
 
 /// A matrix of 6 rows and dynamic column size up to a maximum of 6, templated
-/// on scalar type.  
+/// on scalar type.
 template <typename Scalar>
 using Matrix6xUpTo6 = Eigen::Matrix<Scalar, 6, Eigen::Dynamic, 0, 6, 6>;
 

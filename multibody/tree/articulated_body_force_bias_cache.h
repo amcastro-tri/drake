@@ -37,9 +37,6 @@ namespace internal {
 /// - symbolic::Expression
 ///
 /// They are already available to link against in the containing library.
-//
-// TODO(amcastro-tri): maybe rename to ArticulatedBodyAlgorithmWorkspace?
-// It is not a cache entry really cause its value depends on external forces.
 template<typename T>
 class ArticulatedBodyForceBiasCache {
  public:

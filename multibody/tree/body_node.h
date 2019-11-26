@@ -11,7 +11,7 @@
 #include "drake/multibody/math/spatial_algebra.h"
 #include "drake/multibody/tree/acceleration_kinematics_cache.h"
 #include "drake/multibody/tree/articulated_body_inertia_cache.h"
-#include "drake/multibody/tree/articulated_body_algorithm_cache.h"
+#include "drake/multibody/tree/articulated_body_force_bias_cache.h"
 #include "drake/multibody/tree/body.h"
 #include "drake/multibody/tree/mobilizer.h"
 #include "drake/multibody/tree/multibody_element.h"

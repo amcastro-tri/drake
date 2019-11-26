@@ -1,4 +1,4 @@
-#include "drake/multibody/tree/articulated_body_algorithm_cache.h"
+#include "drake/multibody/tree/articulated_body_force_bias_cache.h"
 
 #include "drake/common/default_scalars.h"
 

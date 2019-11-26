@@ -18,10 +18,6 @@
 #include "drake/multibody/tree/spatial_inertia.h"
 #include "drake/multibody/tree/uniform_gravity_field_element.h"
 
-#include <iostream>
-#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
-#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
-
 namespace drake {
 namespace multibody {
 namespace internal {
@@ -1675,8 +1671,7 @@ void MultibodyTree<T>::CalcArticulatedBodyInertiaCache(
 
 template <typename T>
 void MultibodyTree<T>::CalcArticulatedBodyForceBiasCache(
-    const systems::Context<T>& context,
-    const MultibodyForces<T>& forces,
+    const systems::Context<T>& context, const MultibodyForces<T>& forces,
     ArticulatedBodyForceBiasCache<T>* aba_force_bias_cache) const {
   DRAKE_DEMAND(aba_force_bias_cache != nullptr);
   DRAKE_DEMAND(forces.CheckHasRightSizeForModel(*this));
@@ -1702,15 +1697,17 @@ void MultibodyTree<T>::CalcArticulatedBodyForceBiasCache(
       const BodyNode<T>& node = *body_nodes_[body_node_index];
 
       // Get generalized force and body force for this node.
-      const VectorX<T>& tau_applied = node.get_mobilizer()
-          .get_generalized_forces_from_array(generalized_forces);
+      const VectorX<T>& tau_applied =
+          node.get_mobilizer().get_generalized_forces_from_array(
+              generalized_forces);
       const SpatialForce<T>& Fapplied_Bo_W = body_forces[body_node_index];
 
       // Get hinge mapping matrix.
       const MatrixUpTo6<T> H_PB_W = node.GetJacobianFromArray(H_PB_W_cache);
 
       node.CalcArticulatedBodyForceBiasCache_TipToBase(
-          context, pc, &vc, abic, Fapplied_Bo_W, tau_applied, H_PB_W, aba_force_bias_cache);
+          context, pc, &vc, abic, Fapplied_Bo_W, tau_applied, H_PB_W,
+          aba_force_bias_cache);
     }
   }
 }
@@ -1720,7 +1717,7 @@ void MultibodyTree<T>::CalcArticulatedBodyAccelerations(
     const systems::Context<T>& context,
     const ArticulatedBodyForceBiasCache<T>& aba_force_bias_cache,
     AccelerationKinematicsCache<T>* ac) const {
-  DRAKE_DEMAND(ac != nullptr);    
+  DRAKE_DEMAND(ac != nullptr);
   const PositionKinematicsCache<T>& pc = EvalPositionKinematics(context);
   const std::vector<Vector6<T>>& H_PB_W_cache =
       EvalAcrossNodeJacobianWrtVExpressedInWorld(context);
@@ -1735,7 +1732,8 @@ void MultibodyTree<T>::CalcArticulatedBodyAccelerations(
       // Get hinge mapping matrix.
       const MatrixUpTo6<T> H_PB_W = node.GetJacobianFromArray(H_PB_W_cache);
 
-      node.CalcArticulatedBodyAccelerations_BaseToTip(context, pc, abic, aba_force_bias_cache, H_PB_W, ac);
+      node.CalcArticulatedBodyAccelerations_BaseToTip(
+          context, pc, abic, aba_force_bias_cache, H_PB_W, ac);
     }
   }
 }
@@ -1814,8 +1812,8 @@ MatrixX<double> MultibodyTree<T>::MakeActuatorSelectorMatrix(
 
   const int num_selected_actuators = user_to_actuator_index_map.size();
 
-  // The actuation selector matrix maps the vector of "selected" actuators
-  // to the full vector of actuators: u = Sᵤ⋅uₛ.
+  // The actuation selector matrix maps the vector of "selected" actuators to
+  // the full vector of actuators: u = Sᵤ⋅uₛ.
   MatrixX<double> Su =
       MatrixX<double>::Zero(num_actuated_dofs(), num_selected_actuators);
   int user_index = 0;

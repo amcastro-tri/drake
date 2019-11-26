@@ -907,7 +907,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   ///
   /// @throws std::exception when called on the _root_ node or `abc` is nullptr.
   void CalcArticulatedBodyInertiaCache_TipToBase(
-      const systems::Context<T>& context,
+      const systems::Context<T>&,
       const PositionKinematicsCache<T>& pc,
       const Eigen::Ref<const MatrixUpTo6<T>>& H_PB_W,
       const SpatialInertia<T>& M_B_W,
@@ -985,9 +985,6 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
     //   Pplus_PB_W = (I - g_PB_W H_PB_Wᵀ) P_B_W
     //              = P_B_W - g_PB_W H_PB_Wᵀ P_B_W
     //              = P_B_W - g_PB_W * U_B_W                                 (7)
-
-    // Body for this node.
-    const Body<T>& body_B = body();
 
     // Get pose of B in W and its rotation matrix R_WB.
     const math::RigidTransform<T>& X_WB = get_X_WB(pc);
@@ -1120,9 +1117,6 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
     // As a guideline for developers, please refer to @ref
     // internal_forward_dynamics for a detailed description of the algorithm and
     // notation inuse.
-
-    // Body for this node.
-    const Body<T>& body_B = body();
 
     // Get pose of B in W.
     const Isometry3<T>& X_WB = get_X_WB(pc);

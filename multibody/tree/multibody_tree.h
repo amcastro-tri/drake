@@ -1833,6 +1833,7 @@ class MultibodyTree {
   parallelism of the joint reaction forces equation with the Newton-Euler
   equations.
 
+  @anchor abi_computing_accelerations
   <h3> Computing Accelerations </h3>
   Once ABA inertias and force bias terms are computed according to Eqs.
   (2)-(10), the computation of accelerations is remarkably simple. The last base
@@ -1911,35 +1912,26 @@ class MultibodyTree {
    @{
   */
 
-  /// Computes all the quantities that are required in the final pass of the
-  /// articulated body algorithm and stores them in the articulated body cache
-  /// `abc`.
-  ///
-  /// These include:
-  /// - Articulated body inertia `Pplus_PB_W`, which can be thought of as the
-  ///   articulated body inertia of parent body P as though it were inertialess,
-  ///   but taken about Bo and expressed in W.
-  ///
-  /// @param[in] context
-  ///   The context containing the state of the %MultibodyTree model.
-  /// @param[in] pc
-  ///   A position kinematics cache object already updated to be in sync with
-  ///   `context`.
-  /// @param[out] abc
-  ///   A pointer to a valid, non nullptr, articulated body cache. This method
-  ///   throws an exception if `abc` is a nullptr.
-  ///
-  /// @pre The position kinematics `pc` must have been previously updated with a
-  /// call to CalcPositionKinematicsCache() using the same `context`  .
+  /// Performs a tip to base pass to compute the ArticulatedBodyInertia for each
+  /// body function of the configuration q stored in `context`. The computation
+  /// is stored in `aba` along with other ABA quantities.
   void CalcArticulatedBodyInertiaCache(
       const systems::Context<T>& context,
       ArticulatedBodyInertiaCache<T>* abc) const;
 
+  /// Performs a tip to base pass which essentially computes the force bias
+  /// terms in the ABA equations. These are a function of the full state
+  /// `x = [q; v]`, stored in `context`, and externally applied `forces`.
+  /// Refer to @ref abi_and_bias_force "Articulated Body Inertia and Force Bias"
+  /// for further details.
   void CalcArticulatedBodyForceBiasCache(
-    const systems::Context<T>& context,
-    const MultibodyForces<T>& forces,
-    ArticulatedBodyForceBiasCache<T>* aba_force_bias_cache) const;
+      const systems::Context<T>& context, const MultibodyForces<T>& forces,
+      ArticulatedBodyForceBiasCache<T>* aba_force_bias_cache) const;
 
+  /// Performs the final base to tip pass of ABA to compute the acceleration of
+  /// each body in the model into output `ac`.
+  /// Refer to @ref abi_computing_accelerations "Computing Accelerations" for
+  /// further details.
   void CalcArticulatedBodyAccelerations(
     const systems::Context<T>& context,
     const ArticulatedBodyForceBiasCache<T>& aba_force_bias_cache,
@@ -2217,15 +2209,17 @@ class MultibodyTree {
     return tree_system_->EvalVelocityKinematics(context);
   }
 
+  // Evaluate the cache entry storing articulated body inertias in `context`.
   const ArticulatedBodyInertiaCache<T>& EvalArticulatedBodyInertiaCache(
       const systems::Context<T>& context) const {
     return tree_system_->EvalArticulatedBodyInertiaCache(context);
-  }      
+  }
 
-  const std::vector<Vector6<T>>&
-  EvalAcrossNodeJacobianWrtVExpressedInWorld(
+  // Evaluate the cache entry storing the across node Jacobian H_PB_W in
+  // `context`.
+  const std::vector<Vector6<T>>& EvalAcrossNodeJacobianWrtVExpressedInWorld(
       const systems::Context<T>& context) const {
-    return tree_system_->EvalAcrossNodeJacobianWrtVExpressedInWorld(context);  
+    return tree_system_->EvalAcrossNodeJacobianWrtVExpressedInWorld(context);
   }
 
   /// @name                 State access methods

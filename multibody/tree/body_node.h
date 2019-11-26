@@ -10,8 +10,8 @@
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/math/spatial_algebra.h"
 #include "drake/multibody/tree/acceleration_kinematics_cache.h"
-#include "drake/multibody/tree/articulated_body_inertia_cache.h"
 #include "drake/multibody/tree/articulated_body_force_bias_cache.h"
+#include "drake/multibody/tree/articulated_body_inertia_cache.h"
 #include "drake/multibody/tree/body.h"
 #include "drake/multibody/tree/mobilizer.h"
 #include "drake/multibody/tree/multibody_element.h"
@@ -373,7 +373,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   ///   generalized velocities in the model. This method assumes the caller,
   ///   MultibodyTree<T>::CalcAccelerationKinematicsCache(), provides a vector
   ///   of the right size.
-  /// @param[in, out] A_WB_array_ptr
+  /// @param[in,out] A_WB_array_ptr
   ///   A pointer to a valid, non nullptr, vector of spatial accelerations
   ///   containing the spatial acceleration `A_WB` for each body. On input, it
   ///   must contain already pre-computed spatial accelerations for the inboard
@@ -970,20 +970,20 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
     // articulated body inertia.
     //
     // In order to reduce the number of computations, we can save the common
-    // factor HTxP = H_PB_Wᵀ P_B_W. We then can write:
-    //   D_B = HTxP H_PB_W                                                  (5)
+    // factor U_B_W = H_PB_Wᵀ P_B_W. We then can write:
+    //   D_B = U_B_W H_PB_W                                                  (5)
     // and for g,
     //   g_PB_Wᵀ = (D_B⁻¹)ᵀ H_PB_Wᵀ P_B_Wᵀ
     //           = (D_Bᵀ)⁻¹ H_PB_Wᵀ P_B_W
-    //           = D_B⁻¹ HTxP                                               (6)
+    //           = D_B⁻¹ U_B_W                                               (6)
     // where we used the fact that both D and P are symmetric. Notice in the
-    // last expression for g_PB_Wᵀ we are reusing the common factor HTxP.
+    // last expression for g_PB_Wᵀ we are reusing the common factor U_B_W.
     //
     // Given the articulated body hinge inertia and Kalman gain, we can simplify
     // the equation in (2).
     //   Pplus_PB_W = (I - g_PB_W H_PB_Wᵀ) P_B_W
     //              = P_B_W - g_PB_W H_PB_Wᵀ P_B_W
-    //              = P_B_W - g_PB_W * HTxP                                 (7)
+    //              = P_B_W - g_PB_W * U_B_W                                 (7)
 
     // Body for this node.
     const Body<T>& body_B = body();
@@ -1026,16 +1026,16 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
     Matrix6<T> Pplus_PB_W_mat = P_B_W.CopyToFullMatrix6();
 
     // We now proceed to compute Pplus_PB_W using Eq. (7):
-    //   Pplus_PB_W = P_B_W - g_PB_W * HTxP
+    //   Pplus_PB_W = P_B_W - g_PB_W * U_B_W
     // For weld joints, with nv = 0, terms involving the hinge matrix H_PB_W
     // go away and therefore Pplus_PB_W = P_B_W. We check this below.
     if (nv != 0) {
-      // Compute common term HTxP.
-      const MatrixUpTo6<T> HTxP = H_PB_W.transpose() * P_B_W;
+      // Compute common term U_B_W.
+      const MatrixUpTo6<T> U_B_W = H_PB_W.transpose() * P_B_W;
 
       // Compute the articulated body hinge inertia, D_B, using (5).
       MatrixUpTo6<T> D_B(nv, nv);
-      D_B.template triangularView<Eigen::Lower>() = HTxP * H_PB_W;
+      D_B.template triangularView<Eigen::Lower>() = U_B_W * H_PB_W;
 
       // Compute the LDLT factorization of D_B as ldlt_D_B.
       // TODO(bobbyluig): Test performance against inverse().
@@ -1058,13 +1058,13 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
 
       // Compute the Kalman gain, g_PB_W, using (6).
       Matrix6xUpTo6<T>& g_PB_W = get_mutable_g_PB_W(abic);
-      g_PB_W = ldlt_D_B.solve(HTxP).transpose();
+      g_PB_W = ldlt_D_B.solve(U_B_W).transpose();
 
       // Project P_B_W using (7) to obtain Pplus_PB_W, the articulated body
       // inertia of this body B as felt by body P and expressed in frame W.
       // Symmetrize the computation to reduce floating point errors.
       // TODO(bobbyluig): Only compute lower-triangular region.
-      Pplus_PB_W_mat -= g_PB_W * HTxP;
+      Pplus_PB_W_mat -= g_PB_W * U_B_W;
     }
 
     get_mutable_Pplus_PB_W(abic) = ArticulatedBodyInertia<T>(

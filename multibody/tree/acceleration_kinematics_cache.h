@@ -16,7 +16,7 @@ namespace drake {
 namespace multibody {
 namespace internal {
 
-/// This class is one of the cache entries in MultibodyTreeContext. It holds the
+/// This class is one of the cache entries in the Context. It holds the
 /// kinematics results of computations that depend not only on the generalized
 /// positions and generalized velocities, but also on the time derivatives of
 /// the generalized coordinates.
@@ -51,8 +51,7 @@ class AccelerationKinematicsCache {
     // to the world body and is defined in multibody_tree_indexes.h.
     // World's acceleration is always zero.
     A_WB_pool_[world_index()].SetZero();
-
-    // Resize vdot to the appropriate dimensions.
+    vdot_.setZero();
   }
 
   /// Returns a constant reference to the spatial acceleration `A_WB` of the

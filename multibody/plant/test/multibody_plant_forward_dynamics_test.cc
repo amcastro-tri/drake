@@ -7,13 +7,12 @@
 #include "drake/multibody/plant/test/kuka_iiwa_model_tests.h"
 #include "drake/systems/framework/context.h"
 
-
 using drake::systems::Context;
 
 namespace drake {
 namespace multibody {
 
-const double kEpsilon = std::numeric_limits<double>::epsilon();    
+const double kEpsilon = std::numeric_limits<double>::epsilon();
 
 class MultibodyPlantTester {
  public:
@@ -27,11 +26,13 @@ class MultibodyPlantTester {
 
 namespace {
 
-// Fixture to perform forward dynamics tests on the KUKA Iiwa model.
+// Fixture to perform forward dynamics tests on a model of a KUKA Iiwa arm. The
+// base if free.
 class KukaIiwaModelForwardDynamicsTests : public test::KukaIiwaModelTests {
- public:
-  /// This method calculates the forward dynamics for a 7-DOF KUKA iiwa robot
-  /// using the articulated body algorithm given an initial confguration.
+ protected:
+  /// Given the state of the joints in q and v, this method calculates the
+  /// forward dynamics for the floating KUKA iiwa robot using the articulated
+  /// body algorithm. The pose and spatial velocity of the base are arbitrary.
   ///
   /// @param[in] q robot's joint angles (generalized coordinates).
   /// @param[in] v robot's joint velocities (generalized velocities).
@@ -40,23 +41,16 @@ class KukaIiwaModelForwardDynamicsTests : public test::KukaIiwaModelTests {
       const Eigen::Ref<const VectorX<double>>& q,
       const Eigen::Ref<const VectorX<double>>& v,
       EigenPtr<VectorX<double>> vdot) {
-
-    // For       
-    // The computation of vdot involves O(n) forward dynamics in the continuous
-    // case only.
-    ASSERT_FALSE(plant_->is_discrete());
-
     // Update joint positions and velocities.
     VectorX<double> x(plant_->num_multibody_states());
     x << q, v;
     SetState(x);
-
     *vdot =
         MultibodyPlantTester::CalcGeneralizedAccelerations(*plant_, *context_);
   }
 
-  /// This method calculates the forward dynamics for a 7-DOF KUKA iiwa robot
-  /// by explicitly solving using the mass matrix given an initial confguration.
+  /// This method calculates the forward dynamics for the 7-DOF KUKA iiwa robot
+  /// by explicitly solving for the inverse of the mass matrix.
   ///
   /// @param[in] q robot's joint angles (generalized coordinates).
   /// @param[in] v robot's joint velocities (generalized velocities).
@@ -89,12 +83,10 @@ class KukaIiwaModelForwardDynamicsTests : public test::KukaIiwaModelTests {
     *vdot = M.llt().solve(-tau_id);
   }
 
- protected:
-  // Compare the articulated body algorithm solution for forward dynamics
-  // against that of the mass matrix solve method.
-  void CompareForwardDynamics(
-      const Eigen::Ref<const VectorX<double>>& q,
-      const Eigen::Ref<const VectorX<double>>& v) {
+  // Verify the solution obtained using the ABA against a reference solution
+  // computed by explicitly taking the inverse of the mass matrix.
+  void CompareForwardDynamics(const Eigen::Ref<const VectorX<double>>& q,
+                              const Eigen::Ref<const VectorX<double>>& v) {
     // Compute forward dynamics using articulated body algorithm.
     VectorX<double> vdot(plant_->num_velocities());
     CalcForwardDynamicsViaArticulatedBodyAlgorithm(q, v, &vdot);
@@ -113,14 +105,15 @@ class KukaIiwaModelForwardDynamicsTests : public test::KukaIiwaModelTests {
 
     // Compare expected results against actual vdot.
     const double kRelativeTolerance = kappa * kEpsilon;
-    EXPECT_TRUE(CompareMatrices(
-        vdot, vdot_expected, kRelativeTolerance, MatrixCompareType::relative));
+    EXPECT_TRUE(CompareMatrices(vdot, vdot_expected, kRelativeTolerance,
+                                MatrixCompareType::relative));
   }
 };
 
 // This test is used to verify the correctness of the articulated body algorithm
 // for solving forward dynamics. The output from the articulated body algorithm
-// is compared against the output from solving using the mass matrix.
+// is compared against the output from solving using the mass matrix. We verify
+// the computation for an arbitrary set of robot states.
 TEST_F(KukaIiwaModelForwardDynamicsTests, ForwardDynamicsTest) {
   // Joint angles and velocities.
   VectorX<double> q(kNumJoints), qdot(kNumJoints);

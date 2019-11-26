@@ -3269,10 +3269,10 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   struct CacheIndexes {
     systems::CacheIndex aba_accelerations;
     systems::CacheIndex aba_force_bias_cache;
+    systems::CacheIndex contact_info_and_body_spatial_forces;
     systems::CacheIndex contact_jacobians;
     systems::CacheIndex contact_results;
     systems::CacheIndex contact_surfaces;
-    systems::CacheIndex contact_info_and_body_spatial_forces;
     systems::CacheIndex generalized_accelerations;
     systems::CacheIndex generalized_contact_forces_continuous;
     systems::CacheIndex point_pairs;

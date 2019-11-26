@@ -21,7 +21,7 @@ namespace multibody {
 /// remarkable `O(n)` Articulated Body Algorithm (ABA) for solving forward
 /// dynamics. Recall that the Newton-Euler equations allow us to describe the
 /// combined rotational and translational dynamics of a rigid body: <pre>
-///   F_BBo_W = M_B_W * A_WB + Fb_Bo_W                                    (1)
+///   F_BBo_W = M_B_W * A_WB + Fb_Bo_W                                     (1)
 /// </pre>
 /// where the spatial inertia (see SpatialInertia) `M_B_W` of body B expressed
 /// in the world frame W linearly relates the spatial acceleration (see
@@ -321,6 +321,9 @@ class ArticulatedBodyInertia {
     return matrix_.template selfadjointView<Eigen::Lower>() * rhs;
   }
 
+  /// Multiplies `this` articulated body inertia on the right by a spatial
+  /// acceleration. The result is a spatial force. See Eq. (2) in this class's
+  /// documentation for an example.
   SpatialForce<T> operator*(const SpatialAcceleration<T>& A_WB_E) const {
     return SpatialForce<T>((*this) * A_WB_E.get_coeffs());
   }

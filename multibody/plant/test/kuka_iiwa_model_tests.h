@@ -17,7 +17,6 @@
 #include "drake/multibody/tree/revolute_joint.h"
 #include "drake/multibody/tree/rigid_body.h"
 #include "drake/systems/framework/context.h"
-//#include "drake/systems/framework/diagram_builder.h"
 
 namespace drake {
 
@@ -25,7 +24,6 @@ using math::RigidTransform;
 using math::RollPitchYaw;
 using math::RotationMatrix;
 using systems::Context;
-//using systems::Diagram;
 using std::unique_ptr;
 
 namespace multibody {
@@ -39,21 +37,6 @@ class KukaIiwaModelTests : public ::testing::Test {
     const std::string kArmSdfPath = FindResourceOrThrow(
         "drake/manipulation/models/iiwa_description/sdf/"
         "iiwa14_no_collision.sdf");
-
-#if 0    
-    std::tie(plant_, scene_graph_) = AddMultibodyPlantSceneGraph(
-        &builder,
-        std::make_unique<MultibodyPlant<double>>(discrete_update_period));
-
-    AddWall();
-    AddPinnedLadder();
-    plant_->mutable_gravity_field().set_gravity_vector(
-        Vector3d(0.0, 0.0, -kGravity_));
-    plant_->Finalize();    
-#endif
-
-    //systems::DiagramBuilder<double> builder;
-    //builder.Add
 
     // Create a model of a Kuka arm. Notice we do not weld the robot's base to
     // the world and therefore the model is free floating in space. This makes

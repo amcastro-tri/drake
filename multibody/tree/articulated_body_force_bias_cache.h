@@ -12,21 +12,14 @@
 
 namespace drake {
 namespace multibody {
-namespace internal {  
+namespace internal {
 
-/// This class is one of the cache entries in MultibodyTreeContext. It holds the
-/// results of computations that are used in the recursive implementation of the
-/// articulated body algorithm.
-///
-/// Articulated body algorithm cache entries include:
-/// - The articulated body inertia residual force `Zplus_PB_W` for this body
-///   projected across its inboard mobilizer to frame P.
-/// - The bias spatial acceleration `Ab_WB` for body B including centrifugal
-///   and Coriolis terms due to the motion of P in W and of B in P.
-///   This bias allows to write:
-///     A_WB = Φᵀ(p_PB)A_PB + H_PB vdot_B + Ab_WB(w_WP, V_PB)
-/// - The articulated body inertia innovations generalized force `e_B` for this
-///   body's mobilizer.
+/// This class is one of the cache entries in the Context. It stores the force
+/// and acceleration bias terms needed by the ABA forward dynamics. Please refer
+/// to @ref internal_forward_dynamics "Articulated Body Algorithm Forward
+/// Dynamics" for further mathematical background and implementation details. In
+/// particular, refer to @ref abi_and_bias_force "Articulated %Body Inertia and
+/// Force Bias" for details on the force bias terms.
 ///
 /// @tparam T The mathematical type of the context, which must be a valid Eigen
 ///           scalar.
@@ -42,8 +35,8 @@ class ArticulatedBodyForceBiasCache {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(ArticulatedBodyForceBiasCache)
 
-  /// Constructs an articulated body algorithm entry for the given
-  /// MultibodyTreeTopology.
+  /// Constructs an %ArticulatedBodyForceBiasCache object properly sized to
+  /// store the force bias terms for a model with the given `topology`.
   explicit ArticulatedBodyForceBiasCache(
       const MultibodyTreeTopology& topology) :
       num_nodes_(topology.num_bodies()) {
@@ -63,8 +56,8 @@ class ArticulatedBodyForceBiasCache {
     return Zplus_PB_W_[body_node_index];
   }
 
-  /// The Coriolis spatial acceleration `Ab_WB` for this body due to the
-  /// relative velocities of body B and body P.
+  /// The spatial acceleration bias `Ab_WB` for body node with index
+  /// `body_node_index` including Coriolis and gyroscopic terms.
   const SpatialAcceleration<T>& get_Ab_WB(
       BodyNodeIndex body_node_index) const {
     DRAKE_ASSERT(0 <= body_node_index && body_node_index < num_nodes_);

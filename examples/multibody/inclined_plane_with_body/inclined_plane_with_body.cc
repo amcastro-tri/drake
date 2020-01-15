@@ -2,12 +2,15 @@
 
 #include <gflags/gflags.h>
 
+#include "drake/common/nice_type_name.h"
 #include "drake/geometry/geometry_visualization.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/lcm/drake_lcm.h"
 #include "drake/multibody/benchmarks/inclined_plane/inclined_plane_plant.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
+#include "drake/systems/analysis/implicit_integrator.h"
 #include "drake/systems/analysis/simulator.h"
+#include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/framework/diagram_builder.h"
 
 namespace drake {
@@ -23,19 +26,13 @@ namespace {
 //
 // Information on how to build, run, and visualize this example and how to use
 // command-line arguments is in the accompanying file README.md.
-DEFINE_double(target_realtime_rate, 1.0,
-              "Desired rate relative to real time (usually between 0 and 1). "
-              "This is documented in Simulator::set_target_realtime_rate().");
 DEFINE_double(simulation_time, 2.0, "Simulation duration in seconds");
-DEFINE_double(time_step, 1.0E-3,
-              "If time_step > 0, the fixed-time step period (in seconds) of "
-              "discrete updates for the plant (modeled as a discrete system). "
-              "If time_step = 0, the plant is modeled as a continuous system "
-              "and no contact forces are displayed.  time_step must be >= 0.");
-DEFINE_double(integration_accuracy, 1.0E-6,
-              "When time_step = 0 (plant is modeled as a continuous system), "
-              "this is the desired integration accuracy.  This value is not "
-              "used if time_step > 0 (fixed-time step).");
+DEFINE_double(
+    mbp_time_step, 1.0E-3,
+    "If mbp_time_step > 0, the fixed-time step period (in seconds) of discrete "
+    "updates for the plant (modeled as a discrete system). "
+    "If mbp_time_step = 0, the plant is modeled as a continuous system "
+    "and no contact forces are displayed.  mbp_time_step must be >= 0.");
 DEFINE_double(penetration_allowance, 1.0E-5, "Allowable penetration (meters).");
 DEFINE_double(stiction_tolerance, 1.0E-5,
               "Allowable drift speed during stiction (m/s).");
@@ -45,13 +42,13 @@ DEFINE_double(inclined_plane_coef_static_friction, 0.3,
               "Inclined plane's coefficient of static friction (no units).");
 DEFINE_double(inclined_plane_coef_kinetic_friction, 0.3,
               "Inclined plane's coefficient of kinetic friction (no units).  "
-              "When time_step > 0, this value is ignored.  Only the "
+              "When mbp_time_step > 0, this value is ignored.  Only the "
               "coefficient of static friction is used in fixed-time step.");
 DEFINE_double(bodyB_coef_static_friction, 0.3,
               "Body B's coefficient of static friction (no units).");
 DEFINE_double(bodyB_coef_kinetic_friction, 0.3,
               "Body B's coefficient of kinetic friction (no units).  "
-              "When time_step > 0, this value is ignored.  Only the "
+              "When mbp_time_step > 0, this value is ignored.  Only the "
               "coefficient of static friction is used in fixed-time step.");
 DEFINE_bool(is_inclined_plane_half_space, true,
             "Is inclined plane a half-space (true) or box (false).");
@@ -64,7 +61,7 @@ int do_main() {
   // Build a generic multibody plant.
   systems::DiagramBuilder<double> builder;
   auto pair = AddMultibodyPlantSceneGraph(
-      &builder, std::make_unique<MultibodyPlant<double>>(FLAGS_time_step));
+      &builder, std::make_unique<MultibodyPlant<double>>(FLAGS_mbp_time_step));
   MultibodyPlant<double>& plant = pair.plant;
 
   // Set constants that are relevant whether body B is a sphere or block.
@@ -135,9 +132,7 @@ int do_main() {
   DRAKE_DEMAND(plant.num_positions() == 7);
 
   // Publish contact results for visualization.
-  // TODO(Mitiguy) Ensure contact forces can be displayed when time_step = 0.
-  if (FLAGS_time_step > 0)
-    ConnectContactResultsToDrakeVisualizer(&builder, plant);
+  ConnectContactResultsToDrakeVisualizer(&builder, plant);
 
   geometry::ConnectDrakeVisualizer(&builder, pair.scene_graph);
   auto diagram = builder.Build();
@@ -160,18 +155,55 @@ int do_main() {
   const math::RigidTransform<double> X_WB(p_WoBo_W);
   plant.SetFreeBodyPoseInWorldFrame(&plant_context, bodyB, X_WB);
 
-  systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
-  systems::IntegratorBase<double>& integrator =
-      simulator.get_mutable_integrator();
+  auto simulator =
+      MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
+  simulator->AdvanceTo(FLAGS_simulation_time);
 
-  // Set the integration accuracy when the plant is integrated with a variable-
-  // step integrator. This value is not used if time_step > 0 (fixed-time step).
-  integrator.set_target_accuracy(FLAGS_integration_accuracy);
+  if (plant.is_discrete()) {
+    fmt::print("Used time stepping with dt={}\n", plant.time_step());
+  }
 
-  simulator.set_publish_every_time_step(false);
-  simulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
-  simulator.Initialize();
-  simulator.AdvanceTo(FLAGS_simulation_time);
+  const systems::IntegratorBase<double>& integrator =
+      simulator->get_integrator();
+  fmt::print("Stats for integrator {}:\n",
+             drake::NiceTypeName::Get(integrator));
+  fmt::print("\n### GENERAL INTEGRATION STATISTICS ###\n");
+  fmt::print("Number of time steps taken = {:d}\n",
+             integrator.get_num_steps_taken());
+  fmt::print("Number of derivative evaluations = {:d}\n",
+             integrator.get_num_derivative_evaluations());
+  if (!integrator.get_fixed_step_mode()) {
+    fmt::print("\n### ERROR CONTROL STATISTICS ###\n");
+    fmt::print("Initial time step taken = {:10.6g} s\n",
+               integrator.get_actual_initial_step_size_taken());
+    fmt::print("Largest time step taken = {:10.6g} s\n",
+               integrator.get_largest_step_size_taken());
+    fmt::print("Smallest adapted step size = {:10.6g} s\n",
+               integrator.get_smallest_adapted_step_size_taken());
+    fmt::print("Number of steps shrunk due to error control = {:d}\n",
+               integrator.get_num_step_shrinkages_from_error_control());
+  }
+
+  const auto* implicit_integrator =
+      dynamic_cast<const systems::ImplicitIntegrator<double>*>(&integrator);
+  if (implicit_integrator) {
+    fmt::print("\n### IMPLICIT INTEGRATION STATISTICS ###\n");
+    fmt::print("Number of Jacobian evaluations = {:d}\n",
+               implicit_integrator->get_num_jacobian_evaluations());
+    fmt::print("Number of Jacobian factorizations = {:d}\n",
+               implicit_integrator->get_num_iteration_matrix_factorizations());
+    fmt::print("Number of derivative evaluations for...\n");
+    fmt::print(
+        "  Jacobian = {:d}\n",
+        implicit_integrator->get_num_derivative_evaluations_for_jacobian());
+    fmt::print(
+        "  Error estimate = {:d}\n",
+        implicit_integrator->get_num_error_estimator_derivative_evaluations());
+    fmt::print(
+        "  Error estimate Jacobian = {:d}\n",
+        implicit_integrator
+            ->get_num_error_estimator_derivative_evaluations_for_jacobian());
+  }
 
   return 0;
 }

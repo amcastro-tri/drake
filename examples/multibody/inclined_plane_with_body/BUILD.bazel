@@ -25,6 +25,7 @@ drake_cc_binary(
         "//multibody/benchmarks/inclined_plane",
         "//multibody/plant:contact_results_to_lcm",
         "//systems/analysis:simulator",
+        "//systems/analysis:simulator_gflags",
         "//systems/framework:diagram",
         "@gflags",
     ],

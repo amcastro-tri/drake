@@ -48,6 +48,7 @@ drake_cc_binary(
         "//systems/analysis:runge_kutta3_integrator",
         "//systems/analysis:semi_explicit_euler_integrator",
         "//systems/analysis:simulator",
+        "//systems/analysis:simulator_gflags",
         "//systems/framework:diagram",
         "//systems/lcm:lcm_pubsub_system",
         "//systems/primitives:sine",

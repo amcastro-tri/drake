@@ -33,6 +33,9 @@ DEFINE_double(
     "updates for the plant (modeled as a discrete system). "
     "If mbp_time_step = 0, the plant is modeled as a continuous system "
     "and no contact forces are displayed.  mbp_time_step must be >= 0.");
+DEFINE_string(jacobian_scheme, "forward",
+              "Valid Jacobian computation schemes are: "
+              "'forward', 'central', or 'automatic'");
 DEFINE_double(penetration_allowance, 1.0E-5, "Allowable penetration (meters).");
 DEFINE_double(stiction_tolerance, 1.0E-5,
               "Allowable drift speed during stiction (m/s).");
@@ -157,14 +160,35 @@ int do_main() {
 
   auto simulator =
       MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
+
+  systems::IntegratorBase<double>& integrator =
+      simulator->get_mutable_integrator();
+  auto* implicit_integrator =
+      dynamic_cast<systems::ImplicitIntegrator<double>*>(&integrator);
+  if (implicit_integrator) {
+    if (FLAGS_jacobian_scheme == "forward") {
+      implicit_integrator->set_jacobian_computation_scheme(
+          systems::ImplicitIntegrator<
+              double>::JacobianComputationScheme::kForwardDifference);
+    } else if (FLAGS_jacobian_scheme == "central") {
+      implicit_integrator->set_jacobian_computation_scheme(
+          systems::ImplicitIntegrator<
+              double>::JacobianComputationScheme::kCentralDifference);
+    } else if (FLAGS_jacobian_scheme == "automatic") {
+      implicit_integrator->set_jacobian_computation_scheme(
+          systems::ImplicitIntegrator<
+              double>::JacobianComputationScheme::kAutomatic);
+    } else {
+      throw std::runtime_error("Invalid Jacobian computation scheme");
+    }
+  }
+
   simulator->AdvanceTo(FLAGS_simulation_time);
 
   if (plant.is_discrete()) {
     fmt::print("Used time stepping with dt={}\n", plant.time_step());
   }
 
-  const systems::IntegratorBase<double>& integrator =
-      simulator->get_integrator();
   fmt::print("Stats for integrator {}:\n",
              drake::NiceTypeName::Get(integrator));
   fmt::print("\n### GENERAL INTEGRATION STATISTICS ###\n");
@@ -184,8 +208,6 @@ int do_main() {
                integrator.get_num_step_shrinkages_from_error_control());
   }
 
-  const auto* implicit_integrator =
-      dynamic_cast<const systems::ImplicitIntegrator<double>*>(&integrator);
   if (implicit_integrator) {
     fmt::print("\n### IMPLICIT INTEGRATION STATISTICS ###\n");
     fmt::print("Number of Jacobian evaluations = {:d}\n",

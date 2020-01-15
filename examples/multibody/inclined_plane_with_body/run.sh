@@ -4,12 +4,17 @@ time bazel run inclined_plane_with_body -- \
 --simulation_time=2 `#General` \
 --target_realtime_rate=0 \
 --publish_every_time_step=0 \
---mbp_time_step=0 \
-`#Integration` \
---integration_scheme=implicit_euler \
+--mbp_time_step=1e-3 \
+`#Integration: bogacki_shampine3,explicit_euler,implicit_euler,semi_explicit_euler,radau1,radau3,runge_kutta2,runge_kutta3,runge_kutta5` \
+--integration_scheme=radau3 \
 --max_time_step=0.1 \
 --accuracy=1e-3 \
---jacobian_scheme=central \
+--jacobian_scheme=forward \
 `#Contact parameters` \
 --penetration_allowance=1e-5 \
---stiction_tolerance=1e-4 
+--stiction_tolerance=1e-4 \
+--inclined_plane_coef_kinetic_friction=0.1 \
+--bodyB_coef_kinetic_friction=0.1 \
+`#Body type: 'sphere', 'block', or 'block_with_4Spheres'` \
+--bodyB_type=block_with_4Spheres
+

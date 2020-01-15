@@ -115,7 +115,7 @@ void AddInclinedPlaneWithBlockToPlant(
             "Sphere" + std::to_string(++i) + "_Geometry";
         const double x = x_sign * LBx / 2;
         const double y = y_sign * LBy / 2;
-        const double z = -radius;
+        const double z = 0.0;
         const Vector3<double> p_BoSpherei_B(x, y, z);
         const RigidTransform<double> X_BSpherei(p_BoSpherei_B);
         plant->RegisterCollisionGeometry(blockB, X_BSpherei,

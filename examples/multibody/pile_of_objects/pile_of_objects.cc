@@ -60,6 +60,7 @@ DEFINE_bool(fixed_step, false, "Use fixed step integration. No error control.");
 
 DEFINE_int32(objects_per_pile, 5, "Number of objects per pile.");
 DEFINE_bool(visualize, true, "Whether to visualize (true) or not (false).");
+DEFINE_int32(num_spheres, 3, "Number of spheres per box direction.");
 
 using drake::math::RigidTransform;
 using drake::math::RigidTransformd;
@@ -105,14 +106,23 @@ const RigidBody<double>& AddBox(const std::string& name,
     const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
     const double radius = LBz / 8;
     int i = 0;
-    for (double x_sign : {-1.0, 0.0, 1.0}) {
-      for (double y_sign : {-1.0, 0.0, 1.0}) {
-        for (double z_sign : {-1.0, 0.0, 1.0}) {
+    std::vector<double> x_range, y_range, z_range;
+    double dx = LBx / (FLAGS_num_spheres-1);
+    double dy = LBy / (FLAGS_num_spheres-1);
+    double dz = LBz / (FLAGS_num_spheres-1);
+    for (int j = 0; j< FLAGS_num_spheres;++j) {
+      x_range.push_back(-LBx/2 + j*dx);
+      y_range.push_back(-LBy/2 + j*dy);
+      z_range.push_back(-LBz/2 + j*dz);
+    }
+    for (double x_sign : x_range) {
+      for (double y_sign : y_range) {
+        for (double z_sign : z_range) {
           const std::string name_spherei =
               name + "_sphere" + std::to_string(++i) + "_collision";
-          const double x = x_sign * LBx / 2;
-          const double y = y_sign * LBy / 2;
-          const double z = z_sign * LBz / 2;
+          const double x = x_sign;
+          const double y = y_sign;
+          const double z = z_sign;
           const Vector3<double> p_BoSpherei_B(x, y, z);
           const RigidTransform<double> X_BSpherei(p_BoSpherei_B);
           plant->RegisterCollisionGeometry(

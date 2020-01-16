@@ -1,4 +1,5 @@
 #include <memory>
+#include <random>
 #include <string>
 
 #include <gflags/gflags.h>
@@ -8,6 +9,7 @@
 #include "drake/geometry/scene_graph.h"
 #include "drake/lcm/drake_lcm.h"
 #include "drake/math/rigid_transform.h"
+#include "drake/math/random_rotation.h"
 #include "drake/math/roll_pitch_yaw.h"
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/benchmarks/inclined_plane/inclined_plane_plant.h"
@@ -52,8 +54,12 @@ DEFINE_double(bodyB_coef_kinetic_friction, 0.3,
               "coefficient of static friction is used in fixed-time step.");
 DEFINE_bool(is_inclined_plane_half_space, true,
             "Is inclined plane a half-space (true) or box (false).");
-DEFINE_string(bodyB_type, "sphere", "Valid body types are "
-              "'sphere', 'block', or 'block_with_4Spheres'");
+DEFINE_bool(only_collision_spheres, false,
+            "Use only point contact with spheres");
+DEFINE_bool(fixed_step, false, "Use fixed step integration. No error control.");
+
+DEFINE_int32(objects_per_pile, 5, "Number of objects per pile.");
+DEFINE_bool(visualize, true, "Whether to visualize (true) or not (false).");
 
 using drake::math::RigidTransform;
 using drake::math::RigidTransformd;
@@ -63,10 +69,15 @@ using Eigen::Translation3d;
 using drake::math::RollPitchYawd;
 using drake::math::RotationMatrixd;
 
+// Parameters 
+const double width(0.8);
+const double length(0.8);
+
 const RigidBody<double>& AddBox(const std::string& name,
                            const Vector3<double>& block_dimensions,
                            double mass, double friction,
                            const Vector4<double>& color,
+                           bool only_sphere_collision,
                            MultibodyPlant<double>* plant) {
   // Ensure the block's dimensions are mass are positive.
   const double LBx = block_dimensions.x();
@@ -90,9 +101,33 @@ const RigidBody<double>& AddBox(const std::string& name,
                                 name + "_visual", color);
 
   // Box's collision geometry is a solid box.
-  plant->RegisterCollisionGeometry(box, X_BG, geometry::Box(LBx, LBy, LBz),
-                                   name + "_collision",
-                                   CoulombFriction<double>(friction, friction));
+  if (only_sphere_collision) {
+    const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
+    const double radius = LBz / 8;
+    int i = 0;
+    for (double x_sign : {-1.0, 0.0, 1.0}) {
+      for (double y_sign : {-1.0, 0.0, 1.0}) {
+        for (double z_sign : {-1.0, 0.0, 1.0}) {
+          const std::string name_spherei =
+              name + "_sphere" + std::to_string(++i) + "_collision";
+          const double x = x_sign * LBx / 2;
+          const double y = y_sign * LBy / 2;
+          const double z = z_sign * LBz / 2;
+          const Vector3<double> p_BoSpherei_B(x, y, z);
+          const RigidTransform<double> X_BSpherei(p_BoSpherei_B);
+          plant->RegisterCollisionGeometry(
+              box, X_BSpherei, geometry::Sphere(radius), name_spherei,
+              CoulombFriction<double>(friction, friction));
+          plant->RegisterVisualGeometry(
+              box, X_BSpherei, geometry::Sphere(radius), name_spherei, red);
+        }  // z
+      }  // y
+    }  // x
+  } else {
+    plant->RegisterCollisionGeometry(
+        box, X_BG, geometry::Box(LBx, LBy, LBz), name + "_collision",
+        CoulombFriction<double>(friction, friction));
+  }
   return box;                                     
 }
 
@@ -100,8 +135,8 @@ void AddSink(MultibodyPlant<double>* plant) {
   DRAKE_THROW_UNLESS(plant != nullptr);
 
   // Parameters for the sink.  
-  const double length = 1.0;
-  const double width = 0.8;  
+  //const double length = 1.0;
+  //const double width = 0.8;  
   const double height = 0.4;
   const double wall_thickness = 0.04;
   const double wall_mass = 1.0; 
@@ -112,7 +147,7 @@ void AddSink(MultibodyPlant<double>* plant) {
                       const RigidTransformd& X_WB) -> const RigidBody<double>& {
     const auto& wall =
         AddBox(name, dimensions, wall_mass,
-               friction_coefficient, light_blue, plant);
+               friction_coefficient, light_blue, false, plant);
     plant->WeldFrames(plant->world_frame(), wall.body_frame(), X_WB);
     return wall;
   };
@@ -121,7 +156,8 @@ void AddSink(MultibodyPlant<double>* plant) {
   const Vector3d side_wall_dimensions(height, width, wall_thickness);
   const Vector3d back_front_wall_dimensions(length, wall_thickness, height);
 
-  add_wall("sink_bottom", bottom_dimensions, RigidTransformd());
+  add_wall("sink_bottom", bottom_dimensions,
+           Translation3d(0, 0, -wall_thickness / 2.0));
   add_wall("sink_right", side_wall_dimensions,
            RigidTransformd(RotationMatrixd::MakeYRotation(M_PI_2),
                            Vector3d(length / 2.0, 0.0, height / 2.0)));
@@ -186,6 +222,77 @@ const RigidBody<double>& AddSphere(const std::string& name, const double radius,
   return ball;                                
 }
 
+std::vector<BodyIndex> AddObjects(MultibodyPlant<double>* plant) {
+  const double radius = 0.05;
+  const double mass = 0.2;
+  const double friction = 0.5;
+  const Vector4<double> orange(1.0, 0.55, 0.0, 1.0);
+  const Vector4<double> purple(204.0/255, 0.0, 204.0/255, 1.0);
+  const Vector4<double> green(0, 153.0/255, 0, 1.0);
+  const Vector4<double> cyan(51/255, 1.0, 1.0, 1.0);
+  const Vector4<double> pink(1.0,204.0/255, 204.0/255, 1.0);
+  std::vector<Vector4<double>> colors;
+  colors.push_back(orange);
+  colors.push_back(purple);
+  colors.push_back(green);
+  colors.push_back(cyan);
+  colors.push_back(pink);
+
+  const int seed = 41;
+  std::mt19937 generator(seed);
+  std::uniform_int_distribution<int> distribution(0,1);
+
+  auto roll_shape = [&]() {
+      return distribution(generator);
+  };
+
+  const int num_objects = FLAGS_objects_per_pile;
+  const int num_bodies = plant->num_bodies();
+
+  std::vector<BodyIndex> bodies;
+  for (int i = 1; i <= num_objects; ++i) {
+    const auto& color = colors[(i - 1) % colors.size()];
+    const std::string name = "object" + std::to_string(i+num_bodies);
+    switch (roll_shape()) {
+      case 0:
+        bodies.push_back(
+            AddSphere(name, radius, mass, friction, color, plant).index());
+        break;
+      case 1:
+        const Vector3d size = 2 * radius * Vector3d::Ones();
+        bodies.push_back(AddBox(name, size, mass, friction, color,
+                                FLAGS_only_collision_spheres, plant)
+                             .index());
+        break;
+    }
+  }
+
+  return bodies;
+}
+
+void SetInitialConditions(const MultibodyPlant<double>& plant,
+                          const Vector3d& offset, 
+                          const std::vector<BodyIndex>& bodies,
+                          systems::Context<double>* plant_context) {
+  const double delta_z = 0.15;  // assume objects have a BB of about 10 cm.
+
+  const int seed = 41;
+  std::mt19937 generator(seed);
+
+  double z = delta_z/2;
+  for (auto body_index : bodies) {
+    const auto& body = plant.get_body(body_index);
+    if (body.is_floating()) {
+      const RotationMatrixd R_WB =
+          math::UniformlyRandomRotationMatrix<double>(&generator);
+      const Vector3d p_WB = offset + Vector3d(0.0, 0.0, z);
+
+      plant.SetFreeBodyPose(plant_context, body, RigidTransformd(R_WB, p_WB));
+      z += delta_z;
+    }
+  }
+}
+
 int do_main() {
   // Build a generic multibody plant.
   systems::DiagramBuilder<double> builder;
@@ -194,12 +301,16 @@ int do_main() {
 
   AddSink(&plant);
 
-  const double radius = 0.05;
-  const double mass = 0.2;
-  const double friction = 0.5;
-  const Vector4<double> orange(1.0, 0.55, 0.0, 1.0);
+  //const double radius = 0.05;
+  //const double mass = 0.2;
+  //const double friction = 0.5;
+  //const Vector4<double> orange(1.0, 0.55, 0.0, 1.0);
 
-  AddSphere("sphere", radius, mass, friction, orange, &plant);
+  //AddSphere("sphere", radius, mass, friction, orange, &plant);
+  auto pile1 = AddObjects(&plant);
+  auto pile2 = AddObjects(&plant);
+  auto pile3 = AddObjects(&plant);
+  auto pile4 = AddObjects(&plant);
 
   plant.Finalize();
   plant.set_penetration_allowance(FLAGS_penetration_allowance);
@@ -214,9 +325,10 @@ int do_main() {
   fmt::print("Num velocities: {:d}\n", plant.num_velocities());
 
   // Publish contact results for visualization.
-  ConnectContactResultsToDrakeVisualizer(&builder, plant);
-
-  geometry::ConnectDrakeVisualizer(&builder, scene_graph);
+  if (FLAGS_visualize) {
+    ConnectContactResultsToDrakeVisualizer(&builder, plant);
+    geometry::ConnectDrakeVisualizer(&builder, scene_graph);
+  }
   auto diagram = builder.Build();
 
   // Create a context for this system:
@@ -230,12 +342,14 @@ int do_main() {
   // such that X_WB is an identity transform and B's spatial velocity is zero.
   plant.SetDefaultContext(&plant_context);
 
-  // Overwrite B's default initial position so it is somewhere above the
-  // inclined plane provided `0 < inclined_plane_angle < 40`.
-  const drake::multibody::Body<double>& bodyB = plant.GetBodyByName("sphere");
-  const Vector3<double> p_WoBo_W(0.0, 0, 0.1);
-  const math::RigidTransform<double> X_WB(p_WoBo_W);
-  plant.SetFreeBodyPoseInWorldFrame(&plant_context, bodyB, X_WB);
+  SetInitialConditions(plant, Vector3d(length / 4, width / 4, 0), pile1,
+                       &plant_context);
+  SetInitialConditions(plant, Vector3d(-length / 4, width / 4, 0), pile2,
+                       &plant_context);
+  SetInitialConditions(plant, Vector3d(-length / 4, -width / 4, 0), pile3,
+                       &plant_context);
+  SetInitialConditions(plant, Vector3d(length / 4, -width / 4, 0), pile4,
+                       &plant_context);
 
   auto simulator =
       MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
@@ -261,6 +375,8 @@ int do_main() {
       throw std::runtime_error("Invalid Jacobian computation scheme");
     }
   }
+  if (integrator.supports_error_estimation())
+    integrator.set_fixed_step_mode(FLAGS_fixed_step);
 
   simulator->AdvanceTo(FLAGS_simulation_time);
 
@@ -275,17 +391,22 @@ int do_main() {
              integrator.get_num_steps_taken());
   fmt::print("Number of derivative evaluations = {:d}\n",
              integrator.get_num_derivative_evaluations());
-  if (!integrator.get_fixed_step_mode()) {
-    fmt::print("\n### ERROR CONTROL STATISTICS ###\n");
-    fmt::print("Initial time step taken = {:10.6g} s\n",
-               integrator.get_actual_initial_step_size_taken());
-    fmt::print("Largest time step taken = {:10.6g} s\n",
-               integrator.get_largest_step_size_taken());
-    fmt::print("Smallest adapted step size = {:10.6g} s\n",
-               integrator.get_smallest_adapted_step_size_taken());
-    fmt::print("Number of steps shrunk due to error control = {:d}\n",
-               integrator.get_num_step_shrinkages_from_error_control());
-  }
+  // if (integrator.supports_error_estimation()) {
+  fmt::print("\n### ERROR CONTROL STATISTICS ###\n");
+  fmt::print("Initial time step taken = {:10.6g} s\n",
+             integrator.get_actual_initial_step_size_taken());
+  fmt::print("Largest time step taken = {:10.6g} s\n",
+             integrator.get_largest_step_size_taken());
+  fmt::print("Smallest adapted step size = {:10.6g} s\n",
+             integrator.get_smallest_adapted_step_size_taken());
+  fmt::print("Number of steps shrunk due to error control = {:d}\n",
+             integrator.get_num_step_shrinkages_from_error_control());
+  fmt::print("Number of step failues = {:d}\n",
+             integrator.get_num_substep_failures());
+  fmt::print("Number of steps shrunk due to step failues = {:d}\n",
+             integrator.get_num_step_shrinkages_from_substep_failures());
+
+  //}
 
   if (implicit_integrator) {
     fmt::print("\n### IMPLICIT INTEGRATION STATISTICS ###\n");

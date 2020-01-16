@@ -60,6 +60,41 @@ using drake::math::RotationMatrixd;
 const double width(0.8);
 const double length(0.8);
 
+#if 0
+void RegisterPlaneOfSpheres(const RigidBody<double>& body,
+                            const RigidTransformd& X_BP, 
+                            double Lx, double Ly, double radius,
+                            int first_sphere_index,
+                            MultibodyPlant<double>* plant) {
+
+  int sphere_index = first_sphere_index;
+  CoulombFriction<double> coulomb_friction(FLAGS_friction_coefficient,
+                                           FLAGS_friction_coefficient);
+  //double dx = Lx / FLAGS_num_spheres / 2.0;
+  //double dy = Ly / FLAGS_num_spheres / 2.0;
+  for (int i = 0; i < FLAGS_num_spheres; ++i) {
+    double x = -Lx / 2.0 + radius + i * 2 * radius;
+
+    for (int j = 0; j < FLAGS_num_spheres; ++j) {      
+      double y = -Ly / 2.0 + radius + j * 2 * radius;
+
+      const std::string name =
+          body.name() + "sphere_collision" + std::to_string(sphere_index);
+
+      const geometry::Sphere shape(radius);
+      RigidTransformd X_PS = Translation3d(x, y, -radius);
+      RigidTransformd X_BS = X_BP * X_PS;
+      plant->RegisterCollisionGeometry(body, X_BS, shape, name,
+                                       coulomb_friction);
+      const Vector4<double> red(1.0, 0.0, 0.0, 1.0);                                       
+      plant->RegisterVisualGeometry(
+              body, X_BS, shape, name, red);                                       
+      ++sphere_index;
+    }
+  }
+}
+#endif
+
 const RigidBody<double>& AddBox(const std::string& name,
                            const Vector3<double>& block_dimensions,
                            double mass, double friction,
@@ -90,16 +125,19 @@ const RigidBody<double>& AddBox(const std::string& name,
   // Box's collision geometry is a solid box.
   if (only_sphere_collision) {
     const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
-    const double radius = LBz / 8;
+    const Vector4<double> red_50(1.0, 0.0, 0.0, 0.5);
+    const double radius_x = LBx / FLAGS_num_spheres / 2.0;
+    const double radius_y = LBy / FLAGS_num_spheres / 2.0;
+    const double radius_z = LBz / FLAGS_num_spheres / 2.0;
     int i = 0;
     std::vector<double> x_range, y_range, z_range;
-    double dx = LBx / (FLAGS_num_spheres-1);
-    double dy = LBy / (FLAGS_num_spheres-1);
-    double dz = LBz / (FLAGS_num_spheres-1);
+    double dx = 2 * radius_x;
+    double dy = 2 * radius_y;
+    double dz = 2 * radius_z;
     for (int j = 0; j< FLAGS_num_spheres;++j) {
-      x_range.push_back(-LBx/2 + j*dx);
-      y_range.push_back(-LBy/2 + j*dy);
-      z_range.push_back(-LBz/2 + j*dz);
+      x_range.push_back(-LBx/2 + radius_x + j*dx);
+      y_range.push_back(-LBy/2 + radius_y + j*dy);
+      z_range.push_back(-LBz/2 + radius_z + j*dz);
     }
     for (double x_sign : x_range) {
       for (double y_sign : y_range) {
@@ -111,11 +149,17 @@ const RigidBody<double>& AddBox(const std::string& name,
           const double z = z_sign;
           const Vector3<double> p_BoSpherei_B(x, y, z);
           const RigidTransform<double> X_BSpherei(p_BoSpherei_B);
+          geometry::Sphere shape(radius_x);
+          // Ellipsoid might not be accurate. From console [warning]:
+          // "Ellipsoid is primarily for ComputeContactSurfaces in hydroelastic
+          // contact model. The accuracy of other collision queries and signed
+          // distance queries are not guaranteed."
+          // geometry::Ellipsoid shape(radius_x, radius_y, radius_z);
           plant->RegisterCollisionGeometry(
-              box, X_BSpherei, geometry::Sphere(radius), name_spherei,
+              box, X_BSpherei, shape, name_spherei,
               CoulombFriction<double>(friction, friction));
           plant->RegisterVisualGeometry(
-              box, X_BSpherei, geometry::Sphere(radius), name_spherei, red);
+              box, X_BSpherei, shape, name_spherei, red);
         }  // z
       }  // y
     }  // x
@@ -245,6 +289,9 @@ std::vector<BodyIndex> AddObjects(MultibodyPlant<double>* plant) {
   const int num_objects = FLAGS_objects_per_pile;
   const int num_bodies = plant->num_bodies();
 
+  //const Vector3d box_size(4*radius, radius/4, radius);
+  const Vector3d box_size = 2 * radius * Vector3d::Ones();
+
   std::vector<BodyIndex> bodies;
   for (int i = 1; i <= num_objects; ++i) {
     const auto& color = colors[(i - 1) % colors.size()];
@@ -254,9 +301,10 @@ std::vector<BodyIndex> AddObjects(MultibodyPlant<double>* plant) {
         bodies.push_back(
             AddSphere(name, radius, mass, friction, color, plant).index());
         break;
-      case 1:
-        const Vector3d size = 2 * radius * Vector3d::Ones();
-        bodies.push_back(AddBox(name, size, mass, friction, color,
+      case 1:        
+        Vector4<double> color50(color);
+        color50.z() = 0.5;
+        bodies.push_back(AddBox(name, box_size, mass, friction, color50,
                                 FLAGS_only_collision_spheres, plant)
                              .index());
         break;

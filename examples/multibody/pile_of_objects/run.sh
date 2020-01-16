@@ -21,6 +21,6 @@ time bazel run pile_of_objects -- \
 --friction_coefficient=0.5 \
 `#Collision geometry type:` \
 --only_collision_spheres=1 \
---num_spheres=5 \
+--num_spheres=3 \
 `#SPDlog: debug, trace, warn,unchanged (default)` \
 --spdlog_level=unchanged

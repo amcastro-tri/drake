@@ -3,7 +3,7 @@
 # Enables spdlog garded with DRAKE_LOGGER_DEBUG() and  DRAKE_LOGGER_TRACE():
 # bazel run --copt -UNDEBUG pile_of_objects
 time bazel run pile_of_objects -- \
---simulation_time=5.0 `#General` \
+--simulation_time=2.0 `#General` \
 --target_realtime_rate=0 \
 --publish_every_time_step=0 \
 --mbp_time_step=0 \
@@ -12,7 +12,7 @@ time bazel run pile_of_objects -- \
 `#Integration: bogacki_shampine3,explicit_euler,implicit_euler,semi_explicit_euler,radau1,radau3,runge_kutta2,runge_kutta3,runge_kutta5` \
 --integration_scheme=implicit_euler \
 --max_time_step=1.e-2 \
---accuracy=1.0e-3 \
+--accuracy=1.0e-2 \
 --jacobian_scheme=forward \
 --fixed_step=0 \
 `#Contact parameters` \

@@ -38,22 +38,8 @@ DEFINE_string(jacobian_scheme, "forward",
 DEFINE_double(penetration_allowance, 1.0E-5, "Allowable penetration (meters).");
 DEFINE_double(stiction_tolerance, 1.0E-5,
               "Allowable drift speed during stiction (m/s).");
-DEFINE_double(inclined_plane_angle_degrees, 15.0,
-              "Inclined plane angle (degrees), i.e., angle from Wx to Ax.");
-DEFINE_double(inclined_plane_coef_static_friction, 0.3,
-              "Inclined plane's coefficient of static friction (no units).");
-DEFINE_double(inclined_plane_coef_kinetic_friction, 0.3,
-              "Inclined plane's coefficient of kinetic friction (no units).  "
-              "When mbp_time_step > 0, this value is ignored.  Only the "
-              "coefficient of static friction is used in fixed-time step.");
-DEFINE_double(bodyB_coef_static_friction, 0.3,
-              "Body B's coefficient of static friction (no units).");
-DEFINE_double(bodyB_coef_kinetic_friction, 0.3,
-              "Body B's coefficient of kinetic friction (no units).  "
-              "When mbp_time_step > 0, this value is ignored.  Only the "
-              "coefficient of static friction is used in fixed-time step.");
-DEFINE_bool(is_inclined_plane_half_space, true,
-            "Is inclined plane a half-space (true) or box (false).");
+DEFINE_double(friction_coefficient, 0.5,
+              "All friction coefficients have this value.");
 DEFINE_bool(only_collision_spheres, false,
             "Use only point contact with spheres");
 DEFINE_bool(fixed_step, false, "Use fixed step integration. No error control.");
@@ -150,7 +136,7 @@ void AddSink(MultibodyPlant<double>* plant) {
   const double height = 0.4;
   const double wall_thickness = 0.04;
   const double wall_mass = 1.0; 
-  const double friction_coefficient = 0.5; 
+  const double friction_coefficient = FLAGS_friction_coefficient; 
   const Vector4<double> light_blue(0.5, 0.8, 1.0, 0.3);
 
   auto add_wall = [&](const std::string& name, const Vector3d& dimensions,
@@ -235,7 +221,7 @@ const RigidBody<double>& AddSphere(const std::string& name, const double radius,
 std::vector<BodyIndex> AddObjects(MultibodyPlant<double>* plant) {
   const double radius = 0.05;
   const double mass = 0.2;
-  const double friction = 0.5;
+  const double friction = FLAGS_friction_coefficient;
   const Vector4<double> orange(1.0, 0.55, 0.0, 1.0);
   const Vector4<double> purple(204.0/255, 0.0, 204.0/255, 1.0);
   const Vector4<double> green(0, 153.0/255, 0, 1.0);
@@ -280,7 +266,7 @@ std::vector<BodyIndex> AddObjects(MultibodyPlant<double>* plant) {
   return bodies;
 }
 
-void SetInitialConditions(const MultibodyPlant<double>& plant,
+void SetObjectsIntoAPile(const MultibodyPlant<double>& plant,
                           const Vector3d& offset, 
                           const std::vector<BodyIndex>& bodies,
                           systems::Context<double>* plant_context) {
@@ -318,9 +304,9 @@ int do_main() {
 
   //AddSphere("sphere", radius, mass, friction, orange, &plant);
   auto pile1 = AddObjects(&plant);
-  auto pile2 = AddObjects(&plant);
-  auto pile3 = AddObjects(&plant);
-  auto pile4 = AddObjects(&plant);
+  //auto pile2 = AddObjects(&plant);
+  //auto pile3 = AddObjects(&plant);
+  //auto pile4 = AddObjects(&plant);
 
   plant.Finalize();
   plant.set_penetration_allowance(FLAGS_penetration_allowance);
@@ -352,14 +338,15 @@ int do_main() {
   // such that X_WB is an identity transform and B's spatial velocity is zero.
   plant.SetDefaultContext(&plant_context);
 
-  SetInitialConditions(plant, Vector3d(length / 4, width / 4, 0), pile1,
+  SetObjectsIntoAPile(plant, Vector3d(length / 4, width / 4, 0), pile1,
                        &plant_context);
-  SetInitialConditions(plant, Vector3d(-length / 4, width / 4, 0), pile2,
+                       /*
+  SetObjectsIntoAPile(plant, Vector3d(-length / 4, width / 4, 0), pile2,
                        &plant_context);
-  SetInitialConditions(plant, Vector3d(-length / 4, -width / 4, 0), pile3,
+  SetObjectsIntoAPile(plant, Vector3d(-length / 4, -width / 4, 0), pile3,
                        &plant_context);
-  SetInitialConditions(plant, Vector3d(length / 4, -width / 4, 0), pile4,
-                       &plant_context);
+  SetObjectsIntoAPile(plant, Vector3d(length / 4, -width / 4, 0), pile4,
+                       &plant_context);*/
 
   auto simulator =
       MakeSimulatorFromGflags(*diagram, std::move(diagram_context));

@@ -10,7 +10,7 @@ time bazel run pile_of_objects -- \
 --objects_per_pile=3 \
 --visualize=1 \
 `#Integration: bogacki_shampine3,explicit_euler,implicit_euler,semi_explicit_euler,radau1,radau3,runge_kutta2,runge_kutta3,runge_kutta5` \
---integration_scheme=bogacki_shampine3 \
+--integration_scheme=implicit_euler \
 --max_time_step=1.e-2 \
 --accuracy=1.0e-3 \
 --jacobian_scheme=forward \
@@ -18,8 +18,7 @@ time bazel run pile_of_objects -- \
 `#Contact parameters` \
 --penetration_allowance=1e-3 \
 --stiction_tolerance=5e-4 \
---inclined_plane_coef_kinetic_friction=0.1 \
---bodyB_coef_kinetic_friction=0.1 \
+--friction_coefficient=0.5 \
 `#Collision geometry type:` \
 --only_collision_spheres=1 \
 --num_spheres=5 \

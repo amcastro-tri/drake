@@ -1,6 +1,8 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <chrono>
+#include <utility>
 
 #include <gflags/gflags.h>
 
@@ -18,6 +20,25 @@
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/framework/diagram_builder.h"
+
+class Timer {
+  public:
+    Timer() {
+      start();
+    }
+
+    void start() {
+      start_ = clock::now();
+    }
+
+    double end() {
+      const clock::time_point end = clock::now();
+      return std::chrono::duration<double>(end - start_).count();
+    }
+  private:
+    using clock = std::chrono::steady_clock;
+    clock::time_point start_;
+};
 
 namespace drake {
 namespace multibody {
@@ -423,7 +444,11 @@ int do_main() {
   if (integrator.supports_error_estimation())
     integrator.set_fixed_step_mode(FLAGS_fixed_step);
 
+  Timer timer;
   simulator->AdvanceTo(FLAGS_simulation_time);
+  const double sim_time = timer.end();
+
+  fmt::print("Simulation run in {:10.6g} seconds.\n", sim_time);
 
   if (plant.is_discrete()) {
     fmt::print("Used time stepping with dt={}\n", plant.time_step());
@@ -471,6 +496,26 @@ int do_main() {
         implicit_integrator
             ->get_num_error_estimator_derivative_evaluations_for_jacobian());
   }
+
+  fmt::print("Integrator time[s] #steps #xdot_evals #shrunk_by_errc #shrunk_by_fails");
+  if (implicit_integrator) {
+    fmt::print(" #error_est_xdot_evals #jac_evals #matrx_facts");
+  }
+  fmt::print("\n");
+  fmt::print("{} ", FLAGS_integration_scheme);
+  fmt::print("{:10.6g} ", sim_time);
+  fmt::print("{:d} ", integrator.get_num_steps_taken());
+  fmt::print("{:d} ", integrator.get_num_derivative_evaluations());
+  fmt::print("{:d} ", integrator.get_num_step_shrinkages_from_error_control());
+  fmt::print("{:d} ", integrator.get_num_step_shrinkages_from_substep_failures());
+  if (implicit_integrator) {
+    fmt::print(
+        "{:d} ",
+        implicit_integrator->get_num_error_estimator_derivative_evaluations());
+    fmt::print("{:d} ", implicit_integrator->get_num_jacobian_evaluations());
+    fmt::print("{:d} ", implicit_integrator->get_num_iteration_matrix_factorizations());
+  }
+  fmt::print("\n");
 
   return 0;
 }

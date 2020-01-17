@@ -498,9 +498,9 @@ int do_main() {
   }
 
   fmt::print("Integrator time[s] #steps #xdot_evals #shrunk_by_errc #shrunk_by_fails");
-  if (implicit_integrator) {
-    fmt::print(" #error_est_xdot_evals #jac_evals #matrx_facts");
-  }
+  //if (implicit_integrator) {
+  fmt::print(" #error_est_xdot_evals #jac_evals #matrx_facts");
+  //}
   fmt::print("\n");
   fmt::print("{} ", FLAGS_integration_scheme);
   fmt::print("{:10.6g} ", sim_time);
@@ -514,6 +514,8 @@ int do_main() {
         implicit_integrator->get_num_error_estimator_derivative_evaluations());
     fmt::print("{:d} ", implicit_integrator->get_num_jacobian_evaluations());
     fmt::print("{:d} ", implicit_integrator->get_num_iteration_matrix_factorizations());
+  } else {
+    fmt::print("-1 -1 -1 ");
   }
   fmt::print("\n");
 

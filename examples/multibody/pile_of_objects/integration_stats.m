@@ -21,7 +21,7 @@ data_rk3=[  7.5202  31789  113997  6210 0 -1 -1 -1]; %checked
 data_1em3 = [data_ie; data_r1; data_r3; data_bs3; data_rk3];
 
 %acc = 1e-4;
-data_ie = [ 62.5652  81869  895880  1018 217 531247 321 1172];
+data_ie = [ 62.5652  81869  895880  1018 217 531247 321 1172]; %checked
 data_r1 = [ 19.0904  27202  264912  1018 204 115846 306 1144]; %checked
 data_r3 = [314.7210 378183 4742418  1435 387 2024807 501 1769];
 data_bs3= [ 17.8543  45344  312712 32834 0 -1 -1 -1];
@@ -30,11 +30,18 @@ data_rk3= [  8.37787 36635  127908  6001 0 -1 -1 -1]; %checked
 data_1em4 = [data_ie; data_r1; data_r3; data_bs3; data_rk3];
 
 %acc = 1e-5;
-data_ie = [61.6190 81869 895880 1018 217 531247 321 1172];
-%data_r1 = [17.8735 27202 264912 1018 204 115846 306 1144];
-data_r3 = -ones(size(data_ie));
+data_ie = [104.501 191830 1578320 1259 70 735508 179 668]; %checked
+data_r1 = [115.304 213096 1725658 1178 74 794712 184 674]; %checked
+%data_r3 = -ones(size(data_ie));
 data_bs3= [17.9501 45344 312712 32834 0 -1 -1 -1];
 data_rk3= [8.63026 38876 134169 5847 0 -1 -1 -1]; %checked
+
+data_1em5 = [data_ie; data_r1; data_bs3; data_rk3];
+
+data_all = [data_1em2; data_1em3; data_1em4; data_1em5];
+
+data_ie = [data_1em2(1,:); data_1em3(1,:); data_1em4(1,:); data_1em5(1,:)];
+data_r1 = [data_1em2(2,:); data_1em3(2,:); data_1em4(2,:); data_1em5(2,:)];
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -51,5 +58,22 @@ data_rk3=[36.4181 234050 921912 73254 0 -1 -1 -1];
 %data_rk3=[]; % about 3 mins real for 1.1 secs sim time.
 
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% SOME CONCLUSIONS
+% Implicit integrator that performs best: Radau1
+% Explicit integrator that performs best: RK3
+
+% Quotient (wall clock time)/(#xdot_evals) approximately constant.
+% Therefore #xdot_evals is a good metric of workload.
+% See with: plot(data_all(:,3)./data_all(:,1))
+
+% Interestingly these two curves seem to match:
+%plot([1e-2 1e-3 1e-4],data_ie(:,1)./data_r1(:,1),'-o',[1e-2 1e-3 1e-4],data_ie(:,6)./data_r1(:,6),'-o')
+
+% That is time_euler/time_radau approximates (evals for error est,
+% Euler)/(evals for error estimation, Radau).
+% That is, Euler's bad performance seems to be spent on error estimation.
+% See: semilogx([1e-2 1e-3 1e-4 1e-5],data_ie(:,1)./data_r1(:,1),'-o',[1e-2 1e-3 1e-4 1e-5],data_ie(:,6)./data_r1(:,6),'-o')
 
 

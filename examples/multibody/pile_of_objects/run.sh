@@ -12,7 +12,7 @@ time bazel run pile_of_objects -- \
 `#Integration: bogacki_shampine3,explicit_euler,implicit_euler,semi_explicit_euler,radau1,radau3,runge_kutta2,runge_kutta3,runge_kutta5` \
 --integration_scheme=implicit_euler \
 --max_time_step=1.e-2 \
---accuracy=1.0e-2 \
+--accuracy=1.0e-5 \
 --jacobian_scheme=forward \
 --fixed_step=0 \
 `#Contact parameters` \

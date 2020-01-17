@@ -1675,6 +1675,9 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
     const VectorX<T>& v0, const VectorX<T>& phi0) const {
 
   const double dt = time_step_;  // just a shorter alias.
+  // TODO(amcastro-tri): Change the strategy here to update the time step
+  // according to dt[k+1] = dt[k] * alpha, with alpha in (0, 1], most likely
+  // alpha = 0.5.
   const double dt_substep = dt / num_substeps;
   VectorX<T> v0_substep = v0;
   VectorX<T> phi0_substep = phi0;

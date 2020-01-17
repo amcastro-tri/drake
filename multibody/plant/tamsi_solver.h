@@ -1071,7 +1071,7 @@ class TamsiSolver {
       const Eigen::Ref<const MatrixX<T>>& Jn,
       double dt,
       EigenPtr<VectorX<T>> fn,
-      EigenPtr<MatrixX<T>> Gn) const;
+      EigenPtr<MatrixX<T>> Gn = nullptr) const;
 
   // Helper to compute fₜ(vₜ) = −vₜ/‖vₜ‖ₛ μ(‖vₜ‖ₛ) fₙ, where ‖vₜ‖ₛ
   // is the "soft norm" of vₜ. In addition this method computes
@@ -1108,6 +1108,9 @@ class TamsiSolver {
       const Eigen::Ref<const VectorX<T>>& t_hat,
       const Eigen::Ref<const VectorX<T>>& mu_vt, double dt,
       EigenPtr<MatrixX<T>> J) const;
+
+  //MatrixX<T> CalcJacobian(const Eigen::Ref<const VectorX<T>>& v,
+    //                      double dt) const;
 
   // Limit the per-iteration angle change between vₜᵏ⁺¹ and vₜᵏ for
   // all contact points. The angle change θ is defined by the dot product

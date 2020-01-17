@@ -6,7 +6,9 @@
 #include <utility>
 #include <vector>
 
+#include "drake/common/unused.h"
 #include "drake/common/extract_double.h"
+#include "drake/math/compute_numerical_gradient.h"
 
 namespace drake {
 namespace multibody {
@@ -495,6 +497,7 @@ void TamsiSolver<T>::CalcNormalForces(
     H_k_vn(ic) = k_vn > 0 ? 1.0 : 0.0;
   }
 
+  if (Gn_ptr) {
   // ∇ᵥxˢ⁺¹₊ = −δt diag(H(xˢ⁺¹)) Jₙ, with xˢ⁺¹ = xˢ − δt vₙˢ⁺¹.
   // of size nc x nv.
   MatrixX<T> nabla_x_capped = -dt * H_x.asDiagonal() * Jn;
@@ -507,13 +510,68 @@ void TamsiSolver<T>::CalcNormalForces(
 
   auto& Gn = *Gn_ptr;
 
-  // fₙ = k(vₙ)₊ x₊
-  // Gn = ∇ᵥfₙ(xˢ⁺¹, vₙˢ⁺¹) =
-  //        diag(x₊) ∇ᵥk(vₙˢ⁺¹)₊ + diag(k(vₙ)₊) ∇ᵥxˢ⁺¹₊
-  // Gn is of size nc x nv.
-  Gn = x_capped.asDiagonal() * nabla_k_vn_capped +
-      k_vn_capped.asDiagonal() * nabla_x_capped;
+    // fₙ = k(vₙ)₊ x₊
+    // Gn = ∇ᵥfₙ(xˢ⁺¹, vₙˢ⁺¹) =
+    //        diag(x₊) ∇ᵥk(vₙˢ⁺¹)₊ + diag(k(vₙ)₊) ∇ᵥxˢ⁺¹₊
+    // Gn is of size nc x nv.
+    Gn = x_capped.asDiagonal() * nabla_k_vn_capped +
+         k_vn_capped.asDiagonal() * nabla_x_capped;
+  }
 }
+
+#if 0
+// Only supported for T = double.
+template <typename T>
+MatrixX<T> TamsiSolver<T>::CalcJacobian(const Eigen::Ref<const VectorX<T>>& v,
+                                        double dt) const {
+  if constexpr (std::is_same<T, double>::value) {
+    // Define r(vkk) = calc_residual(vk):
+    std::function<void(const VectorX<T>&, VectorX<T>*)> calc_residual =
+        [this, dt](const VectorX<T>& vk, VectorX<T>* res) {
+          // Convenient aliases to problem data.
+          const auto M = problem_data_aliases_.M();
+          const auto Jn = problem_data_aliases_.Jn();
+          const auto Jt = problem_data_aliases_.Jt();
+          const auto p_star = problem_data_aliases_.p_star();
+
+          // Convenient aliases to variable size workspace variables.
+          // Note: auto resolve to Eigen::Block (no copies).
+          auto vn = variable_size_workspace_.mutable_vn();
+          auto vt = variable_size_workspace_.mutable_vt();
+          auto ft = variable_size_workspace_.mutable_ft();
+          auto mu_vt = variable_size_workspace_.mutable_mu();
+          auto t_hat = variable_size_workspace_.mutable_t_hat();
+          auto fn = variable_size_workspace_.mutable_fn();
+          auto x = variable_size_workspace_.mutable_x();
+          auto v_slip = variable_size_workspace_.mutable_v_slip();
+
+          // Update normal and tangential velocities.
+          vn = Jn * vk;
+          vt = Jt * vk;
+
+          if (has_two_way_coupling()) {
+            // Update the penetration for the two-way coupling scheme.
+            const auto& x0 = problem_data_aliases_.x0();
+            x = x0 - dt * vn;
+          }
+
+          CalcNormalForces(x, vn, Jn, dt, &fn);
+
+          // Update v_slip, t_hat, mus and ft as a function of vt and fn.
+          CalcFrictionForces(vt, fn, &v_slip, &t_hat, &mu_vt, &ft);
+
+          // Newton-Raphson residual.
+          *res = M * vk - p_star - dt * Jn.transpose() * fn -
+                 dt * Jt.transpose() * ft;
+        };
+    // Compute the gradient of r(v) using numerical differentiation.
+    return math::ComputeNumericalGradient(calc_residual, v);
+  } else {
+    unused(v, dt);
+    throw std::runtime_error("Scalar type not supported.");
+  }
+}
+#endif
 
 template <typename T>
 void TamsiSolver<T>::CalcJacobian(
@@ -655,8 +713,8 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   auto ft = variable_size_workspace_.mutable_ft();
   auto Delta_vn = variable_size_workspace_.mutable_Delta_vn();
   auto Delta_vt = variable_size_workspace_.mutable_Delta_vt();
-  auto& dft_dvt = variable_size_workspace_.mutable_dft_dvt();
-  auto Gn = variable_size_workspace_.mutable_Gn();
+  //auto& dft_dvt = variable_size_workspace_.mutable_dft_dvt();
+  //auto Gn = variable_size_workspace_.mutable_Gn();
   auto mu_vt = variable_size_workspace_.mutable_mu();
   auto t_hat = variable_size_workspace_.mutable_t_hat();
   auto fn = variable_size_workspace_.mutable_fn();
@@ -671,22 +729,34 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   // Initialize iteration with the guess provided.
   v = v_guess;
 
+  std::function<void(const VectorX<T>&, VectorX<T>*)> calc_residual =
+      [&M, &p_star, &Jn, &Jt, &vn, &vt, &x, &fn, &ft, &v_slip, &t_hat, &mu_vt,
+       this, dt](const VectorX<T>& vk, VectorX<T>* res) {
+        // Update normal and tangential velocities.
+        vn = Jn * vk;
+        vt = Jt * vk;
+
+        if (has_two_way_coupling()) {
+          // Update the penetration for the two-way coupling scheme.
+          const auto& x0 = problem_data_aliases_.x0();
+          x = x0 - dt * vn;
+        }
+
+        CalcNormalForces(x, vn, Jn, dt, &fn);
+
+        // Update v_slip, t_hat, mus and ft as a function of vt and fn.
+        CalcFrictionForces(vt, fn, &v_slip, &t_hat, &mu_vt, &ft);
+
+        // Newton-Raphson residual.
+        *res = M * vk - p_star - dt * Jn.transpose() * fn -
+               dt * Jt.transpose() * ft;
+      };
+
   for (int iter = 0; iter < max_iterations; ++iter) {
-    // Update normal and tangential velocities.
-    vn = Jn * v;
-    vt = Jt * v;
 
-    if (has_two_way_coupling()) {
-      // Update the penetration for the two-way coupling scheme.
-      const auto& x0 = problem_data_aliases_.x0();
-      x = x0 - dt * vn;
-    }
-
-    CalcNormalForces(x, vn, Jn, dt, &fn, &Gn);
-
-
-    // Update v_slip, t_hat, mus and ft as a function of vt and fn.
-    CalcFrictionForces(vt, fn, &v_slip, &t_hat, &mu_vt, &ft);
+    // In addition to computing the residual r(v), this lambda is also updating,
+    // through the captured variables;  fn, ft, v_slip, t_hat, mu_vt
+    calc_residual(v, &residual);
 
     // After the previous iteration, we allow updating ft above to have its
     // latest value before leaving.
@@ -698,16 +768,11 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
       return TamsiSolverResult::kSuccess;
     }
 
-    // Newton-Raphson residual.
-    residual =
-        M * v - p_star - dt * Jn.transpose() * fn - dt * Jt.transpose() * ft;
-
-    // Compute gradient dft_dvt = ∇ᵥₜfₜ(vₜ) as a function of fn, mus,
-    // t_hat and v_slip.
-    CalcFrictionForcesGradient(fn, mu_vt, t_hat, v_slip, &dft_dvt);
-
-    // Newton-Raphson Jacobian, J = ∇ᵥR, as a function of M, dft_dvt, Jt, dt.
-    CalcJacobian(M, Jn, Jt, Gn, dft_dvt, t_hat, mu_vt, dt, &J);
+    // TODO(amcastro-tri): Notice that for forward differences, the default,
+    // method could use the already computed value of the residual r(vk).
+    // Forward differences essentially does J = (r(vk+eps)-r(vk))/eps
+    J = math::ComputeNumericalGradient(calc_residual, v);
+    //J = CalcJacobian(v, dt);
 
     // TODO(amcastro-tri): Consider using a cheap iterative solver like CG.
     // Since we are in a non-linear iteration, an approximate cheap solution

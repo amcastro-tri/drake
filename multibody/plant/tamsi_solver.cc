@@ -279,11 +279,11 @@ void TamsiSolver<T>::SetOneWayCoupledProblemData(
 template <typename T>
 void TamsiSolver<T>::SetTwoWayCoupledProblemData(
     EigenPtr<const MatrixX<T>> M, EigenPtr<const MatrixX<T>> Jn,
-    EigenPtr<const MatrixX<T>> Jt, EigenPtr<const VectorX<T>> p_star,
+    EigenPtr<const MatrixX<T>> Jt, 
+    EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> tau,
     EigenPtr<const VectorX<T>> x0, EigenPtr<const VectorX<T>> stiffness,
     EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
   nc_ = x0->size();
-  DRAKE_THROW_UNLESS(p_star->size() == nv_);
   DRAKE_THROW_UNLESS(M->rows() == nv_ && M->cols() == nv_);
   DRAKE_THROW_UNLESS(Jn->rows() == nc_ && Jn->cols() == nv_);
   DRAKE_THROW_UNLESS(Jt->rows() == 2 * nc_ && Jt->cols() == nv_);
@@ -291,7 +291,7 @@ void TamsiSolver<T>::SetTwoWayCoupledProblemData(
   DRAKE_THROW_UNLESS(stiffness->size() == nc_);
   DRAKE_THROW_UNLESS(dissipation->size() == nc_);
   // Keep references to the problem data.
-  problem_data_aliases_.SetTwoWayCoupledData(M, Jn, Jt, p_star, x0, stiffness,
+  problem_data_aliases_.SetTwoWayCoupledData(M, Jn, Jt, v0, tau, x0, stiffness,
                                              dissipation, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
 }
@@ -673,8 +673,10 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
     fixed_size_workspace_.mutable_tau_f().setZero();
     fixed_size_workspace_.mutable_tau().setZero();
     const auto M = problem_data_aliases_.M();
-    const auto p_star = problem_data_aliases_.p_star();
+    const auto v0 = problem_data_aliases_.v0();
+    const auto tau_exp = problem_data_aliases_.tau_exp();
     auto& v = fixed_size_workspace_.mutable_v();
+    const VectorX<T> p_star = v0 + dt * tau_exp;
     // With no friction forces Eq. (3) in the documentation reduces to
     // M vˢ⁺¹ = p*.
     v = M.ldlt().solve(p_star);
@@ -696,7 +698,8 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   const auto M = problem_data_aliases_.M();
   const auto Jn = problem_data_aliases_.Jn();
   const auto Jt = problem_data_aliases_.Jt();
-  const auto p_star = problem_data_aliases_.p_star();
+  const auto v0 = problem_data_aliases_.v0();
+  const auto tau_exp = problem_data_aliases_.tau_exp();
 
   // Convenient aliases to fixed size workspace variables.
   auto& v = fixed_size_workspace_.mutable_v();
@@ -729,8 +732,11 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   // Initialize iteration with the guess provided.
   v = v_guess;
 
+  // TODO: Make this a member calc_residual_ that gets created at construction.
+  // Then add a new constructor that allows passing a lambda to provide the
+  // calc_residual_(). Then MBP would create that lambda to use O(n) FD.
   std::function<void(const VectorX<T>&, VectorX<T>*)> calc_residual =
-      [&M, &p_star, &Jn, &Jt, &vn, &vt, &x, &fn, &ft, &v_slip, &t_hat, &mu_vt,
+      [&M, &v0, &tau_exp, &Jn, &Jt, &vn, &vt, &x, &fn, &ft, &v_slip, &t_hat, &mu_vt,
        this, dt](const VectorX<T>& vk, VectorX<T>* res) {
         // Update normal and tangential velocities.
         vn = Jn * vk;
@@ -748,7 +754,7 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
         CalcFrictionForces(vt, fn, &v_slip, &t_hat, &mu_vt, &ft);
 
         // Newton-Raphson residual.
-        *res = M * vk - p_star - dt * Jn.transpose() * fn -
+        *res = M * vk - M * v0 - tau_exp - dt * Jn.transpose() * fn -
                dt * Jt.transpose() * ft;
       };
 

@@ -605,7 +605,8 @@ class TamsiSolver {
   // the signed distance function (instead of the signed penetration distance).
   void SetTwoWayCoupledProblemData(
       EigenPtr<const MatrixX<T>> M, EigenPtr<const MatrixX<T>> Jn,
-      EigenPtr<const MatrixX<T>> Jt, EigenPtr<const VectorX<T>> p_star,
+      EigenPtr<const MatrixX<T>> Jt,
+      EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> tau,
       EigenPtr<const VectorX<T>> x0, EigenPtr<const VectorX<T>> stiffness,
       EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu);
 
@@ -747,14 +748,13 @@ class TamsiSolver {
     void SetTwoWayCoupledData(
         EigenPtr<const MatrixX<T>> M,
         EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
-        EigenPtr<const VectorX<T>> p_star,
+        EigenPtr<const VectorX<T>> v0,EigenPtr<const VectorX<T>> tau,
         EigenPtr<const VectorX<T>> x0,
         EigenPtr<const VectorX<T>> stiffness,
         EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
       DRAKE_DEMAND(M != nullptr);
       DRAKE_DEMAND(Jn != nullptr);
       DRAKE_DEMAND(Jt != nullptr);
-      DRAKE_DEMAND(p_star != nullptr);
       DRAKE_DEMAND(x0 != nullptr);
       DRAKE_DEMAND(stiffness != nullptr);
       DRAKE_DEMAND(dissipation != nullptr);
@@ -765,7 +765,8 @@ class TamsiSolver {
       M_ptr_ = M;
       Jn_ptr_ = Jn;
       Jt_ptr_ = Jt;
-      p_star_ptr_ = p_star;
+      v0_ptr_ = v0;
+      tau_exp_ptr_ = tau;
       x0_ptr_ = x0;
       stiffness_ptr_ = stiffness;
       dissipation_ptr_ = dissipation;
@@ -782,6 +783,9 @@ class TamsiSolver {
     Eigen::Ref<const MatrixX<T>> Jn() const { return *Jn_ptr_; }
     Eigen::Ref<const MatrixX<T>> Jt() const { return *Jt_ptr_; }
     Eigen::Ref<const VectorX<T>> p_star() const { return *p_star_ptr_; }
+    Eigen::Ref<const VectorX<T>> v0() const { return *v0_ptr_; }
+    // Explicit terms of the generalized forces.
+    Eigen::Ref<const VectorX<T>> tau_exp() const { return *tau_exp_ptr_; }
 
     // For the one-way coupled scheme, it returns a constant reference to the
     // data for the normal forces. It aborts if called on data for the two-way
@@ -834,6 +838,8 @@ class TamsiSolver {
     EigenPtr<const MatrixX<T>> Jt_ptr_{nullptr};
     // The generalized momentum vector **before** contact is applied.
     EigenPtr<const VectorX<T>> p_star_ptr_{nullptr};
+    EigenPtr<const VectorX<T>> v0_ptr_{nullptr};
+    EigenPtr<const VectorX<T>> tau_exp_ptr_{nullptr};
     // Normal force at each contact point. fn_ptr_ is nullptr for two-way
     // coupled problems.
     EigenPtr<const VectorX<T>> fn_ptr_{nullptr};

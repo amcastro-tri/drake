@@ -1690,12 +1690,13 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
     // Discrete update before applying friction forces.
     // We denote this state x* = [q*, v*], the "star" state.
     // Generalized momentum "star", before contact forces are applied.
-    VectorX<T> p_star_substep = M0 * v0_substep - dt_substep * minus_tau;
+    //VectorX<T> p_star_substep = M0 * v0_substep - dt_substep * minus_tau;
+    VectorX<T> tau = -minus_tau;
 
     // Update the data.
     tamsi_solver_->SetTwoWayCoupledProblemData(
         &M0, &Jn, &Jt,
-        &p_star_substep, &phi0_substep,
+        &v0_substep, &tau, &phi0_substep,
         &stiffness, &damping, &mu);
 
     info = tamsi_solver_->SolveWithGuess(dt_substep,

@@ -77,3 +77,31 @@ data_rk3=[36.4181 234050 921912 73254 0 -1 -1 -1];
 % See: semilogx([1e-2 1e-3 1e-4 1e-5],data_ie(:,1)./data_r1(:,1),'-o',[1e-2 1e-3 1e-4 1e-5],data_ie(:,6)./data_r1(:,6),'-o')
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% FOR TAMSI
+
+% With ComputeNumericalGradient(), d3b35187e.
+% dt = 2e-3, 2 seconds of sim.
+data = [...
+     5 0.5;
+    10 2.0;
+    20 15.3];
+
+% dt = 2e-4, 2 seconds of sim.
+data = [...
+     5 3.75;
+    10 14.0;
+    20 92.0];
+
+% With hand crafted Jacobian, 539d022c4
+% dt = 2e-4, 2 seconds of sim.
+data = [...
+     5 2.9;
+    10 9.5;
+    20 51.0
+    30 139.0];
+
+
+
+
+

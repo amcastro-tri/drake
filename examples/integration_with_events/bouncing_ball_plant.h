@@ -9,6 +9,10 @@
 #include "drake/geometry/scene_graph.h"
 #include "drake/systems/framework/leaf_system.h"
 
+#include <iostream>
+//#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VAR(a) (void) a;
+
 namespace drake {
 namespace examples {
 namespace scene_graph {
@@ -38,7 +42,7 @@ class BouncingBallPlant : public systems::LeafSystem<T> {
    */
   BouncingBallPlant(geometry::SourceId source_id,
                     geometry::SceneGraph<T>* scene_graph,
-                    const Vector2<double>& p_WB);
+                    const Vector2<double>& p_WB, bool with_normal_event);
   ~BouncingBallPlant() override;
 
   int num_positions() const { return 1; }
@@ -105,16 +109,49 @@ class BouncingBallPlant : public systems::LeafSystem<T> {
       systems::ContinuousState<T>* derivatives) const override;
 
   void DoCalcNextUpdateTime(const systems::Context<T>& context,
-                            systems::CompositeEventCollection<T>*,
-                            T* time) const override {
-    using std::abs;                              
+                            systems::CompositeEventCollection<T>* events_collection,
+                            T* time) const override {                              
+    using std::abs;                             
+    using std::sqrt; 
+
+    PRINT_VAR(context.get_time());
+
+    if (!with_normal_event_) {      
+      *time = std::numeric_limits<double>::infinity();
+      return;
+    }
+
     const double radius = diameter_ / 2.0;
     const T phi = get_z(context) - radius;  // signed distance.                              
     const T phidot = get_zdot(context);
 
+    PRINT_VAR(phi);
+    PRINT_VAR(phidot);
+
     if (phi > 0.0 && phidot < 0.0) {
-      const T approximate_time_to_collision = phi / abs(phidot);
+      const T max_penetration = sqrt(m_/k_) * abs(phidot);
+
+      PRINT_VAR(max_penetration);
+
+      // Approximate time to when penetration is max_penetration/2.
+      const T approximate_time_to_collision =
+          (phi + max_penetration / 2.0) / abs(phidot);
+
+      PRINT_VAR(approximate_time_to_collision);
+
       *time = approximate_time_to_collision + context.get_time();
+
+#if 0
+      // no-op callback
+      systems::PublishEvent<double>::PublishCallback callback =
+          [](const Context<double>&, const PublishEvent<double>&) {};
+      events_collection->get_mutable_publish_events().add_event(
+          std::make_unique<systems::PublishEvent<double>>(
+              systems::TriggerType::kTimed, callback));
+#endif
+      systems::PublishEvent<T> event(systems::TriggerType::kTimed);
+      event.AddToComposite(events_collection);
+
     } else {
       *time = std::numeric_limits<double>::infinity();
     }
@@ -138,9 +175,11 @@ class BouncingBallPlant : public systems::LeafSystem<T> {
   // Stiffness constant [N/m]. Calculated so that under its own weight the ball
   // penetrates the plane by 1 mm when the contact force and gravitational
   // force are in equilibrium.
-  const double k_{m_ * g_ / 0.001};
+  const double k_{m_ * g_ / 0.000001};
   // Hunt-Crossley's dissipation factor.
   const double d_{0.0};  // s/m
+
+  const bool with_normal_event_{false};
 };
 
 }  // namespace bouncing_ball

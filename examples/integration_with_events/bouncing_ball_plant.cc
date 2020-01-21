@@ -36,8 +36,9 @@ using systems::BasicVector;
 template <typename T>
 BouncingBallPlant<T>::BouncingBallPlant(SourceId source_id,
                                         SceneGraph<T>* scene_graph,
-                                        const Vector2<double>& p_WB)
-    : p_WB_(p_WB) {
+                                        const Vector2<double>& p_WB,
+                                        bool with_normal_event)
+    : p_WB_(p_WB), with_normal_event_(with_normal_event) {
   DRAKE_DEMAND(scene_graph != nullptr);
   DRAKE_DEMAND(source_id.is_valid());
 

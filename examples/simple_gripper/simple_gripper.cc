@@ -1,5 +1,6 @@
 #include <memory>
 #include <string>
+#include <chrono>
 
 #include <gflags/gflags.h>
 #include "fmt/ostream.h"
@@ -69,9 +70,7 @@ DEFINE_double(v_stiction_tolerance, 1.0e-2,
 DEFINE_int32(ring_samples, 8,
              "The number of spheres used to sample the pad ring");
 DEFINE_double(ring_orient, 0, "Rotation of the pads around x-axis. [degrees]");
-DEFINE_double(ring_static_friction, 1.0, "The coefficient of static friction "
-              "for the ring pad.");
-DEFINE_double(ring_dynamic_friction, 0.5, "The coefficient of dynamic friction "
+DEFINE_double(ring_friction, 1.0, "The coefficient of static friction "
               "for the ring pad.");
 
 // Parameters for rotating the mug.
@@ -93,9 +92,37 @@ DEFINE_double(amplitude, 0.15, "The amplitude of the harmonic oscillations "
 DEFINE_double(frequency, 2.0, "The frequency of the harmonic oscillations "
               "carried out by the gripper. [Hz].");
 
+DEFINE_string(jacobian_scheme, "forward",
+              "Valid Jacobian computation schemes are: "
+              "'forward', 'central', or 'automatic'");
+DEFINE_bool(fixed_step, false, "Use fixed step integration. No error control.");
+//DEFINE_bool(with_normal_event, true, "There is event for zero distance.");
+DEFINE_bool(with_viz, true, "Send viz messages.");
+DEFINE_bool(full_newton, false, "Integrator uses full Newton-Raphson.");              
+
 // The pad was measured as a torus with the following major and minor radii.
 const double kPadMajorRadius = 14e-3;  // 14 mm.
 const double kPadMinorRadius = 6e-3;   // 6 mm.
+
+
+class Timer {
+  public:
+    Timer() {
+      start();
+    }
+
+    void start() {
+      start_ = clock::now();
+    }
+
+    double end() {
+      const clock::time_point end = clock::now();
+      return std::chrono::duration<double>(end - start_).count();
+    }
+  private:
+    using clock = std::chrono::steady_clock;
+    clock::time_point start_;
+};  
 
 // This uses the parameters of the ring to add collision geometries to a
 // rigid body for a finger. The collision geometries, consisting of a set of
@@ -131,7 +158,7 @@ void AddGripperPads(MultibodyPlant<double>* plant,
     const RigidTransformd X_FS(p_FSo);
 
     CoulombFriction<double> friction(
-        FLAGS_ring_static_friction, FLAGS_ring_static_friction);
+        FLAGS_ring_friction, FLAGS_ring_friction);
 
     plant->RegisterCollisionGeometry(finger, X_FS, Sphere(kPadMinorRadius),
                                      "collision" + std::to_string(i), friction);
@@ -237,14 +264,17 @@ int do_main() {
   builder.Connect(scene_graph.get_query_output_port(),
                   plant.get_geometry_query_input_port());
 
-  DrakeLcm lcm;
-  geometry::ConnectDrakeVisualizer(&builder, scene_graph, &lcm);
   builder.Connect(
       plant.get_geometry_poses_output_port(),
       scene_graph.get_source_pose_port(plant.get_source_id().value()));
 
-  // Publish contact results for visualization.
-  ConnectContactResultsToDrakeVisualizer(&builder, plant, &lcm);
+  DrakeLcm lcm;
+  if (FLAGS_with_viz) {
+    geometry::ConnectDrakeVisualizer(&builder, scene_graph, &lcm);
+
+    // Publish contact results for visualization.
+    ConnectContactResultsToDrakeVisualizer(&builder, plant, &lcm);
+  }
 
   // Sinusoidal force input. We want the gripper to follow a trajectory of the
   // form x(t) = X0 * sin(ω⋅t). By differentiating once, we can compute the
@@ -322,31 +352,115 @@ int do_main() {
   auto simulator =
       MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
 
-  // The error controlled integrators might need to take very small time steps
-  // to compute a solution to the desired accuracy. Therefore, to visualize
-  // these very short transients, we publish every time step.
-  simulator->set_publish_every_time_step(true);
+  systems::IntegratorBase<double>& integrator =
+      simulator->get_mutable_integrator();
+  if (integrator.supports_error_estimation())
+    integrator.set_fixed_step_mode(FLAGS_fixed_step);    
+  
+  auto* implicit_integrator =
+      dynamic_cast<systems::ImplicitIntegrator<double>*>(&integrator);
+
+  if (implicit_integrator) {
+    implicit_integrator->set_use_full_newton(FLAGS_full_newton);  
+
+    if (FLAGS_jacobian_scheme == "forward") {
+      implicit_integrator->set_jacobian_computation_scheme(
+          systems::ImplicitIntegrator<
+              double>::JacobianComputationScheme::kForwardDifference);
+    } else if (FLAGS_jacobian_scheme == "central") {
+      implicit_integrator->set_jacobian_computation_scheme(
+          systems::ImplicitIntegrator<
+              double>::JacobianComputationScheme::kCentralDifference);
+    } else if (FLAGS_jacobian_scheme == "automatic") {
+      implicit_integrator->set_jacobian_computation_scheme(
+          systems::ImplicitIntegrator<
+              double>::JacobianComputationScheme::kAutomatic);
+    } else {
+      throw std::runtime_error("Invalid Jacobian computation scheme");
+    }
+  }
+
+  Timer timer;
   simulator->AdvanceTo(FLAGS_simulation_time);
+  const double sim_time = timer.end();
 
   if (plant.is_discrete()) {
     fmt::print("Used time stepping with dt={}\n", plant.time_step());
   }
 
-  const systems::IntegratorBase<double>& integrator =
-      simulator->get_integrator();
-  fmt::print("Stats for integrator {}:\n", FLAGS_integration_scheme);
+  fmt::print("Simulation run in {:10.6g} seconds.\n", sim_time);
+
+  fmt::print("\n### SIMULATOR STATISTICS ###\n");
+  fmt::print("Number of steps = {:d}\n", simulator->get_num_steps_taken());
+  fmt::print("Number of discrete updates = {:d}\n", simulator->get_num_discrete_updates());
+  fmt::print("Number of publishes = {:d}\n", simulator->get_num_publishes());
+
+  fmt::print("Stats for integrator {}:\n",
+             drake::NiceTypeName::Get(integrator));
+  fmt::print("\n### GENERAL INTEGRATION STATISTICS ###\n");
   fmt::print("Number of time steps taken = {:d}\n",
              integrator.get_num_steps_taken());
-  if (!integrator.get_fixed_step_mode()) {
-    fmt::print("Initial time step taken = {:10.6g} s\n",
-               integrator.get_actual_initial_step_size_taken());
-    fmt::print("Largest time step taken = {:10.6g} s\n",
-               integrator.get_largest_step_size_taken());
-    fmt::print("Smallest adapted step size = {:10.6g} s\n",
-               integrator.get_smallest_adapted_step_size_taken());
-    fmt::print("Number of steps shrunk due to error control = {:d}\n",
-               integrator.get_num_step_shrinkages_from_error_control());
+  fmt::print("Number of derivative evaluations = {:d}\n",
+             integrator.get_num_derivative_evaluations());
+  // if (integrator.supports_error_estimation()) {
+  fmt::print("\n### ERROR CONTROL STATISTICS ###\n");
+  fmt::print("Initial time step taken = {:10.6g} s\n",
+             integrator.get_actual_initial_step_size_taken());
+  fmt::print("Smallest time step taken = {:10.6g} s\n",
+             integrator.get_smallest_step_size_taken());
+  fmt::print("Largest time step taken = {:10.6g} s\n",
+             integrator.get_largest_step_size_taken());
+  fmt::print("Smallest adapted step size = {:10.6g} s\n",
+             integrator.get_smallest_adapted_step_size_taken());
+  fmt::print("Number of steps shrunk due to error control = {:d}\n",
+             integrator.get_num_step_shrinkages_from_error_control());
+  fmt::print("Number of step failues = {:d}\n",
+             integrator.get_num_substep_failures());
+  fmt::print("Number of steps shrunk due to step failues = {:d}\n",
+             integrator.get_num_step_shrinkages_from_substep_failures());
+
+  //}
+
+  if (implicit_integrator) {
+    fmt::print("\n### IMPLICIT INTEGRATION STATISTICS ###\n");
+    fmt::print("Number of Jacobian evaluations = {:d}\n",
+               implicit_integrator->get_num_jacobian_evaluations());
+    fmt::print("Number of Jacobian factorizations = {:d}\n",
+               implicit_integrator->get_num_iteration_matrix_factorizations());
+    fmt::print("Number of derivative evaluations for...\n");
+    fmt::print(
+        "  Jacobian = {:d}\n",
+        implicit_integrator->get_num_derivative_evaluations_for_jacobian());
+    fmt::print(
+        "  Error estimate = {:d}\n",
+        implicit_integrator->get_num_error_estimator_derivative_evaluations());
+    fmt::print(
+        "  Error estimate Jacobian = {:d}\n",
+        implicit_integrator
+            ->get_num_error_estimator_derivative_evaluations_for_jacobian());
   }
+
+  fmt::print("Integrator time[s] #steps #xdot_evals #shrunk_by_errc #shrunk_by_fails");
+  //if (implicit_integrator) {
+  fmt::print(" #error_est_xdot_evals #jac_evals #matrx_facts");
+  //}
+  fmt::print("\n");
+  fmt::print("{} ", FLAGS_integration_scheme);
+  fmt::print("{:10.6g} ", sim_time);
+  fmt::print("{:d} ", integrator.get_num_steps_taken());
+  fmt::print("{:d} ", integrator.get_num_derivative_evaluations());
+  fmt::print("{:d} ", integrator.get_num_step_shrinkages_from_error_control());
+  fmt::print("{:d} ", integrator.get_num_step_shrinkages_from_substep_failures());
+  if (implicit_integrator) {
+    fmt::print(
+        "{:d} ",
+        implicit_integrator->get_num_error_estimator_derivative_evaluations());
+    fmt::print("{:d} ", implicit_integrator->get_num_jacobian_evaluations());
+    fmt::print("{:d} ", implicit_integrator->get_num_iteration_matrix_factorizations());
+  } else {
+    fmt::print("-1 -1 -1 ");
+  }
+  fmt::print("\n");
 
   return 0;
 }

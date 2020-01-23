@@ -29,6 +29,8 @@ DEFINE_string(jacobian_scheme, "forward",
               "'forward', 'central', or 'automatic'");
 DEFINE_bool(fixed_step, false, "Use fixed step integration. No error control.");
 DEFINE_bool(with_normal_event, true, "There is event for zero distance.");
+DEFINE_bool(with_viz, true, "Send viz messages.");
+DEFINE_bool(full_newton, false, "Integrator uses full Newton-Raphson.");
 
 namespace drake {
 namespace examples {
@@ -102,8 +104,8 @@ int do_main() {
   builder.Connect(scene_graph->get_query_output_port(),
                   bouncing_ball1->get_geometry_query_input_port());
 
-  DrakeLcm lcm;
-  ConnectDrakeVisualizer(&builder, *scene_graph, &lcm);
+  DrakeLcm lcm;  
+  if (FLAGS_with_viz) ConnectDrakeVisualizer(&builder, *scene_graph, &lcm);
 
   auto diagram = builder.Build();
 
@@ -128,7 +130,9 @@ int do_main() {
       simulator->get_mutable_integrator();
   auto* implicit_integrator =
       dynamic_cast<systems::ImplicitIntegrator<double>*>(&integrator);
+
   if (implicit_integrator) {
+    implicit_integrator->set_use_full_newton(FLAGS_full_newton);
     if (FLAGS_jacobian_scheme == "forward") {
       implicit_integrator->set_jacobian_computation_scheme(
           systems::ImplicitIntegrator<
@@ -170,6 +174,8 @@ int do_main() {
   fmt::print("\n### ERROR CONTROL STATISTICS ###\n");
   fmt::print("Initial time step taken = {:10.6g} s\n",
              integrator.get_actual_initial_step_size_taken());
+  fmt::print("Smallest time step taken = {:10.6g} s\n",
+             integrator.get_smallest_step_size_taken());
   fmt::print("Largest time step taken = {:10.6g} s\n",
              integrator.get_largest_step_size_taken());
   fmt::print("Smallest adapted step size = {:10.6g} s\n",

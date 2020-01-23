@@ -1151,6 +1151,10 @@ class IntegratorBase {
     return largest_step_size_taken_;
   }
 
+  const T& get_smallest_step_size_taken() const {
+    return smallest_step_size_taken_;
+  }
+
   /**
    The number of integration steps taken since the last Initialize()
    or ResetStatistics() call.
@@ -1574,6 +1578,10 @@ class IntegratorBase {
     largest_step_size_taken_ = h;
   }
 
+  void set_smallest_step_size_taken(const T& h) {
+    smallest_step_size_taken_ = h;
+  }
+
   // Sets the "ideal" next step size (typically done via error control).
   void set_ideal_next_step_size(const T& h) { ideal_next_step_size_ = h; }
 
@@ -1602,8 +1610,10 @@ class IntegratorBase {
     if (++num_steps_taken_ == 1) {
       set_actual_initial_step_size_taken(h);
       set_largest_step_size_taken(h);
+      set_smallest_step_size_taken(h);
     } else {
       if (h > get_largest_step_size_taken()) set_largest_step_size_taken(h);
+      if (h < get_smallest_step_size_taken()) set_smallest_step_size_taken(h);
     }
 
     // Update the previous step size.
@@ -1671,6 +1681,7 @@ class IntegratorBase {
   T actual_initial_step_size_taken_{nan()};
   T smallest_adapted_step_size_taken_{nan()};
   T largest_step_size_taken_{nan()};
+  T smallest_step_size_taken_{nan()};
   int64_t num_steps_taken_{0};
   int64_t num_ode_evals_{0};
   int64_t num_shrinkages_from_error_control_{0};

@@ -203,6 +203,9 @@ drake_cc_library(
 drake_cc_library(
     name = "implicit_euler_integrator",
     srcs = ["implicit_euler_integrator.cc"],
+    copts = [
+        "-UNDEBUG",
+    ],
     hdrs = [
         "implicit_euler_integrator.h",
         "implicit_euler_integrator-inl.h",

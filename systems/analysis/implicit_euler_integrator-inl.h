@@ -18,6 +18,10 @@
 #include "drake/common/text_logging.h"
 #include "drake/math/autodiff.h"
 
+#include <iostream>
+//#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VAR(a) (void)(a);
+
 namespace drake {
 namespace systems {
 
@@ -143,7 +147,11 @@ bool ImplicitEulerIntegrator<T>::StepAbstract(
   using std::min;
 
   // Verify the trial number is valid.
-  DRAKE_ASSERT(trial >= 1 && trial <= 4);
+  DRAKE_DEMAND(trial >= 1 && trial <= 5);
+
+  // Remove trial return logic from MaybeFreshenMatrices() so that is all in one
+  // place. For now I'll hack it this way.
+  if (trial == 5) return false;
 
   // Verify xtplus
   DRAKE_ASSERT(xtplus && xtplus->size() == xt0.size());
@@ -174,15 +182,21 @@ bool ImplicitEulerIntegrator<T>::StepAbstract(
   if (!this->get_use_full_newton() &&
       !this->MaybeFreshenMatrices(t0, xt0, h, trial,
                                   compute_and_factor_iteration_matrix,
-                                  iteration_matrix)) {
+                                  iteration_matrix) && trial < 4) {
     return false;
   }
 
   // Do the Newton-Raphson iterations.
   for (int i = 0; i < this->max_newton_raphson_iterations(); ++i) {
-    this->FreshenMatricesIfFullNewton(tf, *xtplus, h,
-                                      compute_and_factor_iteration_matrix,
-                                      iteration_matrix);
+    if (this->get_use_full_newton() || trial == 4) {
+      this->FreshenMatricesIfFullNewton(tf, *xtplus, h,
+                                        compute_and_factor_iteration_matrix,
+                                        iteration_matrix);
+      PRINT_VAR("StepAbstract");                                        
+      PRINT_VAR(tf);
+      PRINT_VAR(i);
+      PRINT_VAR(h);      
+    }
 
     // Evaluate the residual error using:
     // g(x(t0+h)) = x(t0+h) - x(t0) - h f(t0+h,x(t0+h)).

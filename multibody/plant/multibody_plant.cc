@@ -1690,12 +1690,13 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
     // Discrete update before applying friction forces.
     // We denote this state x* = [q*, v*], the "star" state.
     // Generalized momentum "star", before contact forces are applied.
-    VectorX<T> p_star_substep = M0 * v0_substep - dt_substep * minus_tau;
+    //VectorX<T> p_star_substep = M0 * v0_substep - dt_substep * minus_tau;
+    VectorX<T> tau = -minus_tau;
 
     // Update the data.
     tamsi_solver_->SetTwoWayCoupledProblemData(
         &M0, &Jn, &Jt,
-        &p_star_substep, &phi0_substep,
+        &v0_substep, &tau, &phi0_substep,
         &stiffness, &damping, &mu);
 
     info = tamsi_solver_->SolveWithGuess(dt_substep,
@@ -1774,6 +1775,91 @@ void MultibodyPlant<T>::CalcTamsiResults(
 
   // Quick exit if there are no moving objects.
   if (nv == 0) return;
+
+  // calc_forward_dynamics() Computes and returns vdot given the input set of
+  // `forces` for the given state stored in `context`.
+  // Making this forward dynamics method a lambda allow us to capture already
+  // allocated memory within this scope for improved performance. TAMSI uses
+  // this lambda within an inner iteration loop and we'd like to avoid heap
+  // allocation as much as possible.
+  ArticulatedBodyForceBiasCache<T> aba_force_bias_cache(
+      internal_tree().get_topology());
+  AccelerationKinematicsCache<T> ac(internal_tree().get_topology());
+  auto calc_forward_dynamics = [&aba_force_bias_cache, &ac](
+                                   const Context<T>& context,
+                                   const MultibodyForces<T>& forces) {
+    // Perform the tip-to-base pass to compute the force bias terms needed by
+    // ABA.
+    internal_tree().CalcArticulatedBodyForceBiasCache(context, forces,
+                                                      &aba_force_bias_cache);
+    // Perform the last base-to-tip pass to compute accelerations using the O(n)
+    // ABA.
+    internal_tree().CalcArticulatedBodyAccelerations(context,
+                                                     aba_force_bias_cache, ac);
+  };
+
+
+  // We now create a TAMSI-specific lambda to compute:
+  // v̇(Fc; q₀) = M⁻¹(q₀)(τᵃᵖᵖ - C₀v₀ + Jc(q₀)ᵀ Fc)
+  // This lambda "freezes" terms at q₀ and is a function of applied contact
+  // forces Fc.
+  // N.B. We capture "forces" to reduce heap allocations with TAMSI's inner
+  // iterations.
+  MultibodyForces<T> forces(*this);
+  auto tamsi_forward_dynamics = [&forces](const std::vector<Vector3<T>>& fc_C) {
+    // * Add external input port actuation (τᵃᵖᵖ) into "forces".
+
+    // * Transform fc_W 
+
+
+
+
+  };
+
+  // Comptues vc = Jc(q₀)v. Where vc is the set {v_AB_C}.
+  auto contact_jacobian_operator =
+      [&context0](const VectorX<T>& v) -> std::vector<Vector3<T>> {
+    const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs_set =
+        EvalPointPairPenetrations(context0);
+
+    const int num_contacts = point_pairs_set.size();
+
+    std::vector<Vector3<T>> v_AB_C(num_contacts);
+
+    for (int icontact = 0; icontact < num_contacts; ++icontact) {
+      const auto& point_pair = point_pairs_set[icontact];
+
+      const GeometryId geometryA_id = point_pair.id_A;
+      const GeometryId geometryB_id = point_pair.id_B;
+
+      BodyIndex bodyA_index = geometry_id_to_body_index_.at(geometryA_id);
+      const Body<T>& bodyA = get_body(bodyA_index);
+      BodyIndex bodyB_index = geometry_id_to_body_index_.at(geometryB_id);
+      const Body<T>& bodyB = get_body(bodyB_index);
+
+      // Penetration depth, > 0 if bodies interpenetrate.
+      const Vector3<T>& nhat_BA_W = point_pair.nhat_BA_W;
+      const Vector3<T>& p_WCa = point_pair.p_WCa;
+      const Vector3<T>& p_WCb = point_pair.p_WCb;
+
+      // Computation of the tangential velocities Jacobian Jt:
+      //
+      // Compute the orientation of a contact frame C at the contact point such
+      // that the z-axis Cz equals to nhat_BA_W. The tangent vectors are
+      // arbitrary, with the only requirement being that they form a valid right
+      // handed basis with nhat_BA.
+      // TODO: See paper, can we get rid of this R_WC alltogether with
+      // operators?
+      const RotationMatrix<T> R_WC(math::ComputeBasisFromAxis(2, nhat_BA_W));
+      if (R_WC_set != nullptr) {
+        R_WC_set->push_back(R_WC);
+      }
+
+      // v_AcBc_W = v_WBc - v_WAc
+      v_AB_C(icontact) = v_WBc - v_WAc;
+    }
+
+  };
 
   // Get the system state as raw Eigen vectors
   // (solution at the previous time step).

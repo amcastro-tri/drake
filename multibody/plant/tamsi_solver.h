@@ -1174,14 +1174,7 @@ class TamsiSolver {
 
   // Helper method to compute the Newton-Raphson Jacobian, J = ∇ᵥR, as a
   // function of M, Jn, Jt, Gn, dft_dvt, t_hat, mu_vt and dt.
-  void CalcJacobian(
-      const Eigen::Ref<const MatrixX<T>>& M,
-      const Eigen::Ref<const MatrixX<T>>& Jn,
-      const Eigen::Ref<const MatrixX<T>>& Jt,
-      const std::vector<Matrix2<T>>& dft_dvt,
-      const Eigen::Ref<const VectorX<T>>& t_hat,
-      const Eigen::Ref<const VectorX<T>>& mu_vt, double dt,
-      EigenPtr<MatrixX<T>> J) const;
+  void CalcJacobian(double dt, EigenPtr<MatrixX<T>> J) const;
 
   // Limit the per-iteration angle change between vₜᵏ⁺¹ and vₜᵏ for
   // all contact points. The angle change θ is defined by the dot product

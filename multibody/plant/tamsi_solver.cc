@@ -273,6 +273,13 @@ void TamsiSolver<T>::SetOneWayCoupledProblemData(
   // Keep references to the problem data.
   problem_data_aliases_.SetOneWayCoupledData(M, Jn, Jt, v0, tau0, fn, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
+  // We pre-compute the LDLT factorization of the mass matrix so that we can
+  // reuse it multiple times in TAMSI iterations.
+  auto& M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
+  M_ldlt.compute(*M);
+  if (M_ldlt.info() != Eigen::Success) {
+    throw std::runtime_error("Mass matrix is not invertible.");
+  }
 }
 
 template <typename T>
@@ -312,12 +319,15 @@ void TamsiSolver<T>::SetTwoWayCoupledProblemData(
                                              dissipation, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
 
-#if 0
+  // We pre-compute the LDLT factorization of the mass matrix so that we can
+  // reuse it multiple times in TAMSI iterations.
   auto& M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
   M_ldlt.compute(*M);
   if (M_ldlt.info() != Eigen::Success) {
     throw std::runtime_error("Mass matrix is not invertible.");
   }
+
+#if 0  
   // Computes v̇ = M⁻¹(q₀)(τᵃᵖᵖ - C₀v₀ + Jc(q₀)ᵀ F̃c)
   forward_dynamics_ = [this](const VectorX<T>& fctilde, VectorX<T>* vdot) {
     const auto Jn = problem_data_aliases_.Jn();
@@ -638,13 +648,8 @@ void TamsiSolver<T>::CalcNormalForces(
 }
 
 template <typename T>
-void TamsiSolver<T>::CalcJacobian(
-    const Eigen::Ref<const MatrixX<T>>& M,
-    const Eigen::Ref<const MatrixX<T>>& Jn,
-    const Eigen::Ref<const MatrixX<T>>& Jt,
-    const std::vector<Matrix2<T>>& dft_dvt,
-    const Eigen::Ref<const VectorX<T>>& t_hat,
-    const Eigen::Ref<const VectorX<T>>& mu_vt, double dt,
+void TamsiSolver<T>::CalcJacobian(    
+    double dt,
     EigenPtr<MatrixX<T>> J) const {
   DRAKE_DEMAND(!operator_form());
 
@@ -654,7 +659,20 @@ void TamsiSolver<T>::CalcJacobian(
   // Size of the friction forces vector ft and tangential velocities vector vt.
   const int nf = 2 * nc;
 
-  auto Gn = variable_size_workspace_.mutable_Gn();
+  // Convenient aliases to problem data.
+  //const auto& M = problem_data_aliases_.M();
+  const auto& Jn = problem_data_aliases_.Jn();
+  const auto& Jt = problem_data_aliases_.Jt();
+
+  // Convenient aliases to variable size workspace variables.
+  // Note: auto resolve to Eigen::Block (no copies).
+  const auto& dft_dvt = variable_size_workspace_.mutable_dft_dvt();
+  const auto& mu_vt = variable_size_workspace_.mutable_mu();
+  const auto& t_hat = variable_size_workspace_.mutable_t_hat();
+  const auto& Gn = variable_size_workspace_.mutable_Gn();
+
+  // Mass matrix factorization.
+  const auto& M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
 
   // Newton-Raphson Jacobian, i.e. the derivative of the residual with
   // respect to the independent variable which, in this case, is the vector
@@ -697,11 +715,14 @@ void TamsiSolver<T>::CalcJacobian(
     }
   }
 
-  // Form J = M − Jnᵀ Gn − dt Jtᵀ Gt:
-  *J = M - dt * Jt.transpose() * Gt;
-  if (has_two_way_coupling()) {
-    *J -= dt * Jn.transpose() * Gn;
-  }
+  // Compute Gtau = −∇ᵥτc, gradient of the generalized forces due to contact
+  // respect to the generalized velocities.
+  // Gtau = JₜᵀGt + JₙᵀGn
+  MatrixX<T> Gtau = Jt.transpose() * Gt;
+  if (has_two_way_coupling()) Gtau += Jn.transpose() * Gn;
+
+  // Form J = Id − dt M₀⁻¹ Gtau:
+  *J = MatrixX<T>::Identity(nv, nv) - dt * M_ldlt.solve(Gtau);
 }
 
 template <typename T>
@@ -743,8 +764,9 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
     const auto v0 = problem_data_aliases_.v0();
     const auto tau0 = problem_data_aliases_.tau0();
     auto& v = fixed_size_workspace_.mutable_v();
+    const auto& M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
     // With no friction forces Eq. (3) in the documentation reduces to:
-    v = v0 + dt * M.ldlt().solve(tau0);
+    v = v0 + dt * M_ldlt.solve(tau0);
     // "One iteration" with exactly "zero" vt_error.
     statistics_.Update(0.0);
     return TamsiSolverResult::kSuccess;
@@ -773,6 +795,7 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   auto& J = fixed_size_workspace_.mutable_J();
   auto& tau_f = fixed_size_workspace_.mutable_tau_f();
   auto& tau = fixed_size_workspace_.mutable_tau();
+  const auto& M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
 
   // Convenient aliases to variable size workspace variables.
   // Note: auto resolve to Eigen::Block (no copies).
@@ -817,15 +840,15 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
     }
 
     // Newton-Raphson residual.
-    residual = M * (v - v0) - dt * tau0 - dt * Jn.transpose() * fn -
-               dt * Jt.transpose() * ft;
+    residual = (v - v0) - dt * M_ldlt.solve(tau0 + Jn.transpose() * fn +
+                                            Jt.transpose() * ft);
 
     // Compute gradient dft_dvt = ∇ᵥₜfₜ(vₜ) as a function of fn, mus,
     // t_hat and v_slip.
     CalcFrictionForcesGradient(fn, mu_vt, t_hat, v_slip, &dft_dvt);
 
     // Newton-Raphson Jacobian, J = ∇ᵥR, as a function of M, dft_dvt, Jt, dt.
-    CalcJacobian(M, Jn, Jt, dft_dvt, t_hat, mu_vt, dt, &J);
+    CalcJacobian(dt, &J);
 
     // TODO(amcastro-tri): Consider using a cheap iterative solver like CG.
     // Since we are in a non-linear iteration, an approximate cheap solution

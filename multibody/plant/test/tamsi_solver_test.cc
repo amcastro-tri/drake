@@ -64,7 +64,7 @@ class TamsiSolverTester {
 
     // Newton-Raphson Jacobian, J = ∇ᵥR, as a function of M, dft_dvt, Jt, dt.
     MatrixX<double> J(nv, nv);
-    solver.CalcJacobian(M, Jn, Jt, dft_dvt, t_hat, mus, dt, &J);
+    solver.CalcJacobian(dt, &J);
 
     return J;
   }

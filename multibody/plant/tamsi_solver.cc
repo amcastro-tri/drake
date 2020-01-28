@@ -286,7 +286,7 @@ template <typename T>
 void TamsiSolver<T>::SetTwoWayCoupledProblemData(
     std::function<void(const VectorX<T>& fc, VectorX<T>* vdot)>
         forward_dynamics,
-    std::function<VectorX<T>(const VectorX<T>& v, VectorX<T>* vc)>
+    std::function<void(const VectorX<T>& v, VectorX<T>* vc)>
         contact_jacobian,
     EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> f0,
     EigenPtr<const VectorX<T>> stiffness,
@@ -297,7 +297,26 @@ void TamsiSolver<T>::SetTwoWayCoupledProblemData(
   nc_ = f0->size();
   problem_data_aliases_.SetTwoWayCoupledData(
       forward_dynamics, contact_jacobian, v0, f0, stiffness, dissipation, mu);
-  variable_size_workspace_.ResizeIfNeeded(nc_, nv_);  
+  variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
+  forward_dynamics_ = forward_dynamics;
+  contact_jacobian_ = contact_jacobian;
+}
+
+template <typename T>
+void TamsiSolver<T>::SetOperatorsFromMatrixProblemData() {
+  DRAKE_DEMAND(!operator_form());
+
+  contact_jacobian_ = [this](const VectorX<T>& v, VectorX<T>* vc) {
+    const auto& Jc = variable_size_workspace_.mutable_Jc();
+    *vc = Jc * v;
+  };
+
+  forward_dynamics_ = [this](const VectorX<T>& fc, VectorX<T>* vdot){
+    const auto& M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
+    const auto& tau0 = problem_data_aliases_.tau0();
+    const auto& Jc = variable_size_workspace_.mutable_Jc();
+    *vdot = M_ldlt.solve(tau0 + Jc.transpose() * fc);
+  };
 }
 
 template <typename T>
@@ -326,6 +345,15 @@ void TamsiSolver<T>::SetTwoWayCoupledProblemData(
   if (M_ldlt.info() != Eigen::Success) {
     throw std::runtime_error("Mass matrix is not invertible.");
   }
+
+  // Set up full contact Jacobian matrix.
+  auto Jc = variable_size_workspace_.mutable_Jc();
+  for (int ic = 0; ic < nc_; ++ic) {
+    Jc.block(3 * ic, 0, 2, nv_) = Jt->block(2 * ic, 0, 2, nv_);
+    Jc.block(3 * ic + 2, 0, 1, nv_) = Jn->block(ic, 0, 1, nv_);
+  }
+
+  SetOperatorsFromMatrixProblemData();
 
 #if 0  
   // Computes v̇ = M⁻¹(q₀)(τᵃᵖᵖ - C₀v₀ + Jc(q₀)ᵀ F̃c)

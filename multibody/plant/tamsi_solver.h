@@ -613,7 +613,7 @@ class TamsiSolver {
   void SetTwoWayCoupledProblemData(
       std::function<void(const VectorX<T>& fc, VectorX<T>* vdot)>
           forward_dynamics,
-      std::function<VectorX<T>(const VectorX<T>& v, VectorX<T>* vc)>
+      std::function<void(const VectorX<T>& v, VectorX<T>* vc)>
           contact_jacobian,
       EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> f0,
       EigenPtr<const VectorX<T>> stiffness,
@@ -789,7 +789,7 @@ class TamsiSolver {
     void SetTwoWayCoupledData(
         std::function<void(const VectorX<T>& fc, VectorX<T>* vdot)>
             forward_dynamics,
-        std::function<VectorX<T>(const VectorX<T>& v, VectorX<T>* vc)>
+        std::function<void(const VectorX<T>& v, VectorX<T>* vc)>
             contact_jacobian,
         EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> f0,
         EigenPtr<const VectorX<T>> stiffness,
@@ -913,7 +913,7 @@ class TamsiSolver {
         forward_dynamics_;
 
     // Comptues vc = Jc(q₀)v. Where vc is the set {v_AB_C}.
-    std::function<VectorX<T>(const VectorX<T>& v, VectorX<T>* vc)>
+    std::function<void(const VectorX<T>& v, VectorX<T>* vc)>
         contact_jacobian_;
   };
 
@@ -1227,6 +1227,8 @@ class TamsiSolver {
   // that we can report them if requested.
   mutable TamsiSolverIterationStats statistics_;
 
+  // Helpers to make operator forms from problem data.
+  void SetOperatorsFromMatrixProblemData();
 
   // Computes v̇ = M⁻¹(q₀)(τᵃᵖᵖ - C₀v₀ + Jc(q₀)ᵀ F̃c)
   // where F̃c is the first order approximation of the contact forces at 
@@ -1240,7 +1242,7 @@ class TamsiSolver {
   std::function<void(const VectorX<T>& v, VectorX<T>* r_of_v)> residual_;
 
   // Comptues vc = Jc(q₀)v. Where vc is the set {v_AB_C}.
-  std::function<VectorX<T>(const VectorX<T>& v, VectorX<T>* vc)>
+  std::function<void(const VectorX<T>& v, VectorX<T>* vc)>
       contact_jacobian_;
 
   // Computes τ = Jc(q₀)ᵀ fc

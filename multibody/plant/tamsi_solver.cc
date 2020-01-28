@@ -261,27 +261,28 @@ template <typename T>
 void TamsiSolver<T>::SetOneWayCoupledProblemData(
     EigenPtr<const MatrixX<T>> M,
     EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
-    EigenPtr<const VectorX<T>> p_star,
+    EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> tau0,
     EigenPtr<const VectorX<T>> fn, EigenPtr<const VectorX<T>> mu) {
   nc_ = fn->size();
-  DRAKE_THROW_UNLESS(p_star->size() == nv_);
+  DRAKE_THROW_UNLESS(v0->size() == nv_);
+  DRAKE_THROW_UNLESS(tau0->size() == nv_);
   DRAKE_THROW_UNLESS(M->rows() == nv_ && M->cols() == nv_);
   DRAKE_THROW_UNLESS(Jn->rows() == nc_ && Jn->cols() == nv_);
   DRAKE_THROW_UNLESS(Jt->rows() == 2 * nc_ && Jt->cols() == nv_);
   DRAKE_THROW_UNLESS(mu->size() == nc_);
   // Keep references to the problem data.
-  problem_data_aliases_.SetOneWayCoupledData(M, Jn, Jt, p_star, fn, mu);
+  problem_data_aliases_.SetOneWayCoupledData(M, Jn, Jt, v0, tau0, fn, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
 }
 
 template <typename T>
 void TamsiSolver<T>::SetTwoWayCoupledProblemData(
-    EigenPtr<const MatrixX<T>> M, EigenPtr<const MatrixX<T>> Jn,
-    EigenPtr<const MatrixX<T>> Jt, EigenPtr<const VectorX<T>> p_star,
-    EigenPtr<const VectorX<T>> x0, EigenPtr<const VectorX<T>> stiffness,
+    EigenPtr<const MatrixX<T>> M,
+    EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt, 
+    EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> tau0,
+    EigenPtr<const VectorX<T>> f0, EigenPtr<const VectorX<T>> stiffness,
     EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
-  nc_ = x0->size();
-  DRAKE_THROW_UNLESS(p_star->size() == nv_);
+  nc_ = f0->size();
   DRAKE_THROW_UNLESS(M->rows() == nv_ && M->cols() == nv_);
   DRAKE_THROW_UNLESS(Jn->rows() == nc_ && Jn->cols() == nv_);
   DRAKE_THROW_UNLESS(Jt->rows() == 2 * nc_ && Jt->cols() == nv_);
@@ -289,9 +290,90 @@ void TamsiSolver<T>::SetTwoWayCoupledProblemData(
   DRAKE_THROW_UNLESS(stiffness->size() == nc_);
   DRAKE_THROW_UNLESS(dissipation->size() == nc_);
   // Keep references to the problem data.
-  problem_data_aliases_.SetTwoWayCoupledData(M, Jn, Jt, p_star, x0, stiffness,
+  problem_data_aliases_.SetTwoWayCoupledData(M, Jn, Jt, v0, tau0, f0, stiffness,
                                              dissipation, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
+
+#if 0
+  auto& M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
+  M_ldlt.compute(*M);
+  if (M_ldlt.info() != Eigen::Success) {
+    throw std::runtime_error("Mass matrix is not invertible.");
+  }
+  mass_matrix_inverse_operator_ = [this](const VectorX<T>& tau) -> VectorX<T> {
+    auto& M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
+    return M_ldlt.solve(tau);
+  };
+#endif
+
+#if 0
+  // Set up full contact Jacobian matrix.
+  auto Jc = variable_size_workspace_.mutable_Jc();
+  for (int ic = 0; ic < nc_; ++ic) {
+    Jc.block(3 * ic, 0, 2, nv_) = Jt->block(2 * ic, 0, 1, nv_);
+    Jc.block(3 * ic + 2, 0, 1, nv_) = Jn->block(ic, 0, 1, nv_);
+  }  
+}
+  }  
+
+  // Comptues vc = Jc(q₀)v. Where vc is the set {v_AB_C}.
+  contact_jacobian_operator_ =
+      [this](const VectorX<T>& v) -> VectorX<T> {
+    const auto& Jc = variable_size_workspace_.mutable_Jc();
+    return Jc * v;
+  };
+
+  contact_jacobian_transpose_operator_ =
+      [this](const VectorX<T>& fc) -> VectorX<T> {
+    const auto& Jc = variable_size_workspace_.mutable_Jc();
+    return Jc.transpose() * fc;
+  };
+
+#endif
+
+#if 0
+  // Build operators from matrices.
+  residual_ = [this](const VectorX<T>& v, double dt, VectorX<T>* r_of_v) {
+    // Convenient aliases to problem data.
+    const auto M = problem_data_aliases_.M();
+    const auto Jn = problem_data_aliases_.Jn();
+    const auto Jt = problem_data_aliases_.Jt();
+    const auto v0 = problem_data_aliases_.v0();
+    const auto vdot_star = problem_data_aliases_.tau0();
+
+    auto vn = variable_size_workspace_.mutable_vn();
+    auto vt = variable_size_workspace_.mutable_vt();
+    auto ft = variable_size_workspace_.mutable_ft();
+    auto mu_vt = variable_size_workspace_.mutable_mu();
+    auto t_hat = variable_size_workspace_.mutable_t_hat();
+    auto fn = variable_size_workspace_.mutable_fn();
+    auto x = variable_size_workspace_.mutable_f();
+    auto v_slip = variable_size_workspace_.mutable_v_slip();
+
+    // Update contact velocities. 
+    const VectorX<T> vc =  contact_jacobian_operator_(v);
+
+    for (int ic = 0; ic < nc_; ++ic) {
+      vn(ic) = vc(3 * ic + 2);
+      vt(2 * ic) = vc.segment(3 * ic, 2);
+    }
+
+    if (has_two_way_coupling()) {
+      // Update the penetration for the two-way coupling scheme.
+      const auto& x0 = problem_data_aliases_.f0();
+      x = x0 - dt * vn;
+    }
+
+    CalcNormalForces(x, vn, Jn, dt, &fn);
+
+    // Update v_slip, t_hat, mus and ft as a function of vt and fn.
+    CalcFrictionForces(vt, fn, &v_slip, &t_hat, &mu_vt, &ft);
+
+    // Newton-Raphson residual.
+    *res = M * vk - M * v0 - vdot_star - dt * Jn.transpose() * fn -
+           dt * Jt.transpose() * ft;
+  };
+#endif
 }
 
 template <typename T>
@@ -454,9 +536,7 @@ void TamsiSolver<T>::CalcFrictionForcesGradient(
 
 template <typename T>
 void TamsiSolver<T>::CalcNormalForces(
-    const Eigen::Ref<const VectorX<T>>& x,
     const Eigen::Ref<const VectorX<T>>& vn,
-    const Eigen::Ref<const MatrixX<T>>& Jn,
     double dt,
     // We change from fn/Gn in the header to fn_ptr, Gn_ptr here to avoid name
     // clashes with local variables.
@@ -474,45 +554,47 @@ void TamsiSolver<T>::CalcNormalForces(
   // Convenient aliases to problem data.
   const auto& stiffness = problem_data_aliases_.stiffness();
   const auto& dissipation = problem_data_aliases_.dissipation();
+  const auto& Jn = problem_data_aliases_.Jn();
+  const auto& f0 = problem_data_aliases_.f0();
 
-  VectorX<T> x_capped(nc);  // = x₊
-  VectorX<T> H_x(nc);  // = H(x), with H the Heaviside function.
-  VectorX<T> k_vn_capped(nc);  // = k(vₙ)₊ = k (1 − d vₙ)₊
-  VectorX<T> H_k_vn(nc);  // = H(k(vₙ)).
+  // H is the Heaviside function.
+  VectorX<T> chi_capped(nc);      // χ = (1 − d vₙ)₊
+  VectorX<T> H_chi(nc);       // = H(1 − d vₙ).
+  VectorX<T> f0tilde_capped(nc);  // f̃₀ = (f₀ - δt k vₙ)₊
+  VectorX<T> H_f0tilde(nc);       // = H(f₀ - δt k vₙ).
 
   auto& fn = *fn_ptr;
   for (int ic = 0; ic < nc; ++ic) {
-    // Stiffness as a function of vn, k(vₙ) = k (1 − d vₙ)₊
-    // where x₊ = max(x, 0).
-    T k_vn = stiffness(ic) * (1.0 - dissipation(ic) * vn(ic));
+    const T f0tilde = f0(ic) - dt * stiffness(ic) * vn(ic);
+    f0tilde_capped(ic) = max(0.0, f0tilde);
 
-    k_vn_capped(ic) = max(0.0, k_vn);
-    x_capped(ic) = max(0.0, x(ic));
-    // fₙ = k(vₙ)₊ x₊
-    fn(ic) = k_vn_capped(ic) * x_capped(ic);
-    // Factors in the derivatives of x₊ and k(vₙ)₊
-    H_x(ic) = x(ic) > 0 ? 1.0 : 0.0;
-    H_k_vn(ic) = k_vn > 0 ? 1.0 : 0.0;
+    const T chi = (1.0 - dissipation(ic) * vn(ic));
+    chi_capped(ic) = max(0.0, chi);
+
+    // fₙ = f̃₀χ
+    fn(ic) = f0tilde_capped(ic) * chi_capped(ic);
+
+    // Factors in the derivatives of χ and f̃₀.
+    H_chi(ic) = chi > 0 ? 1.0 : 0.0;
+    H_f0tilde(ic) = f0tilde > 0 ? 1.0 : 0.0;
   }
 
-  // ∇ᵥxˢ⁺¹₊ = −δt diag(H(xˢ⁺¹)) Jₙ, with xˢ⁺¹ = xˢ − δt vₙˢ⁺¹.
+  // ∇ᵥf̃₀(vₙˢ⁺¹) = −δt diag(k H(f₀ - δt k vₙˢ⁺¹)) Jₙ.
   // of size nc x nv.
-  MatrixX<T> nabla_x_capped = -dt * H_x.asDiagonal() * Jn;
+  MatrixX<T> nabla_f0tilde_capped =
+      -dt * (H_f0tilde.array() * stiffness.array()).matrix().asDiagonal() * Jn;
 
-  // ∇ᵥk(vₙˢ⁺¹)₊ = −diag(H(k(vₙˢ⁺¹))) diag(k) diag(d) Jₙ
+  // ∇ᵥχ(vₙˢ⁺¹)₊ = −diag(H(1 − d vₙˢ⁺¹)) diag(d) Jₙ
   // of size nc x nv.
-  MatrixX<T> nabla_k_vn_capped = -(
-      (H_k_vn.array() *
-          stiffness.array() * dissipation.array()).matrix().asDiagonal() * Jn);
+  MatrixX<T> nabla_chi_capped = -(
+      (H_chi.array() * dissipation.array()).matrix().asDiagonal() * Jn);
 
   auto& Gn = *Gn_ptr;
 
-  // fₙ = k(vₙ)₊ x₊
-  // Gn = ∇ᵥfₙ(xˢ⁺¹, vₙˢ⁺¹) =
-  //        diag(x₊) ∇ᵥk(vₙˢ⁺¹)₊ + diag(k(vₙ)₊) ∇ᵥxˢ⁺¹₊
-  // Gn is of size nc x nv.
-  Gn = x_capped.asDiagonal() * nabla_k_vn_capped +
-      k_vn_capped.asDiagonal() * nabla_x_capped;
+  // fₙ = f̃₀(vₙ)χ(vₙ)
+  // Gn = ∇ᵥfₙ(xˢ⁺¹, vₙˢ⁺¹) = diag(χ) ∇ᵥf̃₀(vₙˢ⁺¹)₊ + diag(f̃₀(vₙ)) ∇ᵥχˢ⁺¹
+  Gn = chi_capped.asDiagonal() * nabla_f0tilde_capped +
+       f0tilde_capped.asDiagonal() * nabla_chi_capped;
 }
 
 template <typename T>
@@ -615,11 +697,11 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
     fixed_size_workspace_.mutable_tau_f().setZero();
     fixed_size_workspace_.mutable_tau().setZero();
     const auto M = problem_data_aliases_.M();
-    const auto p_star = problem_data_aliases_.p_star();
+    const auto v0 = problem_data_aliases_.v0();
+    const auto tau0 = problem_data_aliases_.tau0();
     auto& v = fixed_size_workspace_.mutable_v();
-    // With no friction forces Eq. (3) in the documentation reduces to
-    // M vˢ⁺¹ = p*.
-    v = M.ldlt().solve(p_star);
+    // With no friction forces Eq. (3) in the documentation reduces to:
+    v = v0 + dt * M.ldlt().solve(tau0);
     // "One iteration" with exactly "zero" vt_error.
     statistics_.Update(0.0);
     return TamsiSolverResult::kSuccess;
@@ -638,7 +720,8 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   const auto M = problem_data_aliases_.M();
   const auto Jn = problem_data_aliases_.Jn();
   const auto Jt = problem_data_aliases_.Jt();
-  const auto p_star = problem_data_aliases_.p_star();
+  const auto v0 = problem_data_aliases_.v0();
+  const auto tau0 = problem_data_aliases_.tau0();
 
   // Convenient aliases to fixed size workspace variables.
   auto& v = fixed_size_workspace_.mutable_v();
@@ -660,7 +743,7 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   auto mu_vt = variable_size_workspace_.mutable_mu();
   auto t_hat = variable_size_workspace_.mutable_t_hat();
   auto fn = variable_size_workspace_.mutable_fn();
-  auto x = variable_size_workspace_.mutable_x();
+  //auto f = variable_size_workspace_.mutable_f();
   auto v_slip = variable_size_workspace_.mutable_v_slip();
 
   // Initialize vt_error to an arbitrary value larger than tolerance so that the
@@ -676,14 +759,13 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
     vn = Jn * v;
     vt = Jt * v;
 
-    if (has_two_way_coupling()) {
-      // Update the penetration for the two-way coupling scheme.
-      const auto& x0 = problem_data_aliases_.x0();
-      x = x0 - dt * vn;
-    }
+    //if (has_two_way_coupling()) {
+    //  // Update the penetration for the two-way coupling scheme.
+    //  const auto& x0 = problem_data_aliases_.f0();
+    //  x = x0 - dt * vn;
+    //}
 
-    CalcNormalForces(x, vn, Jn, dt, &fn, &Gn);
-
+    CalcNormalForces(vn, dt, &fn, &Gn);
 
     // Update v_slip, t_hat, mus and ft as a function of vt and fn.
     CalcFrictionForces(vt, fn, &v_slip, &t_hat, &mu_vt, &ft);
@@ -699,8 +781,8 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
     }
 
     // Newton-Raphson residual.
-    residual =
-        M * v - p_star - dt * Jn.transpose() * fn - dt * Jt.transpose() * ft;
+    residual = M * (v - v0) - dt * tau0 - dt * Jn.transpose() * fn -
+               dt * Jt.transpose() * ft;
 
     // Compute gradient dft_dvt = ∇ᵥₜfₜ(vₜ) as a function of fn, mus,
     // t_hat and v_slip.

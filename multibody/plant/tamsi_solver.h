@@ -553,7 +553,7 @@ class TamsiSolver {
   void SetOneWayCoupledProblemData(
       EigenPtr<const MatrixX<T>> M,
       EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
-      EigenPtr<const VectorX<T>> p_star,
+      EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> tau0,
       EigenPtr<const VectorX<T>> fn, EigenPtr<const VectorX<T>> mu);
 
   /// Sets the problem data to solve the problem outlined in Eq. (10) in this
@@ -605,8 +605,9 @@ class TamsiSolver {
   // the signed distance function (instead of the signed penetration distance).
   void SetTwoWayCoupledProblemData(
       EigenPtr<const MatrixX<T>> M, EigenPtr<const MatrixX<T>> Jn,
-      EigenPtr<const MatrixX<T>> Jt, EigenPtr<const VectorX<T>> p_star,
-      EigenPtr<const VectorX<T>> x0, EigenPtr<const VectorX<T>> stiffness,
+      EigenPtr<const MatrixX<T>> Jt,
+      EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> tau0,
+      EigenPtr<const VectorX<T>> f0, EigenPtr<const VectorX<T>> stiffness,
       EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu);
 
   /// Given an initial guess `v_guess`, this method uses a Newton-Raphson
@@ -722,12 +723,13 @@ class TamsiSolver {
     void SetOneWayCoupledData(
         EigenPtr<const MatrixX<T>> M,
         EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
-        EigenPtr<const VectorX<T>> p_star,
+        EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> tau0,
         EigenPtr<const VectorX<T>> fn, EigenPtr<const VectorX<T>> mu) {
       DRAKE_DEMAND(M != nullptr);
       DRAKE_DEMAND(Jn != nullptr);
       DRAKE_DEMAND(Jt != nullptr);
-      DRAKE_DEMAND(p_star != nullptr);
+      DRAKE_DEMAND(v0 != nullptr);
+      DRAKE_DEMAND(tau0 != nullptr);
       DRAKE_DEMAND(fn != nullptr);
       DRAKE_DEMAND(mu != nullptr);
       DRAKE_THROW_UNLESS(coupling_scheme_ == kInvalidScheme ||
@@ -736,7 +738,8 @@ class TamsiSolver {
       M_ptr_ = M;
       Jn_ptr_ = Jn;
       Jt_ptr_ = Jt;
-      p_star_ptr_ = p_star;
+      v0_ptr_ = v0;
+      tau0_ptr_ = tau0;
       fn_ptr_ = fn;
       mu_ptr_ = mu;
     }
@@ -747,15 +750,14 @@ class TamsiSolver {
     void SetTwoWayCoupledData(
         EigenPtr<const MatrixX<T>> M,
         EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt,
-        EigenPtr<const VectorX<T>> p_star,
-        EigenPtr<const VectorX<T>> x0,
+        EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> tau0,
+        EigenPtr<const VectorX<T>> f0,
         EigenPtr<const VectorX<T>> stiffness,
         EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
       DRAKE_DEMAND(M != nullptr);
       DRAKE_DEMAND(Jn != nullptr);
       DRAKE_DEMAND(Jt != nullptr);
-      DRAKE_DEMAND(p_star != nullptr);
-      DRAKE_DEMAND(x0 != nullptr);
+      DRAKE_DEMAND(f0 != nullptr);
       DRAKE_DEMAND(stiffness != nullptr);
       DRAKE_DEMAND(dissipation != nullptr);
       DRAKE_DEMAND(mu != nullptr);
@@ -765,8 +767,9 @@ class TamsiSolver {
       M_ptr_ = M;
       Jn_ptr_ = Jn;
       Jt_ptr_ = Jt;
-      p_star_ptr_ = p_star;
-      x0_ptr_ = x0;
+      v0_ptr_ = v0;
+      tau0_ptr_ = tau0;
+      f0_ptr_ = f0;
       stiffness_ptr_ = stiffness;
       dissipation_ptr_ = dissipation;
       mu_ptr_ = mu;
@@ -781,7 +784,9 @@ class TamsiSolver {
     Eigen::Ref<const MatrixX<T>> M() const { return *M_ptr_; }
     Eigen::Ref<const MatrixX<T>> Jn() const { return *Jn_ptr_; }
     Eigen::Ref<const MatrixX<T>> Jt() const { return *Jt_ptr_; }
-    Eigen::Ref<const VectorX<T>> p_star() const { return *p_star_ptr_; }
+    Eigen::Ref<const VectorX<T>> v0() const { return *v0_ptr_; }
+    // Explicit terms of the generalized forces.
+    Eigen::Ref<const VectorX<T>> tau0() const { return *tau0_ptr_; }
 
     // For the one-way coupled scheme, it returns a constant reference to the
     // data for the normal forces. It aborts if called on data for the two-way
@@ -794,9 +799,9 @@ class TamsiSolver {
     // For the two-way coupled scheme, it returns a constant reference to the
     // data for the penetration distance. It aborts if called on data for the
     // one-way coupled scheme, see has_two_way_coupling_data().
-    Eigen::Ref<const VectorX<T>> x0() const {
-      DRAKE_DEMAND(x0_ptr_ != nullptr);
-      return *x0_ptr_;
+    Eigen::Ref<const VectorX<T>> f0() const {
+      DRAKE_DEMAND(f0_ptr_ != nullptr);
+      return *f0_ptr_;
     }
 
     // For the two-way coupled scheme, it returns a constant reference to the
@@ -833,14 +838,15 @@ class TamsiSolver {
     // The tangential velocities Jacobian.
     EigenPtr<const MatrixX<T>> Jt_ptr_{nullptr};
     // The generalized momentum vector **before** contact is applied.
-    EigenPtr<const VectorX<T>> p_star_ptr_{nullptr};
+    EigenPtr<const VectorX<T>> v0_ptr_{nullptr};
+    EigenPtr<const VectorX<T>> tau0_ptr_{nullptr};
     // Normal force at each contact point. fn_ptr_ is nullptr for two-way
     // coupled problems.
     EigenPtr<const VectorX<T>> fn_ptr_{nullptr};
     // Penetration distance. Positive when there is penetration and negative
     // when there is separation, i.e. it is minus the signed distance function.
-    // x0_ptr_ is nullptr for one-way coupled problems.
-    EigenPtr<const VectorX<T>> x0_ptr_{nullptr};
+    // f0_ptr_ is nullptr for one-way coupled problems.
+    EigenPtr<const VectorX<T>> f0_ptr_{nullptr};
     // Stiffness in the normal direction. nullptr for one-way coupled problems.
     EigenPtr<const VectorX<T>> stiffness_ptr_{nullptr};
     // Damping in the normal direction. nullptr for one-way coupled problems.
@@ -856,7 +862,7 @@ class TamsiSolver {
   class FixedSizeWorkspace {
    public:
     // Constructs a workspace with size only dependent on nv.
-    explicit FixedSizeWorkspace(int nv) : J_ldlt_(nv), J_lu_(nv) {
+    explicit FixedSizeWorkspace(int nv) : J_ldlt_(nv), J_lu_(nv), M_ldlt_(nv) {
       J_ldlt_.setZero();
       v_.setZero(nv);
       residual_.setZero(nv);
@@ -864,6 +870,7 @@ class TamsiSolver {
       J_.setZero(nv, nv);
       tau_f_.setZero(nv);
       tau_.setZero(nv);
+      M_ldlt_.setZero();
     }
     VectorX<T>& mutable_v() { return v_; }
     VectorX<T>& mutable_residual() { return residual_; }
@@ -873,6 +880,7 @@ class TamsiSolver {
     VectorX<T>& mutable_tau() { return tau_; }
     Eigen::LDLT<MatrixX<T>>& mutable_J_ldlt() { return J_ldlt_; }
     Eigen::PartialPivLU<MatrixX<T>>& mutable_J_lu() { return J_lu_; }
+    Eigen::LDLT<MatrixX<T>>& mutable_M_ldlt() { return M_ldlt_; }
 
    private:
     // Vector of generalized velocities.
@@ -893,6 +901,8 @@ class TamsiSolver {
     // LU Factorization of the Newton-Raphson Jacobian J. Only used for
     // two-way coupled problems with non-symmetric Jacobian.
     Eigen::PartialPivLU<MatrixX<T>> J_lu_;
+    // LDLT factorization of the mass matrix.
+    Eigen::LDLT<MatrixX<T>> M_ldlt_;
   };
 
   // The variables in this workspace can change size with each invocation of
@@ -929,6 +939,7 @@ class TamsiSolver {
       mus_.resize(nc);
       dft_dv_.resize(nc);
       Gn_.resize(nc, nv);
+      Jc_.resize(3 * nc, nv);
     }
 
     // Returns the current (maximum) capacity of the workspace.
@@ -985,7 +996,7 @@ class TamsiSolver {
 
     // Returns a mutable reference to the vector containing the penetration
     // depths for all contact points, of size nc.
-    Eigen::VectorBlock<VectorX<T>> mutable_x() {
+    Eigen::VectorBlock<VectorX<T>> mutable_f() {
       return x_.segment(0, nc_);
     }
 
@@ -1028,6 +1039,10 @@ class TamsiSolver {
       return Gn_.block(0, 0, nc_, nv_);
     }
 
+    Eigen::Block<MatrixX<T>> mutable_Jc() {
+      return Jc_.block(0, 0, 3* nc_, nv_);
+    }
+
     // Returns a mutable reference to the vector storing ∂fₜ/∂vₜ (in ℝ²ˣ²)
     // for each contact point, of size nc.
     std::vector<Matrix2<T>>& mutable_dft_dvt() {
@@ -1050,6 +1065,7 @@ class TamsiSolver {
     // Vector of size nc storing ∂fₜ/∂vₜ (in ℝ²ˣ²) for each contact point.
     std::vector<Matrix2<T>> dft_dv_;
     MatrixX<T> Gn_;        // ∇ᵥfₙ(xˢ⁺¹, vₙˢ⁺¹), in ℝⁿᶜˣⁿᵛ
+    MatrixX<T> Jc_;        // Full contact Jacobian. It includes Jn and Jt.
   };
 
   // Returns true if the solver is solving the two-way coupled problem.
@@ -1066,9 +1082,7 @@ class TamsiSolver {
   // In addition, this method also computes the gradient
   // Gn = ∇ᵥfₙ(xˢ⁺¹, vₙˢ⁺¹).
   void CalcNormalForces(
-      const Eigen::Ref<const VectorX<T>>& x,
       const Eigen::Ref<const VectorX<T>>& vn,
-      const Eigen::Ref<const MatrixX<T>>& Jn,
       double dt,
       EigenPtr<VectorX<T>> fn,
       EigenPtr<MatrixX<T>> Gn) const;
@@ -1159,6 +1173,23 @@ class TamsiSolver {
   // We save solver statistics such as number of iterations and residuals so
   // that we can report them if requested.
   mutable TamsiSolverIterationStats statistics_;
+
+  // Operators used by TAMSI to build the system of equations.
+  // Computes r(v) = v - v₀ - h M⁻¹(q₀)(τᵃᵖᵖ - C₀v₀ + Jc(q₀)ᵀ Fc*
+  // where Fc* is the first order approximation of the contact forces at 
+  // q* = q₀ + h N(q₀) v.
+  std::function<void(const VectorX<T>& v, VectorX<T>* r_of_v)> residual_;
+
+  // Comptues vc = Jc(q₀)v. Where vc is the set {v_AB_C}.
+  std::function<VectorX<T>(const VectorX<T>& v)> contact_jacobian_operator_;
+
+  // Computes τ = Jc(q₀)ᵀ fc
+  std::function<VectorX<T>(const VectorX<T>& fc)>
+      contact_jacobian_transpose_operator_;
+
+  // Computes v̇ = M(q₀)⁻¹ τ.
+  std::function<VectorX<T>(const VectorX<T>& tau)>
+      mass_matrix_inverse_operator_;
 };
 
 }  // namespace multibody

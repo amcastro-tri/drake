@@ -38,20 +38,20 @@ class TamsiSolverTester {
     auto v_slip = solver.variable_size_workspace_.mutable_v_slip();
     std::vector<Matrix2<double>>& dft_dvt =
         solver.variable_size_workspace_.mutable_dft_dvt();
-    auto x = solver.variable_size_workspace_.mutable_x();
+    auto x = solver.variable_size_workspace_.mutable_f();
 
     // Normal separation velocity.
     vn = Jn * v;
 
     if (solver.has_two_way_coupling()) {
-      const auto x0 = solver.problem_data_aliases_.x0();
+      const auto x0 = solver.problem_data_aliases_.f0();
       // Penetration distance (positive when there is penetration).
       x = x0 - dt * vn;
     }
 
     // Computes friction forces fn and gradients Gn as a function of x, vn,
     // Jn and dt.
-    solver.CalcNormalForces(x, vn, Jn, dt, &fn, &Gn);
+    solver.CalcNormalForces(vn, dt, &fn, &Gn);
 
     // Tangential velocity.
     vt = Jt * v;
@@ -436,8 +436,8 @@ class PizzaSaver : public ::testing::Test {
 
   void SetProblem(const Vector3<double>& v0, const Vector3<double>& tau,
                   double mu, double theta, double dt) {
-    // Next time step generalized momentum if there are no friction forces.
-    p_star_ = M_ * v0 + dt * tau;
+    v0_ = v0;
+    tau0_ = tau;
 
     // Normal forces. Assume they are equally distributed.
     fn_ = m_ * g_ / 3.0 * Vector3<double>::Ones();
@@ -451,14 +451,15 @@ class PizzaSaver : public ::testing::Test {
 
     Jt_ = ComputeTangentialJacobian(theta);
 
-    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &fn_, &mu_);
+    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &v0_, &tau0_, &fn_,
+                                        &mu_);
   }
 
   void SetNoContactProblem(const Vector3<double>& v0,
                            const Vector3<double>& tau,
                            double dt) {
-    // Next time step generalized momentum if there are no friction forces.
-    p_star_ = M_ * v0 + dt * tau;
+    v0_ = v0;
+    tau0_ = tau;
 
     // No contact points.
     fn_.resize(0);
@@ -466,7 +467,8 @@ class PizzaSaver : public ::testing::Test {
     Jn_.resize(0, nv_);
     Jt_.resize(0, nv_);
 
-    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &fn_, &mu_);
+    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &v0_, &tau0_, &fn_,
+                                        &mu_);
   }
 
  protected:
@@ -500,6 +502,8 @@ class PizzaSaver : public ::testing::Test {
   Vector3<double> p_star_;  // Generalized momentum.
   VectorX<double> fn_;      // Normal forces at each contact point.
   VectorX<double> mu_;      // Friction coefficient at each contact point.
+  VectorX<double> v0_{nv_};
+  VectorX<double> tau0_{nv_};
 };
 
 // This tests the solver when we apply a moment Mz about COM to the pizza saver.
@@ -591,7 +595,7 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
   const double v_stiction = parameters.stiction_tolerance;
   const double epsilon_v = v_stiction * parameters.relative_tolerance;
   MatrixX<double> J_expected = test::CalcOneWayCoupledJacobianWithAutoDiff(
-      M_, Jn_, Jt_, p_star_, mu_, fn_, dt, v_stiction, epsilon_v, v);
+      M_, Jn_, Jt_, v0, tau, mu_, fn_, dt, v_stiction, epsilon_v, v);
 
   // We use a tolerance scaled by the norm and size of the matrix.
   const double J_tolerance =
@@ -697,7 +701,7 @@ TEST_F(PizzaSaver, LargeAppliedMoment) {
   const double v_stiction = parameters.stiction_tolerance;
   const double epsilon_v = v_stiction * parameters.relative_tolerance;
   MatrixX<double> J_expected = test::CalcOneWayCoupledJacobianWithAutoDiff(
-      M_, Jn_, Jt_, p_star_, mu_, fn_, dt, v_stiction, epsilon_v, v);
+      M_, Jn_, Jt_, v0, tau, mu_, fn_, dt, v_stiction, epsilon_v, v);
 
   // We use a tolerance scaled by the norm and size of the matrix.
   const double J_tolerance = J_expected.rows() * J_expected.norm() *
@@ -828,8 +832,8 @@ class RollingCylinder : public ::testing::Test {
   //   dt: time step used by the solver.
   void SetImpactProblem(const Vector3<double>& v0, const Vector3<double>& tau,
                         double mu, double height, double dt) {
-    // Next time step generalized momentum if there are no contact forces.
-    p_star_ = M_ * v0 + dt * tau;
+    v0_ = v0;
+    tau0_ = tau;
 
     // Friction coefficient for the only contact point in the problem.
     mu_vector_(0) = mu;
@@ -843,6 +847,7 @@ class RollingCylinder : public ::testing::Test {
     // Initial penetration of O(dt), in tests below we use dt = 1.0e-3.
     x0_(0) = 1.0e-3;
     stiffness_(0) = m_ * g_ / penetration_allowance;
+    f0_(0) = stiffness_(0) * x0_(0);
     const double omega = sqrt(stiffness_(0) / m_);
     const double time_scale = 1.0 / omega;
     const double damping_ratio = 1.0;
@@ -850,8 +855,8 @@ class RollingCylinder : public ::testing::Test {
         damping_ratio * time_scale / penetration_allowance;
     dissipation_(0) = dissipation;
 
-    solver_.SetTwoWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &x0_,
-                                        &stiffness_, &dissipation_,
+    solver_.SetTwoWayCoupledProblemData(&M_, &Jn_, &Jt_, &v0_, &tau0_,
+                                        &f0_, &stiffness_, &dissipation_,
                                         &mu_vector_);
   }
 
@@ -895,13 +900,15 @@ class RollingCylinder : public ::testing::Test {
   VectorX<double> stiffness_{nc_};
   VectorX<double> dissipation_{nc_};
   VectorX<double> x0_{nc_};
+  VectorX<double> f0_{nc_};
 
   // TAMSI solver for this problem.
   TamsiSolver<double> solver_{nv_};
 
   // Additional solver data that must outlive solver_ during solution.
-  VectorX<double> p_star_{nv_};  // Generalized momentum.
   VectorX<double> mu_vector_{nc_};  // Friction at each contact point.
+  VectorX<double> v0_{nv_};
+  VectorX<double> tau0_{nv_};
 };
 
 TEST_F(RollingCylinder, StictionAfterImpact) {
@@ -976,7 +983,7 @@ TEST_F(RollingCylinder, StictionAfterImpact) {
   const double v_stiction = parameters.stiction_tolerance;
   const double epsilon_v = v_stiction * parameters.relative_tolerance;
   MatrixX<double> J_expected = test::CalcTwoWayCoupledJacobianWithAutoDiff(
-      M_, Jn_, Jt_, p_star_, x0_, mu_vector_,
+      M_, Jn_, Jt_, v0, tau, f0_, mu_vector_,
       stiffness_, dissipation_, dt, v_stiction, epsilon_v, v);
 
   // We use a tolerance scaled by the norm and size of the matrix.
@@ -1069,7 +1076,7 @@ TEST_F(RollingCylinder, SlidingAfterImpact) {
   const double v_stiction = parameters.stiction_tolerance;
   const double epsilon_v = v_stiction * parameters.relative_tolerance;
   MatrixX<double> J_expected = test::CalcTwoWayCoupledJacobianWithAutoDiff(
-      M_, Jn_, Jt_, p_star_, x0_, mu_vector_,
+      M_, Jn_, Jt_, v0, tau, f0_, mu_vector_,
       stiffness_, dissipation_, dt, v_stiction, epsilon_v, v);
 
   // We use a tolerance scaled by the norm and size of the matrix.
@@ -1087,11 +1094,12 @@ GTEST_TEST(EmptyWorld, Solve) {
   TamsiSolver<double> solver{nv};
 
   // (Empty) problem data.
-  VectorX<double> p_star, mu_vector, x0, stiffness, dissipation;
+  VectorX<double> tau0, v0, mu_vector, f0, stiffness, dissipation;
   MatrixX<double> M, Jn, Jt;
 
-  DRAKE_EXPECT_NO_THROW(solver.SetTwoWayCoupledProblemData(
-      &M, &Jn, &Jt, &p_star, &x0, &stiffness, &dissipation, &mu_vector));
+  DRAKE_EXPECT_NO_THROW(
+      solver.SetTwoWayCoupledProblemData(&M, &Jn, &Jt, &v0, &tau0, &f0,
+                                         &stiffness, &dissipation, &mu_vector));
 }
 
 }  // namespace

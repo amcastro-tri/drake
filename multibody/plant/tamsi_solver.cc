@@ -273,13 +273,7 @@ void TamsiSolver<T>::SetOneWayCoupledProblemData(
   // Keep references to the problem data.
   problem_data_aliases_.SetOneWayCoupledData(M, Jn, Jt, v0, tau0, fn, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
-  // We pre-compute the LDLT factorization of the mass matrix so that we can
-  // reuse it multiple times in TAMSI iterations.
-  auto& M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
-  M_ldlt.compute(*M);
-  if (M_ldlt.info() != Eigen::Success) {
-    throw std::runtime_error("Mass matrix is not invertible.");
-  }
+  SetOperatorsFromMatrixProblemData();
 }
 
 template <typename T>
@@ -305,6 +299,24 @@ void TamsiSolver<T>::SetTwoWayCoupledProblemData(
 template <typename T>
 void TamsiSolver<T>::SetOperatorsFromMatrixProblemData() {
   DRAKE_DEMAND(!operator_form());
+
+  const auto& M = problem_data_aliases_.M();
+  const auto& Jn = problem_data_aliases_.Jn();
+  const auto& Jt = problem_data_aliases_.Jt();
+
+  // We pre-compute the LDLT factorization of the mass matrix so that we can
+  // reuse it multiple times in TAMSI iterations.
+  auto& mutable_M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
+  mutable_M_ldlt.compute(M);
+  if (mutable_M_ldlt.info() != Eigen::Success) {
+    throw std::runtime_error("Mass matrix is not invertible.");
+  }
+  // Set up full contact Jacobian matrix.
+  auto mutable_Jc = variable_size_workspace_.mutable_Jc();
+  for (int ic = 0; ic < nc_; ++ic) {
+    mutable_Jc.block(3 * ic, 0, 2, nv_) = Jt.block(2 * ic, 0, 2, nv_);
+    mutable_Jc.block(3 * ic + 2, 0, 1, nv_) = Jn.block(ic, 0, 1, nv_);
+  }
 
   contact_jacobian_ = [this](const VectorX<T>& v, VectorX<T>* vc) {
     const auto& Jc = variable_size_workspace_.mutable_Jc();
@@ -337,21 +349,6 @@ void TamsiSolver<T>::SetTwoWayCoupledProblemData(
   problem_data_aliases_.SetTwoWayCoupledData(M, Jn, Jt, v0, tau0, f0, stiffness,
                                              dissipation, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
-
-  // We pre-compute the LDLT factorization of the mass matrix so that we can
-  // reuse it multiple times in TAMSI iterations.
-  auto& M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
-  M_ldlt.compute(*M);
-  if (M_ldlt.info() != Eigen::Success) {
-    throw std::runtime_error("Mass matrix is not invertible.");
-  }
-
-  // Set up full contact Jacobian matrix.
-  auto Jc = variable_size_workspace_.mutable_Jc();
-  for (int ic = 0; ic < nc_; ++ic) {
-    Jc.block(3 * ic, 0, 2, nv_) = Jt->block(2 * ic, 0, 2, nv_);
-    Jc.block(3 * ic + 2, 0, 1, nv_) = Jn->block(ic, 0, 1, nv_);
-  }
 
   SetOperatorsFromMatrixProblemData();
 
@@ -847,10 +844,22 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   // Initialize iteration with the guess provided.
   v = v_guess;
 
+  // Auxiliary to save all 3D contact velocities.
+  VectorX<T> vc(3 * nc_);
+  VectorX<T> Delta_vc(3 * nc_);
+
+  auto extract_components = [this](const VectorX<T>& x, EigenPtr<VectorX<T>> xt,
+                                   EigenPtr<VectorX<T>> xn) {
+    for (int ic = 0; ic < nc_; ++ic) {
+      (*xt).template segment<2>(2 * ic) = x.template segment<2>(3 * ic);
+      (*xn)(ic) = x(3 * ic + 2);
+    }
+  };
+
   for (int iter = 0; iter < max_iterations; ++iter) {
     // Update normal and tangential velocities.
-    vn = Jn * v;
-    vt = Jt * v;
+    contact_jacobian_(v, &vc);
+    extract_components(vc, &vt, &vn);
 
     CalcNormalForces(vn, dt, &fn);
 
@@ -904,11 +913,10 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
     // determine by limiting the maximum angle change between vₜᵏ and vₜᵏ⁺¹.
     // For multiple contact points, we choose the minimum α among all contact
     // points.
-    Delta_vt = Jt * Delta_v;
-
     // Similarly to Δvₜᵏ above, we define the update in the normal velocities
     // as Δvₙᵏ = Jₙ Δvᵏ.
-    Delta_vn = Jn * Delta_v;
+    contact_jacobian_(Delta_v, &Delta_vc);
+    extract_components(Delta_vc, &Delta_vt, &Delta_vn);
 
     // We monitor convergence in both normal and tangential velocities.
     vn_error = ExtractDoubleOrThrow(Delta_vn.norm());

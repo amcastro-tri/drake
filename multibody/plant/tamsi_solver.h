@@ -610,6 +610,15 @@ class TamsiSolver {
       EigenPtr<const VectorX<T>> f0, EigenPtr<const VectorX<T>> stiffness,
       EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu);
 
+  void SetTwoWayCoupledProblemData(
+      std::function<void(const VectorX<T>& fc, VectorX<T>* vdot)>
+          forward_dynamics,
+      std::function<VectorX<T>(const VectorX<T>& v, VectorX<T>* vc)>
+          contact_jacobian,
+      EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> f0,
+      EigenPtr<const VectorX<T>> stiffness,
+      EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu);
+
   /// Given an initial guess `v_guess`, this method uses a Newton-Raphson
   /// iteration to find a solution for the generalized velocities satisfying
   /// either Eq. (3) when one-way coupling is used or Eq. (10) when two-way
@@ -775,6 +784,32 @@ class TamsiSolver {
       mu_ptr_ = mu;
     }
 
+    void SetTwoWayCoupledData(
+        std::function<void(const VectorX<T>& fc, VectorX<T>* vdot)>
+            forward_dynamics,
+        std::function<VectorX<T>(const VectorX<T>& v, VectorX<T>* vc)>
+            contact_jacobian,
+        EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> f0,
+        EigenPtr<const VectorX<T>> stiffness,
+        EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
+      DRAKE_DEMAND(v0 != nullptr);
+      DRAKE_DEMAND(f0 != nullptr);
+      DRAKE_DEMAND(stiffness != nullptr);
+      DRAKE_DEMAND(dissipation != nullptr);
+      DRAKE_DEMAND(mu != nullptr);
+      DRAKE_THROW_UNLESS(coupling_scheme_ == kInvalidScheme ||
+          coupling_scheme_ == kTwoWayCoupled);
+      coupling_scheme_ = kTwoWayCoupled;
+      operator_form_ = true;
+      forward_dynamics_ = forward_dynamics;
+      contact_jacobian_ = contact_jacobian;
+      v0_ptr_ = v0;
+      f0_ptr_ = f0;
+      stiffness_ptr_ = stiffness;
+      dissipation_ptr_ = dissipation;
+      mu_ptr_ = mu;
+    }
+
     // Returns true if this class contains the data for a two-way coupled
     // problem.
     bool has_two_way_coupling_data() const {
@@ -853,6 +888,19 @@ class TamsiSolver {
     EigenPtr<const VectorX<T>> dissipation_ptr_{nullptr};
     // Friction coefficient for each contact point.
     EigenPtr<const VectorX<T>> mu_ptr_{nullptr};
+
+    // Operators used by TAMSI to build the system of equations.
+    bool operator_form_{false};
+
+    // Computes v̇ = M⁻¹(q₀)(τᵃᵖᵖ - C₀v₀ + Jc(q₀)ᵀ F̃c)
+    // where F̃c is the first order approximation of the contact forces at
+    // q̃ = q₀ + h N(q₀) v.
+    std::function<void(const VectorX<T>& fc, VectorX<T>* vdot)>
+        forward_dynamics_;
+
+    // Comptues vc = Jc(q₀)v. Where vc is the set {v_AB_C}.
+    std::function<VectorX<T>(const VectorX<T>& v, VectorX<T>* vc)>
+        contact_jacobian_;
   };
 
   // The solver's workspace allocated at construction time. Sizes only depend on
@@ -1085,7 +1133,7 @@ class TamsiSolver {
       const Eigen::Ref<const VectorX<T>>& vn,
       double dt,
       EigenPtr<VectorX<T>> fn,
-      EigenPtr<MatrixX<T>> Gn) const;
+      EigenPtr<MatrixX<T>> Gn = nullptr) const;
 
   // Helper to compute fₜ(vₜ) = −vₜ/‖vₜ‖ₛ μ(‖vₜ‖ₛ) fₙ, where ‖vₜ‖ₛ
   // is the "soft norm" of vₜ. In addition this method computes
@@ -1174,6 +1222,12 @@ class TamsiSolver {
   // that we can report them if requested.
   mutable TamsiSolverIterationStats statistics_;
 
+
+  // Computes v̇ = M⁻¹(q₀)(τᵃᵖᵖ - C₀v₀ + Jc(q₀)ᵀ F̃c)
+  // where F̃c is the first order approximation of the contact forces at 
+  // q̃ = q₀ + h N(q₀) v.
+  std::function<void(const VectorX<T>& fc, VectorX<T>* vdot)> forward_dynamics_;
+
   // Operators used by TAMSI to build the system of equations.
   // Computes r(v) = v - v₀ - h M⁻¹(q₀)(τᵃᵖᵖ - C₀v₀ + Jc(q₀)ᵀ Fc*
   // where Fc* is the first order approximation of the contact forces at 
@@ -1181,7 +1235,8 @@ class TamsiSolver {
   std::function<void(const VectorX<T>& v, VectorX<T>* r_of_v)> residual_;
 
   // Comptues vc = Jc(q₀)v. Where vc is the set {v_AB_C}.
-  std::function<VectorX<T>(const VectorX<T>& v)> contact_jacobian_operator_;
+  std::function<VectorX<T>(const VectorX<T>& v, VectorX<T>* vc)>
+      contact_jacobian_;
 
   // Computes τ = Jc(q₀)ᵀ fc
   std::function<VectorX<T>(const VectorX<T>& fc)>

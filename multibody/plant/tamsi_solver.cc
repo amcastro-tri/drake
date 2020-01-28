@@ -277,10 +277,28 @@ void TamsiSolver<T>::SetOneWayCoupledProblemData(
 
 template <typename T>
 void TamsiSolver<T>::SetTwoWayCoupledProblemData(
-    EigenPtr<const MatrixX<T>> M,
-    EigenPtr<const MatrixX<T>> Jn, EigenPtr<const MatrixX<T>> Jt, 
-    EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> tau0,
-    EigenPtr<const VectorX<T>> f0, EigenPtr<const VectorX<T>> stiffness,
+    std::function<void(const VectorX<T>& fc, VectorX<T>* vdot)>
+        forward_dynamics,
+    std::function<VectorX<T>(const VectorX<T>& v, VectorX<T>* vc)>
+        contact_jacobian,
+    EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> f0,
+    EigenPtr<const VectorX<T>> stiffness,
+    EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
+  DRAKE_DEMAND(v0 != nullptr);
+  DRAKE_DEMAND(f0 != nullptr);
+  nv_ = v0->size();
+  nc_ = f0->size();
+  problem_data_aliases_.SetTwoWayCoupledData(
+      forward_dynamics, contact_jacobian, v0, f0, stiffness, dissipation, mu);
+  variable_size_workspace_.ResizeIfNeeded(nc_, nv_);  
+}
+
+template <typename T>
+void TamsiSolver<T>::SetTwoWayCoupledProblemData(
+    EigenPtr<const MatrixX<T>> M, EigenPtr<const MatrixX<T>> Jn,
+    EigenPtr<const MatrixX<T>> Jt, EigenPtr<const VectorX<T>> v0,
+    EigenPtr<const VectorX<T>> tau0, EigenPtr<const VectorX<T>> f0,
+    EigenPtr<const VectorX<T>> stiffness,
     EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
   nc_ = f0->size();
   DRAKE_THROW_UNLESS(M->rows() == nv_ && M->cols() == nv_);
@@ -293,6 +311,24 @@ void TamsiSolver<T>::SetTwoWayCoupledProblemData(
   problem_data_aliases_.SetTwoWayCoupledData(M, Jn, Jt, v0, tau0, f0, stiffness,
                                              dissipation, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
+
+#if 0
+  auto& M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
+  M_ldlt.compute(*M);
+  if (M_ldlt.info() != Eigen::Success) {
+    throw std::runtime_error("Mass matrix is not invertible.");
+  }
+  // Computes v̇ = M⁻¹(q₀)(τᵃᵖᵖ - C₀v₀ + Jc(q₀)ᵀ F̃c)
+  forward_dynamics_ = [this](const VectorX<T>& fctilde, VectorX<T>* vdot) {
+    const auto Jn = problem_data_aliases_.Jn();
+    const auto Jt = problem_data_aliases_.Jt();
+    const auto v0 = problem_data_aliases_.v0();
+    const auto tau0 = problem_data_aliases_.tau0();
+
+    auto& M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
+    return M_ldlt.solve(tau);
+  };
+#endif  
 
 #if 0
   auto& M_ldlt = fixed_size_workspace_.mutable_M_ldlt();
@@ -574,27 +610,32 @@ void TamsiSolver<T>::CalcNormalForces(
     // fₙ = f̃₀χ
     fn(ic) = f0tilde_capped(ic) * chi_capped(ic);
 
-    // Factors in the derivatives of χ and f̃₀.
-    H_chi(ic) = chi > 0 ? 1.0 : 0.0;
-    H_f0tilde(ic) = f0tilde > 0 ? 1.0 : 0.0;
+    if (Gn_ptr) {
+      // Factors in the derivatives of χ and f̃₀.
+      H_chi(ic) = chi > 0 ? 1.0 : 0.0;
+      H_f0tilde(ic) = f0tilde > 0 ? 1.0 : 0.0;
+    }
   }
 
-  // ∇ᵥf̃₀(vₙˢ⁺¹) = −δt diag(k H(f₀ - δt k vₙˢ⁺¹)) Jₙ.
-  // of size nc x nv.
-  MatrixX<T> nabla_f0tilde_capped =
-      -dt * (H_f0tilde.array() * stiffness.array()).matrix().asDiagonal() * Jn;
+  if (Gn_ptr) {
+    // ∇ᵥf̃₀(vₙˢ⁺¹) = −δt diag(k H(f₀ - δt k vₙˢ⁺¹)) Jₙ.
+    // of size nc x nv.
+    MatrixX<T> nabla_f0tilde_capped =
+        -dt * (H_f0tilde.array() * stiffness.array()).matrix().asDiagonal() *
+        Jn;
 
-  // ∇ᵥχ(vₙˢ⁺¹)₊ = −diag(H(1 − d vₙˢ⁺¹)) diag(d) Jₙ
-  // of size nc x nv.
-  MatrixX<T> nabla_chi_capped = -(
-      (H_chi.array() * dissipation.array()).matrix().asDiagonal() * Jn);
+    // ∇ᵥχ(vₙˢ⁺¹)₊ = −diag(H(1 − d vₙˢ⁺¹)) diag(d) Jₙ
+    // of size nc x nv.
+    MatrixX<T> nabla_chi_capped =
+        -((H_chi.array() * dissipation.array()).matrix().asDiagonal() * Jn);
 
-  auto& Gn = *Gn_ptr;
+    auto& Gn = *Gn_ptr;
 
-  // fₙ = f̃₀(vₙ)χ(vₙ)
-  // Gn = ∇ᵥfₙ(xˢ⁺¹, vₙˢ⁺¹) = diag(χ) ∇ᵥf̃₀(vₙˢ⁺¹)₊ + diag(f̃₀(vₙ)) ∇ᵥχˢ⁺¹
-  Gn = chi_capped.asDiagonal() * nabla_f0tilde_capped +
-       f0tilde_capped.asDiagonal() * nabla_chi_capped;
+    // fₙ = f̃₀(vₙ)χ(vₙ)
+    // Gn = ∇ᵥfₙ(xˢ⁺¹, vₙˢ⁺¹) = diag(χ) ∇ᵥf̃₀(vₙˢ⁺¹)₊ + diag(f̃₀(vₙ)) ∇ᵥχˢ⁺¹
+    Gn = chi_capped.asDiagonal() * nabla_f0tilde_capped +
+         f0tilde_capped.asDiagonal() * nabla_chi_capped;
+  }
 }
 
 template <typename T>
@@ -758,12 +799,6 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
     // Update normal and tangential velocities.
     vn = Jn * v;
     vt = Jt * v;
-
-    //if (has_two_way_coupling()) {
-    //  // Update the penetration for the two-way coupling scheme.
-    //  const auto& x0 = problem_data_aliases_.f0();
-    //  x = x0 - dt * vn;
-    //}
 
     CalcNormalForces(vn, dt, &fn, &Gn);
 

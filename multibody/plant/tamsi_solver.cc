@@ -576,8 +576,7 @@ void TamsiSolver<T>::CalcNormalForces(
     double dt,
     // We change from fn/Gn in the header to fn_ptr, Gn_ptr here to avoid name
     // clashes with local variables.
-    EigenPtr<VectorX<T>> fn_ptr,
-    EigenPtr<MatrixX<T>> Gn_ptr) const {
+    EigenPtr<VectorX<T>> fn_ptr) const {
   using std::max;
   const int nc = nc_;  // Number of contact points.
 
@@ -610,14 +609,14 @@ void TamsiSolver<T>::CalcNormalForces(
     // fₙ = f̃₀χ
     fn(ic) = f0tilde_capped(ic) * chi_capped(ic);
 
-    if (Gn_ptr) {
+    if (!operator_form()) {
       // Factors in the derivatives of χ and f̃₀.
       H_chi(ic) = chi > 0 ? 1.0 : 0.0;
       H_f0tilde(ic) = f0tilde > 0 ? 1.0 : 0.0;
     }
   }
 
-  if (Gn_ptr) {
+  if (!operator_form()) {
     // ∇ᵥf̃₀(vₙˢ⁺¹) = −δt diag(k H(f₀ - δt k vₙˢ⁺¹)) Jₙ.
     // of size nc x nv.
     MatrixX<T> nabla_f0tilde_capped =
@@ -629,7 +628,7 @@ void TamsiSolver<T>::CalcNormalForces(
     MatrixX<T> nabla_chi_capped =
         -((H_chi.array() * dissipation.array()).matrix().asDiagonal() * Jn);
 
-    auto& Gn = *Gn_ptr;
+    auto Gn = variable_size_workspace_.mutable_Gn();
 
     // fₙ = f̃₀(vₙ)χ(vₙ)
     // Gn = ∇ᵥfₙ(xˢ⁺¹, vₙˢ⁺¹) = diag(χ) ∇ᵥf̃₀(vₙˢ⁺¹)₊ + diag(f̃₀(vₙ)) ∇ᵥχˢ⁺¹
@@ -643,16 +642,19 @@ void TamsiSolver<T>::CalcJacobian(
     const Eigen::Ref<const MatrixX<T>>& M,
     const Eigen::Ref<const MatrixX<T>>& Jn,
     const Eigen::Ref<const MatrixX<T>>& Jt,
-    const Eigen::Ref<const MatrixX<T>>& Gn,
     const std::vector<Matrix2<T>>& dft_dvt,
     const Eigen::Ref<const VectorX<T>>& t_hat,
     const Eigen::Ref<const VectorX<T>>& mu_vt, double dt,
     EigenPtr<MatrixX<T>> J) const {
+  DRAKE_DEMAND(!operator_form());
+
   // Problem sizes.
   const int nv = nv_;  // Number of generalized velocities.
   const int nc = nc_;  // Number of contact points.
   // Size of the friction forces vector ft and tangential velocities vector vt.
   const int nf = 2 * nc;
+
+  auto Gn = variable_size_workspace_.mutable_Gn();
 
   // Newton-Raphson Jacobian, i.e. the derivative of the residual with
   // respect to the independent variable which, in this case, is the vector
@@ -780,7 +782,6 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   auto Delta_vn = variable_size_workspace_.mutable_Delta_vn();
   auto Delta_vt = variable_size_workspace_.mutable_Delta_vt();
   auto& dft_dvt = variable_size_workspace_.mutable_dft_dvt();
-  auto Gn = variable_size_workspace_.mutable_Gn();
   auto mu_vt = variable_size_workspace_.mutable_mu();
   auto t_hat = variable_size_workspace_.mutable_t_hat();
   auto fn = variable_size_workspace_.mutable_fn();
@@ -800,7 +801,7 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
     vn = Jn * v;
     vt = Jt * v;
 
-    CalcNormalForces(vn, dt, &fn, &Gn);
+    CalcNormalForces(vn, dt, &fn);
 
     // Update v_slip, t_hat, mus and ft as a function of vt and fn.
     CalcFrictionForces(vt, fn, &v_slip, &t_hat, &mu_vt, &ft);
@@ -824,7 +825,7 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
     CalcFrictionForcesGradient(fn, mu_vt, t_hat, v_slip, &dft_dvt);
 
     // Newton-Raphson Jacobian, J = ∇ᵥR, as a function of M, dft_dvt, Jt, dt.
-    CalcJacobian(M, Jn, Jt, Gn, dft_dvt, t_hat, mu_vt, dt, &J);
+    CalcJacobian(M, Jn, Jt, dft_dvt, t_hat, mu_vt, dt, &J);
 
     // TODO(amcastro-tri): Consider using a cheap iterative solver like CG.
     // Since we are in a non-linear iteration, an approximate cheap solution

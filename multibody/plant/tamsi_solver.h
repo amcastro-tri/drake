@@ -619,6 +619,8 @@ class TamsiSolver {
       EigenPtr<const VectorX<T>> stiffness,
       EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu);
 
+  bool operator_form() const { return problem_data_aliases_.operator_form(); }
+
   /// Given an initial guess `v_guess`, this method uses a Newton-Raphson
   /// iteration to find a solution for the generalized velocities satisfying
   /// either Eq. (3) when one-way coupling is used or Eq. (10) when two-way
@@ -816,9 +818,21 @@ class TamsiSolver {
       return coupling_scheme_ == kTwoWayCoupled;
     }
 
-    Eigen::Ref<const MatrixX<T>> M() const { return *M_ptr_; }
-    Eigen::Ref<const MatrixX<T>> Jn() const { return *Jn_ptr_; }
-    Eigen::Ref<const MatrixX<T>> Jt() const { return *Jt_ptr_; }
+    // Returns `true` if equations are in operator form.
+    bool operator_form() const { return operator_form_; }
+
+    Eigen::Ref<const MatrixX<T>> M() const {
+      DRAKE_DEMAND(!operator_form());
+      return *M_ptr_;
+    }
+    Eigen::Ref<const MatrixX<T>> Jn() const {
+      DRAKE_DEMAND(!operator_form());
+      return *Jn_ptr_;
+    }
+    Eigen::Ref<const MatrixX<T>> Jt() const {
+      DRAKE_DEMAND(!operator_form());
+      return *Jt_ptr_;
+    }
     Eigen::Ref<const VectorX<T>> v0() const { return *v0_ptr_; }
     // Explicit terms of the generalized forces.
     Eigen::Ref<const VectorX<T>> tau0() const { return *tau0_ptr_; }
@@ -985,9 +999,9 @@ class TamsiSolver {
       t_hat_.resize(nf);
       v_slip_.resize(nc);
       mus_.resize(nc);
+      Jc_.resize(3 * nc, nv);      
       dft_dv_.resize(nc);
       Gn_.resize(nc, nv);
-      Jc_.resize(3 * nc, nv);
     }
 
     // Returns the current (maximum) capacity of the workspace.
@@ -1132,8 +1146,7 @@ class TamsiSolver {
   void CalcNormalForces(
       const Eigen::Ref<const VectorX<T>>& vn,
       double dt,
-      EigenPtr<VectorX<T>> fn,
-      EigenPtr<MatrixX<T>> Gn = nullptr) const;
+      EigenPtr<VectorX<T>> fn) const;
 
   // Helper to compute fₜ(vₜ) = −vₜ/‖vₜ‖ₛ μ(‖vₜ‖ₛ) fₙ, where ‖vₜ‖ₛ
   // is the "soft norm" of vₜ. In addition this method computes
@@ -1165,7 +1178,6 @@ class TamsiSolver {
       const Eigen::Ref<const MatrixX<T>>& M,
       const Eigen::Ref<const MatrixX<T>>& Jn,
       const Eigen::Ref<const MatrixX<T>>& Jt,
-      const Eigen::Ref<const MatrixX<T>>& Gn,
       const std::vector<Matrix2<T>>& dft_dvt,
       const Eigen::Ref<const VectorX<T>>& t_hat,
       const Eigen::Ref<const VectorX<T>>& mu_vt, double dt,

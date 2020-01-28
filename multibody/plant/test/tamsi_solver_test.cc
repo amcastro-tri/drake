@@ -32,7 +32,6 @@ class TamsiSolverTester {
     auto vt = solver.variable_size_workspace_.mutable_vt();
     auto fn = solver.variable_size_workspace_.mutable_fn();
     auto ft = solver.variable_size_workspace_.mutable_ft();
-    auto Gn = solver.variable_size_workspace_.mutable_Gn();
     auto mus = solver.variable_size_workspace_.mutable_mu();
     auto t_hat = solver.variable_size_workspace_.mutable_t_hat();
     auto v_slip = solver.variable_size_workspace_.mutable_v_slip();
@@ -51,7 +50,7 @@ class TamsiSolverTester {
 
     // Computes friction forces fn and gradients Gn as a function of x, vn,
     // Jn and dt.
-    solver.CalcNormalForces(vn, dt, &fn, &Gn);
+    solver.CalcNormalForces(vn, dt, &fn);
 
     // Tangential velocity.
     vt = Jt * v;
@@ -65,7 +64,7 @@ class TamsiSolverTester {
 
     // Newton-Raphson Jacobian, J = ∇ᵥR, as a function of M, dft_dvt, Jt, dt.
     MatrixX<double> J(nv, nv);
-    solver.CalcJacobian(M, Jn, Jt, Gn, dft_dvt, t_hat, mus, dt, &J);
+    solver.CalcJacobian(M, Jn, Jt, dft_dvt, t_hat, mus, dt, &J);
 
     return J;
   }

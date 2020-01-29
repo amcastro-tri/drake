@@ -1,0 +1,137 @@
+exec ${PAGER:-/usr/bin/less} "$0" || exit 1
+Executing tests from //multibody/plant:tamsi_solver_test
+-----------------------------------------------------------------------------
+Using drake_cc_googletest_main.cc
+
+[==========] Running 20 tests from 4 test suites.
+[----------] Global test environment set-up.
+[----------] 14 tests from DirectionLimiter
+[ RUN      ] DirectionLimiter.ZeroVandZeroDv
+[       OK ] DirectionLimiter.ZeroVandZeroDv (0 ms)
+[ RUN      ] DirectionLimiter.ZeroVtoWithinStictionRegion
+[       OK ] DirectionLimiter.ZeroVtoWithinStictionRegion (0 ms)
+[ RUN      ] DirectionLimiter.ZeroVtoSlidingRegion
+[       OK ] DirectionLimiter.ZeroVtoSlidingRegion (0 ms)
+[ RUN      ] DirectionLimiter.SlidingRegiontoZero
+[       OK ] DirectionLimiter.SlidingRegiontoZero (0 ms)
+[ RUN      ] DirectionLimiter.SlidingRegionToStictionRegion
+[       OK ] DirectionLimiter.SlidingRegionToStictionRegion (0 ms)
+[ RUN      ] DirectionLimiter.WithinStictionRegionToSlidingRegion
+[       OK ] DirectionLimiter.WithinStictionRegionToSlidingRegion (0 ms)
+[ RUN      ] DirectionLimiter.StictionToSliding
+[       OK ] DirectionLimiter.StictionToSliding (0 ms)
+[ RUN      ] DirectionLimiter.VerySmallDeltaV
+[       OK ] DirectionLimiter.VerySmallDeltaV (0 ms)
+[ RUN      ] DirectionLimiter.StraightCrossThroughZero
+[       OK ] DirectionLimiter.StraightCrossThroughZero (0 ms)
+[ RUN      ] DirectionLimiter.CrossStictionRegionFromTheOutside
+[       OK ] DirectionLimiter.CrossStictionRegionFromTheOutside (0 ms)
+[ RUN      ] DirectionLimiter.ChangesWithinTheSlidingRegion
+[       OK ] DirectionLimiter.ChangesWithinTheSlidingRegion (0 ms)
+[ RUN      ] DirectionLimiter.ChangesWithinTheSlidingRegion_LargeTheta
+[       OK ] DirectionLimiter.ChangesWithinTheSlidingRegion_LargeTheta (0 ms)
+[ RUN      ] DirectionLimiter.ChangesWithinTheSlidingRegion_VeryLargeTheta
+[       OK ] DirectionLimiter.ChangesWithinTheSlidingRegion_VeryLargeTheta (0 ms)
+[ RUN      ] DirectionLimiter.ChangesWithinTheSlidingRegion_SingleSolution
+[       OK ] DirectionLimiter.ChangesWithinTheSlidingRegion_SingleSolution (0 ms)
+[----------] 14 tests from DirectionLimiter (1 ms total)
+
+[----------] 3 tests from PizzaSaver
+[ RUN      ] PizzaSaver.SmallAppliedMoment
+iter: 0
+vn_error: 0
+vt_error: 5.19589e-07
+iter: 1
+vn_error: 0
+vt_error: 1.1128e-07
+iter: 2
+vn_error: 0
+vt_error: 5.62178e-09
+iter: 3
+vn_error: 0
+vt_error: 1.44216e-11
+[       OK ] PizzaSaver.SmallAppliedMoment (3 ms)
+[ RUN      ] PizzaSaver.LargeAppliedMoment
+iter: 0
+vn_error: 0
+vt_error: 1.03918e-06
+iter: 1
+vn_error: 0
+vt_error: 7.78962e-07
+iter: 2
+vn_error: 0
+vt_error: 0.00173016
+iter: 3
+vn_error: 0
+vt_error: 7.47527e-08
+iter: 4
+vn_error: 0
+vt_error: 3.01276e-18
+[       OK ] PizzaSaver.LargeAppliedMoment (2 ms)
+[ RUN      ] PizzaSaver.NoContact
+[       OK ] PizzaSaver.NoContact (0 ms)
+[----------] 3 tests from PizzaSaver (5 ms total)
+
+[----------] 2 tests from RollingCylinder
+[ RUN      ] RollingCylinder.StictionAfterImpact
+iter: 0
+vn_error: 1.71518
+vt_error: 0.344837
+iter: 1
+vn_error: 0.823364
+vt_error: 0.164673
+iter: 2
+vn_error: 0.381816
+vt_error: 1.46163e-10
+iter: 3
+vn_error: 0.115912
+vt_error: 5.71262e-10
+iter: 4
+vn_error: 0.0130967
+vt_error: 5.54714e-09
+iter: 5
+vn_error: 0.000171577
+vt_error: 6.41032e-08
+iter: 6
+vn_error: 2.94581e-08
+vt_error: 1.73671e-08
+iter: 7
+vn_error: 8.68023e-16
+vt_error: 3.66334e-10
+[       OK ] RollingCylinder.StictionAfterImpact (2 ms)
+[ RUN      ] RollingCylinder.SlidingAfterImpact
+iter: 0
+vn_error: 1.71518
+vt_error: 0.344837
+iter: 1
+vn_error: 0.823364
+vt_error: 0.164673
+iter: 2
+vn_error: 0.351944
+vt_error: 0.0703887
+iter: 3
+vn_error: 0.101333
+vt_error: 0.0202665
+iter: 4
+vn_error: 0.0100701
+vt_error: 0.00201401
+iter: 5
+vn_error: 0.000101452
+vt_error: 2.02904e-05
+iter: 6
+vn_error: 1.02992e-08
+vt_error: 2.05985e-09
+iter: 7
+vn_error: 1.05763e-16
+vt_error: 1.0997e-16
+[       OK ] RollingCylinder.SlidingAfterImpact (2 ms)
+[----------] 2 tests from RollingCylinder (4 ms total)
+
+[----------] 1 test from EmptyWorld
+[ RUN      ] EmptyWorld.Solve
+[       OK ] EmptyWorld.Solve (0 ms)
+[----------] 1 test from EmptyWorld (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 20 tests from 4 test suites ran. (11 ms total)
+[  PASSED  ] 20 tests.

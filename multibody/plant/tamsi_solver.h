@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "drake/common/default_scalars.h"
@@ -8,6 +9,7 @@
 #include "drake/common/drake_copyable.h"
 #include "drake/common/drake_throw.h"
 #include "drake/common/eigen_types.h"
+#include "drake/math/compute_numerical_gradient.h"
 
 namespace drake {
 namespace multibody {
@@ -608,7 +610,8 @@ class TamsiSolver {
       EigenPtr<const MatrixX<T>> Jt,
       EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> tau0,
       EigenPtr<const VectorX<T>> f0, EigenPtr<const VectorX<T>> stiffness,
-      EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu);
+      EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu,
+      std::optional<math::NumericalGradientMethod> method = std::nullopt);
 
   void SetTwoWayCoupledProblemData(
       std::function<void(const VectorX<T>& fc, VectorX<T>* vdot)>
@@ -620,6 +623,10 @@ class TamsiSolver {
       EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu);
 
   bool operator_form() const { return problem_data_aliases_.operator_form(); }
+
+  std::optional<math::NumericalGradientMethod> numerical_gradient_method() {
+    return numerical_gradient_method_;
+  }
 
   /// Given an initial guess `v_guess`, this method uses a Newton-Raphson
   /// iteration to find a solution for the generalized velocities satisfying
@@ -1176,6 +1183,24 @@ class TamsiSolver {
   // function of M, Jn, Jt, Gn, dft_dvt, t_hat, mu_vt and dt.
   void CalcJacobian(double dt, EigenPtr<MatrixX<T>> J) const;
 
+  void CalcTamsiResidual(const VectorX<T>& v, double dt,
+                         VectorX<T>* residual) const;
+
+  void ExtractComponents(const VectorX<T>& x, EigenPtr<VectorX<T>> xt,
+                         EigenPtr<VectorX<T>> xn) const {
+    for (int ic = 0; ic < nc_; ++ic) {
+      (*xt).template segment<2>(2 * ic) = x.template segment<2>(3 * ic);
+      (*xn)(ic) = x(3 * ic + 2);
+    }
+  }
+
+  void MergeComponents(const VectorX<T>& xt, const VectorX<T>& xn,
+                       EigenPtr<VectorX<T>> x) const {
+    for (int ic = 0; ic < nc_; ++ic) {
+      x->template segment<3>(3 * ic) << xt.template segment<2>(2 * ic), xn(ic);
+    }
+  }
+
   // Limit the per-iteration angle change between vₜᵏ⁺¹ and vₜᵏ for
   // all contact points. The angle change θ is defined by the dot product
   // between vₜᵏ⁺¹ and vₜᵏ as: cos(θ) = vₜᵏ⁺¹⋅vₜᵏ/(‖vₜᵏ⁺¹‖‖vₜᵏ‖).
@@ -1213,6 +1238,12 @@ class TamsiSolver {
 
   int nv_;  // Number of generalized velocities.
   int nc_;  // Number of contact points.
+
+  // std::nullopt indicates default:
+  // 1) Analytical gradients for problem data in explicit matrix form.
+  // 2) Forward differences for problem data in operator form.
+  std::optional<math::NumericalGradientMethod> numerical_gradient_method_{
+      std::nullopt};
 
   // The parameters of the solver controlling the iteration strategy.
   TamsiSolverParameters parameters_;

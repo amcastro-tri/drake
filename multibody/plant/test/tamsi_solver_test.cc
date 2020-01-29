@@ -8,6 +8,10 @@
 #include "drake/common/test_utilities/expect_no_throw.h"
 #include "drake/multibody/plant/test/tamsi_solver_test_util.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+
 namespace drake {
 namespace multibody {
 
@@ -67,6 +71,14 @@ class TamsiSolverTester {
     solver.CalcJacobian(dt, &J);
 
     return J;
+  }
+
+  static MatrixX<double> GetJacobian(const TamsiSolver<double>& solver) {
+    return solver.fixed_size_workspace_.mutable_J();
+  }
+
+  static VectorX<double> GetResidual(const TamsiSolver<double>& solver) {
+    return solver.fixed_size_workspace_.mutable_residual();
   }
 };
 namespace {
@@ -450,8 +462,8 @@ class PizzaSaver : public ::testing::Test {
 
     Jt_ = ComputeTangentialJacobian(theta);
 
-    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &v0_, &tau0_, &fn_,
-                                        &mu_);
+    solver_.SetOneWayCoupledProblemData(
+        &M_, &Jn_, &Jt_, &v0_, &tau0_, &fn_, &mu_);
   }
 
   void SetNoContactProblem(const Vector3<double>& v0,
@@ -527,6 +539,11 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
   const Vector3<double> v0 = Vector3<double>::Zero();
 
   SetProblem(v0, tau, mu, theta, dt);
+  // Right now I expect:
+  // 1) explicit matrix form.
+  ASSERT_FALSE(solver_.operator_form());
+  // 2) analytical gradients.
+  ASSERT_FALSE(solver_.numerical_gradient_method().has_value());
 
   TamsiSolverParameters parameters;  // Default parameters.
   parameters.stiction_tolerance = 1.0e-6;
@@ -544,6 +561,8 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
       // Dimensionless relative (to the stiction tolerance) tolerance.
       solver_.get_solver_parameters().relative_tolerance *
           solver_.get_solver_parameters().stiction_tolerance;
+  PRINT_VAR(stats.vt_residual());
+  PRINT_VAR(vt_tolerance);
   EXPECT_TRUE(stats.vt_residual() < vt_tolerance);
 
   // For this problem we expect the x and y components of the forces due to
@@ -596,10 +615,28 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
   MatrixX<double> J_expected = test::CalcOneWayCoupledJacobianWithAutoDiff(
       M_, Jn_, Jt_, v0, tau, mu_, fn_, dt, v_stiction, epsilon_v, v);
 
+  const VectorX<double> dummy;
+  VectorX<double> residual =
+      test::CalcResidual(M_, Jn_, Jt_, v0, tau, dummy /* f0 */, mu_, fn_,
+                         dummy /* k */, dummy /* d */, dt, v_stiction,
+                         epsilon_v, false /* two-way coupling */, v);
+
+  PRINT_VAR(TamsiSolverTester::GetResidual(solver_).transpose());
+  PRINT_VARn(TamsiSolverTester::GetJacobian(solver_));
+
+  PRINT_VAR(residual.transpose());
+
   // We use a tolerance scaled by the norm and size of the matrix.
   const double J_tolerance =
       J_expected.rows() * J_expected.norm() *
           std::numeric_limits<double>::epsilon();
+
+  PRINT_VARn(M_);
+  PRINT_VARn(Jn_);
+  PRINT_VARn(Jt_);
+
+  PRINT_VARn(J);
+  PRINT_VARn(J_expected);
 
   // Verify the result.
   EXPECT_TRUE(CompareMatrices(
@@ -854,9 +891,9 @@ class RollingCylinder : public ::testing::Test {
         damping_ratio * time_scale / penetration_allowance;
     dissipation_(0) = dissipation;
 
-    solver_.SetTwoWayCoupledProblemData(&M_, &Jn_, &Jt_, &v0_, &tau0_,
-                                        &f0_, &stiffness_, &dissipation_,
-                                        &mu_vector_);
+    solver_.SetTwoWayCoupledProblemData(
+        &M_, &Jn_, &Jt_, &v0_, &tau0_, &f0_, &stiffness_, &dissipation_,
+        &mu_vector_, drake::math::NumericalGradientMethod::kForward);
   }
 
  protected:

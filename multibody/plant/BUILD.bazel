@@ -37,6 +37,7 @@ drake_cc_library(
     deps = [
         "//common:default_scalars",
         "//common:extract_double",
+        "//math:compute_numerical_gradient",
     ],
 )
 

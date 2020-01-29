@@ -836,7 +836,8 @@ TEST_F(PizzaSaver, NoContact) {
 // defined as:
 //   vx_transition =  μ (1 + m R²/I) pn/m
 // Otherwise the cylinder will be sliding after impact.
-class RollingCylinder : public ::testing::Test {
+class RollingCylinder : public ::testing::TestWithParam<
+                            std::optional<math::NumericalGradientMethod>> {
  public:
   void SetUp() override {
     // Mass matrix corresponding to free (in 2D) cylinder.
@@ -891,9 +892,20 @@ class RollingCylinder : public ::testing::Test {
         damping_ratio * time_scale / penetration_allowance;
     dissipation_(0) = dissipation;
 
-    solver_.SetTwoWayCoupledProblemData(
-        &M_, &Jn_, &Jt_, &v0_, &tau0_, &f0_, &stiffness_, &dissipation_,
-        &mu_vector_, drake::math::NumericalGradientMethod::kForward);
+    // Gradient computation method.
+    const std::optional<drake::math::NumericalGradientMethod> gradient_method =
+        this->GetParam();
+
+    PRINT_VAR(gradient_method.has_value());
+    //if (gradient_method.has_value()) {
+    //  if 
+    //}
+    //  PRINT_VAR(*gradient_method);
+   // }
+
+    solver_.SetTwoWayCoupledProblemData(&M_, &Jn_, &Jt_, &v0_, &tau0_, &f0_,
+                                        &stiffness_, &dissipation_, &mu_vector_,
+                                        gradient_method);
   }
 
  protected:
@@ -947,7 +959,7 @@ class RollingCylinder : public ::testing::Test {
   VectorX<double> tau0_{nv_};
 };
 
-TEST_F(RollingCylinder, StictionAfterImpact) {
+TEST_P(RollingCylinder, StictionAfterImpact) {
   const double kTolerance = 10 * std::numeric_limits<double>::epsilon();
 
   const double dt = 1.0e-3;  // time step in seconds.
@@ -973,6 +985,18 @@ TEST_F(RollingCylinder, StictionAfterImpact) {
 
   TamsiSolverParameters parameters;  // Default parameters.
   parameters.stiction_tolerance = 1.0e-6;
+
+  // We found out that when using central differences to compute the Jacobian,
+  // the value above of stiction_tolerance = 1.0e-6 causes the Newton-Raphson
+  // iteration not to converge. We find that larger values converge smoothly.
+  // Forward and backward schemes did not exhibit this problem, at least for
+  // these test cases.
+  const std::optional<drake::math::NumericalGradientMethod> gradient_method =
+      this->GetParam();
+  if (gradient_method.has_value() &&
+      *gradient_method == drake::math::NumericalGradientMethod::kCentral)
+    parameters.stiction_tolerance = 1.0e-5;
+
   solver_.set_solver_parameters(parameters);
 
   TamsiSolverResult info = solver_.SolveWithGuess(dt, v0);
@@ -1037,7 +1061,7 @@ TEST_F(RollingCylinder, StictionAfterImpact) {
 // which leads to the cylinder to be sliding after impact.
 // This is a case for which the initial horizontal velocity is
 // vx0 > vx_transition and therefore we expect sliding after impact.
-TEST_F(RollingCylinder, SlidingAfterImpact) {
+TEST_P(RollingCylinder, SlidingAfterImpact) {
   const double kTolerance = 10 * std::numeric_limits<double>::epsilon();
 
   const double dt = 1.0e-3;  // time step in seconds.
@@ -1124,6 +1148,16 @@ TEST_F(RollingCylinder, SlidingAfterImpact) {
   EXPECT_TRUE(CompareMatrices(
       J, J_expected, J_tolerance, MatrixCompareType::absolute));
 }
+
+INSTANTIATE_TEST_SUITE_P(AnalyticalJacobian, RollingCylinder,
+                         testing::Values(std::nullopt));
+
+INSTANTIATE_TEST_SUITE_P(
+    NumericalJacobian, RollingCylinder,
+    testing::Values(
+      drake::math::NumericalGradientMethod::kForward,
+      drake::math::NumericalGradientMethod::kCentral,
+      drake::math::NumericalGradientMethod::kBackward));
 
 GTEST_TEST(EmptyWorld, Solve) {
   const int nv = 0;

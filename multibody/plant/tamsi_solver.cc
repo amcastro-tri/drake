@@ -358,6 +358,8 @@ void TamsiSolver<T>::SetTwoWayCoupledProblemData(
                                              dissipation, mu);
   variable_size_workspace_.ResizeIfNeeded(nc_, nv_);
 
+  // We cannot build operators from emtpy matrices.
+  if (nv_ == 0) return;
   SetOperatorsFromMatrixProblemData();
 }
 
@@ -762,6 +764,8 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   // directly. However in that case a proper scaling must be devised.
   const double v_contact_tolerance =
       parameters_.relative_tolerance * parameters_.stiction_tolerance;
+
+  PRINT_VAR(v_contact_tolerance);
 
   // Convenient aliases to problem data.
   const auto M = problem_data_aliases_.M();

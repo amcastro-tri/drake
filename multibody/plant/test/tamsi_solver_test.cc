@@ -21,35 +21,41 @@ class TamsiSolverTester {
  public:
   static MatrixX<double> CalcJacobian(
       const TamsiSolver<double>& solver,
-      const Eigen::Ref<const VectorX<double>>& v,
-      double dt) {
-    const int nv = solver.nv_;
+      const Eigen::Ref<const VectorX<double>>& v, double dt) {
+    const int nv = solver.nv_;        
+    MatrixX<double> J(nv, nv);
+    solver.CalcTamsiJacobian(dt, v, &J);
+    return J;
+  }
 
-    // Problem data.
-    const auto& M = solver.problem_data_aliases_.M();
-    const auto& Jn = solver.problem_data_aliases_.Jn();
-    const auto& Jt = solver.problem_data_aliases_.Jt();
+#if 0
+  const int nv = solver.nv_;
 
-    // Workspace with size depending on the number of contact points.
-    // Note: "auto" below resolves to Eigen::Block.
-    auto vn = solver.variable_size_workspace_.mutable_vn();
-    auto vt = solver.variable_size_workspace_.mutable_vt();
-    auto fn = solver.variable_size_workspace_.mutable_fn();
-    auto ft = solver.variable_size_workspace_.mutable_ft();
-    auto mus = solver.variable_size_workspace_.mutable_mu();
-    auto t_hat = solver.variable_size_workspace_.mutable_t_hat();
-    auto v_slip = solver.variable_size_workspace_.mutable_v_slip();
-    std::vector<Matrix2<double>>& dft_dvt =
-        solver.variable_size_workspace_.mutable_dft_dvt();
-    auto x = solver.variable_size_workspace_.mutable_f();
+  // Problem data.
+  const auto& M = solver.problem_data_aliases_.M();
+  const auto& Jn = solver.problem_data_aliases_.Jn();
+  const auto& Jt = solver.problem_data_aliases_.Jt();
 
-    // Normal separation velocity.
-    vn = Jn * v;
+  // Workspace with size depending on the number of contact points.
+  // Note: "auto" below resolves to Eigen::Block.
+  auto vn = solver.variable_size_workspace_.mutable_vn();
+  auto vt = solver.variable_size_workspace_.mutable_vt();
+  auto fn = solver.variable_size_workspace_.mutable_fn();
+  auto ft = solver.variable_size_workspace_.mutable_ft();
+  auto mus = solver.variable_size_workspace_.mutable_mu();
+  auto t_hat = solver.variable_size_workspace_.mutable_t_hat();
+  auto v_slip = solver.variable_size_workspace_.mutable_v_slip();
+  std::vector<Matrix2<double>>& dft_dvt =
+      solver.variable_size_workspace_.mutable_dft_dvt();
+  auto x = solver.variable_size_workspace_.mutable_f();
 
-    if (solver.has_two_way_coupling()) {
-      const auto x0 = solver.problem_data_aliases_.f0();
-      // Penetration distance (positive when there is penetration).
-      x = x0 - dt * vn;
+  // Normal separation velocity.
+  vn = Jn * v;
+
+  if (solver.has_two_way_coupling()) {
+    const auto x0 = solver.problem_data_aliases_.f0();
+    // Penetration distance (positive when there is penetration).
+    x = x0 - dt * vn;
     }
 
     // Computes friction forces fn and gradients Gn as a function of x, vn,
@@ -72,6 +78,7 @@ class TamsiSolverTester {
 
     return J;
   }
+#endif
 
   static MatrixX<double> GetJacobian(const TamsiSolver<double>& solver) {
     return solver.fixed_size_workspace_.mutable_J();
@@ -553,7 +560,7 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
   TamsiSolverResult info = solver_.SolveWithGuess(dt, v0);
   ASSERT_EQ(info, TamsiSolverResult::kSuccess);
 
-  VectorX<double> tau_f = solver_.get_generalized_friction_forces();
+  const VectorX<double> tau_f = Jt_.transpose() * solver_.get_friction_forces();
 
   const auto& stats = solver_.get_iteration_statistics();
 
@@ -675,7 +682,7 @@ TEST_F(PizzaSaver, LargeAppliedMoment) {
   TamsiSolverResult info = solver_.SolveWithGuess(dt, v0);
   ASSERT_EQ(info, TamsiSolverResult::kSuccess);
 
-  VectorX<double> tau_f = solver_.get_generalized_friction_forces();
+  const VectorX<double> tau_f = Jt_.transpose() * solver_.get_friction_forces();
 
   const auto& stats = solver_.get_iteration_statistics();
 
@@ -767,7 +774,7 @@ TEST_F(PizzaSaver, NoContact) {
   TamsiSolverResult info = solver_.SolveWithGuess(dt, v0);
   ASSERT_EQ(info, TamsiSolverResult::kSuccess);
 
-  EXPECT_EQ(solver_.get_generalized_friction_forces(), Vector3<double>::Zero());
+  EXPECT_EQ(solver_.get_friction_forces().size(), 0);
 
   const auto& stats = solver_.get_iteration_statistics();
   EXPECT_EQ(stats.vt_residual(), 0);
@@ -1023,7 +1030,7 @@ TEST_P(RollingCylinder, StictionAfterImpact) {
   TamsiSolverResult info = solver_.SolveWithGuess(dt, v0);
   ASSERT_EQ(info, TamsiSolverResult::kSuccess);
 
-  VectorX<double> tau_f = solver_.get_generalized_friction_forces();
+  const VectorX<double> tau_f = Jt_.transpose() * solver_.get_friction_forces();
 
   const auto& stats = solver_.get_iteration_statistics();
 
@@ -1113,7 +1120,7 @@ TEST_P(RollingCylinder, SlidingAfterImpact) {
   TamsiSolverResult info = solver_.SolveWithGuess(dt, v0);
   ASSERT_EQ(info, TamsiSolverResult::kSuccess);
 
-  VectorX<double> tau_f = solver_.get_generalized_friction_forces();
+  const VectorX<double> tau_f = Jt_.transpose() * solver_.get_friction_forces();
 
   const auto& stats = solver_.get_iteration_statistics();
 
@@ -1180,7 +1187,7 @@ std::string NumericalGradientMethodName(
   if (*method == drake::math::NumericalGradientMethod::kCentral)
     return "CentralDifferences";
   if (*method == drake::math::NumericalGradientMethod::kBackward)
-    return "BentralDifferences";
+    return "BackwardDifferences";
   DRAKE_UNREACHABLE();
 }
 

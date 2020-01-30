@@ -542,12 +542,11 @@ void TamsiSolver<T>::CalcNormalForces(
   // Convenient aliases to problem data.
   const auto& stiffness = problem_data_aliases_.stiffness();
   const auto& dissipation = problem_data_aliases_.dissipation();
-  const auto& Jn = problem_data_aliases_.Jn();
   const auto& f0 = problem_data_aliases_.f0();
 
   // H is the Heaviside function.
   VectorX<T> chi_capped(nc);      // χ = (1 − d vₙ)₊
-  VectorX<T> H_chi(nc);       // = H(1 − d vₙ).
+  VectorX<T> H_chi(nc);           // = H(1 − d vₙ).
   VectorX<T> f0tilde_capped(nc);  // f̃₀ = (f₀ - δt k vₙ)₊
   VectorX<T> H_f0tilde(nc);       // = H(f₀ - δt k vₙ).
 
@@ -570,6 +569,7 @@ void TamsiSolver<T>::CalcNormalForces(
   }
 
   if (!operator_form()) {
+      const auto& Jn = problem_data_aliases_.Jn();
     // ∇ᵥf̃₀(vₙˢ⁺¹) = −δt diag(k H(f₀ - δt k vₙˢ⁺¹)) Jₙ.
     // of size nc x nv.
     MatrixX<T> nabla_f0tilde_capped =
@@ -591,9 +591,8 @@ void TamsiSolver<T>::CalcNormalForces(
 }
 
 template <typename T>
-void TamsiSolver<T>::CalcJacobian(    
-    double dt,
-    EigenPtr<MatrixX<T>> J) const {
+void TamsiSolver<T>::CalcTamsiAnalyticalJacobian(double dt, const VectorX<T>&,
+                                                 EigenPtr<MatrixX<T>> J) const {
   DRAKE_DEMAND(!operator_form());
 
   // Problem sizes.
@@ -703,7 +702,6 @@ void TamsiSolver<T>::CalcTamsiResidual(const VectorX<T>& v, double dt,
   auto mu_vt = variable_size_workspace_.mutable_mu();
   auto t_hat = variable_size_workspace_.mutable_t_hat();
   auto fn = variable_size_workspace_.mutable_fn();
-  //auto f = variable_size_workspace_.mutable_f();
   auto v_slip = variable_size_workspace_.mutable_v_slip();
 
   // TODO: get this from the variable size workspace to avoid heap allocaiton.                                         
@@ -728,6 +726,34 @@ void TamsiSolver<T>::CalcTamsiResidual(const VectorX<T>& v, double dt,
 }
 
 template <typename T>
+void TamsiSolver<T>::CalcTamsiJacobian(double dt, const VectorX<T>& v,
+                                       EigenPtr<MatrixX<T>> J) const {
+  auto& dft_dvt = variable_size_workspace_.mutable_dft_dvt();
+  auto mu_vt = variable_size_workspace_.mutable_mu();
+  auto t_hat = variable_size_workspace_.mutable_t_hat();
+  auto fn = variable_size_workspace_.mutable_fn();
+  auto v_slip = variable_size_workspace_.mutable_v_slip();
+
+  if (numerical_gradient_method_) {
+    // Functor with signature as required by math::ComputeNumericalGradient().
+    std::function<void(const VectorX<T>&, VectorX<T>*)> tamsi_residual =
+        [this, dt](const VectorX<T>& vk, VectorX<T>* rk) {
+          CalcTamsiResidual(vk, dt, rk);
+        };
+    *J = math::ComputeNumericalGradient(
+        tamsi_residual, v,
+        math::NumericalGradientOption{*numerical_gradient_method_});
+  } else {
+    // Compute gradient dft_dvt = ∇ᵥₜfₜ(vₜ) as a function of fn, mus,
+    // t_hat and v_slip.
+    CalcFrictionForcesGradient(fn, mu_vt, t_hat, v_slip, &dft_dvt);
+
+    // Newton-Raphson Jacobian, J = ∇ᵥR, as a function of M, dft_dvt, Jt, dt.
+    CalcTamsiAnalyticalJacobian(dt, v, J);
+  }
+}
+
+template <typename T>
 TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
     double dt, const VectorX<T>& v_guess) const {
   DRAKE_THROW_UNLESS(v_guess.size() == nv_);
@@ -740,14 +766,11 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   // SolveWithGuess().
   statistics_.Reset();
 
-  // If there are no contact points return a zero generalized friction force
-  // vector, i.e. tau_f = 0.
+  // If there are no contact points there is no need to compute contact forces.
+  // We simply do forward dynamics with zero contact forces.
   if (nc_ == 0) {
-    fixed_size_workspace_.mutable_tau_f().setZero();
-    fixed_size_workspace_.mutable_tau().setZero();
     const auto M = problem_data_aliases_.M();
     const auto v0 = problem_data_aliases_.v0();
-    const auto tau0 = problem_data_aliases_.tau0();
     auto& v = fixed_size_workspace_.mutable_v();
     // We make v = M₀⁻¹ τ₀.
     forward_dynamics_(VectorX<T>::Zero(nc_), &v);
@@ -770,32 +793,19 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   PRINT_VAR(v_contact_tolerance);
 
   // Convenient aliases to problem data.
-  //const auto M = problem_data_aliases_.M();
-  const auto Jn = problem_data_aliases_.Jn();
-  const auto Jt = problem_data_aliases_.Jt();
   const auto v0 = problem_data_aliases_.v0();
-  const auto tau0 = problem_data_aliases_.tau0();
 
   // Convenient aliases to fixed size workspace variables.
   auto& v = fixed_size_workspace_.mutable_v();
   auto& Delta_v = fixed_size_workspace_.mutable_Delta_v();
   auto& residual = fixed_size_workspace_.mutable_residual();
   auto& J = fixed_size_workspace_.mutable_J();
-  auto& tau_f = fixed_size_workspace_.mutable_tau_f();
-  auto& tau = fixed_size_workspace_.mutable_tau();
 
   // Convenient aliases to variable size workspace variables.
   // Note: auto resolve to Eigen::Block (no copies).
   auto vt = variable_size_workspace_.mutable_vt();
-  auto ft = variable_size_workspace_.mutable_ft();
   auto Delta_vn = variable_size_workspace_.mutable_Delta_vn();
   auto Delta_vt = variable_size_workspace_.mutable_Delta_vt();
-  auto& dft_dvt = variable_size_workspace_.mutable_dft_dvt();
-  auto mu_vt = variable_size_workspace_.mutable_mu();
-  auto t_hat = variable_size_workspace_.mutable_t_hat();
-  auto fn = variable_size_workspace_.mutable_fn();
-  //auto f = variable_size_workspace_.mutable_f();
-  auto v_slip = variable_size_workspace_.mutable_v_slip();
 
   // Initialize vt_error to an arbitrary value larger than tolerance so that the
   // solver at least performs one iteration.
@@ -810,39 +820,19 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   VectorX<T> Delta_vc(3 * nc_);
   VectorX<T> fc(3 * nc_);
 
-  // Computes k-th residual rk as a funtion of k-th velocity vk.
-  std::function<void(const VectorX<T>&, VectorX<T>*)> tamsi_residual =
-      [this, dt](const VectorX<T>& vk, VectorX<T>* rk) {
-        CalcTamsiResidual(vk, dt, rk);
-      };
-
   for (int iter = 0; iter < max_iterations; ++iter) {
-    // This residual computation also update contact forces.
-    // Contact velocities vc, and their components vn & vt are also updated.
-    tamsi_residual(v, &residual);
+    // Computes the TAMSI residual r(v) as a function of the current iterate
+    // velocity v and the given time step dt.
+    CalcTamsiResidual(v, dt, &residual);
 
-    // After the previous iteration, we allow updating ft above to have its
-    // latest value before leaving.
+    // After the previous iteration, we allow tamsi_residual() above to update
+    // contact forces before leaving.
     // Convergence is monitored in both tangential and normal directions.
     if (std::max(vt_error, vn_error) < v_contact_tolerance) {
-      // Update generalized forces and return.
-      tau_f = Jt.transpose() * ft;
-      tau = tau_f + Jn.transpose() * fn;
       return TamsiSolverResult::kSuccess;
     }
 
-    if (numerical_gradient_method_) {
-      J = math::ComputeNumericalGradient(
-          tamsi_residual, v,
-          math::NumericalGradientOption{*numerical_gradient_method_});
-    } else {
-      // Compute gradient dft_dvt = ∇ᵥₜfₜ(vₜ) as a function of fn, mus,
-      // t_hat and v_slip.
-      CalcFrictionForcesGradient(fn, mu_vt, t_hat, v_slip, &dft_dvt);
-
-      // Newton-Raphson Jacobian, J = ∇ᵥR, as a function of M, dft_dvt, Jt, dt.
-      CalcJacobian(dt, &J);
-    }
+    CalcTamsiJacobian(dt, v, &J);
 
     // TODO(amcastro-tri): Consider using a cheap iterative solver like CG.
     // Since we are in a non-linear iteration, an approximate cheap solution

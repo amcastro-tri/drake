@@ -655,23 +655,11 @@ class TamsiSolver {
   /// the last call to SolveWithGuess().
   /// @{
 
-  /// Returns a constant reference to the most recent  vector of generalized
-  /// friction forces.
-  const VectorX<T>& get_generalized_friction_forces() const {
-    return fixed_size_workspace_.mutable_tau_f();
-  }
-
   /// Returns a constant reference to the most recent solution vector for normal
   /// separation velocities. This method returns an `Eigen::VectorBlock`
   /// referencing a vector of size `nc`.
   Eigen::VectorBlock<const VectorX<T>> get_normal_velocities() const {
     return variable_size_workspace_.vn();
-  }
-
-  /// Returns a constant reference to the most recent vector of generalized
-  /// contact forces, including both friction and normal forces.
-  const VectorX<T>& get_generalized_contact_forces() const {
-    return fixed_size_workspace_.mutable_tau();
   }
 
   /// Returns a constant reference to the most recent vector of tangential
@@ -938,16 +926,12 @@ class TamsiSolver {
       residual_.setZero(nv);
       Delta_v_.setZero(nv);
       J_.setZero(nv, nv);
-      tau_f_.setZero(nv);
-      tau_.setZero(nv);
       M_ldlt_.setZero();
     }
     VectorX<T>& mutable_v() { return v_; }
     VectorX<T>& mutable_residual() { return residual_; }
     MatrixX<T>& mutable_J() { return J_; }
     VectorX<T>& mutable_Delta_v() { return Delta_v_; }
-    VectorX<T>& mutable_tau_f() { return tau_f_; }
-    VectorX<T>& mutable_tau() { return tau_; }
     Eigen::LDLT<MatrixX<T>>& mutable_J_ldlt() { return J_ldlt_; }
     Eigen::PartialPivLU<MatrixX<T>>& mutable_J_lu() { return J_lu_; }
     Eigen::LDLT<MatrixX<T>>& mutable_M_ldlt() { return M_ldlt_; }
@@ -961,10 +945,6 @@ class TamsiSolver {
     MatrixX<T> J_;
     // Solution to Newton-Raphson update, i.e. Δv = −J⁻¹ R.
     VectorX<T> Delta_v_;
-    // Vector of generalized forces due to friction.
-    VectorX<T> tau_f_;
-    // Vector of generalized forces (normal + friction forces).
-    VectorX<T> tau_;
     // LDLT Factorization of the Newton-Raphson Jacobian J. Only used for
     // one-way coupled problems with symmetric Jacobian.
     Eigen::LDLT<MatrixX<T>> J_ldlt_;
@@ -1001,7 +981,6 @@ class TamsiSolver {
       vt_.resize(nf);
       fn_.resize(nc);
       ft_.resize(nf);
-      x_.resize(nc);
       Delta_vn_.resize(nc);
       Delta_vt_.resize(nf);
       t_hat_.resize(nf);
@@ -1064,12 +1043,6 @@ class TamsiSolver {
       return fn_.segment(0, nc_);
     }
 
-    // Returns a mutable reference to the vector containing the penetration
-    // depths for all contact points, of size nc.
-    Eigen::VectorBlock<VectorX<T>> mutable_f() {
-      return x_.segment(0, nc_);
-    }
-
     // Returns a constant reference to the vector containing the tangential
     // friction forces fₜ for all contact points. fₜ has size 2nc since it
     // stores the two tangential components of the friction force for each
@@ -1128,7 +1101,6 @@ class TamsiSolver {
     VectorX<T> vt_;        // vₜᵏ, in ℝ²ⁿᶜ.
     VectorX<T> fn_;        // fₙᵏ, in ℝⁿᶜ.
     VectorX<T> ft_;        // fₜᵏ, in ℝ²ⁿᶜ.
-    VectorX<T> x_;         // xˢ⁺¹ = xˢ − δt vₙˢ
     VectorX<T> t_hat_;     // Tangential directions, t̂ᵏ. In ℝ²ⁿᶜ.
     VectorX<T> v_slip_;    // vₛᵏ = ‖vₜᵏ‖, in ℝⁿᶜ.
     VectorX<T> mus_;       // (modified) regularized friction, in ℝⁿᶜ.
@@ -1182,7 +1154,11 @@ class TamsiSolver {
 
   // Helper method to compute the Newton-Raphson Jacobian, J = ∇ᵥR, as a
   // function of M, Jn, Jt, Gn, dft_dvt, t_hat, mu_vt and dt.
-  void CalcJacobian(double dt, EigenPtr<MatrixX<T>> J) const;
+  void CalcTamsiAnalyticalJacobian(double dt, const VectorX<T>& v,
+                                   EigenPtr<MatrixX<T>> J) const;
+
+  void CalcTamsiJacobian(double dt, const VectorX<T>& v,
+                         EigenPtr<MatrixX<T>> J) const;
 
   void CalcTamsiResidual(const VectorX<T>& v, double dt,
                          VectorX<T>* residual) const;

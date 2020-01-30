@@ -1658,6 +1658,11 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
     const VectorX<T>& mu,
     const VectorX<T>& v0, const VectorX<T>& phi0) const {
 
+  (void)M0;
+  (void)Jn;
+  (void)Jt;
+  
+
   const double dt = time_step_;  // just a shorter alias.
   const double dt_substep = dt / num_substeps;
   VectorX<T> v0_substep = v0;
@@ -1669,11 +1674,14 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
 
   const int nc = phi0.size();
   const int nv = num_velocities();
+  (void)nv;
+#if 0  
   MatrixX<T> Jc(3 * nc, nv);
   for (int ic = 0; ic < nc; ++ic) {
     Jc.template block(3 * ic, 0, 2, nv) = Jt.template block(2 * ic, 0, 2, nv);
     Jc.template block(3 * ic + 2, 0, 1, nv) = Jn.template block(ic, 0, 1, nv);    
   }
+#endif
 
   const std::vector<RotationMatrix<T>> R_WC_list =
       CalcContactFramesOrientation(context0);
@@ -1681,7 +1689,7 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
   auto context_v = this->CreateDefaultContext();
   context_v->SetTimeStateAndParametersFrom(context0);
   std::function<void(const VectorX<T>&, VectorX<T>*)> contact_jacobian =
-      [this, &context0, &context_v, &R_WC_list, &Jc](const VectorX<T>& v, VectorX<T>* vc) {
+      [this, &context0, &context_v, &R_WC_list](const VectorX<T>& v, VectorX<T>* vc) {
         this->SetVelocities(context_v.get(), v);
         // TODO: replace context0 by point_pairs and pass a context with updated
         // velocities (that'll have the effect of caching positions).
@@ -1694,16 +1702,18 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
       };
   VectorX<T> tau0 = -minus_tau;
 
+#if 0
   const Eigen::LDLT<MatrixX<T>> M_ldlt(M0);
   if (M_ldlt.info() != Eigen::Success) {
     throw std::runtime_error("Mass matrix is not invertible.");
   }
+#endif  
 
   VectorX<T> f0(nc);
   f0.array() = stiffness.array() * phi0.array();
 
   std::function<void(const VectorX<T>&, VectorX<T>*)> forward_dynamics =
-      [this, &context0, &R_WC_list, &M_ldlt, &tau0, &Jc](const VectorX<T>& fc,
+      [this, &context0, &R_WC_list, &tau0](const VectorX<T>& fc,
                                                          VectorX<T>* vdot) {
         *vdot = CalcTamsiForwardDynamics(context0, R_WC_list, fc);
         //*vdot = M_ldlt.solve(tau0 + Jc.transpose() * fc);
@@ -1981,8 +1991,8 @@ void MultibodyPlant<T>::CalcTamsiResults(
 
   // Mass matrix and its factorization.
   MatrixX<T> M0(nv, nv);
-  internal_tree().CalcMassMatrixViaInverseDynamics(context0, &M0);
-  auto M0_ldlt = M0.ldlt();
+  //internal_tree().CalcMassMatrixViaInverseDynamics(context0, &M0);
+  //auto M0_ldlt = M0.ldlt();
 
   // Forces at the previous time step.
   MultibodyForces<T> forces0(internal_tree());

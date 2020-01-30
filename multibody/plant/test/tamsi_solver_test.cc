@@ -1074,14 +1074,19 @@ TEST_P(RollingCylinder, StictionAfterImpact) {
       M_, Jn_, Jt_, v0, tau, f0_, mu_vector_,
       stiffness_, dissipation_, dt, v_stiction, epsilon_v, v);
 
-  // We use a tolerance scaled by the norm and size of the matrix.
-  const double J_tolerance =
-      J_expected.rows() * J_expected.norm() *
-          std::numeric_limits<double>::epsilon();
+  // Tolerance when using analytical Jacobian.
+  double J_relative_tolerance = nv_ * std::numeric_limits<double>::epsilon();
+  // We need to loosen the tolerance when using a numerical Jacobian.
+  if (gradient_method.has_value()) {
+    J_relative_tolerance = 5.0e-2;  // For forward/backward differences.
+    // We can tighten the tolerance when using central differences.
+    if (*gradient_method == drake::math::NumericalGradientMethod::kCentral)
+      J_relative_tolerance = 5e-3;
+  }
 
   // Verify the result.
   EXPECT_TRUE(CompareMatrices(
-      J, J_expected, J_tolerance, MatrixCompareType::absolute));
+      J, J_expected, J_relative_tolerance, MatrixCompareType::relative));
 }
 
 // Same tests a RollingCylinder::StictionAfterImpact but with a smaller friction
@@ -1167,14 +1172,21 @@ TEST_P(RollingCylinder, SlidingAfterImpact) {
       M_, Jn_, Jt_, v0, tau, f0_, mu_vector_,
       stiffness_, dissipation_, dt, v_stiction, epsilon_v, v);
 
-  // We use a tolerance scaled by the norm and size of the matrix.
-  const double J_tolerance =
-      J_expected.rows() * J_expected.norm() *
-          std::numeric_limits<double>::epsilon();
+  const std::optional<drake::math::NumericalGradientMethod> gradient_method =
+      this->GetParam();
+  // Tolerance when using analytical Jacobian.
+  double J_relative_tolerance = nv_ * std::numeric_limits<double>::epsilon();
+  // We need to loosen the tolerance when using a numerical Jacobian.
+  if (gradient_method.has_value()) {
+    J_relative_tolerance = 5.0e-2;  // For forward/backward differences.
+    // We can tighten the tolerance when using central differences.
+    if (*gradient_method == drake::math::NumericalGradientMethod::kCentral)
+      J_relative_tolerance = 5e-3;
+  }          
 
   // Verify the result.
   EXPECT_TRUE(CompareMatrices(
-      J, J_expected, J_tolerance, MatrixCompareType::absolute));
+      J, J_expected, J_relative_tolerance, MatrixCompareType::relative));
 }
 
 std::string NumericalGradientMethodName(

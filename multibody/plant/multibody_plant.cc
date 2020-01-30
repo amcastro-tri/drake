@@ -1650,6 +1650,7 @@ void MultibodyPlant<T>::DoCalcTimeDerivatives(
 
 template<typename T>
 TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
+    const systems::Context<T>& context0,
     int num_substeps,
     const MatrixX<T>& M0, const MatrixX<T>& Jn, const MatrixX<T>& Jt,
     const VectorX<T>& minus_tau,
@@ -1673,9 +1674,23 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
     Jc.template block(3 * ic, 0, 2, nv) = Jt.template block(2 * ic, 0, 2, nv);
     Jc.template block(3 * ic + 2, 0, 1, nv) = Jn.template block(ic, 0, 1, nv);    
   }
-  std::function<void(const VectorX<T>&, VectorX<T>*)>
-      contact_jacobian = [&Jc](const VectorX<T>& v, VectorX<T>* vc) {
-        *vc = Jc * v;
+
+  const std::vector<RotationMatrix<T>> R_WC_list =
+      CalcContactFramesOrientation(context0);
+
+  auto context_v = this->CreateDefaultContext();
+  context_v->SetTimeStateAndParametersFrom(context0);
+  std::function<void(const VectorX<T>&, VectorX<T>*)> contact_jacobian =
+      [this, &context0, &context_v, &R_WC_list, &Jc](const VectorX<T>& v, VectorX<T>* vc) {
+        this->SetVelocities(context_v.get(), v);
+        // TODO: replace context0 by point_pairs and pass a context with updated
+        // velocities (that'll have the effect of caching positions).
+        // Though I could pressumably just pass position and vel kinematics
+        // caches.
+        // Recall this computes vc = Jc(q0) * v. So it makes sense arguments
+        // should be context0 and v.
+        *vc = CalcRelativeContactVelocities(context0, *context_v, R_WC_list);
+        //*vc = Jc * v;
       };
   VectorX<T> tau0 = -minus_tau;
 
@@ -1687,17 +1702,18 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
   VectorX<T> f0(nc);
   f0.array() = stiffness.array() * phi0.array();
 
+  std::function<void(const VectorX<T>&, VectorX<T>*)> forward_dynamics =
+      [this, &context0, &R_WC_list, &M_ldlt, &tau0, &Jc](const VectorX<T>& fc,
+                                                         VectorX<T>* vdot) {
+        //*vdot = CalcTamsiForwardDynamics(context0, R_WC_list, fc);
+        *vdot = M_ldlt.solve(tau0 + Jc.transpose() * fc);
+      };
+
   for (int substep = 0; substep < num_substeps; ++substep) {
     // Discrete update before applying friction forces.
     // We denote this state x* = [q*, v*], the "star" state.
     // Generalized momentum "star", before contact forces are applied.
-    VectorX<T> p_star_substep = M0 * v0_substep - dt_substep * minus_tau;
-    
-    std::function<void(const VectorX<T>&, VectorX<T>*)>
-        forward_dynamics =
-            [&M_ldlt, &Jc, &tau0](const VectorX<T>& fc, VectorX<T>* vdot) {
-              *vdot = M_ldlt.solve(tau0 + Jc.transpose() * fc);
-            };
+    //VectorX<T> p_star_substep = M0 * v0_substep - dt_substep * minus_tau;  
 
     // Update the data.
     tamsi_solver_->SetTwoWayCoupledProblemData(
@@ -1778,6 +1794,158 @@ void MultibodyPlant<T>::CalcAppliedForces(
     forces->mutable_generalized_forces() +=
         applied_generalized_force_input.Eval(context);
   }
+}
+
+template <typename T>
+VectorX<T> MultibodyPlant<T>::CalcRelativeContactVelocities(
+    const systems::Context<T>& context0,
+    const systems::Context<T>& context_v,
+    const std::vector<RotationMatrix<T>>& R_WC_list) const {
+  const auto& point_pairs_set = EvalPointPairPenetrations(context0);
+  const int num_contacts = point_pairs_set.size();
+  VectorX<T> vc(3 * num_contacts);
+  for (int icontact = 0; icontact < num_contacts; ++icontact) {
+    const auto& point_pair = point_pairs_set[icontact];    
+
+    const GeometryId geometryA_id = point_pair.id_A;
+    const GeometryId geometryB_id = point_pair.id_B;
+
+    BodyIndex bodyA_index = geometry_id_to_body_index_.at(geometryA_id);
+    const Body<T>& bodyA = get_body(bodyA_index);
+    BodyIndex bodyB_index = geometry_id_to_body_index_.at(geometryB_id);
+    const Body<T>& bodyB = get_body(bodyB_index);
+
+    // Contact point C.
+    const Vector3<T>& p_WCa = point_pair.p_WCa;
+    const Vector3<T>& p_WCb = point_pair.p_WCb;    
+    const Vector3<T> p_WC = 0.5 * (p_WCa + p_WCb);
+
+    const Vector3<T>& p_WAo = bodyA.EvalPoseInWorld(context_v).translation();
+    const Vector3<T> p_AoCo_W = p_WC - p_WAo;
+    const SpatialVelocity<T> V_WAc =
+        bodyA.EvalSpatialVelocityInWorld(context_v).Shift(p_AoCo_W);
+
+    const Vector3<T>& p_WBo = bodyB.EvalPoseInWorld(context_v).translation();
+    const Vector3<T> p_BoCo_W =  p_WC - p_WBo;
+    const SpatialVelocity<T> V_WBc =
+        bodyB.EvalSpatialVelocityInWorld(context_v).Shift(p_BoCo_W);
+
+    const Vector3<T> v_AcBc_W = V_WBc.translational() - V_WAc.translational();
+
+    const RotationMatrix<T>& R_WC = R_WC_list[icontact];
+    const Vector3<T> v_AcBc_C = R_WC.transpose() * v_AcBc_W;
+    
+    vc.template segment<3>(3 * icontact) = v_AcBc_C;
+
+    // I believe I need this cause in TAMSI vn is the "separation" velocity.
+    // check conventions.
+    vc(3 * icontact + 2) = -v_AcBc_C(2);
+  }  
+  return vc;
+}
+
+template <typename T>
+std::vector<RotationMatrix<T>> MultibodyPlant<T>::CalcContactFramesOrientation(
+    const systems::Context<T>& context) const {
+  // Here I neeed to convert fc to Fcontact_BBo_W_array
+  const auto& point_pairs = EvalPointPairPenetrations(context);
+  const int num_contacts = point_pairs.size();
+
+  std::vector<RotationMatrix<T>> R_WC_list(num_contacts);
+  
+  for (int icontact = 0; icontact < num_contacts; ++icontact) {
+    const auto& point_pair = point_pairs[icontact];
+
+    // Penetration depth, > 0 if bodies interpenetrate.
+    const Vector3<T>& nhat_BA_W = point_pair.nhat_BA_W;
+
+    // Compute the orientation of a contact frame C at the contact point such
+    // that the z-axis Cz equals to nhat_BA_W. The tangent vectors are
+    // arbitrary, with the only requirement being that they form a valid right
+    // handed basis with nhat_BA.
+    R_WC_list[icontact] =
+        RotationMatrix<T>(math::ComputeBasisFromAxis(2, nhat_BA_W));
+  }
+  return R_WC_list;
+}
+
+template <typename T>
+VectorX<T> MultibodyPlant<T>::CalcTamsiForwardDynamics(
+    const systems::Context<T>& context0, 
+    const std::vector<RotationMatrix<T>>& R_WC_list,
+    const VectorX<T>& fc) const {
+
+  // Applied forces including force elements (function of state x) and external
+  // inputs u.
+  // TODO(amcastro-tri): Make forces0 an input to this method so this
+  // computation can be moved outside.
+  MultibodyForces<T> forces0(*this);
+  CalcAppliedForces(context0, &forces0);
+
+  // Add the contribution of contact forces.
+  std::vector<SpatialForce<T>>& Fapp_BBo_W_array =
+      forces0.mutable_body_forces();
+
+  // Here I neeed to convert fc to Fcontact_BBo_W_array
+  const auto& point_pairs0 = EvalPointPairPenetrations(context0);
+
+  const int num_contacts = point_pairs0.size();
+  for (int icontact = 0; icontact < num_contacts; ++icontact) {
+    const auto& point_pair = point_pairs0[icontact];
+
+    const GeometryId geometryA_id = point_pair.id_A;
+    const GeometryId geometryB_id = point_pair.id_B;
+
+    BodyIndex bodyA_index = geometry_id_to_body_index_.at(geometryA_id);
+    const Body<T>& bodyA = get_body(bodyA_index);
+    BodyIndex bodyB_index = geometry_id_to_body_index_.at(geometryB_id);
+    const Body<T>& bodyB = get_body(bodyB_index);
+
+    // Penetration depth, > 0 if bodies interpenetrate.
+    //const Vector3<T>& nhat_BA_W = point_pair.nhat_BA_W;
+    const Vector3<T>& p_WCa = point_pair.p_WCa;
+    const Vector3<T>& p_WCb = point_pair.p_WCb;
+    // Contact point C.
+    const Vector3<T> p_WC = 0.5 * (p_WCa + p_WCb);
+
+    // The orientation of a contact frame C at the contact point such
+    // that the z-axis Cz equals to nhat_BA_W. The tangent vectors are
+    // arbitrary, with the only requirement being that they form a valid right
+    // handed basis with nhat_BA.
+    const RotationMatrix<T>& R_WC = R_WC_list[icontact];
+
+    // Contact force on body A, applied at contact point Co, expressed in
+    // contact frame C.
+    const Vector3<T> fc_ACo_C = fc.template segment<3>(3 * icontact);
+    const Vector3<T> fc_ACo_W = R_WC * fc_ACo_C;
+    const SpatialForce<T> F_AC_W(Vector3<T>::Zero(), fc_ACo_W);
+
+    if (bodyA_index != world_index()) {
+      const Vector3<T>& p_WAo = bodyA.EvalPoseInWorld(context0).translation();
+      const Vector3<T> p_CoAo_W = p_WAo - p_WC;
+      Fapp_BBo_W_array[bodyA.node_index()] += F_AC_W.Shift(p_CoAo_W);
+    }
+
+    if (bodyB_index != world_index()) {
+      const Vector3<T>& p_WBo = bodyB.EvalPoseInWorld(context0).translation();
+      const Vector3<T> p_CoBo_W = p_WBo - p_WC;
+      Fapp_BBo_W_array[bodyB.node_index()] -= F_AC_W.Shift(p_CoBo_W);
+    }
+  }
+
+  ArticulatedBodyForceBiasCache<T> aba_force_bias_cache(
+      internal_tree().get_topology());
+  // Perform the tip-to-base pass to compute the force bias terms needed by ABA.
+  internal_tree().CalcArticulatedBodyForceBiasCache(context0, forces0,
+                                                    &aba_force_bias_cache);                                                      
+
+  // Perform the last base-to-tip pass to compute accelerations using the O(n)
+  // ABA.
+  AccelerationKinematicsCache<T> ac(internal_tree().get_topology());
+  internal_tree().CalcArticulatedBodyAccelerations(context0,
+                                                   aba_force_bias_cache, &ac);
+
+  return ac.get_vdot();
 }
 
 template <typename T>
@@ -1885,9 +2053,9 @@ void MultibodyPlant<T>::CalcTamsiResults(
   int num_substeps = 0;
   do {
     ++num_substeps;
-    info = SolveUsingSubStepping(num_substeps, M0, contact_jacobians.Jn,
-                                 contact_jacobians.Jt, minus_tau, stiffness,
-                                 damping, mu, v0, phi0);
+    info = SolveUsingSubStepping(context0, num_substeps, M0,
+                                 contact_jacobians.Jn, contact_jacobians.Jt,
+                                 minus_tau, stiffness, damping, mu, v0, phi0);
   } while (info != TamsiSolverResult::kSuccess &&
            num_substeps < kNumMaxSubTimeSteps);
 

@@ -290,9 +290,11 @@ void TamsiSolver<T>::SetTwoWayCoupledProblemData(
         contact_jacobian,
     EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> f0,
     EigenPtr<const VectorX<T>> stiffness,
-    EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu) {
+    EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu,
+    std::optional<math::NumericalGradientMethod> method) {
   DRAKE_DEMAND(v0 != nullptr);
   DRAKE_DEMAND(f0 != nullptr);
+  numerical_gradient_method_ = method;
   nv_ = v0->size();
   nc_ = f0->size();
   problem_data_aliases_.SetTwoWayCoupledData(
@@ -768,7 +770,7 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   PRINT_VAR(v_contact_tolerance);
 
   // Convenient aliases to problem data.
-  const auto M = problem_data_aliases_.M();
+  //const auto M = problem_data_aliases_.M();
   const auto Jn = problem_data_aliases_.Jn();
   const auto Jt = problem_data_aliases_.Jt();
   const auto v0 = problem_data_aliases_.v0();

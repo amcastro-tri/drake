@@ -620,7 +620,8 @@ class TamsiSolver {
           contact_jacobian,
       EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> f0,
       EigenPtr<const VectorX<T>> stiffness,
-      EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu);
+      EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu,
+      std::optional<math::NumericalGradientMethod> method = std::nullopt);
 
   bool operator_form() const { return problem_data_aliases_.operator_form(); }
 

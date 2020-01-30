@@ -903,9 +903,27 @@ class RollingCylinder : public ::testing::TestWithParam<
     //  PRINT_VAR(*gradient_method);
    // }
 
-    solver_.SetTwoWayCoupledProblemData(&M_, &Jn_, &Jt_, &v0_, &tau0_, &f0_,
-                                        &stiffness_, &dissipation_, &mu_vector_,
-                                        gradient_method);
+    // This assumes a single contact point.
+    DRAKE_DEMAND(nc_ == 1);
+    Jc_ << Jt_, Jn_;
+    std::function<void(const VectorX<double>&, VectorX<double>*)>
+        contact_jacobian = [this](const VectorX<double>& v,
+                                  VectorX<double>* vc) { *vc = Jc_ * v; };
+
+    std::function<void(const VectorX<double>&, VectorX<double>*)>
+        forward_dynamics =
+            [this](const VectorX<double>& fc, VectorX<double>* vdot) {
+              *vdot = M_.inverse() * (tau0_ + Jc_.transpose() * fc);
+            };
+
+    //solver_.SetTwoWayCoupledProblemData(&M_, &Jn_, &Jt_, &v0_, &tau0_, &f0_,
+      //                                  &stiffness_, &dissipation_, &mu_vector_,
+        //                                gradient_method);
+
+    solver_.SetTwoWayCoupledProblemData(forward_dynamics, contact_jacobian,
+                                        &v0_, &f0_, &stiffness_, &dissipation_,
+                                        &mu_vector_, gradient_method);
+    ASSERT_TRUE(solver_.operator_form());
   }
 
  protected:
@@ -944,6 +962,9 @@ class RollingCylinder : public ::testing::TestWithParam<
 
   // Normal separation velocities Jacobian.
   MatrixX<double> Jn_{nc_, nv_};
+
+  // Contact velocities Jacobian.
+  MatrixX<double> Jc_{3 * nc_, nv_};
 
   VectorX<double> stiffness_{nc_};
   VectorX<double> dissipation_{nc_};
@@ -1149,15 +1170,29 @@ TEST_P(RollingCylinder, SlidingAfterImpact) {
       J, J_expected, J_tolerance, MatrixCompareType::absolute));
 }
 
-INSTANTIATE_TEST_SUITE_P(AnalyticalJacobian, RollingCylinder,
-                         testing::Values(std::nullopt));
+std::string NumericalGradientMethodName(
+    const testing::TestParamInfo<RollingCylinder::ParamType>& info) {
+  const std::optional<drake::math::NumericalGradientMethod>& method =
+      info.param;
+  if (!method) return "Analytical";
+  if (*method == drake::math::NumericalGradientMethod::kForward)
+    return "ForwardDifferences";
+  if (*method == drake::math::NumericalGradientMethod::kCentral)
+    return "CentralDifferences";
+  if (*method == drake::math::NumericalGradientMethod::kBackward)
+    return "BentralDifferences";
+  DRAKE_UNREACHABLE();
+}
+
+//INSTANTIATE_TEST_SUITE_P(AnalyticalJacobian, RollingCylinder,
+  //                       testing::Values(std::nullopt));
 
 INSTANTIATE_TEST_SUITE_P(
     NumericalJacobian, RollingCylinder,
-    testing::Values(
-      drake::math::NumericalGradientMethod::kForward,
-      drake::math::NumericalGradientMethod::kCentral,
-      drake::math::NumericalGradientMethod::kBackward));
+    testing::Values(drake::math::NumericalGradientMethod::kForward,
+                    drake::math::NumericalGradientMethod::kCentral,
+                    drake::math::NumericalGradientMethod::kBackward),
+    NumericalGradientMethodName);
 
 GTEST_TEST(EmptyWorld, Solve) {
   const int nv = 0;

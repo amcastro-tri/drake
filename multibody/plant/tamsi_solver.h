@@ -611,7 +611,7 @@ class TamsiSolver {
       EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> tau0,
       EigenPtr<const VectorX<T>> f0, EigenPtr<const VectorX<T>> stiffness,
       EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu,
-      std::optional<math::NumericalGradientMethod> method = std::nullopt);
+      const std::string& jacobian_calc_method);
 
   void SetTwoWayCoupledProblemData(
       std::function<void(const VectorX<T>& fc, VectorX<T>* vdot)>
@@ -621,13 +621,9 @@ class TamsiSolver {
       EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> f0,
       EigenPtr<const VectorX<T>> stiffness,
       EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu,
-      std::optional<math::NumericalGradientMethod> method = std::nullopt);
+      const std::string& jacobian_calc_method);
 
   bool operator_form() const { return problem_data_aliases_.operator_form(); }
-
-  std::optional<math::NumericalGradientMethod> numerical_gradient_method() {
-    return numerical_gradient_method_;
-  }
 
   /// Given an initial guess `v_guess`, this method uses a Newton-Raphson
   /// iteration to find a solution for the generalized velocities satisfying
@@ -1219,8 +1215,28 @@ class TamsiSolver {
   // std::nullopt indicates default:
   // 1) Analytical gradients for problem data in explicit matrix form.
   // 2) Forward differences for problem data in operator form.
-  std::optional<math::NumericalGradientMethod> numerical_gradient_method_{
-      std::nullopt};
+  std::string numerical_gradient_method_{"analytical"};
+
+  void set_numerical_gradient_method(const std::string& method) {
+    if (method != "analytical" && method != "backward" && method != "central" &&
+        method != "forward") {
+      throw std::runtime_error(
+          "Jacobian calculation method must be one of: 'analytical', "
+          "'backward', 'central', 'forward'.");
+    }
+    numerical_gradient_method_ = method;
+  }
+
+  static math::NumericalGradientMethod to_numerical_gradient_method(
+      const std::string& method) {
+    if (method == "backward") return math::NumericalGradientMethod::kBackward;
+    if (method == "central") return math::NumericalGradientMethod::kCentral;
+    if (method == "forward") return math::NumericalGradientMethod::kForward;
+    throw std::runtime_error(
+        "Jacobian calculation method must be one of: 'analytical', "
+        "'backward', 'central', 'forward'.");
+    DRAKE_UNREACHABLE();        
+  }
 
   // The parameters of the solver controlling the iteration strategy.
   TamsiSolverParameters parameters_;

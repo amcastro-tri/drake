@@ -546,11 +546,6 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
   const Vector3<double> v0 = Vector3<double>::Zero();
 
   SetProblem(v0, tau, mu, theta, dt);
-  // Right now I expect:
-  // 1) explicit matrix form.
-  ASSERT_FALSE(solver_.operator_form());
-  // 2) analytical gradients.
-  ASSERT_FALSE(solver_.numerical_gradient_method().has_value());
 
   TamsiSolverParameters parameters;  // Default parameters.
   parameters.stiction_tolerance = 1.0e-6;
@@ -843,10 +838,16 @@ TEST_F(PizzaSaver, NoContact) {
 // defined as:
 //   vx_transition =  μ (1 + m R²/I) pn/m
 // Otherwise the cylinder will be sliding after impact.
-class RollingCylinder : public ::testing::TestWithParam<
-                            std::optional<math::NumericalGradientMethod>> {
+class RollingCylinder
+    : public ::testing::TestWithParam<
+          std::pair<bool /* Matrix (false) or Operator (true) form */,
+                    std::string /* TAMSI Jacobian calculation method */>> {
  public:
   void SetUp() override {
+    // Fixture parameters.
+    operator_form_ = std::get<0>(this->GetParam());
+    jacobian_calc_method_ = std::get<1>(this->GetParam());
+
     // Mass matrix corresponding to free (in 2D) cylinder.
     // Generalized velocities are v = [vx, vy, ω].
     M_ << m_,  0,  0,
@@ -899,41 +900,37 @@ class RollingCylinder : public ::testing::TestWithParam<
         damping_ratio * time_scale / penetration_allowance;
     dissipation_(0) = dissipation;
 
-    // Gradient computation method.
-    const std::optional<drake::math::NumericalGradientMethod> gradient_method =
-        this->GetParam();
+    PRINT_VAR(jacobian_calc_method_);
 
-    PRINT_VAR(gradient_method.has_value());
-    //if (gradient_method.has_value()) {
-    //  if 
-    //}
-    //  PRINT_VAR(*gradient_method);
-   // }
+    if (operator_form_) {
+      // This assumes a single contact point.
+      DRAKE_DEMAND(nc_ == 1);
+      Jc_ << Jt_, Jn_;
+      std::function<void(const VectorX<double>&, VectorX<double>*)>
+          contact_jacobian = [this](const VectorX<double>& v,
+                                    VectorX<double>* vc) { *vc = Jc_ * v; };
 
-    // This assumes a single contact point.
-    DRAKE_DEMAND(nc_ == 1);
-    Jc_ << Jt_, Jn_;
-    std::function<void(const VectorX<double>&, VectorX<double>*)>
-        contact_jacobian = [this](const VectorX<double>& v,
-                                  VectorX<double>* vc) { *vc = Jc_ * v; };
-
-    std::function<void(const VectorX<double>&, VectorX<double>*)>
-        forward_dynamics =
-            [this](const VectorX<double>& fc, VectorX<double>* vdot) {
-              *vdot = M_.inverse() * (tau0_ + Jc_.transpose() * fc);
-            };
-
-    //solver_.SetTwoWayCoupledProblemData(&M_, &Jn_, &Jt_, &v0_, &tau0_, &f0_,
-      //                                  &stiffness_, &dissipation_, &mu_vector_,
-        //                                gradient_method);
-
-    solver_.SetTwoWayCoupledProblemData(forward_dynamics, contact_jacobian,
-                                        &v0_, &f0_, &stiffness_, &dissipation_,
-                                        &mu_vector_, gradient_method);
-    ASSERT_TRUE(solver_.operator_form());
+      std::function<void(const VectorX<double>&, VectorX<double>*)>
+          forward_dynamics =
+              [this](const VectorX<double>& fc, VectorX<double>* vdot) {
+                *vdot = M_.inverse() * (tau0_ + Jc_.transpose() * fc);
+              };
+      solver_.SetTwoWayCoupledProblemData(
+          forward_dynamics, contact_jacobian, &v0_, &f0_, &stiffness_,
+          &dissipation_, &mu_vector_, jacobian_calc_method_);
+      ASSERT_TRUE(solver_.operator_form());          
+    } else {
+      solver_.SetTwoWayCoupledProblemData(&M_, &Jn_, &Jt_, &v0_, &tau0_, &f0_,
+                                          &stiffness_, &dissipation_,
+                                          &mu_vector_, jacobian_calc_method_);
+    }
   }
 
  protected:
+  // Fixture parameters.
+  bool operator_form_{false};
+  std::string jacobian_calc_method_{"analytical"};
+
   // For this unit test we have:
   //   R = 1.0
   //   m = 1.0
@@ -1019,10 +1016,7 @@ TEST_P(RollingCylinder, StictionAfterImpact) {
   // iteration not to converge. We find that larger values converge smoothly.
   // Forward and backward schemes did not exhibit this problem, at least for
   // these test cases.
-  const std::optional<drake::math::NumericalGradientMethod> gradient_method =
-      this->GetParam();
-  if (gradient_method.has_value() &&
-      *gradient_method == drake::math::NumericalGradientMethod::kCentral)
+  if (jacobian_calc_method_ == "central")
     parameters.stiction_tolerance = 1.0e-5;
 
   solver_.set_solver_parameters(parameters);
@@ -1077,10 +1071,10 @@ TEST_P(RollingCylinder, StictionAfterImpact) {
   // Tolerance when using analytical Jacobian.
   double J_relative_tolerance = nv_ * std::numeric_limits<double>::epsilon();
   // We need to loosen the tolerance when using a numerical Jacobian.
-  if (gradient_method.has_value()) {
+  if (jacobian_calc_method_ != "analytical") {
     J_relative_tolerance = 5.0e-2;  // For forward/backward differences.
     // We can tighten the tolerance when using central differences.
-    if (*gradient_method == drake::math::NumericalGradientMethod::kCentral)
+    if (jacobian_calc_method_ == "central")
       J_relative_tolerance = 5e-3;
   }
 
@@ -1172,17 +1166,15 @@ TEST_P(RollingCylinder, SlidingAfterImpact) {
       M_, Jn_, Jt_, v0, tau, f0_, mu_vector_,
       stiffness_, dissipation_, dt, v_stiction, epsilon_v, v);
 
-  const std::optional<drake::math::NumericalGradientMethod> gradient_method =
-      this->GetParam();
   // Tolerance when using analytical Jacobian.
   double J_relative_tolerance = nv_ * std::numeric_limits<double>::epsilon();
   // We need to loosen the tolerance when using a numerical Jacobian.
-  if (gradient_method.has_value()) {
+  if (jacobian_calc_method_ != "analytical") {
     J_relative_tolerance = 5.0e-2;  // For forward/backward differences.
     // We can tighten the tolerance when using central differences.
-    if (*gradient_method == drake::math::NumericalGradientMethod::kCentral)
+    if (jacobian_calc_method_ == "central")
       J_relative_tolerance = 5e-3;
-  }          
+  }
 
   // Verify the result.
   EXPECT_TRUE(CompareMatrices(
@@ -1191,26 +1183,30 @@ TEST_P(RollingCylinder, SlidingAfterImpact) {
 
 std::string NumericalGradientMethodName(
     const testing::TestParamInfo<RollingCylinder::ParamType>& info) {
-  const std::optional<drake::math::NumericalGradientMethod>& method =
-      info.param;
-  if (!method) return "Analytical";
-  if (*method == drake::math::NumericalGradientMethod::kForward)
-    return "ForwardDifferences";
-  if (*method == drake::math::NumericalGradientMethod::kCentral)
-    return "CentralDifferences";
-  if (*method == drake::math::NumericalGradientMethod::kBackward)
-    return "BackwardDifferences";
-  DRAKE_UNREACHABLE();
+  const bool operator_form = std::get<0>(info.param);
+  const std::string method = std::get<1>(info.param);
+  const std::string form_name =
+      operator_form ? "OperatorForm" : "ExplicitMatrixForm";
+  return form_name + method;
 }
 
-//INSTANTIATE_TEST_SUITE_P(AnalyticalJacobian, RollingCylinder,
-  //                       testing::Values(std::nullopt));
+INSTANTIATE_TEST_SUITE_P(
+    AnalyticalJacobian, RollingCylinder,
+    testing::Values(
+        // Only the matrix form support analytical Jacobian.
+        std::make_pair(false, "analytical")));
 
 INSTANTIATE_TEST_SUITE_P(
     NumericalJacobian, RollingCylinder,
-    testing::Values(drake::math::NumericalGradientMethod::kForward,
-                    drake::math::NumericalGradientMethod::kCentral,
-                    drake::math::NumericalGradientMethod::kBackward),
+    testing::Values(
+      // Operator form tests:
+      std::make_pair(true, "forward"),
+      std::make_pair(true, "central"),
+      std::make_pair(true, "backward"),
+      // Matrix form tests:
+      std::make_pair(false, "forward"),
+      std::make_pair(false, "central"),
+      std::make_pair(false, "backward")),
     NumericalGradientMethodName);
 
 GTEST_TEST(EmptyWorld, Solve) {
@@ -1221,9 +1217,9 @@ GTEST_TEST(EmptyWorld, Solve) {
   VectorX<double> tau0, v0, mu_vector, f0, stiffness, dissipation;
   MatrixX<double> M, Jn, Jt;
 
-  DRAKE_EXPECT_NO_THROW(
-      solver.SetTwoWayCoupledProblemData(&M, &Jn, &Jt, &v0, &tau0, &f0,
-                                         &stiffness, &dissipation, &mu_vector));
+  DRAKE_EXPECT_NO_THROW(solver.SetTwoWayCoupledProblemData(
+      &M, &Jn, &Jt, &v0, &tau0, &f0, &stiffness, &dissipation, &mu_vector,
+      "analytical"));
 }
 
 }  // namespace

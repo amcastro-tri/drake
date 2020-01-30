@@ -291,10 +291,12 @@ void TamsiSolver<T>::SetTwoWayCoupledProblemData(
     EigenPtr<const VectorX<T>> v0, EigenPtr<const VectorX<T>> f0,
     EigenPtr<const VectorX<T>> stiffness,
     EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu,
-    std::optional<math::NumericalGradientMethod> method) {
+    const std::string& jacobian_calc_method) {
   DRAKE_DEMAND(v0 != nullptr);
   DRAKE_DEMAND(f0 != nullptr);
-  numerical_gradient_method_ = method;
+  // Analytical Jacobian not supported when using the operator form.
+  DRAKE_DEMAND(jacobian_calc_method != "analytical");
+  set_numerical_gradient_method(jacobian_calc_method);
   nv_ = v0->size();
   nc_ = f0->size();
   problem_data_aliases_.SetTwoWayCoupledData(
@@ -346,7 +348,7 @@ void TamsiSolver<T>::SetTwoWayCoupledProblemData(
     EigenPtr<const VectorX<T>> tau0, EigenPtr<const VectorX<T>> f0,
     EigenPtr<const VectorX<T>> stiffness,
     EigenPtr<const VectorX<T>> dissipation, EigenPtr<const VectorX<T>> mu,
-    std::optional<math::NumericalGradientMethod> method) {
+    const std::string& jacobian_calc_method) {
   nc_ = f0->size();
   DRAKE_THROW_UNLESS(M->rows() == nv_ && M->cols() == nv_);
   DRAKE_THROW_UNLESS(Jn->rows() == nc_ && Jn->cols() == nv_);
@@ -354,7 +356,7 @@ void TamsiSolver<T>::SetTwoWayCoupledProblemData(
   DRAKE_THROW_UNLESS(mu->size() == nc_);
   DRAKE_THROW_UNLESS(stiffness->size() == nc_);
   DRAKE_THROW_UNLESS(dissipation->size() == nc_);
-  numerical_gradient_method_ = method;
+  set_numerical_gradient_method(jacobian_calc_method);
   // Keep references to the problem data.
   problem_data_aliases_.SetTwoWayCoupledData(M, Jn, Jt, v0, tau0, f0, stiffness,
                                              dissipation, mu);
@@ -734,7 +736,7 @@ void TamsiSolver<T>::CalcTamsiJacobian(double dt, const VectorX<T>& v,
   auto fn = variable_size_workspace_.mutable_fn();
   auto v_slip = variable_size_workspace_.mutable_v_slip();
 
-  if (numerical_gradient_method_) {
+  if (numerical_gradient_method_ != "analytical") {
     // Functor with signature as required by math::ComputeNumericalGradient().
     std::function<void(const VectorX<T>&, VectorX<T>*)> tamsi_residual =
         [this, dt](const VectorX<T>& vk, VectorX<T>* rk) {
@@ -742,7 +744,8 @@ void TamsiSolver<T>::CalcTamsiJacobian(double dt, const VectorX<T>& v,
         };
     *J = math::ComputeNumericalGradient(
         tamsi_residual, v,
-        math::NumericalGradientOption{*numerical_gradient_method_});
+        math::NumericalGradientOption(
+            to_numerical_gradient_method(numerical_gradient_method_)));
   } else {
     // Compute gradient dft_dvt = ∇ᵥₜfₜ(vₜ) as a function of fn, mus,
     // t_hat and v_slip.
@@ -757,11 +760,6 @@ template <typename T>
 TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
     double dt, const VectorX<T>& v_guess) const {
   DRAKE_THROW_UNLESS(v_guess.size() == nv_);
-
-  // We can only support analytical gradients when data is in matrix form.
-  DRAKE_DEMAND((operator_form() && numerical_gradient_method_.has_value()) ||
-               !operator_form());
-
   // Clear statistics so that we can update them with new ones for this call to
   // SolveWithGuess().
   statistics_.Reset();

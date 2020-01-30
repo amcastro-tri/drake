@@ -1666,20 +1666,52 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
   TamsiSolverResult info{
       TamsiSolverResult::kMaxIterationsReached};
 
+  const int nc = phi0.size();
+  const int nv = num_velocities();
+  MatrixX<T> Jc(3 * nc, nv);
+  for (int ic = 0; ic < nc; ++ic) {
+    Jc.template block(3 * ic, 0, 2, nv) = Jt.template block(2 * ic, 0, 2, nv);
+    Jc.template block(3 * ic + 2, 0, 1, nv) = Jn.template block(ic, 0, 1, nv);    
+  }
+  std::function<void(const VectorX<T>&, VectorX<T>*)>
+      contact_jacobian = [&Jc](const VectorX<T>& v, VectorX<T>* vc) {
+        *vc = Jc * v;
+      };
+  VectorX<T> tau0 = -minus_tau;
+
+  const Eigen::LDLT<MatrixX<T>> M_ldlt(M0);
+  if (M_ldlt.info() != Eigen::Success) {
+    throw std::runtime_error("Mass matrix is not invertible.");
+  }
+
+  VectorX<T> f0(nc);
+  f0.array() = stiffness.array() * phi0.array();
+
   for (int substep = 0; substep < num_substeps; ++substep) {
     // Discrete update before applying friction forces.
     // We denote this state x* = [q*, v*], the "star" state.
     // Generalized momentum "star", before contact forces are applied.
     VectorX<T> p_star_substep = M0 * v0_substep - dt_substep * minus_tau;
+    
+    std::function<void(const VectorX<T>&, VectorX<T>*)>
+        forward_dynamics =
+            [&M_ldlt, &Jc, &tau0](const VectorX<T>& fc, VectorX<T>* vdot) {
+              *vdot = M_ldlt.solve(tau0 + Jc.transpose() * fc);
+            };
 
     // Update the data.
+    tamsi_solver_->SetTwoWayCoupledProblemData(
+        forward_dynamics, contact_jacobian, &v0_substep, &f0, &stiffness,
+        &damping, &mu, "forward");
+
+#if 0
     tamsi_solver_->SetTwoWayCoupledProblemData(
         &M0, &Jn, &Jt,
         &p_star_substep, &phi0_substep,
         &stiffness, &damping, &mu);
+#endif
 
-    info = tamsi_solver_->SolveWithGuess(dt_substep,
-                                                     v0_substep);
+    info = tamsi_solver_->SolveWithGuess(dt_substep, v0_substep);
 
     // Break the sub-stepping loop on failure and return the info result.
     if (info != TamsiSolverResult::kSuccess) break;
@@ -1887,8 +1919,10 @@ void MultibodyPlant<T>::CalcTamsiResults(
   results->ft = tamsi_solver_->get_friction_forces();
   results->vn = tamsi_solver_->get_normal_velocities();
   results->vt = tamsi_solver_->get_tangential_velocities();
-  results->tau_contact =
-      tamsi_solver_->get_generalized_contact_forces();
+  const auto& fn = tamsi_solver_->get_normal_forces();
+  const auto& ft = tamsi_solver_->get_friction_forces();
+  results->tau_contact = contact_jacobians.Jn.transpose() * fn +
+                         contact_jacobians.Jt.transpose() * ft;
 }
 
 template <typename T>

@@ -604,7 +604,6 @@ void TamsiSolver<T>::CalcTamsiAnalyticalJacobian(double dt, const VectorX<T>&,
   const int nf = 2 * nc;
 
   // Convenient aliases to problem data.
-  //const auto& M = problem_data_aliases_.M();
   const auto& Jn = problem_data_aliases_.Jn();
   const auto& Jt = problem_data_aliases_.Jt();
 
@@ -767,7 +766,6 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
   // If there are no contact points there is no need to compute contact forces.
   // We simply do forward dynamics with zero contact forces.
   if (nc_ == 0) {
-    const auto M = problem_data_aliases_.M();
     const auto v0 = problem_data_aliases_.v0();
     auto& v = fixed_size_workspace_.mutable_v();
     // We make v = M₀⁻¹ τ₀.

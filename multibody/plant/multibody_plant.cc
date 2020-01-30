@@ -1705,8 +1705,8 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
   std::function<void(const VectorX<T>&, VectorX<T>*)> forward_dynamics =
       [this, &context0, &R_WC_list, &M_ldlt, &tau0, &Jc](const VectorX<T>& fc,
                                                          VectorX<T>* vdot) {
-        //*vdot = CalcTamsiForwardDynamics(context0, R_WC_list, fc);
-        *vdot = M_ldlt.solve(tau0 + Jc.transpose() * fc);
+        *vdot = CalcTamsiForwardDynamics(context0, R_WC_list, fc);
+        //*vdot = M_ldlt.solve(tau0 + Jc.transpose() * fc);
       };
 
   for (int substep = 0; substep < num_substeps; ++substep) {
@@ -1916,7 +1916,18 @@ VectorX<T> MultibodyPlant<T>::CalcTamsiForwardDynamics(
 
     // Contact force on body A, applied at contact point Co, expressed in
     // contact frame C.
-    const Vector3<T> fc_ACo_C = fc.template segment<3>(3 * icontact);
+    Vector3<T> fc_ACo_C = fc.template segment<3>(3 * icontact);
+
+    // I believe this is consequence of using this "left-handed" frame.
+    // Therefore I had to invert the tangential components.
+    // Notice that in CalcRelativeContactVelocities() I am computing v_AcBc_C
+    // and thus the force that give me the power should be f_Bc_C. However here
+    // am using f_Ac_C and thus I need to invert the tangential compoents
+    // instead of the normal one as in CalcRelativeContactVelocities().
+    // MAKE THEM CONSISTENT AND RIGHT HANDED.
+    fc_ACo_C(0) = -fc_ACo_C(0);
+    fc_ACo_C(1) = -fc_ACo_C(1);
+
     const Vector3<T> fc_ACo_W = R_WC * fc_ACo_C;
     const SpatialForce<T> F_AC_W(Vector3<T>::Zero(), fc_ACo_W);
 

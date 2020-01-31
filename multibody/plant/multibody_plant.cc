@@ -1724,13 +1724,13 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
     
 
     // Update the data.
-#if 0    
+//#if 0    
     tamsi_solver_->SetTwoWayCoupledProblemData(
         forward_dynamics, contact_jacobian, &v0_substep, &f0, &stiffness,
         &damping, &mu, "forward");
-#endif
+//#endif
 
-//#if 0
+#if 0
     // Discrete update before applying friction forces.
     // We denote this state x* = [q*, v*], the "star" state.
     // Generalized momentum "star", before contact forces are applied.
@@ -1740,7 +1740,7 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
                                                &tau0, &f0, &stiffness, &damping,
                                                &mu, "analytical");
 
-    //#endif
+#endif
 
     info = tamsi_solver_->SolveWithGuess(dt_substep, v0_substep);
 
@@ -1999,7 +1999,7 @@ void MultibodyPlant<T>::CalcTamsiResults(
 
   // Mass matrix and its factorization.
   MatrixX<T> M0(nv, nv);
-  internal_tree().CalcMassMatrixViaInverseDynamics(context0, &M0);
+  //internal_tree().CalcMassMatrixViaInverseDynamics(context0, &M0);
   //auto M0_ldlt = M0.ldlt();
 
   // Forces at the previous time step.

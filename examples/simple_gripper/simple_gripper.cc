@@ -24,6 +24,8 @@
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/primitives/sine.h"
 
+#include <valgrind/callgrind.h>
+
 namespace drake {
 namespace examples {
 namespace simple_gripper {
@@ -370,7 +372,11 @@ int do_main() {
   simulator.set_publish_every_time_step(true);
   simulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
   simulator.Initialize();
+  CALLGRIND_START_INSTRUMENTATION;
   simulator.AdvanceTo(FLAGS_simulation_time);
+  CALLGRIND_STOP_INSTRUMENTATION;
+  CALLGRIND_DUMP_STATS;
+
 
   if (FLAGS_time_stepping) {
     fmt::print("Used time stepping with dt={}\n", FLAGS_max_time_step);

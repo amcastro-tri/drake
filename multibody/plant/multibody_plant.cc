@@ -1661,7 +1661,7 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
   (void)M0;
   (void)Jn;
   (void)Jt;
-  
+
 
   const double dt = time_step_;  // just a shorter alias.
   const double dt_substep = dt / num_substeps;
@@ -1711,6 +1711,7 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
 
   VectorX<T> f0(nc);
   f0.array() = stiffness.array() * phi0.array();
+  VectorX<T> f0_substep = f0;
 
   std::function<void(const VectorX<T>&, VectorX<T>*)> forward_dynamics =
       [this, &context0, &R_WC_list, &tau0](const VectorX<T>& fc,
@@ -1720,22 +1721,26 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
       };
 
   for (int substep = 0; substep < num_substeps; ++substep) {
-    // Discrete update before applying friction forces.
-    // We denote this state x* = [q*, v*], the "star" state.
-    // Generalized momentum "star", before contact forces are applied.
-    //VectorX<T> p_star_substep = M0 * v0_substep - dt_substep * minus_tau;  
+    
 
     // Update the data.
+#if 0    
     tamsi_solver_->SetTwoWayCoupledProblemData(
         forward_dynamics, contact_jacobian, &v0_substep, &f0, &stiffness,
         &damping, &mu, "forward");
-
-#if 0
-    tamsi_solver_->SetTwoWayCoupledProblemData(
-        &M0, &Jn, &Jt,
-        &p_star_substep, &phi0_substep,
-        &stiffness, &damping, &mu);
 #endif
+
+//#if 0
+    // Discrete update before applying friction forces.
+    // We denote this state x* = [q*, v*], the "star" state.
+    // Generalized momentum "star", before contact forces are applied.
+    //VectorX<T> p_star_substep = M0 * v0_substep - dt_substep * minus_tau;
+
+    tamsi_solver_->SetTwoWayCoupledProblemData(&M0, &Jn, &Jt, &v0_substep,
+                                               &tau0, &f0, &stiffness, &damping,
+                                               &mu, "analytical");
+
+    //#endif
 
     info = tamsi_solver_->SolveWithGuess(dt_substep, v0_substep);
 
@@ -1749,6 +1754,9 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
     const auto vn_substep =
         tamsi_solver_->get_normal_velocities();
     phi0_substep = phi0_substep - dt_substep * vn_substep;
+
+    f0_substep = f0_substep - dt_substep * stiffness.cwiseProduct(vn_substep);
+    f0_substep.cwiseMax(T(0));
   }
 
   return info;
@@ -1991,7 +1999,7 @@ void MultibodyPlant<T>::CalcTamsiResults(
 
   // Mass matrix and its factorization.
   MatrixX<T> M0(nv, nv);
-  //internal_tree().CalcMassMatrixViaInverseDynamics(context0, &M0);
+  internal_tree().CalcMassMatrixViaInverseDynamics(context0, &M0);
   //auto M0_ldlt = M0.ldlt();
 
   // Forces at the previous time step.

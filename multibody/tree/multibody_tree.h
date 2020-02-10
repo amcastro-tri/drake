@@ -1966,6 +1966,15 @@ class MultibodyTree {
     const ArticulatedBodyForceBiasCache<T>& aba_force_bias_cache,
     AccelerationKinematicsCache<T>* ac) const;
 
+  void CalcSpatialAccelerationBiasCache(
+      const systems::Context<T>& context,
+      std::vector<SpatialAcceleration<T>>* spatial_acceleration_bias_cache)
+      const;
+
+  void CalcArticulatedBodyVelocityBiasCache(
+      const systems::Context<T>& context,
+      std::vector<SpatialForce<T>>* Zb_Bo_W_cache) const;
+
   /// @}
 
   /// @}
@@ -2508,6 +2517,18 @@ class MultibodyTree {
       const systems::Context<T>& context) const {
     DRAKE_ASSERT(tree_system_ != nullptr);
     return tree_system_->EvalDynamicBiasCache(context);
+  }
+
+  const std::vector<SpatialAcceleration<T>>& EvalSpatialAccelerationBiasCache(
+      const systems::Context<T>& context) const {
+    DRAKE_ASSERT(tree_system_ != nullptr);
+    return tree_system_->EvalSpatialAccelerationBiasCache(context);
+  }
+
+  const std::vector<SpatialForce<T>>& EvalArticulatedBodyVelocityBiasCache(
+      const systems::Context<T>& context) const {
+    DRAKE_ASSERT(tree_system_ != nullptr);
+    return tree_system_->EvalArticulatedBodyVelocityBiasCache(context);
   }
 
   // Given the state of this model in `context` and a known vector

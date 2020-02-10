@@ -123,6 +123,19 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
         .template Eval<std::vector<SpatialForce<T>>>(context);
   }
 
+  const std::vector<SpatialAcceleration<T>>& EvalSpatialAccelerationBiasCache(
+      const systems::Context<T>& context) const {
+    return this->get_cache_entry(cache_indexes_.spatial_acceleration_bias)
+        .template Eval<std::vector<SpatialAcceleration<T>>>(context);
+  }
+
+  const std::vector<SpatialForce<T>>&
+  EvalArticulatedBodyVelocityBiasCache(
+      const systems::Context<T>& context) const {
+    return this->get_cache_entry(cache_indexes_.articulated_body_velocity_bias)
+        .template Eval<std::vector<SpatialForce<T>>>(context);
+  }
+
   /** For a body B connected to its parent P, returns a reference to the up to
   date cached value for H_PB_W, where H_PB_W is the `6 x nm` body-node hinge
   matrix that relates `V_PB_W` (body B's spatial velocity in its parent body P,
@@ -202,9 +215,11 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   struct CacheIndexes {
     systems::CacheIndex abi_cache_index;
     systems::CacheIndex across_node_jacobians;
+    systems::CacheIndex articulated_body_velocity_bias;
     systems::CacheIndex dynamic_bias;
     systems::CacheIndex position_kinematics;
     systems::CacheIndex spatial_inertia_in_world;
+    systems::CacheIndex spatial_acceleration_bias;
     systems::CacheIndex velocity_kinematics;
   };
 

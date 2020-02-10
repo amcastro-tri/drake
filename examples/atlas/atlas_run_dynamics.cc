@@ -24,6 +24,7 @@ DEFINE_double(
 DEFINE_double(penetration_allowance, 1.0E-3, "Allowable penetration (meters).");
 DEFINE_double(stiction_tolerance, 1.0E-3,
               "Allowable drift speed during stiction (m/s).");
+DEFINE_bool(with_viz, false, "With/without viz.");              
 
 namespace drake {
 namespace examples {
@@ -90,10 +91,12 @@ int do_main() {
   // is stacked as x = [q; v].
   DRAKE_DEMAND(pelvis.floating_velocities_start() == plant.num_positions());
 
-  // Publish contact results for visualization.
-  ConnectContactResultsToDrakeVisualizer(&builder, plant);
+  if (FLAGS_with_viz) {
+    // Publish contact results for visualization.
+    ConnectContactResultsToDrakeVisualizer(&builder, plant);
 
-  geometry::ConnectDrakeVisualizer(&builder, pair.scene_graph);
+    geometry::ConnectDrakeVisualizer(&builder, pair.scene_graph);
+  }
   auto diagram = builder.Build();
 
   // Create a context for this system:

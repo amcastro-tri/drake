@@ -11,6 +11,8 @@
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
 
+#include <valgrind/callgrind.h>
+
 DEFINE_double(target_realtime_rate, 0,
               "Desired rate relative to real time (usually between 0 and 1). "
               "This is documented in Simulator::set_target_realtime_rate().");
@@ -111,7 +113,10 @@ int do_main() {
 
   simulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
   simulator.Initialize();
+  CALLGRIND_START_INSTRUMENTATION;
   simulator.AdvanceTo(FLAGS_simulation_time);
+  CALLGRIND_STOP_INSTRUMENTATION;
+  CALLGRIND_DUMP_STATS;
 
   return 0;
 }

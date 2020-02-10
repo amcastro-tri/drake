@@ -742,6 +742,9 @@ void MultibodyPlant<T>::FinalizePlantOnly() {
     solver_parameters.stiction_tolerance =
         friction_model_.stiction_tolerance();
     tamsi_solver_->set_solver_parameters(solver_parameters);
+
+    // Context used to store [q0, v] for TAMSI kinematics.
+    context_q0v_ = this->CreateDefaultContext();
   }
   SetUpJointLimitsParameters();
   scene_graph_ = nullptr;  // must not be used after Finalize().
@@ -1683,21 +1686,43 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
   }
 #endif
 
-  const std::vector<RotationMatrix<T>> R_WC_list =
+  // Obtain everything that is "frozen" at q0.
+  const internal::PositionKinematicsCache<T>& position_cache0 =
+      EvalPositionKinematics(context0);
+  const auto& point_pairs0 = EvalPointPairPenetrations(context0);
+  const std::vector<RotationMatrix<T>> R_WC_list0 =
       CalcContactFramesOrientation(context0);
 
-  auto context_v = this->CreateDefaultContext();
-  context_v->SetTimeStateAndParametersFrom(context0);
+  // Now context_q0v_ and position_cache0 are in "sync".
+  this->SetPositions(context_q0v_.get(), this->GetPositions(context0));      
+
+  //const internal::VelocityKinematicsCache<T>& vc0 =
+  //    EvalVelocityKinematics(context);
+
+  // N.B. Note that we hold onto a mutable reference to the generalized
+  // velocities. We do this to avoid invalidating the positions cache, see issue
+  // #9171.
+  Eigen::VectorBlock<VectorX<T>> mutable_v =
+      GetMutableVelocities(context_q0v_.get());
+  internal::VelocityKinematicsCache<T> velocity_cache(
+      internal_tree().get_topology());
+
   std::function<void(const VectorX<T>&, VectorX<T>*)> contact_jacobian =
-      [this, &context0, &context_v, &R_WC_list](const VectorX<T>& v, VectorX<T>* vc) {
-        this->SetVelocities(context_v.get(), v);
+      [this, &point_pairs0, &position_cache0, &velocity_cache, &mutable_v,
+       &R_WC_list0](const VectorX<T>& v, VectorX<T>* vc) {
+        // this->SetVelocities(context_q0v_.get(), v);
+        mutable_v = v;  // Mutable reference into context_q0v_.
+        internal_tree().CalcVelocityKinematicsCache(
+            *context_q0v_, position_cache0, &velocity_cache);
+
         // TODO: replace context0 by point_pairs and pass a context with updated
         // velocities (that'll have the effect of caching positions).
         // Though I could pressumably just pass position and vel kinematics
         // caches.
         // Recall this computes vc = Jc(q0) * v. So it makes sense arguments
         // should be context0 and v.
-        *vc = CalcRelativeContactVelocities(context0, *context_v, R_WC_list);
+        *vc = CalcRelativeContactVelocities(point_pairs0, position_cache0,
+                                            velocity_cache, R_WC_list0);
         //*vc = Jc * v;
       };
   VectorX<T> tau0 = -minus_tau;
@@ -1713,10 +1738,17 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
   f0.array() = stiffness.array() * phi0.array();
   VectorX<T> f0_substep = f0;
 
+  // Applied forces including force elements (function of state x) and external
+  // inputs u.
+  // TODO(amcastro-tri): Make forces0 an input to this method so this
+  // computation can be moved outside.
+  MultibodyForces<T> forces0(*this);
+  CalcAppliedForces(context0, &forces0);
+
   std::function<void(const VectorX<T>&, VectorX<T>*)> forward_dynamics =
-      [this, &context0, &R_WC_list, &tau0](const VectorX<T>& fc,
+      [this, &context0, &R_WC_list0, &tau0, &forces0](const VectorX<T>& fc,
                                                          VectorX<T>* vdot) {
-        *vdot = CalcTamsiForwardDynamics(context0, R_WC_list, fc);
+        *vdot = CalcTamsiForwardDynamics(context0, R_WC_list0, forces0, fc);
         //*vdot = M_ldlt.solve(tau0 + Jc.transpose() * fc);
       };
 
@@ -1816,14 +1848,14 @@ void MultibodyPlant<T>::CalcAppliedForces(
 
 template <typename T>
 VectorX<T> MultibodyPlant<T>::CalcRelativeContactVelocities(
-    const systems::Context<T>& context0,
-    const systems::Context<T>& context_v,
+    const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs0,
+    const internal::PositionKinematicsCache<T>& pc0,
+    const internal::VelocityKinematicsCache<T>& velocity_cache,
     const std::vector<RotationMatrix<T>>& R_WC_list) const {
-  const auto& point_pairs_set = EvalPointPairPenetrations(context0);
-  const int num_contacts = point_pairs_set.size();
+  const int num_contacts = point_pairs0.size();
   VectorX<T> vc(3 * num_contacts);
   for (int icontact = 0; icontact < num_contacts; ++icontact) {
-    const auto& point_pair = point_pairs_set[icontact];    
+    const auto& point_pair = point_pairs0[icontact];    
 
     const GeometryId geometryA_id = point_pair.id_A;
     const GeometryId geometryB_id = point_pair.id_B;
@@ -1838,15 +1870,15 @@ VectorX<T> MultibodyPlant<T>::CalcRelativeContactVelocities(
     const Vector3<T>& p_WCb = point_pair.p_WCb;    
     const Vector3<T> p_WC = 0.5 * (p_WCa + p_WCb);
 
-    const Vector3<T>& p_WAo = bodyA.EvalPoseInWorld(context_v).translation();
+    const Vector3<T>& p_WAo = pc0.get_X_WB(bodyA.node_index()).translation();
     const Vector3<T> p_AoCo_W = p_WC - p_WAo;
     const SpatialVelocity<T> V_WAc =
-        bodyA.EvalSpatialVelocityInWorld(context_v).Shift(p_AoCo_W);
+        velocity_cache.get_V_WB(bodyA.node_index()).Shift(p_AoCo_W);
 
-    const Vector3<T>& p_WBo = bodyB.EvalPoseInWorld(context_v).translation();
+    const Vector3<T>& p_WBo = pc0.get_X_WB(bodyB.node_index()).translation();
     const Vector3<T> p_BoCo_W =  p_WC - p_WBo;
     const SpatialVelocity<T> V_WBc =
-        bodyB.EvalSpatialVelocityInWorld(context_v).Shift(p_BoCo_W);
+        velocity_cache.get_V_WB(bodyB.node_index()).Shift(p_BoCo_W);
 
     const Vector3<T> v_AcBc_W = V_WBc.translational() - V_WAc.translational();
 
@@ -1891,14 +1923,11 @@ template <typename T>
 VectorX<T> MultibodyPlant<T>::CalcTamsiForwardDynamics(
     const systems::Context<T>& context0, 
     const std::vector<RotationMatrix<T>>& R_WC_list,
+    const MultibodyForces<T>& applied_forces,
     const VectorX<T>& fc) const {
 
-  // Applied forces including force elements (function of state x) and external
-  // inputs u.
-  // TODO(amcastro-tri): Make forces0 an input to this method so this
-  // computation can be moved outside.
-  MultibodyForces<T> forces0(*this);
-  CalcAppliedForces(context0, &forces0);
+  // Initialize forces0 = applied_forces.    
+  MultibodyForces<T> forces0(applied_forces);
 
   // Add the contribution of contact forces.
   std::vector<SpatialForce<T>>& Fapp_BBo_W_array =

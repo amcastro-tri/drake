@@ -3536,14 +3536,16 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   VectorX<T> CalcTamsiForwardDynamics(
       const systems::Context<T>& context0,
       const std::vector<math::RotationMatrix<T>>& R_WC_list,
+      const MultibodyForces<T>& forces0,
       const VectorX<T>& fc) const;
 
   std::vector<math::RotationMatrix<T>> CalcContactFramesOrientation(
       const systems::Context<T>& context) const;
 
   VectorX<T> CalcRelativeContactVelocities(
-    const systems::Context<T>& context0,
-    const systems::Context<T>& context_v,
+    const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs0,
+    const internal::PositionKinematicsCache<T>& pc0,
+    const internal::VelocityKinematicsCache<T>& vc,
     const std::vector<math::RotationMatrix<T>>& R_WC_list) const;
 
   // This method uses the time stepping method described in
@@ -4079,6 +4081,10 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
 
   // The solver used when the plant is modeled as a discrete system.
   std::unique_ptr<TamsiSolver<T>> tamsi_solver_;
+
+  // MBP context used only for kinematic computations. Do not use it for
+  // computations involving input ports and/or geometry queries.
+  std::unique_ptr<systems::Context<T>> context_q0v_;  
 
   hydroelastics::internal::HydroelasticEngine<T> hydroelastics_engine_;
 

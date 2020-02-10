@@ -111,6 +111,8 @@ DEFINE_double(amplitude, 0.15, "The amplitude of the harmonic oscillations "
 DEFINE_double(frequency, 2.0, "The frequency of the harmonic oscillations "
               "carried out by the gripper. [Hz].");
 
+DEFINE_bool(with_viz, false, "With/without viz.");
+
 // The pad was measured as a torus with the following major and minor radii.
 const double kPadMajorRadius = 14e-3;  // 14 mm.
 const double kPadMinorRadius = 6e-3;   // 6 mm.
@@ -256,17 +258,18 @@ int do_main() {
 
   builder.Connect(scene_graph.get_query_output_port(),
                   plant.get_geometry_query_input_port());
-
-  DrakeLcm lcm;
-  geometry::ConnectDrakeVisualizer(&builder, scene_graph, &lcm);
   builder.Connect(
       plant.get_geometry_poses_output_port(),
       scene_graph.get_source_pose_port(plant.get_source_id().value()));
 
-  // Publish contact results for visualization.
-  // (Currently only available when time stepping.)
-  if (FLAGS_time_stepping)
+  DrakeLcm lcm;
+  if (FLAGS_with_viz) {
+    geometry::ConnectDrakeVisualizer(&builder, scene_graph, &lcm);
+
+    // Publish contact results for visualization.
+    // (Currently only available when time stepping.)
     ConnectContactResultsToDrakeVisualizer(&builder, plant, &lcm);
+  }
 
   // Sinusoidal force input. We want the gripper to follow a trajectory of the
   // form x(t) = X0 * sin(ω⋅t). By differentiating once, we can compute the

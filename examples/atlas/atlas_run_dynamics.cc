@@ -13,6 +13,9 @@
 
 #include <valgrind/callgrind.h>
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 DEFINE_double(target_realtime_rate, 0,
               "Desired rate relative to real time (usually between 0 and 1). "
               "This is documented in Simulator::set_target_realtime_rate().");
@@ -98,6 +101,9 @@ int do_main() {
     geometry::ConnectDrakeVisualizer(&builder, pair.scene_graph);
   }
   auto diagram = builder.Build();
+
+  PRINT_VAR(plant.num_positions());
+  PRINT_VAR(plant.num_velocities());
 
   // Create a context for this system:
   std::unique_ptr<systems::Context<double>> diagram_context =

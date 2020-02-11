@@ -18,6 +18,8 @@
 #include "drake/multibody/tree/spatial_inertia.h"
 #include "drake/multibody/tree/uniform_gravity_field_element.h"
 
+#include "drake/common/test_utilities/limit_malloc.h"
+
 namespace drake {
 namespace multibody {
 namespace internal {
@@ -1729,6 +1731,8 @@ void MultibodyTree<T>::CalcArticulatedBodyForceBiasCache(
     ArticulatedBodyForceBiasCache<T>* aba_force_bias_cache) const {
   DRAKE_DEMAND(aba_force_bias_cache != nullptr);
   DRAKE_DEMAND(forces.CheckHasRightSizeForModel(*this));
+
+  //drake::test::LimitMalloc guard;
 
   // Get position and velocity kinematics from cache.
   const PositionKinematicsCache<T>& pc = EvalPositionKinematics(context);

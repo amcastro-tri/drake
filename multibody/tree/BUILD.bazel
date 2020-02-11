@@ -181,6 +181,7 @@ drake_cc_library(
         "//common:autodiff",
         "//common:nice_type_name",
         "//common:symbolic",
+        "//common/test_utilities:limit_malloc",
         "//math:geometric_transform",
         "//systems/framework:leaf_system",
     ],

@@ -44,70 +44,8 @@ class BodyNodeImpl : public BodyNode<T> {
                const Body<T>* body, const Mobilizer<T>* mobilizer) :
       BodyNode<T>(parent_node, body, mobilizer) {}
 
-  void CalcArticulatedBodyAccelerations_BaseToTip(
-      const systems::Context<T>& /* context */,
-      const PositionKinematicsCache<T>& pc,
-      const ArticulatedBodyInertiaCache<T>& abic,
-      const ArticulatedBodyForceBiasCache<T>& aba_force_bias_cache,
-      const Eigen::Ref<const MatrixUpTo6<T>>& H_PB_W,
-      const SpatialAcceleration<T>& Ab_WB,
-      AccelerationKinematicsCache<T>* ac) const final {
-    DRAKE_THROW_UNLESS(ac != nullptr);
-
-    // As a guideline for developers, please refer to @ref
-    // abi_computing_accelerations for a detailed description of the algorithm
-    // and the notation in use.
-
-    // Get the spatial acceleration of the parent.
-    const SpatialAcceleration<T>& A_WP = parent_node_->get_A_WB(*ac);
-
-    // Shift vector p_PoBo_W from the parent origin to the body origin.
-    const Vector3<T>& p_PoBo_W = get_p_PoBo_W(pc);
-
-    // Rigidly shift the acceleration of the parent node.
-    const SpatialAcceleration<T> Aplus_WB = SpatialAcceleration<T>(
-        A_WP.rotational(),
-        A_WP.translational() + A_WP.rotational().cross(p_PoBo_W));
-
-    SpatialAcceleration<T>& A_WB = get_mutable_A_WB(ac);
-    A_WB = Aplus_WB + Ab_WB;
-
-    // These quantities do not contribute when nv = 0. We skip them since Eigen
-    // does not allow certain operations on zero-sized objects.
-    if constexpr (nv != 0) {      
-      // Compute nu_B, the articulated body inertia innovations generalized
-      // acceleration.
-      Vector<T, nv> nu_B;
-      if constexpr (nv == 1) {
-        // The inverse of D is simply the scalar Di.
-        const T Di = 1.0 / get_ldlt_D_B(abic).vectorD()(0);
-        nu_B = Di * get_e_B(aba_force_bias_cache);
-      } else {
-        nu_B = get_ldlt_D_B(abic).solve(get_e_B(aba_force_bias_cache));
-      }
-
-      // Mutable reference to the generalized acceleration.
-      auto vmdot = get_mutable_accelerations(ac).template head<nv>();
-      const auto g_PB_W = get_g_PB_W(abic).template topLeftCorner<6, nv>();
-      vmdot = nu_B - g_PB_W.transpose() * A_WB.get_coeffs();
-
-      // Update with vmdot term the spatial acceleration of the current body.
-      A_WB += SpatialAcceleration<T>(H_PB_W * vmdot);
-    }
-  }    
-
-  private:
-   using BodyNode<T>::get_p_PoBo_W;
-   using BodyNode<T>::get_num_mobilizer_velocities;
-   using BodyNode<T>::get_mutable_A_WB;
-   using BodyNode<T>::get_g_PB_W;
-   using BodyNode<T>::get_mutable_accelerations;
-   using BodyNode<T>::get_ldlt_D_B;
-   using BodyNode<T>::get_e_B;
-   using BodyNode<T>::parent_node_;
-
-   // TODO(amcastro-tri): Implement methods for computing velocity kinematics
-   // using fixed-size Eigen matrices.
+  // TODO(amcastro-tri): Implement methods for computing velocity kinematics
+  // using fixed-size Eigen matrices.
 };
 
 }  // namespace internal

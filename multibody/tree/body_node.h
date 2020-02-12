@@ -1185,7 +1185,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   /// called for the parent node (and, by recursive precondition, all
   /// predecessor nodes in the tree.)
   /// @throws when called on the _root_ node of `ac` or `vdot` is nullptr.
-  void CalcArticulatedBodyAccelerations_BaseToTip(
+  virtual void CalcArticulatedBodyAccelerations_BaseToTip(
       const systems::Context<T>& /* context */,
       const PositionKinematicsCache<T>& pc,
       const ArticulatedBodyInertiaCache<T>& abic,
@@ -1326,7 +1326,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
     return get_mobilizer().outboard_frame();
   }
 
- private:
+ public:
   // Returns the index to the parent body of the body associated with this node.
   // For the root node, corresponding to the world body, this method returns an
   // invalid body index. Attempts to using invalid indexes leads to an exception

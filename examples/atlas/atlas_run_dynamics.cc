@@ -12,11 +12,16 @@
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/framework/diagram_builder.h"
 
+#include <valgrind/callgrind.h>
+
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 DEFINE_double(simulation_time, 2.0, "Simulation duration in seconds");
 DEFINE_double(penetration_allowance, 1.0E-3, "Allowable penetration (meters).");
 DEFINE_double(stiction_tolerance, 1.0E-3,
               "Allowable drift speed during stiction (m/s).");
-
+DEFINE_bool(with_viz, false, "With/without viz.");
 DEFINE_double(
     mbp_discrete_update_period, 1.0E-3,
     "The fixed-time step period (in seconds) of discrete updates for the "
@@ -89,11 +94,16 @@ int do_main() {
   // is stacked as x = [q; v].
   DRAKE_DEMAND(pelvis.floating_velocities_start() == plant.num_positions());
 
-  // Publish contact results for visualization.
-  ConnectContactResultsToDrakeVisualizer(&builder, plant);
+  if (FLAGS_with_viz) {
+    // Publish contact results for visualization.
+    ConnectContactResultsToDrakeVisualizer(&builder, plant);
 
-  geometry::ConnectDrakeVisualizer(&builder, pair.scene_graph);
+    geometry::ConnectDrakeVisualizer(&builder, pair.scene_graph);
+  }
   auto diagram = builder.Build();
+
+  PRINT_VAR(plant.num_positions());
+  PRINT_VAR(plant.num_velocities());
 
   // Create a context for this system:
   std::unique_ptr<systems::Context<double>> diagram_context =
@@ -110,7 +120,11 @@ int do_main() {
 
   auto simulator =
       MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
+  CALLGRIND_START_INSTRUMENTATION;
   simulator->AdvanceTo(FLAGS_simulation_time);
+  CALLGRIND_STOP_INSTRUMENTATION;
+  CALLGRIND_DUMP_STATS;
+
 
   return 0;
 }

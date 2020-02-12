@@ -167,13 +167,17 @@ class ArticulatedBodyInertia {
   template <typename T1 = T>
   typename std::enable_if_t<scalar_predicate<T1>::is_bool, bool>
   IsPhysicallyValid() const {
-    // Note that this tolerance may need to be loosened.
-    const double kTolerance = -1e-14;
+    // Note that this tolerance may need to be loosened. Values up to 100.0
+    // might be required.
+    const double kToleranceFactor = 10.0;
 
     // Get the eigenvalues of the matrix and see if they are all greater than or
     // equal to zero with some tolerance for floating point errors.
     const auto eigvals =
         matrix_.template selfadjointView<Eigen::Lower>().eigenvalues();
+    const double kTolerance = -kToleranceFactor *
+                              std::numeric_limits<double>::epsilon() *
+                              ExtractDoubleOrThrow(eigvals.norm());
     return (eigvals.array() > kTolerance).all();
   }
 

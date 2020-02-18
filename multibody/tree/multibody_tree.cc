@@ -18,6 +18,10 @@
 #include "drake/multibody/tree/spatial_inertia.h"
 #include "drake/multibody/tree/uniform_gravity_field_element.h"
 
+#include <omp.h>
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 namespace drake {
 namespace multibody {
 namespace internal {
@@ -876,17 +880,44 @@ void MultibodyTree<T>::CalcMassMatrixViaInverseDynamics(
   DRAKE_DEMAND(H->cols() == num_velocities());
 
   // Compute one column of the mass matrix via inverse dynamics at a time.
-  const int nv = num_velocities();
+  const int nv = num_velocities(); 
+  const bool ignore_velocities = true;
+
+{
   VectorX<T> vdot(nv);
   VectorX<T> tau(nv);
   // Auxiliary arrays used by inverse dynamics.
   std::vector<SpatialAcceleration<T>> A_WB_array(num_bodies());
   std::vector<SpatialForce<T>> F_BMo_W_array(num_bodies());
 
+  // We compute first column to make sure all cache entries we need in the
+  // context get updated. Then we "freeze" the context.
+  vdot = VectorX<T>::Unit(nv, 0);
+  tau.setZero();
+  CalcInverseDynamics(context, vdot, {}, VectorX<T>(), ignore_velocities,
+                        &A_WB_array, &F_BMo_W_array, &tau);
+  H->col(0) = tau;
+}
+  context.FreezeCache();
+
+#pragma omp parallel
+{
+  VectorX<T> vdot(nv);
+  VectorX<T> tau(nv);
+  // Auxiliary arrays used by inverse dynamics.
+  std::vector<SpatialAcceleration<T>> A_WB_array(num_bodies());
+  std::vector<SpatialForce<T>> F_BMo_W_array(num_bodies());
+
+  //PRINT_VAR(omp_get_num_threads());
+  //PRINT_VAR(omp_get_thread_num());
+
   // The mass matrix is only a function of configuration q. Therefore velocity
   // terms are not considered.
-  const bool ignore_velocities = true;
-  for (int j = 0; j < nv; ++j) {
+#pragma omp for schedule(runtime) // private(vdot, tau, A_WB_array, F_BMo_W_array)
+  for (int j = 1; j < nv; ++j) {
+    //std::cout << "Parallel loop: id = " << omp_get_thread_num() << ", j = " << j
+      //        << std::endl;
+
     // N.B. VectorX<T>::Unit() does not perform any heap allocation but rather
     // returns a functor-like object that fills the entries in vdot.
     vdot = VectorX<T>::Unit(nv, j);
@@ -895,6 +926,10 @@ void MultibodyTree<T>::CalcMassMatrixViaInverseDynamics(
                         &A_WB_array, &F_BMo_W_array, &tau);
     H->col(j) = tau;
   }
+}  
+
+  // Un-freeze after the parallel computations.
+  context.UnfreezeCache();
 }
 
 template <typename T>

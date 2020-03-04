@@ -267,6 +267,15 @@ class SpatialInertia {
   ///       is zero since in that case the position vector from the about point
   ///       to the center of mass is not well defined.
   ///
+  /// @note Given the compostion of spatial inertias is not well defined for
+  /// massless bodies, this composition of the spatial inertias performs the
+  /// arithmetic average of the center of mass position vector (get_com()) and
+  /// unit inertia (get_unit_inertia()) when the two spatial inertias have zero
+  /// mass (get_mass()). This is only valid in the limit to zero mass for two
+  /// bodies with the same mass. This special case allows the composition of
+  /// spatial inertias in the common case of a kinematic chain of massless
+  /// bodies.
+  ///
   /// @warning This operation is only valid if both spatial inertias are
   /// computed about the same point P and expressed in the same frame E.
   /// Considering `this` spatial inertia to be `M_SP_E` for some body or
@@ -275,10 +284,17 @@ class SpatialInertia {
   /// point P; B's inertia is then included in S.
   SpatialInertia& operator+=(const SpatialInertia<T>& M_BP_E) {
     const T total_mass = get_mass() + M_BP_E.get_mass();
-    DRAKE_ASSERT(total_mass != 0);
-    p_PScm_E_ = (CalcComMoment() + M_BP_E.CalcComMoment()) / total_mass;
-    G_SP_E_.SetFromRotationalInertia(
-        CalcRotationalInertia() + M_BP_E.CalcRotationalInertia(), total_mass);
+    if (total_mass != 0) {
+      p_PScm_E_ = (CalcComMoment() + M_BP_E.CalcComMoment()) / total_mass;
+      G_SP_E_.SetFromRotationalInertia(
+          CalcRotationalInertia() + M_BP_E.CalcRotationalInertia(), total_mass);
+    } else {
+      // Compose the spatial inertias of two massless bodies in the limit when
+      // the two bodies have the same mass.
+      p_PScm_E_ = 0.5 * (get_com() + M_BP_E.get_com());
+      G_SP_E_.SetFromRotationalInertia(
+          get_unit_inertia() + M_BP_E.get_unit_inertia(), 2.0);
+    }
     mass_ = total_mass;
     return *this;
   }
@@ -424,6 +440,39 @@ class SpatialInertia {
         /* translational: notice the order of the cross product is the reversed
          * of the documentation above and thus no minus sign is needed. */
         w_WB_E.cross(mp_BoBcm_E) + get_mass() * v_WP_E);
+  }
+
+  /// Multiplies `this` spatial inertia by a set of spatial vectors in M⁶ stored
+  /// as columns of input matrix `Mmatrix`. The top three rows of Mmatrix are
+  /// expected to store the rotational components while the bottom three rows
+  /// are expected to store the translational components.
+  /// The output matrix is of the same size as `Mmatrix` and each j-th column
+  /// stores the spatial vector in F⁶ result of multiplying `this` spatial
+  /// inertia with the j-th column of `Mmatrix`.
+  template <typename Derived>
+  Eigen::Matrix<T, 6, Derived::ColsAtCompileTime> operator*(
+      const Eigen::MatrixBase<Derived>& Mmatrix) const {
+    static_assert(is_eigen_scalar_same<Derived, T>::value,
+                  "Derived must be templated on the same scalar type as this "
+                  "spatial inertia.");
+    if (Mmatrix.rows() != 6) {
+      throw std::logic_error("Mmatrix must hold spatial vectors in M⁶.");
+    }
+    const auto& Vrotational = Mmatrix.template topRows<3>();
+    const auto& Vtranslational = Mmatrix.template bottomRows<3>();
+    const Vector3<T>& mp_BoBcm_E = CalcComMoment();  // = m * p_BoBcm
+    const Matrix3<T> I_SP_E = CalcRotationalInertia().CopyToFullMatrix3();
+
+    Eigen::Matrix<T, 6, Derived::ColsAtCompileTime> F_Bo_E(6, Mmatrix.cols());
+
+    // Rotational component.
+    F_Bo_E.template topRows<3>() =
+        I_SP_E * Vrotational - Vtranslational.colwise().cross(mp_BoBcm_E);
+
+    // Translational component.
+    F_Bo_E.template bottomRows<3>() =
+        Vrotational.colwise().cross(mp_BoBcm_E) + get_mass() * Vtranslational;
+    return F_Bo_E;
   }
 
  private:

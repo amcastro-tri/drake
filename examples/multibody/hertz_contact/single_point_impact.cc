@@ -23,7 +23,9 @@ namespace hertz_contact {
 namespace {
 
 using Eigen::Vector3d;
+using Eigen::Vector4d;
 using multibody::BodyIndex;
+using multibody::ModelInstanceIndex;
 using multibody::CoulombFriction;
 using multibody::MultibodyPlant;
 using multibody::Body;
@@ -41,14 +43,31 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(HertzSphere)
 
-  HertzSphere(const RigidBody<T>& body, const Vector3<double>& p_BS,
-              double radius, double elastic_modulus, double dissipation)
+  HertzSphere(const std::string& name, const RigidBody<T>& body,
+              const Vector3<double>& p_BS, double radius,
+              double elastic_modulus, double dissipation)
       : multibody::CustomForceElement<T>(body.model_instance()),
+        name_(name),
         p_BS_(p_BS),
         body_index_(body.index()),
         radius_(radius),
         elastic_modulus_(elastic_modulus),
         dissipation_(dissipation) {}
+
+  const Body<T>& body() const {
+    const MultibodyPlant<T>& plant = this->GetParentPlant();
+    return plant.get_body(body_index_);
+  }
+
+  void RegisterVisualGeometry(const Vector4d& color,
+                              MultibodyPlant<T>* plant) const {
+    const MultibodyPlant<T>* this_plant = &this->GetParentPlant();
+    DRAKE_DEMAND(this_plant == plant);
+
+    plant->RegisterVisualGeometry(body(), RigidTransform<double>(p_BS_),
+                                  geometry::Sphere(radius_), name_ + "_visual",
+                                  color);
+  }
 
  protected:
   void AddForceContribution(const systems::Context<T>&,
@@ -59,7 +78,32 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
     F_B_W += SpatialForce<T>::Zero();
   }
 
+  std::unique_ptr<multibody::CustomForceElement<symbolic::Expression>>
+  ToSymbolic() const final {
+    std::unique_ptr<HertzSphere<symbolic::Expression>> clone(
+        new HertzSphere<symbolic::Expression>(name_, this->model_instance(),
+                                              body_index_, p_BS_, radius_,
+                                              elastic_modulus_, dissipation_));
+    return clone;
+  }
+
  private:
+  // Allow different specializations to access each other's private data for
+  // scalar conversion.
+  template <typename U> friend class HertzSphere;
+
+  HertzSphere(const std::string& name, ModelInstanceIndex model_instance,
+              BodyIndex body_index, const Vector3<double>& p_BS, double radius,
+              double elastic_modulus, double dissipation)
+      : multibody::CustomForceElement<T>(model_instance),
+        name_(name),
+        p_BS_(p_BS),
+        body_index_(body_index),
+        radius_(radius),
+        elastic_modulus_(elastic_modulus),
+        dissipation_(dissipation) {}
+
+  std::string name_;
   Vector3<double> p_BS_;
   BodyIndex body_index_;
   double radius_;
@@ -179,15 +223,19 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
   const double hertz_radius = 0.1;
   const double hertz_modulus = 10.0e9;    // 10 GPa
   const double hertz_dissipation = 0.26;  // s/m
+
+  #if 0
   HertzSphere<double> HertzModel(
       box, Vector3d(-LBx / 2, -LBy / 2, -LBz / 2), hertz_radius, hertz_modulus,
       hertz_dissipation);
       (void)HertzModel;
-#if 0      
-  plant_->AddForceElement<HertzSphere>(
-      box, Vector3d(-LBx / 2, -LBy / 2, -LBz / 2), hertz_radius, hertz_modulus,
+#endif      
+
+  const auto& hertz_sphere = plant_->template AddForceElement<HertzSphere>(
+      "sphere1", box, Vector3d(-LBx / 2, -LBy / 2, -LBz / 2), hertz_radius, hertz_modulus,
       hertz_dissipation);
-#endif
+  const Vector4<double> red(1.0, 0.0, 0.0, 1.0);    
+  hertz_sphere.RegisterVisualGeometry(red, plant_);
 
 
   // Box's collision geometry is a solid box.

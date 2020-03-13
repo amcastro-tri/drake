@@ -10,7 +10,7 @@ namespace drake {
 namespace multibody {
 
 template <typename T>
-class CustomForceElement final : public ForceElement<T> {
+class CustomForceElement : public ForceElement<T> {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(CustomForceElement)
 
@@ -29,7 +29,7 @@ class CustomForceElement final : public ForceElement<T> {
   }
 
  protected:
-  virtual void DoCalcAndAddForceContribution(
+  virtual void AddForceContribution(
       const systems::Context<T>& context, MultibodyForces<T>* forces) const = 0;
 
   virtual std::unique_ptr<CustomForceElement<double>> ToDouble() const {

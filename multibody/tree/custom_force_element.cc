@@ -10,6 +10,15 @@ CustomForceElement<T>::CustomForceElement(ModelInstanceIndex model_instance)
     : ForceElement<T>(model_instance) {}
 
 template <typename T>
+void CustomForceElement<T>::DoCalcAndAddForceContribution(
+    const systems::Context<T>& context,
+    const internal::PositionKinematicsCache<T>&,
+    const internal::VelocityKinematicsCache<T>&,
+    MultibodyForces<T>* forces) const {
+  AddForceContribution(context, forces);
+}
+
+template <typename T>
 T CustomForceElement<T>::CalcPotentialEnergy(
     const systems::Context<T>& context,
     const internal::PositionKinematicsCache<T>&) const {

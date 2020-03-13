@@ -12,6 +12,7 @@
 #include "drake/geometry/geometry_visualization.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
 #include "drake/multibody/plant/multibody_plant.h"
+#include "drake/multibody/tree/custom_force_element.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
@@ -21,15 +22,50 @@ namespace examples {
 namespace hertz_contact {
 namespace {
 
+using Eigen::Vector3d;
+using multibody::BodyIndex;
 using multibody::CoulombFriction;
 using multibody::MultibodyPlant;
+using multibody::Body;
 using multibody::RigidBody;
 using multibody::UnitInertia;
 using multibody::SpatialInertia;
 using systems::Context;
 using math::RigidTransform;
+using multibody::SpatialForce;
 
 DEFINE_double(duration, 0.5, "Total duration of simulation.");
+
+template <typename T>
+class HertzSphere final : public multibody::CustomForceElement<T> {
+ public:
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(HertzSphere)
+
+  HertzSphere(const RigidBody<T>& body, const Vector3<double>& p_BS,
+              double radius, double elastic_modulus, double dissipation)
+      : multibody::CustomForceElement<T>(body.model_instance()),
+        p_BS_(p_BS),
+        body_index_(body.index()),
+        radius_(radius),
+        elastic_modulus_(elastic_modulus),
+        dissipation_(dissipation) {}
+
+ protected:
+  void AddForceContribution(const systems::Context<T>&,
+                            multibody::MultibodyForces<T>* forces) const final {
+    const MultibodyPlant<T>& plant = this->GetParentPlant();
+    const Body<T>& body = plant.get_body(body_index_);
+    SpatialForce<T>& F_B_W = forces->mutable_body_forces()[body.node_index()];
+    F_B_W += SpatialForce<T>::Zero();
+  }
+
+ private:
+  Vector3<double> p_BS_;
+  BodyIndex body_index_;
+  double radius_;
+  double elastic_modulus_;
+  double dissipation_;
+};
 
 template <typename T>
 class BlockWithHertzCorners : public systems::Diagram<T> {
@@ -50,6 +86,7 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
 
     AddGround(friction, orange);
     box_ = &AddBox("box", box_dimensions, mass, friction, blue);
+
     plant.Finalize();
 
     ConnectContactResultsToDrakeVisualizer(&builder, plant);
@@ -138,6 +175,20 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
   plant_->RegisterCollisionGeometry(box, X_BG, geometry::Box(LBx, LBy, LBz),
                                    name + "_collision",
                                    CoulombFriction<double>(friction, friction));
+
+  const double hertz_radius = 0.1;
+  const double hertz_modulus = 10.0e9;    // 10 GPa
+  const double hertz_dissipation = 0.26;  // s/m
+  HertzSphere<double> HertzModel(
+      box, Vector3d(-LBx / 2, -LBy / 2, -LBz / 2), hertz_radius, hertz_modulus,
+      hertz_dissipation);
+      (void)HertzModel;
+#if 0      
+  plant_->AddForceElement<HertzSphere>(
+      box, Vector3d(-LBx / 2, -LBy / 2, -LBz / 2), hertz_radius, hertz_modulus,
+      hertz_dissipation);
+#endif
+
 
   // Box's collision geometry is a solid box.
 #if 0  

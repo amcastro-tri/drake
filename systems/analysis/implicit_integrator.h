@@ -733,7 +733,7 @@ void ImplicitIntegrator<T>::FreshenMatricesIfFullNewton(
   DRAKE_DEMAND(iteration_matrix);
 
   // Return immediately if full-Newton is not in use.
-  //if (!get_use_full_newton()) return;
+  if (!get_use_full_newton()) return;
 
   // Compute the initial Jacobian and iteration matrices and factor them.
   MatrixX<T>& J = get_mutable_jacobian();
@@ -768,12 +768,11 @@ bool ImplicitIntegrator<T>::MaybeFreshenMatrices(
   }
 
   switch (trial) {
-    case 1: {
+    case 1:
       // For the first trial, we do nothing: this will cause the Newton-Raphson
       // process to use the last computed (and already factored) iteration
       // matrix.
       return true;  // Indicate success.
-    }
 
     case 2: {
       // For the second trial, we perform the (likely) next least expensive
@@ -787,23 +786,22 @@ bool ImplicitIntegrator<T>::MaybeFreshenMatrices(
       // For the third trial, the Jacobian matrix may already be "fresh",
       // meaning that there is nothing more that can be tried (Jacobian and
       // iteration matrix are both fresh) and we need to indicate failure.
-      //if (jacobian_is_fresh_)
-        //return false;
+      if (jacobian_is_fresh_)
+        return false;
 
       // Reform the Jacobian matrix and refactor the iteration matrix.
       J = CalcJacobian(t, xt);
       ++num_iter_factorizations_;
       compute_and_factor_iteration_matrix(J, h, iteration_matrix);
       return true;
-    }
 
-    case 4: {
-      // Trial #4 indicates failure.
-      return false;
-    }
+      case 4: {
+        // Trial #4 indicates failure.
+        return false;
+      }
 
-    default: {
-      throw std::domain_error("Unexpected trial number.");
+      default:
+        throw std::domain_error("Unexpected trial number.");
     }
   }
 }

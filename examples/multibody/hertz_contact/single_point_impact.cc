@@ -31,7 +31,9 @@ using multibody::MultibodyPlant;
 using multibody::Body;
 using multibody::RigidBody;
 using multibody::UnitInertia;
+using math::RotationMatrix;
 using multibody::SpatialInertia;
+using multibody::SpatialVelocity;
 using systems::Context;
 using math::RigidTransform;
 using multibody::SpatialForce;
@@ -70,12 +72,12 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
   }
 
  protected:
-  void AddForceContribution(const systems::Context<T>&,
+  void AddForceContribution(const systems::Context<T>& context,
                             multibody::MultibodyForces<T>* forces) const final {
     const MultibodyPlant<T>& plant = this->GetParentPlant();
     const Body<T>& body = plant.get_body(body_index_);
     SpatialForce<T>& F_B_W = forces->mutable_body_forces()[body.node_index()];
-    F_B_W += SpatialForce<T>::Zero();
+    F_B_W += CalcSpatialForceOnBody(context);
   }
 
   std::unique_ptr<multibody::CustomForceElement<symbolic::Expression>>
@@ -102,6 +104,48 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
         radius_(radius),
         elastic_modulus_(elastic_modulus),
         dissipation_(dissipation) {}
+
+  SpatialForce<T> CalcSpatialForceOnBody(
+      const systems::Context<T>& context) const {
+    const MultibodyPlant<T>& plant = this->GetParentPlant();
+    //body();
+    const auto& X_WB = plant.EvalBodyPoseInWorld(context, body());
+    const RigidTransform<T> X_BS(p_BS_);
+    const RigidTransform<T> X_WS = X_WB * X_BS;
+
+    // Lowest (in z) contact point C on the sphere.
+    Vector3<T> p_WC = X_WS.translation();
+    p_WC[2] -= radius_;
+    const T z = p_WC[2];
+    
+    if (z >=0) return SpatialForce<T>::Zero();
+
+    // Penetration.
+    const T x = -z;
+
+    const auto& V_WB = plant.EvalBodySpatialVelocityInWorld(context, body());
+    const RotationMatrix<T>& R_WB = X_WB.rotation();
+    const Vector3<T> p_BS_W = R_WB * p_BS_.cast<T>();
+    const SpatialVelocity<T> V_WS = V_WB.Shift(p_BS_W);
+    const Vector3<T>& v_WS = V_WS.translational();
+    const T& xdot = -v_WS[2];
+
+    using std::sqrt;
+    const T fHz = 4. / 3. * elastic_modulus_ * sqrt(radius_ * x * x * x);
+
+    using std::max;
+    const T fHC = fHz * max(0.0, 1 + 1.5 * dissipation_ * xdot);
+
+    SpatialForce<T> F_BCo_W(Vector3<T>::Zero(), Vector3<T>(0, 0, fHC));
+
+    // p_WC = p_WB + p_BC_W
+    const Vector3<T>& p_WB = X_WB.translation();    
+    const Vector3<T> p_CoBo_W = p_WB - p_WC ;
+
+    const SpatialForce<T> F_BBo_W = F_BCo_W.Shift(p_CoBo_W);
+
+    return F_BBo_W;
+  }
 
   std::string name_;
   Vector3<double> p_BS_;

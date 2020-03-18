@@ -40,6 +40,7 @@ using multibody::SpatialInertia;
 using multibody::SpatialVelocity;
 using systems::Context;
 using math::RigidTransform;
+using math::RigidTransformd;
 using multibody::SpatialForce;
 
 DEFINE_double(duration, 0.5, "Total duration of simulation.");
@@ -47,6 +48,7 @@ DEFINE_double(roll, 0.0, "Roll angle.");
 DEFINE_double(pitch, 0.0, "Pitch angle.");
 DEFINE_double(yaw, 0.0, "Yaw angle.");
 DEFINE_double(friction, 0.125, "Friction. From paper: 0.125, 0.225 or 0.325.");
+DEFINE_double(mbp_dt, 0.0, "MBP's discrete update period.");
 
 const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
 const Vector4<double> blue(0.0, 0.0, 1.0, 1.0);
@@ -217,7 +219,7 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
     // Hertz model parameters.
     double hertz_radius{0.1};
     double hertz_modulus{10.0e9};    // 10 GPa
-    double hertz_dissipation{0.26};  // s/m
+    double hertz_dissipation{0.26}; // Closer to MBP high dissipation -> {5.0};
 
     // Initial conditions.
     Vector3d rpy_WB_init{M_PI / 4.0, M_PI / 6.0, 0.0};
@@ -231,7 +233,7 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
 
     systems::DiagramBuilder<T> builder;
     auto [plant, scene_graph] =
-        multibody::AddMultibodyPlantSceneGraph(&builder, 0.0);
+        multibody::AddMultibodyPlantSceneGraph(&builder, FLAGS_mbp_dt);
     plant_ = &plant;
 
     AddGround( parameters_.friction, parameters_.ground_color);
@@ -307,16 +309,28 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
 
   void AddHertzSphere(const RigidBody<T>& body, const std::string& name,
                       const Vector3d& p_BS) {
-    const auto& hertz_sphere = plant_->template AddForceElement<HertzSphere>(
-        name, body, p_BS, parameters_.hertz_radius, parameters_.hertz_modulus,
-        parameters_.hertz_dissipation, parameters_.friction,
-        parameters_.transition_speed);
-    hertz_sphere.RegisterVisualGeometry(parameters_.sphere_color, plant_);
+    if (plant_->is_discrete()) {
+      auto shape = geometry::Sphere(parameters_.hertz_radius);
+      RigidTransformd X_BG(p_BS);
+      plant_->RegisterCollisionGeometry(
+          body, X_BG, shape, name + "_collision",
+          CoulombFriction<double>(parameters_.friction, parameters_.friction));
+
+      plant_->RegisterVisualGeometry(body, X_BG, shape,
+                                     name + "_visual",
+                                     parameters_.sphere_color);
+    } else {
+      const auto& hertz_sphere = plant_->template AddForceElement<HertzSphere>(
+          name, body, p_BS, parameters_.hertz_radius, parameters_.hertz_modulus,
+          parameters_.hertz_dissipation, parameters_.friction,
+          parameters_.transition_speed);
+      hertz_sphere.RegisterVisualGeometry(parameters_.sphere_color, plant_);
+    }
   }
 
   const RigidBody<T>& AddBox(const std::string& name,
                            const Vector3<double>& block_dimensions,
-                           double mass, double friction,
+                           double mass, double,
                            const Vector4<double>& color) {
   DRAKE_DEMAND(plant_ != nullptr);
 
@@ -340,10 +354,6 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
   plant_->RegisterVisualGeometry(box, X_BG,
                                 geometry::Box(LBx, LBy, LBz),
                                 name + "_visual", color);
-
-  plant_->RegisterCollisionGeometry(box, X_BG, geometry::Box(LBx, LBy, LBz),
-                                   name + "_collision",
-                                   CoulombFriction<double>(friction, friction));
 
   // -z
   AddHertzSphere(box, "sphere_mxmymz", Vector3d(-LBx / 2, -LBy / 2, -LBz / 2));

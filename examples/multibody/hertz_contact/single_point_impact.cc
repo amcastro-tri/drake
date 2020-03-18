@@ -46,6 +46,7 @@ DEFINE_double(duration, 0.5, "Total duration of simulation.");
 DEFINE_double(roll, 0.0, "Roll angle.");
 DEFINE_double(pitch, 0.0, "Pitch angle.");
 DEFINE_double(yaw, 0.0, "Yaw angle.");
+DEFINE_double(friction, 0.125, "Friction. From paper: 0.125, 0.225 or 0.325.");
 
 const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
 const Vector4<double> blue(0.0, 0.0, 1.0, 1.0);
@@ -58,14 +59,16 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
 
   HertzSphere(const std::string& name, const RigidBody<T>& body,
               const Vector3<double>& p_BS, double radius,
-              double elastic_modulus, double dissipation)
+              double elastic_modulus, double dissipation, double mu, double vs)
       : multibody::CustomForceElement<T>(body.model_instance()),
         name_(name),
         p_BS_(p_BS),
         body_index_(body.index()),
         radius_(radius),
         elastic_modulus_(elastic_modulus),
-        dissipation_(dissipation) {}
+        dissipation_(dissipation),
+        mu_(mu),
+        vs_(vs) {}
 
   const Body<T>& body() const {
     const MultibodyPlant<T>& plant = this->GetParentPlant();
@@ -96,7 +99,7 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
     std::unique_ptr<HertzSphere<symbolic::Expression>> clone(
         new HertzSphere<symbolic::Expression>(name_, this->model_instance(),
                                               body_index_, p_BS_, radius_,
-                                              elastic_modulus_, dissipation_));
+                                              elastic_modulus_, dissipation_, mu_, vs_));
     return clone;
   }
 
@@ -107,14 +110,30 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
 
   HertzSphere(const std::string& name, ModelInstanceIndex model_instance,
               BodyIndex body_index, const Vector3<double>& p_BS, double radius,
-              double elastic_modulus, double dissipation)
+              double elastic_modulus, double dissipation, double mu, double vs)
       : multibody::CustomForceElement<T>(model_instance),
         name_(name),
         p_BS_(p_BS),
         body_index_(body_index),
         radius_(radius),
         elastic_modulus_(elastic_modulus),
-        dissipation_(dissipation) {}
+        dissipation_(dissipation),
+        mu_(mu),
+        vs_(vs) {}
+
+  static T step5(const T& x) {
+    DRAKE_ASSERT(0 <= x && x <= 1);
+    const T x3 = x * x * x;
+    return x3 * (10 + x * (6 * x - 15));  // 10x³ - 15x⁴ + 6x⁵
+  }
+
+  static T CalcRegularizedFriction(const T& v, double vs, double mu) {
+    DRAKE_DEMAND(v >= 0);
+    if (v < vs) {
+      return mu * step5(v / vs);
+    }
+    return mu;
+  }
 
   SpatialForce<T> CalcSpatialForceOnBody(
       const systems::Context<T>& context) const {
@@ -128,6 +147,11 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
     Vector3<T> p_WC = X_WS.translation();
     p_WC[2] -= radius_;
     const T z = p_WC[2];
+
+    // Obtain p_BC_W
+    // p_WC = p_WB + p_BC_W
+    const Vector3<T>& p_WB = X_WB.translation();    
+    const Vector3<T> p_BoCo_W =  p_WC - p_WB;
     
     if (z >=0) return SpatialForce<T>::Zero();
 
@@ -135,23 +159,33 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
     const T x = -z;
 
     const auto& V_WB = plant.EvalBodySpatialVelocityInWorld(context, body());
-    const RotationMatrix<T>& R_WB = X_WB.rotation();
-    const Vector3<T> p_BS_W = R_WB * p_BS_.cast<T>();
-    const SpatialVelocity<T> V_WS = V_WB.Shift(p_BS_W);
-    const Vector3<T>& v_WS = V_WS.translational();
-    const T& xdot = -v_WS[2];
+    //const RotationMatrix<T>& R_WB = X_WB.rotation();
+    //const Vector3<T> p_BS_W = R_WB * p_BS_.cast<T>();
+    const SpatialVelocity<T> V_WC = V_WB.Shift(p_BoCo_W);
+    const Vector3<T>& v_WC = V_WC.translational();
+    const T& xdot = -v_WC[2];
 
+    // Normal forces
     using std::sqrt;
     const T fHz = 4. / 3. * elastic_modulus_ * sqrt(radius_ * x * x * x);
 
     using std::max;
     const T fHC = fHz * max(0.0, 1 + 1.5 * dissipation_ * xdot);
+    const Vector3<T> fn(0, 0, fHC);
 
-    SpatialForce<T> F_BCo_W(Vector3<T>::Zero(), Vector3<T>(0, 0, fHC));
+    // Friction
+    const Vector3<T> vt(v_WC[0], v_WC[1], 0.0);
+    const T slip2 = vt.squaredNorm();
+    const T slip = sqrt(slip2);
+    const T mu = CalcRegularizedFriction(slip, vs_, mu_);
+    const double ev = vs_ / 1000.0;
+    const T soft_slip = sqrt(slip2 + ev * ev);
+    const Vector3<T> ft = -vt / soft_slip * mu * fHC;
+
+    SpatialForce<T> F_BCo_W(Vector3<T>::Zero(), ft + fn);
 
     // p_WC = p_WB + p_BC_W
-    const Vector3<T>& p_WB = X_WB.translation();    
-    const Vector3<T> p_CoBo_W = p_WB - p_WC ;
+    const Vector3<T> p_CoBo_W = -p_BoCo_W;
 
     const SpatialForce<T> F_BBo_W = F_BCo_W.Shift(p_CoBo_W);
 
@@ -164,6 +198,8 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
   double radius_;
   double elastic_modulus_;
   double dissipation_;
+  double mu_;
+  double vs_;
 };
 
 template <typename T>
@@ -172,6 +208,7 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
   struct Parameters {
     double mass{2.0};
     double friction{0.125};  // 0.125, 0.225 or 0.325
+    double transition_speed{0.01};  // m/s
     Vector3<double> box_dimensions{0.4, 0.6, 0.8};
     Vector4<double> box_color{blue};
     Vector4<double> ground_color{orange};
@@ -227,6 +264,12 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
     plant().SetFreeBodyPose(&plant_context, box(), X_WB);
   }
 
+  void SetBoxSpatialVelocity(const SpatialVelocity<T>& V_WB,
+                             Context<T>* context) const {
+    Context<T>& plant_context = GetPlantContext(context);
+    plant().SetFreeBodySpatialVelocity(&plant_context, box(), V_WB);
+  }
+
 #if 0
   void SetDefaultState(const systems::Context<T>* context) const override {
     DRAKE_DEMAND(state != nullptr);
@@ -266,7 +309,8 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
                       const Vector3d& p_BS) {
     const auto& hertz_sphere = plant_->template AddForceElement<HertzSphere>(
         name, body, p_BS, parameters_.hertz_radius, parameters_.hertz_modulus,
-        parameters_.hertz_dissipation);
+        parameters_.hertz_dissipation, parameters_.friction,
+        parameters_.transition_speed);
     hertz_sphere.RegisterVisualGeometry(parameters_.sphere_color, plant_);
   }
 
@@ -368,6 +412,7 @@ int do_main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   BlockWithHertzCorners<double>::Parameters params;
+  params.friction = FLAGS_friction;  
 
   const BlockWithHertzCorners<double> model(params);
   auto context = model.CreateDefaultContext();  
@@ -394,6 +439,7 @@ int do_main(int argc, char* argv[]) {
 
   const RigidTransform<double> X_WB(R_WB, p_WB);
   model.SetBoxPose(X_WB, context.get());
+  model.SetBoxSpatialVelocity(params.V_WB_init, context.get());
 
   //Context<double>& plant_context = model.GetPlantContext(context.get());
 

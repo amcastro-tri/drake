@@ -9,6 +9,7 @@
 
 #include "drake/common/text_logging.h"
 #include "drake/math/rigid_transform.h"
+#include "drake/math/roll_pitch_yaw.h"
 #include "drake/geometry/geometry_visualization.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
 #include "drake/multibody/plant/multibody_plant.h"
@@ -24,6 +25,7 @@ namespace {
 
 using Eigen::Vector3d;
 using Eigen::Vector4d;
+using Eigen::AngleAxisd;
 using multibody::BodyIndex;
 using multibody::ModelInstanceIndex;
 using multibody::CoulombFriction;
@@ -31,7 +33,9 @@ using multibody::MultibodyPlant;
 using multibody::Body;
 using multibody::RigidBody;
 using multibody::UnitInertia;
+using math::RollPitchYawd;
 using math::RotationMatrix;
+using math::RotationMatrixd;
 using multibody::SpatialInertia;
 using multibody::SpatialVelocity;
 using systems::Context;
@@ -39,6 +43,9 @@ using math::RigidTransform;
 using multibody::SpatialForce;
 
 DEFINE_double(duration, 0.5, "Total duration of simulation.");
+DEFINE_double(roll, 0.0, "Roll angle.");
+DEFINE_double(pitch, 0.0, "Pitch angle.");
+DEFINE_double(yaw, 0.0, "Yaw angle.");
 
 const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
 const Vector4<double> blue(0.0, 0.0, 1.0, 1.0);
@@ -171,12 +178,18 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
     Vector4<double> sphere_color{red};
 
     // Hertz model parameters.
-    const double hertz_radius{0.1};
-    const double hertz_modulus{10.0e9};    // 10 GPa
-    const double hertz_dissipation{0.26};  // s/m
+    double hertz_radius{0.1};
+    double hertz_modulus{10.0e9};    // 10 GPa
+    double hertz_dissipation{0.26};  // s/m
+
+    // Initial conditions.
+    Vector3d rpy_WB_init{M_PI / 4.0, M_PI / 6.0, 0.0};
+    SpatialVelocity<double> V_WB_init{Vector3d::Zero(),
+                                      Vector3d{-5.0, 0.0, -5.74}};
   };
 
-  BlockWithHertzCorners() {
+  BlockWithHertzCorners(const Parameters& parameters)
+      : parameters_(parameters) {
     this->set_name("Block with Hertz corners");
 
     systems::DiagramBuilder<T> builder;
@@ -202,6 +215,8 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
   const MultibodyPlant<T>& plant() const { return *plant_; }
 
   const RigidBody<T>& box() const { return *box_; }
+
+  const Parameters& parameters() const { return parameters_; }
 
   Context<T>& GetPlantContext(Context<T>* context) const {
     return this->GetMutableSubsystemContext(plant(), context);
@@ -352,9 +367,32 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
 int do_main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  const BlockWithHertzCorners<double> model;
-  auto context = model.CreateDefaultContext();
-  const RigidTransform<double> X_WB(Vector3<double>(0, 0, 0.6));
+  BlockWithHertzCorners<double>::Parameters params;
+
+  const BlockWithHertzCorners<double> model(params);
+  auto context = model.CreateDefaultContext();  
+
+  // Initial orientation R_WB.
+  // Obtained by first rotating pi/4 about the body's x followed by rotating
+  // pi/6 about the new y body axis.
+  RotationMatrixd Rx = RotationMatrixd::MakeXRotation(params.rpy_WB_init(0));
+  const Vector3d yhat_new = Rx.matrix().col(1);
+  RotationMatrixd Ry(AngleAxisd(params.rpy_WB_init(1), yhat_new));
+  const RotationMatrixd R_WB = Ry * Rx;  
+
+  // We want sphere at +x, -y, -z to be in contact with the groud.
+  const Vector3d size = model.parameters().box_dimensions;
+  const Vector3d p_BS(+size.x() / 2.0, -size.y() / 2.0, -size.z() / 2.0);
+
+  // Position of contact point C from S, measured in world.
+  const Vector3d p_SC_W(0.0, 0.0, -model.parameters().hertz_radius);
+
+  // p_WC_W = p_WB_W + p_BS_W + p_SC_W = 0.
+  // Then p_WB_W = -(p_BS_W + p_SC_W)
+  const Vector3d p_BS_W = R_WB * p_BS;
+  const Vector3d p_WB = -(p_BS_W + p_SC_W);
+
+  const RigidTransform<double> X_WB(R_WB, p_WB);
   model.SetBoxPose(X_WB, context.get());
 
   //Context<double>& plant_context = model.GetPlantContext(context.get());

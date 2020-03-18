@@ -40,6 +40,10 @@ using multibody::SpatialForce;
 
 DEFINE_double(duration, 0.5, "Total duration of simulation.");
 
+const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
+const Vector4<double> blue(0.0, 0.0, 1.0, 1.0);
+const Vector4<double> orange(1.0, 0.55, 0.0, 1.0);    
+
 template <typename T>
 class HertzSphere final : public multibody::CustomForceElement<T> {
  public:
@@ -158,22 +162,31 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
 template <typename T>
 class BlockWithHertzCorners : public systems::Diagram<T> {
  public:
+  struct Parameters {
+    double mass{2.0};
+    double friction{0.125};  // 0.125, 0.225 or 0.325
+    Vector3<double> box_dimensions{0.4, 0.6, 0.8};
+    Vector4<double> box_color{blue};
+    Vector4<double> ground_color{orange};
+    Vector4<double> sphere_color{red};
+
+    // Hertz model parameters.
+    const double hertz_radius{0.1};
+    const double hertz_modulus{10.0e9};    // 10 GPa
+    const double hertz_dissipation{0.26};  // s/m
+  };
+
   BlockWithHertzCorners() {
     this->set_name("Block with Hertz corners");
 
     systems::DiagramBuilder<T> builder;
     auto [plant, scene_graph] =
         multibody::AddMultibodyPlantSceneGraph(&builder, 0.0);
-    plant_ = &plant;        
+    plant_ = &plant;
 
-    const double mass = 2.0;
-    const double friction = 0.125; // 0.125, 0.225 or 0.325
-    const Vector3<double> box_dimensions(0.4, 0.6, 0.8);
-    const Vector4<double> blue(0.0, 0.0, 1.0, 1.0);
-    const Vector4<double> orange(1.0, 0.55, 0.0, 1.0);
-
-    AddGround(friction, orange);
-    box_ = &AddBox("box", box_dimensions, mass, friction, blue);
+    AddGround( parameters_.friction, parameters_.ground_color);
+    box_ = &AddBox("box", parameters_.box_dimensions, parameters_.mass,
+                   parameters_.friction, parameters_.box_color);
 
     plant.Finalize();
 
@@ -215,6 +228,7 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
 #endif
 
  private:
+  Parameters parameters_;
   multibody::MultibodyPlant<T>* plant_{nullptr};
   const RigidBody<double>* box_;
 
@@ -233,7 +247,15 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
         "ground_collision", CoulombFriction<double>(friction, friction));
   }
 
-  const RigidBody<double>& AddBox(const std::string& name,
+  void AddHertzSphere(const RigidBody<T>& body, const std::string& name,
+                      const Vector3d& p_BS) {
+    const auto& hertz_sphere = plant_->template AddForceElement<HertzSphere>(
+        name, body, p_BS, parameters_.hertz_radius, parameters_.hertz_modulus,
+        parameters_.hertz_dissipation);
+    hertz_sphere.RegisterVisualGeometry(parameters_.sphere_color, plant_);
+  }
+
+  const RigidBody<T>& AddBox(const std::string& name,
                            const Vector3<double>& block_dimensions,
                            double mass, double friction,
                            const Vector4<double>& color) {
@@ -264,23 +286,17 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
                                    name + "_collision",
                                    CoulombFriction<double>(friction, friction));
 
-  const double hertz_radius = 0.1;
-  const double hertz_modulus = 10.0e9;    // 10 GPa
-  const double hertz_dissipation = 0.26;  // s/m
+  // -z
+  AddHertzSphere(box, "sphere_mxmymz", Vector3d(-LBx / 2, -LBy / 2, -LBz / 2));
+  AddHertzSphere(box, "sphere_mxpymz", Vector3d(-LBx / 2, +LBy / 2, -LBz / 2));
+  AddHertzSphere(box, "sphere_pxmymz", Vector3d(+LBx / 2, -LBy / 2, -LBz / 2));
+  AddHertzSphere(box, "sphere_pxpymz", Vector3d(+LBx / 2, +LBy / 2, -LBz / 2));
 
-  #if 0
-  HertzSphere<double> HertzModel(
-      box, Vector3d(-LBx / 2, -LBy / 2, -LBz / 2), hertz_radius, hertz_modulus,
-      hertz_dissipation);
-      (void)HertzModel;
-#endif      
-
-  const auto& hertz_sphere = plant_->template AddForceElement<HertzSphere>(
-      "sphere1", box, Vector3d(-LBx / 2, -LBy / 2, -LBz / 2), hertz_radius, hertz_modulus,
-      hertz_dissipation);
-  const Vector4<double> red(1.0, 0.0, 0.0, 1.0);    
-  hertz_sphere.RegisterVisualGeometry(red, plant_);
-
+  // +z
+  AddHertzSphere(box, "sphere_mxmypz", Vector3d(-LBx / 2, -LBy / 2, +LBz / 2));
+  AddHertzSphere(box, "sphere_mxpypz", Vector3d(-LBx / 2, +LBy / 2, +LBz / 2));
+  AddHertzSphere(box, "sphere_pxmypz", Vector3d(+LBx / 2, -LBy / 2, +LBz / 2));
+  AddHertzSphere(box, "sphere_pxpypz", Vector3d(+LBx / 2, +LBy / 2, +LBz / 2));
 
   // Box's collision geometry is a solid box.
 #if 0  
@@ -338,7 +354,7 @@ int do_main(int argc, char* argv[]) {
 
   const BlockWithHertzCorners<double> model;
   auto context = model.CreateDefaultContext();
-  const RigidTransform<double> X_WB(Vector3<double>(0, 0, 0.5));
+  const RigidTransform<double> X_WB(Vector3<double>(0, 0, 0.6));
   model.SetBoxPose(X_WB, context.get());
 
   //Context<double>& plant_context = model.GetPlantContext(context.get());

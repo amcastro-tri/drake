@@ -18,6 +18,8 @@
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
 
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 namespace drake {
 namespace examples {
 namespace hertz_contact {
@@ -87,6 +89,12 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
                                   color);
   }
 
+  T CalcNormalForce(const systems::Context<T>& context) const {
+    Vector3<T> f_BCo_W;
+    CalcContactForce(context, &f_BCo_W);
+    return f_BCo_W.z();
+  }
+
  protected:
   void AddForceContribution(const systems::Context<T>& context,
                             multibody::MultibodyForces<T>* forces) const final {
@@ -137,17 +145,29 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
     return mu;
   }
 
-  SpatialForce<T> CalcSpatialForceOnBody(
+  /// Computes p_WC.
+  Vector3<T> CalcContactPositionInWorld(
       const systems::Context<T>& context) const {
     const MultibodyPlant<T>& plant = this->GetParentPlant();
-    //body();
     const auto& X_WB = plant.EvalBodyPoseInWorld(context, body());
     const RigidTransform<T> X_BS(p_BS_);
     const RigidTransform<T> X_WS = X_WB * X_BS;
+    const Vector3<T>& p_WS_W = X_WS.translation();
+    // In the world frame, the contact point C is -radius from So along the
+    // z-axis.
+    const Vector3<T> p_SC_W(0.0, 0.0, -radius_);
+    const Vector3<T> p_WC_W = p_WS_W + p_SC_W;
+    return p_WC_W;
+  }
 
-    // Lowest (in z) contact point C on the sphere.
-    Vector3<T> p_WC = X_WS.translation();
-    p_WC[2] -= radius_;
+  /// Computes spatial force F_BBo_W on body B and the force f_BCo_W at the
+  /// contact point.
+  SpatialForce<T> CalcContactForce(const systems::Context<T>& context,
+                              Vector3<T>* f_BCo_W) const {
+    const MultibodyPlant<T>& plant = this->GetParentPlant();
+    const auto& X_WB = plant.EvalBodyPoseInWorld(context, body());
+
+    const Vector3<T> p_WC = CalcContactPositionInWorld(context);
     const T z = p_WC[2];
 
     // Obtain p_BC_W
@@ -155,14 +175,15 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
     const Vector3<T>& p_WB = X_WB.translation();    
     const Vector3<T> p_BoCo_W =  p_WC - p_WB;
     
-    if (z >=0) return SpatialForce<T>::Zero();
+    if (z >=0) {
+      f_BCo_W->setZero();
+      return SpatialForce<T>::Zero();
+    }
 
     // Penetration.
     const T x = -z;
 
     const auto& V_WB = plant.EvalBodySpatialVelocityInWorld(context, body());
-    //const RotationMatrix<T>& R_WB = X_WB.rotation();
-    //const Vector3<T> p_BS_W = R_WB * p_BS_.cast<T>();
     const SpatialVelocity<T> V_WC = V_WB.Shift(p_BoCo_W);
     const Vector3<T>& v_WC = V_WC.translational();
     const T& xdot = -v_WC[2];
@@ -184,7 +205,9 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
     const T soft_slip = sqrt(slip2 + ev * ev);
     const Vector3<T> ft = -vt / soft_slip * mu * fHC;
 
-    SpatialForce<T> F_BCo_W(Vector3<T>::Zero(), ft + fn);
+    // Total force at Co.
+    *f_BCo_W = ft + fn;
+    const SpatialForce<T> F_BCo_W(Vector3<T>::Zero(), *f_BCo_W);
 
     // p_WC = p_WB + p_BC_W
     const Vector3<T> p_CoBo_W = -p_BoCo_W;
@@ -192,6 +215,12 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
     const SpatialForce<T> F_BBo_W = F_BCo_W.Shift(p_CoBo_W);
 
     return F_BBo_W;
+  }
+
+  SpatialForce<T> CalcSpatialForceOnBody(
+      const systems::Context<T>& context) const {
+    Vector3<T> f_BCo_W;
+    return CalcContactForce(context, &f_BCo_W);
   }
 
   std::string name_;
@@ -257,19 +286,46 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
 
   const Parameters& parameters() const { return parameters_; }
 
-  Context<T>& GetPlantContext(Context<T>* context) const {
+  const Context<T>& GetPlantContext(const Context<T>& context) const {
+    return this->GetSubsystemContext(plant(), context);
+  }
+
+  Context<T>& GetMutablePlantContext(Context<T>* context) const {
     return this->GetMutableSubsystemContext(plant(), context);
   }
 
   void SetBoxPose(const RigidTransform<T>& X_WB, Context<T>* context) const {
-    Context<T>& plant_context = GetPlantContext(context);
+    Context<T>& plant_context = GetMutablePlantContext(context);
     plant().SetFreeBodyPose(&plant_context, box(), X_WB);
   }
 
   void SetBoxSpatialVelocity(const SpatialVelocity<T>& V_WB,
                              Context<T>* context) const {
-    Context<T>& plant_context = GetPlantContext(context);
+    Context<T>& plant_context = GetMutablePlantContext(context);
     plant().SetFreeBodySpatialVelocity(&plant_context, box(), V_WB);
+  }
+
+
+  /// Contact is broken when the normal force goes to zero (this might happen
+  /// even if there is penetration due to a high rebound, positive, normal
+  /// velocity.)
+  systems::EventStatus BreakContactMonitor(
+      const Context<double>& root_context) const {
+    DRAKE_DEMAND(!plant_->is_discrete());
+    const Context<double>& plant_context = GetPlantContext(root_context);
+    const T time = plant_context.get_time();
+
+    const T fn = hertz_sphere_pxmymz_->CalcNormalForce(plant_context);
+
+    std::cout << time << " " << fn << std::endl;
+
+    //using std::abs;
+    //const double eps = 10 * std::numeric_limits<double>::epsilon();
+    if (fn == 0 && time > 0)
+      return systems::EventStatus::ReachedTermination(this,
+                                               "Breaking contact detected.");
+
+    return systems::EventStatus::Succeeded();
   }
 
 #if 0
@@ -291,6 +347,7 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
   Parameters parameters_;
   multibody::MultibodyPlant<T>* plant_{nullptr};
   const RigidBody<double>* box_;
+  const HertzSphere<T>* hertz_sphere_pxmymz_;  // Sphere at +x, -y, -z corner.
 
   void AddGround(double friction, const Vector4<double>& color) {
     const double Lx = 10;
@@ -307,8 +364,9 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
         "ground_collision", CoulombFriction<double>(friction, friction));
   }
 
-  void AddHertzSphere(const RigidBody<T>& body, const std::string& name,
-                      const Vector3d& p_BS) {
+  const HertzSphere<T>* AddHertzSphere(const RigidBody<T>& body,
+                                       const std::string& name,
+                                       const Vector3d& p_BS) {
     if (plant_->is_discrete()) {
       auto shape = geometry::Sphere(parameters_.hertz_radius);
       RigidTransformd X_BG(p_BS);
@@ -319,12 +377,14 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
       plant_->RegisterVisualGeometry(body, X_BG, shape,
                                      name + "_visual",
                                      parameters_.sphere_color);
+      return nullptr;                                     
     } else {
       const auto& hertz_sphere = plant_->template AddForceElement<HertzSphere>(
           name, body, p_BS, parameters_.hertz_radius, parameters_.hertz_modulus,
           parameters_.hertz_dissipation, parameters_.friction,
           parameters_.transition_speed);
       hertz_sphere.RegisterVisualGeometry(parameters_.sphere_color, plant_);
+      return &hertz_sphere;
     }
   }
 
@@ -358,7 +418,8 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
   // -z
   AddHertzSphere(box, "sphere_mxmymz", Vector3d(-LBx / 2, -LBy / 2, -LBz / 2));
   AddHertzSphere(box, "sphere_mxpymz", Vector3d(-LBx / 2, +LBy / 2, -LBz / 2));
-  AddHertzSphere(box, "sphere_pxmymz", Vector3d(+LBx / 2, -LBy / 2, -LBz / 2));
+  hertz_sphere_pxmymz_ = AddHertzSphere(box, "sphere_pxmymz",
+                                        Vector3d(+LBx / 2, -LBy / 2, -LBz / 2));
   AddHertzSphere(box, "sphere_pxpymz", Vector3d(+LBx / 2, +LBy / 2, -LBz / 2));
 
   // +z
@@ -366,51 +427,6 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
   AddHertzSphere(box, "sphere_mxpypz", Vector3d(-LBx / 2, +LBy / 2, +LBz / 2));
   AddHertzSphere(box, "sphere_pxmypz", Vector3d(+LBx / 2, -LBy / 2, +LBz / 2));
   AddHertzSphere(box, "sphere_pxpypz", Vector3d(+LBx / 2, +LBy / 2, +LBz / 2));
-
-  // Box's collision geometry is a solid box.
-#if 0  
-  if (only_sphere_collision) {
-    const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
-    const Vector4<double> red_50(1.0, 0.0, 0.0, 0.5);
-    const double radius_x = LBx / FLAGS_num_spheres / 2.0;
-    const double radius_y = LBy / FLAGS_num_spheres / 2.0;
-    const double radius_z = LBz / FLAGS_num_spheres / 2.0;
-    int i = 0;
-    std::vector<double> x_range, y_range, z_range;
-    double dx = 2 * radius_x;
-    double dy = 2 * radius_y;
-    double dz = 2 * radius_z;
-    for (int j = 0; j< FLAGS_num_spheres;++j) {
-      x_range.push_back(-LBx/2 + radius_x + j*dx);
-      y_range.push_back(-LBy/2 + radius_y + j*dy);
-      z_range.push_back(-LBz/2 + radius_z + j*dz);
-    }
-    for (double x_sign : x_range) {
-      for (double y_sign : y_range) {
-        for (double z_sign : z_range) {
-          const std::string name_spherei =
-              name + "_sphere" + std::to_string(++i) + "_collision";
-          const double x = x_sign;
-          const double y = y_sign;
-          const double z = z_sign;
-          const Vector3<double> p_BoSpherei_B(x, y, z);
-          const RigidTransform<double> X_BSpherei(p_BoSpherei_B);
-          geometry::Sphere shape(radius_x);
-          // Ellipsoid might not be accurate. From console [warning]:
-          // "Ellipsoid is primarily for ComputeContactSurfaces in hydroelastic
-          // contact model. The accuracy of other collision queries and signed
-          // distance queries are not guaranteed."
-          // geometry::Ellipsoid shape(radius_x, radius_y, radius_z);
-          plant->RegisterCollisionGeometry(
-              box, X_BSpherei, shape, name_spherei,
-              CoulombFriction<double>(friction, friction));
-          plant->RegisterVisualGeometry(
-              box, X_BSpherei, shape, name_spherei, red);
-        }  // z
-      }  // y
-    }  // x
-  } else {
-#endif      
   
   return box;                                     
 }
@@ -451,9 +467,16 @@ int do_main(int argc, char* argv[]) {
   model.SetBoxPose(X_WB, context.get());
   model.SetBoxSpatialVelocity(params.V_WB_init, context.get());
 
-  //Context<double>& plant_context = model.GetPlantContext(context.get());
+  //Context<double>& plant_context = model.GetMutablePlantContext(context.get());
 
   auto simulator = MakeSimulatorFromGflags(model, std::move(context));
+
+  // We monitor forces only for the continuous case.
+  if (!model.plant().is_discrete())
+    simulator->set_monitor([&model](const Context<double>& root_context) {
+      return model.BreakContactMonitor(root_context);
+    });
+
   //auto* context = simulator->get_mutable_context();
   simulator->AdvanceTo(FLAGS_duration);
 

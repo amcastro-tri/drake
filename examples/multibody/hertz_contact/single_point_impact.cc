@@ -95,6 +95,20 @@ class HertzSphere final : public multibody::CustomForceElement<T> {
     return f_BCo_W.z();
   }
 
+  /// Computes v_WCo_W.
+  Vector3<T> CalcContactPointVelocity(
+      const systems::Context<T>& context) const {
+    const MultibodyPlant<T>& plant = this->GetParentPlant();    
+    const auto& X_WB = plant.EvalBodyPoseInWorld(context, body());
+    const Vector3<T>& p_WB = X_WB.translation();
+    const Vector3<T> p_WC = CalcContactPositionInWorld(context);
+    const Vector3<T> p_BoCo_W =  p_WC - p_WB;        
+    const auto& V_WB = plant.EvalBodySpatialVelocityInWorld(context, body());
+    const SpatialVelocity<T> V_WC = V_WB.Shift(p_BoCo_W);
+    const Vector3<T> v_WC = V_WC.translational();
+    return v_WC;
+  }
+
  protected:
   void AddForceContribution(const systems::Context<T>& context,
                             multibody::MultibodyForces<T>* forces) const final {
@@ -315,9 +329,13 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
     const Context<double>& plant_context = GetPlantContext(root_context);
     const T time = plant_context.get_time();
 
+    const Vector3<T> v_WC =
+        hertz_sphere_pxmymz_->CalcContactPointVelocity(plant_context);
+
     const T fn = hertz_sphere_pxmymz_->CalcNormalForce(plant_context);
 
-    std::cout << time << " " << fn << std::endl;
+    std::cout << time << " " << fn << " " << v_WC.x() << " " << v_WC.y() << " "
+              << v_WC.z() << std::endl;
 
     //using std::abs;
     //const double eps = 10 * std::numeric_limits<double>::epsilon();
@@ -476,6 +494,9 @@ int do_main(int argc, char* argv[]) {
     simulator->set_monitor([&model](const Context<double>& root_context) {
       return model.BreakContactMonitor(root_context);
     });
+
+  // Call monitor the intial condition.
+  model.BreakContactMonitor(simulator->get_context());
 
   //auto* context = simulator->get_mutable_context();
   simulator->AdvanceTo(FLAGS_duration);

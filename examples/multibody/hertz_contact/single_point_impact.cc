@@ -51,6 +51,9 @@ DEFINE_double(pitch, 0.0, "Pitch angle.");
 DEFINE_double(yaw, 0.0, "Yaw angle.");
 DEFINE_double(friction, 0.125, "Friction. From paper: 0.125, 0.225 or 0.325.");
 DEFINE_double(mbp_dt, 0.0, "MBP's discrete update period.");
+DEFINE_double(h_min, 0.0, "Minimum step we allo the integrator to take.");
+DEFINE_bool(throw_on_reaching_h_min, false,
+            "Whether to throw or not when h_min is reached.");
 
 const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
 const Vector4<double> blue(0.0, 0.0, 1.0, 1.0);
@@ -488,6 +491,12 @@ int do_main(int argc, char* argv[]) {
   //Context<double>& plant_context = model.GetMutablePlantContext(context.get());
 
   auto simulator = MakeSimulatorFromGflags(model, std::move(context));
+
+  // Additional integration parameters.
+  auto& integrator = simulator->get_mutable_integrator();
+  integrator.set_requested_minimum_step_size(FLAGS_h_min);
+  integrator.set_throw_on_minimum_step_size_violation(
+      FLAGS_throw_on_reaching_h_min);
 
   // We monitor forces only for the continuous case.
   if (!model.plant().is_discrete())

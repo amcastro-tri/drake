@@ -50,6 +50,8 @@ DEFINE_double(roll, 0.0, "Roll angle.");
 DEFINE_double(pitch, 0.0, "Pitch angle.");
 DEFINE_double(yaw, 0.0, "Yaw angle.");
 DEFINE_double(friction, 0.125, "Friction. From paper: 0.125, 0.225 or 0.325.");
+DEFINE_double(transition_speed, 0.01,
+              "Transition speed. Defaults to paper values.");
 DEFINE_double(mbp_dt, 0.0, "MBP's discrete update period.");
 DEFINE_double(h_min, 0.0, "Minimum step we allo the integrator to take.");
 DEFINE_bool(throw_on_reaching_h_min, false,
@@ -460,6 +462,7 @@ int do_main(int argc, char* argv[]) {
 
   BlockWithHertzCorners<double>::Parameters params;
   params.friction = FLAGS_friction;  
+  params.transition_speed = FLAGS_transition_speed;
 
   const BlockWithHertzCorners<double> model(params);
   auto context = model.CreateDefaultContext();  

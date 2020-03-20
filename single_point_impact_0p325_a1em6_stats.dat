@@ -1,0 +1,21 @@
+General stats regarding discrete updates:
+Number of time steps taken (simulator stats) = 6957
+Simulator publishes every time step: false
+Number of publishes = 1
+Number of discrete updates = 0
+Number of "unrestricted" updates = 0
+
+Stats for integrator ImplicitEulerIntegrator with error control:
+Number of time steps taken (integrator stats) = 6957
+Initial time step taken = 1.13462e-07 s
+Largest time step taken = 5.32848e-07 s
+Smallest adapted step size = 1.58752e-09 s
+Number of steps shrunk due to error control = 36
+Number of steps shrunk due to convergence-based failure = 7
+Number of convergence-based step failures (should match) = 7
+Implicit Integrator Statistics (integrator, error estimator, total):
+Number of Derivative Evaluations = 28882, 21091, 49973
+Number of Jacobian Computations = 5, 0, 5
+Number of Derivative Evaluations for Jacobians = 70, 0, 70
+Number of Iteration Matrix Factorizations = 16, 2, 18
+Number of Newton-Raphson Iterations = 21812, 21091, 42903

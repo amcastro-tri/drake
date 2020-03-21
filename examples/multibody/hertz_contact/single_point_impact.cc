@@ -56,6 +56,15 @@ DEFINE_double(mbp_dt, 0.0, "MBP's discrete update period.");
 DEFINE_double(h_min, 0.0, "Minimum step we allo the integrator to take.");
 DEFINE_bool(throw_on_reaching_h_min, false,
             "Whether to throw or not when h_min is reached.");
+DEFINE_bool(print_out, false, "Print monitors.");
+
+DEFINE_double(h1, 1.0e-3, "h1.");
+DEFINE_double(h2, 1.0e-2, "h2.");
+DEFINE_double(a1, 0.5, "a1.");
+DEFINE_double(a2, 1.0e-6, "a2.");
+
+DEFINE_double(h_loose_band, 1.0e-4, "Loose band upper limit.");
+DEFINE_double(a_loose_band, 0.5, "Accuracy within the loose band.");
 
 const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
 const Vector4<double> blue(0.0, 0.0, 1.0, 1.0);
@@ -339,8 +348,10 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
 
     const T fn = hertz_sphere_pxmymz_->CalcNormalForce(plant_context);
 
-    std::cout << time << " " << fn << " " << v_WC.x() << " " << v_WC.y() << " "
-              << v_WC.z() << std::endl;
+    if (FLAGS_print_out) {
+      std::cout << time << " " << fn << " " << v_WC.x() << " " << v_WC.y()
+                << " " << v_WC.z() << std::endl;
+    }
 
     //using std::abs;
     //const double eps = 10 * std::numeric_limits<double>::epsilon();
@@ -500,6 +511,27 @@ int do_main(int argc, char* argv[]) {
   integrator.set_requested_minimum_step_size(FLAGS_h_min);
   integrator.set_throw_on_minimum_step_size_violation(
       FLAGS_throw_on_reaching_h_min);
+
+#if 0
+  double h2 = FLAGS_h2;
+  double h1 = FLAGS_h1;
+  double a2 = FLAGS_a2;
+  double a1 = FLAGS_a1;
+  double logh1 = std::log10(h2);
+  double logh2 = std::log10(h1);
+  auto accuracy_function = [&](double h) {
+    if (h >= h2) return a2;
+    if (h <= h1) return a1;
+
+    // Linear between a1 and a2 in log(h).
+    return a1 + (a2 - a1) / (logh2 - logh1) * (std::log10(h) - logh1);
+
+    //return FLAGS_simulator_accuracy;
+  };
+  integrator.set_accuracy(accuracy_function);
+#endif
+  integrator.set_loose_accuracy_band(FLAGS_h_loose_band, FLAGS_a_loose_band);
+
 
   // We monitor forces only for the continuous case.
   if (!model.plant().is_discrete())

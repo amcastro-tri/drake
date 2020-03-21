@@ -242,6 +242,10 @@ std::pair<bool, T> IntegratorBase<T>::CalcAdjustedStepSize(
       new_step_size = kMaxGrow * step_taken;
     } else {  // Choose best step for skating just below the desired accuracy.
 
+#if 0
+      // =====================================================================
+      //  BISECTION
+      // =====================================================================
       if (a_of_h_) {
         // The target function of h to find the zero.
         // We make the change of variables x = exp(u). That is, we look for the
@@ -304,7 +308,9 @@ std::pair<bool, T> IntegratorBase<T>::CalcAdjustedStepSize(
           //          << xerr << std::endl;
         }
 
-#if 0
+        // =====================================================================
+        //  NEWTON-RAPHSON
+        // =====================================================================
         // Small, not very accurate, Newton-Raphson.
         T xk = 1.0;  // x = h / h0, with h0 = step_taken
         const double perturbation_size = 1.0e-7;  // approx std::sqrt(1.0e-15);
@@ -322,6 +328,20 @@ std::pair<bool, T> IntegratorBase<T>::CalcAdjustedStepSize(
         }        
         new_step_size = xk * step_taken;
 #endif
+
+      if (!isnan(h_loose_)) {
+        DRAKE_DEMAND(a_loose_ >= get_accuracy_in_use());
+        const double a_tight = get_accuracy_in_use();
+        const T h_low =
+            kSafety * step_taken * pow(a_tight / err, 1.0 / err_order);
+        const T h_high =
+            kSafety * step_taken * pow(a_loose_ / err, 1.0 / err_order);
+        if (h_low > h_loose_)
+          new_step_size = h_low;
+        else if (h_high < h_loose_)
+          new_step_size = h_high;
+        else  // h_low < h_loose_ < h_high
+          new_step_size = h_loose_;
 
       } else {
         new_step_size = kSafety * step_taken *

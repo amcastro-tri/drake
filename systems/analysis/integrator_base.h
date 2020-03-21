@@ -216,6 +216,14 @@ class IntegratorBase {
     accuracy_in_use_ = accuracy;
   }
 
+  void set_accuracy(std::function<double(double h)> a_of_h) {
+    if (!supports_error_estimation())
+      throw std::logic_error(
+          "Integrator does not support accuracy estimation "
+          "and user has requested error control");
+    a_of_h_ = a_of_h;
+  }
+
   /**
    Gets the target accuracy.
    @sa get_accuracy_in_use()
@@ -228,6 +236,13 @@ class IntegratorBase {
    not attainable or not recommended for the particular integrator.
    */
   double get_accuracy_in_use() const { return accuracy_in_use_; }
+
+  // Evaluates accuracy as a function of time step. User provided.
+  double get_accuracy(double h) const {
+    DRAKE_DEMAND(a_of_h_ != nullptr);
+    return a_of_h_(h);
+  }
+
   // @}
 
   /**
@@ -1717,6 +1732,7 @@ class IntegratorBase {
 
   double target_accuracy_{nan()};   // means "unspecified, use default"
   T req_initial_step_size_{nan()};  // means "unspecified, use default"
+  std::function<double(double h)> a_of_h_;
 };
 
 }  // namespace systems

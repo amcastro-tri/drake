@@ -17,6 +17,7 @@
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
+#include "drake/systems/analysis/implicit_integrator.h"
 
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
 
@@ -57,6 +58,7 @@ DEFINE_double(h_min, 0.0, "Minimum step we allo the integrator to take.");
 DEFINE_bool(throw_on_reaching_h_min, false,
             "Whether to throw or not when h_min is reached.");
 DEFINE_bool(print_out, false, "Print monitors.");
+DEFINE_bool(use_full_newton, true, "Use full Newton, otherwise quasi-Newton.");
 
 DEFINE_double(h1, 1.0e-3, "h1.");
 DEFINE_double(h2, 1.0e-2, "h2.");
@@ -343,6 +345,9 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
     const Context<double>& plant_context = GetPlantContext(root_context);
     const T time = plant_context.get_time();
 
+    const T h = previous_time_ - time;
+    previous_time_ = time;
+
     const Vector3<T> v_WC =
         hertz_sphere_pxmymz_->CalcContactPointVelocity(plant_context);
 
@@ -350,7 +355,7 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
 
     if (FLAGS_print_out) {
       std::cout << time << " " << fn << " " << v_WC.x() << " " << v_WC.y()
-                << " " << v_WC.z() << std::endl;
+                << " " << v_WC.z() << " " << h << std::endl;
     }
 
     //using std::abs;
@@ -382,6 +387,7 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
   multibody::MultibodyPlant<T>* plant_{nullptr};
   const RigidBody<double>* box_;
   const HertzSphere<T>* hertz_sphere_pxmymz_;  // Sphere at +x, -y, -z corner.
+  mutable T previous_time_{0};
 
   void AddGround(double friction, const Vector4<double>& color) {
     const double Lx = 10;
@@ -511,6 +517,12 @@ int do_main(int argc, char* argv[]) {
   integrator.set_requested_minimum_step_size(FLAGS_h_min);
   integrator.set_throw_on_minimum_step_size_violation(
       FLAGS_throw_on_reaching_h_min);
+
+  auto* implicit_integrator =
+      dynamic_cast<systems::ImplicitIntegrator<double>*>(&integrator);
+  if (implicit_integrator) {
+    implicit_integrator->set_use_full_newton(FLAGS_use_full_newton);
+  }
 
 #if 0
   double h2 = FLAGS_h2;

@@ -146,5 +146,35 @@ title('vs = 1e-4 m/s, a = 1e-5, h_{band}=1e-6', 'Fontname', 'Times', 'fontsize',
 
 
 % =========================================================================
+% Velocity profiles.
+% vs = 1e-4, a = 1e-5.
+% As a function of h_loose
+
+d1=importdata('band1.dat');  % h_loose = 0, no band.
+d2=importdata('band2.dat');  % h_loose = 1e-6
+d3=importdata('band3.dat');  % h_loose = 1e-5
+d4=importdata('band4.dat');  % h_loose = 1e-4
+d5=importdata('band5.dat');  % h_loose = 0, a = 0.5 (highest).
+
+figure(9)
+h = plot(...
+    d1(:,3), d1(:,4), '-',...
+    d2(:,3), d2(:,4), '-^',...
+    d3(:,3), d3(:,4), '-v',...
+    d4(:,3), d4(:,4), '-s',...
+    d5(:,3), d5(:,4), '-o');   
+axis([-5 0 0 1.2])
+set(h, 'linewidth',2)
+set(gca, 'Fontname', 'Times', 'fontsize', 16)
+xlabel('v_x [m/s]', 'Fontname', 'Times', 'fontsize', 16)
+ylabel('v_y [m/s]', 'Fontname', 'Times', 'fontsize', 16)
+legend('h_{band} = 0',...
+       'h_{band} = 1e-6',...
+       'h_{band} = 1e-5',...
+       'h_{band} = 1e-4',...
+       'h_{band} = \infty',...
+       'Location','northwest');   
+
+% =========================================================================
 figure(7);  % brings last fig to front.
 

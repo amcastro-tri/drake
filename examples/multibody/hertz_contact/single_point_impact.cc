@@ -55,9 +55,12 @@ DEFINE_double(transition_speed, 0.01,
               "Transition speed. Defaults to paper values.");
 DEFINE_double(mbp_dt, 0.0, "MBP's discrete update period.");
 DEFINE_double(h_min, 0.0, "Minimum step we allo the integrator to take.");
+DEFINE_double(viz_period, 1.0 / 60.0, "Viz period.");
 DEFINE_bool(throw_on_reaching_h_min, false,
             "Whether to throw or not when h_min is reached.");
 DEFINE_bool(print_out, false, "Print monitors.");
+DEFINE_bool(with_monitor, true,
+            "Uses monitor to stop sim on breaking contact.");
 DEFINE_bool(use_full_newton, true, "Use full Newton, otherwise quasi-Newton.");
 
 DEFINE_double(h1, 1.0e-3, "h1.");
@@ -302,7 +305,7 @@ class BlockWithHertzCorners : public systems::Diagram<T> {
     plant.Finalize();
 
     ConnectContactResultsToDrakeVisualizer(&builder, plant);
-    geometry::ConnectDrakeVisualizer(&builder, scene_graph);
+    geometry::ConnectDrakeVisualizer(&builder, scene_graph, FLAGS_viz_period);
 
     DRAKE_DEMAND(plant.num_actuators() == 0);
     DRAKE_DEMAND(plant.num_positions() == 7);
@@ -546,7 +549,7 @@ int do_main(int argc, char* argv[]) {
 
 
   // We monitor forces only for the continuous case.
-  if (!model.plant().is_discrete())
+  if (!model.plant().is_discrete() && FLAGS_with_monitor)
     simulator->set_monitor([&model](const Context<double>& root_context) {
       return model.BreakContactMonitor(root_context);
     });

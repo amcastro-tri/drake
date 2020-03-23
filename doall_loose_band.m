@@ -40,14 +40,24 @@ title('a = 1e-5', 'Fontname', 'Times', 'fontsize', 16)
 % Sims using vs = 1e-4, no loose band.
 acc = [1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 0.5];
 steps = [21691, 6919, 2172, 701, 227, 79, 34, 25];
+% With loose band of h_band = 1e-6 we get:
+steps_lb1 = [513, 513, 499, 397, 217, 79, 34, 25];
+% With loose band of h_band = 1e-5 we get:
+steps_lb2 = [64, 64, 64, 64, 63, 51, 29, 25];
 
 figure(3)
-h = loglog(acc, steps, '-o', acc, sqrt(1./acc), '--');
+h = loglog(acc, steps, '-o', ...
+           acc, steps_lb1, '-^', ...
+           acc, steps_lb2, '-^', ...
+           acc, sqrt(1./acc), '--');
 set(h, 'linewidth', 2)
+axis([1e-7 1 10 1e5]);
+xticks([1e-6 1e-4 1e-2 1])
+%xticklabels({'10^{-6}','10^{-4}','10^{-2}', '1'})
 set(gca, 'Fontname', 'Times', 'fontsize', 16)
 xlabel('a [-]', 'Fontname', 'Times', 'fontsize', 16)
 ylabel('# Steps [-]', 'Fontname', 'Times', 'fontsize', 16)
-legend('ImplcitEuler', '2^{nd} order ref.')
+legend('h_{band} = 0', 'h_{band} = 10^{-6}', 'h_{band} = 10^{-5}', '2^{nd} order ref.')
 title('vs = 1e-4 m/s', 'Fontname', 'Times', 'fontsize', 16)
 
 % =========================================================================
@@ -80,7 +90,11 @@ figure(5)
 nbins = 25;
 step_size_edges = logspace(log10(min(step_size)/2), log10(max(step_size)), nbins);
 hh = histogram(step_size, step_size_edges);
+hh.Normalization = 'probability';
+axis([1e-10 1e-5 1e-4 1]);
+xticks([1e-10 1e-9 1e-8 1e-7 1e-6 1e-5])
 set(gca,'xscale','log')
+set(gca,'yscale','log')
 
 %set(h, 'linewidth', 2)
 set(gca, 'Fontname', 'Times', 'fontsize', 16)
@@ -104,6 +118,8 @@ xlabel('h [-]', 'Fontname', 'Times', 'fontsize', 16)
 ylabel('# Steps, cumulative', 'Fontname', 'Times', 'fontsize', 16)
 title('vs = 1e-4 m/s, a = 1e-5', 'Fontname', 'Times', 'fontsize', 16)
 
+h_hist1 = hh_centers;
+cdf1 = hh_cum/hh_cum(end);
 
 % =========================================================================
 % Histogram of time steps.
@@ -119,7 +135,11 @@ figure(7)
 nbins = 30;
 step_size_edges = logspace(log10(min(step_size)/2), log10(max(step_size)), nbins);
 hh = histogram(step_size, step_size_edges);
+hh.Normalization = 'probability';
+axis([1e-10 1e-5 1e-4 1]);
+xticks([1e-10 1e-9 1e-8 1e-7 1e-6 1e-5])
 set(gca,'xscale','log')
+set(gca,'yscale','log')
 
 %set(h, 'linewidth', 2)
 set(gca, 'Fontname', 'Times', 'fontsize', 16)
@@ -135,6 +155,9 @@ title('vs = 1e-4 m/s, a = 1e-5, h_{band}=1e-6', 'Fontname', 'Times', 'fontsize',
 
 hh_cum = cumsum(hh.Values);
 hh_centers = 0.5 * (step_size_edges(1:end-1) + step_size_edges(2:end));
+
+h_hist2 = hh_centers;
+cdf2 = hh_cum/hh_cum(end);
 
 figure(8)
 h = plot(hh_centers, hh_cum/hh_cum(end));
@@ -174,7 +197,18 @@ legend('h_{band} = 0',...
        'h_{band} = 1e-4',...
        'h_{band} = \infty',...
        'Location','northwest');   
-
+   
 % =========================================================================
-figure(7);  % brings last fig to front.
+% CDFs together (figures 6 and 8)   
+figure(10)
+h = plot(h_hist1, cdf1, h_hist2, cdf2);
+set(h, 'linewidth', 2)
+set(gca, 'Fontname', 'Times', 'fontsize', 16)
+xlabel('h [sec.]', 'Fontname', 'Times', 'fontsize', 16)
+ylabel('# Steps, cumulative', 'Fontname', 'Times', 'fontsize', 16)
+title('vs = 1e-4 m/s, a = 1e-5', 'Fontname', 'Times', 'fontsize', 16)   
+legend('h_{band} = 0',...
+       'h_{band} = 1e-6')
+% =========================================================================
+figure(5);  % brings last fig to front.
 

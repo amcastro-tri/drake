@@ -37,4 +37,26 @@ drake_cc_binary(
     ],
 )
 
+drake_cc_binary(
+    name = "oscillating_belt",
+    srcs = ["oscillating_belt.cc"],
+    add_test_rule = 1,
+    test_rule_args = [
+        "--duration=0.1",
+    ],
+    deps = [
+        "//geometry:scene_graph",
+        "//math:geometric_transform",
+        "//multibody/parsing",
+        "//multibody/plant",
+        "//multibody/plant:contact_results_to_lcm",
+        "//common:add_text_logging_gflags",
+        "//geometry:geometry_visualization",
+        "//systems/analysis:simulator",
+        "//systems/analysis:simulator_gflags",
+        "//systems/analysis:simulator_print_stats",
+        "@gflags",
+    ],
+)
+
 add_lint_tests()

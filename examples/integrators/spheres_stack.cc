@@ -189,16 +189,16 @@ class SpheresStack : public systems::LeafSystem<T> {
       x = -(zi - zim - 2 * R);
       xdot = -vi + vim;
     }
-    
-    if (x > 0) {
-    // Normal forces
-    using std::sqrt;
-    const T fHz = 4. / 3. * E * sqrt(R * x * x * x);
 
-    using std::max;
-    const T fHC = fHz * max(0.0, 1 + 1.5 * d * xdot);
-    
-    return fHz + fHC;
+    if (x > 0) {
+      // Normal forces
+      using std::sqrt;
+      const T fHz = 4. / 3. * E * sqrt(R * x * x * x);
+
+      using std::max;
+      const T fHC = fHz * max(0.0, 1 + 1.5 * d * xdot);
+
+      return fHC;
     } else {
       return 0.0;
     }

@@ -1201,6 +1201,8 @@ template <typename T>
 void MultibodyPlant<T>::CalcContactResultsContinuousPointPair(
     const systems::Context<T>& context,
     ContactResults<T>* contact_results) const {
+  using std::max;      
+  using std::sqrt;
 
   const std::vector<PenetrationAsPointPair<T>>& point_pairs =
       EvalPointPairPenetrations(context);
@@ -1258,9 +1260,10 @@ void MultibodyPlant<T>::CalcContactResultsContinuousPointPair(
     // Magnitude of the normal force on body A at contact point C.
     const T k = penalty_method_contact_parameters_.stiffness;
     const T d = penalty_method_contact_parameters_.damping;
-    const T fn_AC = k * x * (1.0 + d * vn);
 
-    if (fn_AC > 0) {
+    if (x > 0) {
+      const T fn_AC = k * x * max(0.0, (1.0 + d * vn));
+
       // Normal force on body A, at C, expressed in W.
       const Vector3<T> fn_AC_W = fn_AC * nhat_BA_W;
 
@@ -1269,7 +1272,20 @@ void MultibodyPlant<T>::CalcContactResultsContinuousPointPair(
       const Vector3<T> vt_AcBc_W = v_AcBc_W - vn * nhat_BA_W;
       // Tangential speed (squared):
       const T vt_squared = vt_AcBc_W.squaredNorm();
+      const T slip_velocity = sqrt(vt_squared);
+      const double vs = friction_model_.stiction_tolerance();
+      const double mud = combined_friction_pairs[icontact].dynamic_friction();
 
+      Vector3<T> ft_AC_W = Vector3<T>::Zero();
+      if (slip_velocity > vs) {  // Dynamic.        
+        // Tangential direction.
+        const Vector3<T> that_W = vt_AcBc_W / slip_velocity;
+        ft_AC_W = mud * fn_AC * that_W;
+      } else {  // Static, linear viscosity regime.
+        ft_AC_W = mud * fn_AC * vt_AcBc_W / vs;
+      }
+
+#if 0  
       // Consider a value indistinguishable from zero if it is smaller
       // then 1e-14 and test against that value squared.
       const T kNonZeroSqd = 1e-14 * 1e-14;
@@ -1288,6 +1304,7 @@ void MultibodyPlant<T>::CalcContactResultsContinuousPointPair(
         const T ft_AC = mu_stribeck * fn_AC;
         ft_AC_W = ft_AC * that_W;
       }
+#endif      
 
       // Spatial force on body A at C, expressed in the world frame W.
       const SpatialForce<T> F_AC_W(Vector3<T>::Zero(), fn_AC_W + ft_AC_W);

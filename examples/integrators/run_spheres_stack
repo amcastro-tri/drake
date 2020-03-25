@@ -1,0 +1,30 @@
+
+#!/bin/sh
+
+# Enables spdlog garded with DRAKE_LOGGER_DEBUG() and  DRAKE_LOGGER_TRACE():
+# bazel run --copt -UNDEBUG pile_of_objects
+
+bazel run spheres_stack  -- \
+`#Integration: bogacki_shampine3,explicit_euler,implicit_euler semi_explicit_euler,radau1,radau3,runge_kutta2,runge_kutta3,runge_kutta5` \
+--simulator_integration_scheme=implicit_euler \
+`#Integration parameters` \
+--simulator_accuracy=1e-5 \
+--h_loose_band=0 \
+--a_loose_band=0.5 \
+--use_full_newton=0 \
+`#Jacobian method: forward, central, automatic` \
+--jacobian_scheme=forward \
+`#Viz and realtime` \
+--simulator_target_realtime_rate=0.5 \
+--viz_period=0.01 \
+--simulator_publish_every_time_step=0 \
+`#Simulation parameters` \
+--duration=2.0 \
+--num_spheres=5 \
+--elastic_modulus=1.0e9 \
+--dissipation=0. \
+--initial_separation=0.01 \
+`# Monitoring` \
+--with_monitor=1 \
+--print_out=0
+

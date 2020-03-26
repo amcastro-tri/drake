@@ -348,6 +348,22 @@ const MatrixX<T>& ImplicitIntegrator<T>::CalcJacobian(const T& t,
 }
 
 template <class T>
+void ImplicitIntegrator<T>::FreshenMatrices(
+    const T& t, const VectorX<T>& xt, const T& h,
+    const std::function<void(const MatrixX<T>&, const T&,
+        typename ImplicitIntegrator<T>::IterationMatrix*)>&
+        compute_and_factor_iteration_matrix,
+    typename ImplicitIntegrator<T>::IterationMatrix* iteration_matrix) {
+  DRAKE_DEMAND(iteration_matrix);
+
+  // Compute the initial Jacobian and iteration matrices and factor them.
+  MatrixX<T>& J = get_mutable_jacobian();
+  J = CalcJacobian(t, xt);
+  ++num_iter_factorizations_;
+  compute_and_factor_iteration_matrix(J, h, iteration_matrix);
+}
+
+template <class T>
 void ImplicitIntegrator<T>::FreshenMatricesIfFullNewton(
     const T& t, const VectorX<T>& xt, const T& h,
     const std::function<void(const MatrixX<T>&, const T&,

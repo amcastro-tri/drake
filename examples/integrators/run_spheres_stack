@@ -11,7 +11,7 @@ bazel run spheres_stack  -- \
 --simulator_accuracy=1e-5 \
 --h_loose_band=0 \
 --a_loose_band=0.5 \
---use_full_newton=0 \
+--use_full_newton=1 \
 `#Jacobian method: forward, central, automatic` \
 --jacobian_scheme=forward \
 `#Viz and realtime` \

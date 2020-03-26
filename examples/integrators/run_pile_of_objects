@@ -4,18 +4,18 @@
 # bazel run --copt -UNDEBUG pile_of_objects
 time bazel run pile_of_objects -- \
 `#General` \
---simulation_time=0.12 \
+--simulation_time=0.2 \
 --simulator_publish_every_time_step=0 \
 --mbp_time_step=0 \
 --objects_per_pile=3 \
 `# Visualization` \
---simulator_target_realtime_rate=0.01 \
+--simulator_target_realtime_rate=0.0 \
 --visualize=1 \
---viz_period=0.001 \
+--viz_period=0.002 \
 `#Integration: bogacki_shampine3,explicit_euler,implicit_euler,semi_explicit_euler,radau1,radau3,runge_kutta2,runge_kutta3,runge_kutta5` \
 --simulator_integration_scheme=implicit_euler \
 --simulator_max_time_step=1.e-2 \
---simulator_accuracy=1.0e-3 \
+--simulator_accuracy=1.0e-1 \
 --jacobian_scheme=forward \
 --fixed_step=0 \
 --use_full_newton=0 \
@@ -24,7 +24,7 @@ time bazel run pile_of_objects -- \
 `#Contact parameters` \
 --penetration_allowance=1e-4 \
 --stiction_tolerance=1e-4 \
---friction_coefficient=5.0 \
+--friction_coefficient=1 \
 `#Collision geometry type:` \
 --only_collision_spheres=1 \
 --num_spheres=3 \

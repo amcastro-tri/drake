@@ -1,10 +1,3 @@
-/// @file
-///
-/// This demo sets up a passive Quadrotor plant in a world described by the
-/// warehouse model. The robot simply passively falls to the floor within the
-/// walls of the warehouse, falling from the initial_height command line
-/// argument.
-
 #include <gflags/gflags.h>
 
 #include "drake/common/text_logging.h"

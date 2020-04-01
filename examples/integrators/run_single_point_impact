@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# Enables spdlog garded with DRAKE_LOGGER_DEBUG() and  DRAKE_LOGGER_TRACE():
+# bazel run --copt -UNDEBUG pile_of_objects
+time bazel run single_point_impact -- \
+`#General` \
+--duration=0.5 \
+--simulator_publish_every_time_step=0 \
+--mbp_dt=0 \
+`# Visualization` \
+--simulator_target_realtime_rate=0.0 \
+--viz_period=0.002 \
+`#Integration: bogacki_shampine3,explicit_euler,implicit_euler,semi_explicit_euler,radau1,radau3,runge_kutta2,runge_kutta3,runge_kutta5` \
+--simulator_integration_scheme=implicit_euler \
+--simulator_max_time_step=1.e-1 \
+--simulator_accuracy=1.0e-4 \
+--use_full_newton=0 \
+--h_loose_band=0 \
+--a_loose_band=0.5 \
+--h_min=0 \
+--throw_on_reaching_h_min=0 \
+`#Contact parameters` \
+`#From Uchida's paper, mu = 0.125, 0.225 or 0.325.` \
+--friction=0.325 \
+--transition_speed=0.01 \
+`#Monitoring:` \
+--with_monitor=1 \
+--print_out=0 \
+`#SPDlog: debug, trace, warn,unchanged (default)` \
+--spdlog_level=unchanged

@@ -226,6 +226,24 @@ class IntegratorBase {
     accuracy_in_use_ = accuracy;
   }
 
+  void set_accuracy(std::function<double(double h)> a_of_h) {
+    if (!supports_error_estimation())
+      throw std::logic_error(
+          "Integrator does not support accuracy estimation "
+          "and user has requested error control");
+    a_of_h_ = a_of_h;
+  }
+
+  /// Use a low accuracy `a_low` in the band `h < h_loose`.
+  void set_loose_accuracy_band(double h_loose, double a_loose) {
+    if (!supports_error_estimation())
+      throw std::logic_error(
+          "Integrator does not support accuracy estimation "
+          "and user has requested error control");
+    h_loose_ = h_loose;
+    a_loose_ = a_loose;
+  }
+
   /**
    Gets the target accuracy.
    @sa get_accuracy_in_use()
@@ -238,6 +256,13 @@ class IntegratorBase {
    not attainable or not recommended for the particular integrator.
    */
   double get_accuracy_in_use() const { return accuracy_in_use_; }
+
+  // Evaluates accuracy as a function of time step. User provided.
+  double get_accuracy(double h) const {
+    DRAKE_DEMAND(a_of_h_ != nullptr);
+    return a_of_h_(h);
+  }
+
   // @}
 
   /**
@@ -1732,6 +1757,9 @@ class IntegratorBase {
 
   double target_accuracy_{nan()};   // means "unspecified, use default"
   T req_initial_step_size_{nan()};  // means "unspecified, use default"
+  std::function<double(double h)> a_of_h_;
+  double h_loose_{0};  // means "unspecified, do not use low accuracy mode."
+  double a_loose_{0.5};
 };
 
 }  // namespace systems

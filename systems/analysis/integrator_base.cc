@@ -1,5 +1,10 @@
 #include "drake/systems/analysis/integrator_base.h"
 
+#include "drake/common/extract_double.h"
+
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 namespace drake {
 namespace systems {
 
@@ -204,11 +209,14 @@ std::pair<bool, T> IntegratorBase<T>::CalcAdjustedStepSize(
     const T& err,
     const T& step_taken,
     bool* at_minimum_step_size) const {
+  using std::abs;
   using std::pow;
   using std::min;
   using std::max;
   using std::isnan;
   using std::isinf;
+  using std::exp;
+  using std::log;
 
   // Magic numbers come from Simbody.
   const double kSafety = 0.9;
@@ -233,8 +241,112 @@ std::pair<bool, T> IntegratorBase<T>::CalcAdjustedStepSize(
     if (err == 0) {  // A "perfect" step; can happen if no dofs for example.
       new_step_size = kMaxGrow * step_taken;
     } else {  // Choose best step for skating just below the desired accuracy.
-      new_step_size = kSafety * step_taken *
-                      pow(get_accuracy_in_use() / err, 1.0 / err_order);
+
+#if 0
+      // =====================================================================
+      //  BISECTION
+      // =====================================================================
+      if (a_of_h_) {
+        // The target function of h to find the zero.
+        // We make the change of variables x = exp(u). That is, we look for the
+        // in a logarithmic scale.
+        auto target = [&, this](const T& u) -> T {
+          const T x = exp(u);
+          const T& h0 = step_taken;
+          const double h = ExtractDoubleOrThrow(x * h0);
+          return pow(x / kSafety, err_order) - get_accuracy(h) / err;
+        };
+
+        // we'll do bisection in the interval (ha, hb), with ha = kMinShrink *
+        // h0 and hb = kMaxGrow * h0.
+        const double kLowAccuracy = 1.0e-3;
+        const double h0 = ExtractDoubleOrThrow(step_taken);
+        // Interval where to look for next h.
+        const T ha = kMinShrink * h0; 
+        const T hb = kMaxGrow * h0;
+
+        T ua = log(ha / h0);
+        T ub = log(hb / h0);
+        T ta = target(ua);
+        T tb = target(ub);
+
+        // Case I: there is no root in [ua, ub]
+        if (ta > 0 && tb > 0) {
+          new_step_size = ha;
+        } else if (ta < 0 && tb < 0) {
+          new_step_size = hb;
+        } else {
+          // Case II: there is a root in [ua, ub]
+          int iters = 0;
+          T uerr(0), xerr(0);
+          (void) uerr;
+          (void) xerr;
+          do {
+            ++iters;
+            DRAKE_DEMAND(iters < 100);
+            T uc = (ua + ub) / 2.0;
+            T tc = target(uc);
+            if (tc * ta < 0) {
+              ub = uc;
+              tb = tc;
+            } else{
+              ua = uc;
+              ta = tc;
+            }
+            uerr = abs(2.0 * (ub - ua) / (ub + ua));
+          } while (uerr > kLowAccuracy);
+
+          T uc = (ua + ub) / 2.0;
+          T xa = exp(ua);
+          T xb = exp(ub);
+          T xc = exp(uc);
+          xerr = (xb - xa) / xc;
+          uerr = abs((ub - ua) / uc);
+          new_step_size = xc * h0;
+          //std::cout << "Bisection. h0, h, iters, uerr, xerr:" << h0 << " "
+          //          << new_step_size << " " << iters << " " << uerr << " "
+          //          << xerr << std::endl;
+        }
+
+        // =====================================================================
+        //  NEWTON-RAPHSON
+        // =====================================================================
+        // Small, not very accurate, Newton-Raphson.
+        T xk = 1.0;  // x = h / h0, with h0 = step_taken
+        const double perturbation_size = 1.0e-7;  // approx std::sqrt(1.0e-15);
+        const double dx = perturbation_size;
+        // We are ok with a poorly converged NR.
+        const double kLowAccuracy = 1.0e-3;
+        for (int iter = 0; iter < 100; ++iter) {
+          const T rk = target(xk);
+          const T Jk = (target(xk + dx) - rk) / dx;
+          const T xp = xk - rk / Jk;
+          const T ek = abs(xp - xk);
+          xk = xp;
+          if (ek < kLowAccuracy) break;
+          DRAKE_DEMAND(iter < 80);  // demand convergence.
+        }        
+        new_step_size = xk * step_taken;
+#endif
+
+      if (!isnan(h_loose_)) {
+        DRAKE_DEMAND(a_loose_ >= get_accuracy_in_use());
+        const double a_tight = get_accuracy_in_use();
+        const T h_low =
+            kSafety * step_taken * pow(a_tight / err, 1.0 / err_order);
+        const T h_high =
+            kSafety * step_taken * pow(a_loose_ / err, 1.0 / err_order);
+        if (h_low > h_loose_)
+          new_step_size = h_low;
+        else if (h_high < h_loose_)
+          new_step_size = h_high;
+        else  // h_low < h_loose_ < h_high
+          new_step_size = h_loose_;
+
+      } else {
+        new_step_size = kSafety * step_taken *
+                        pow(get_accuracy_in_use() / err, 1.0 / err_order);
+      }
     }
   }
 

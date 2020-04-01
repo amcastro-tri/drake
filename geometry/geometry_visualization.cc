@@ -290,7 +290,7 @@ systems::lcm::LcmPublisherSystem* ConnectDrakeVisualizer(
     systems::DiagramBuilder<double>* builder,
     const SceneGraph<double>& scene_graph,
     const systems::OutputPort<double>& pose_bundle_output_port,
-    lcm::DrakeLcmInterface* lcm_optional, Role role) {
+    lcm::DrakeLcmInterface* lcm_optional, Role role, double period) {
   using systems::lcm::LcmPublisherSystem;
   using systems::lcm::Serializer;
   using systems::rendering::PoseBundleToDrawMessage;
@@ -304,7 +304,7 @@ systems::lcm::LcmPublisherSystem* ConnectDrakeVisualizer(
       builder->template AddSystem<LcmPublisherSystem>(
           "DRAKE_VIEWER_DRAW",
           std::make_unique<Serializer<drake::lcmt_viewer_draw>>(),
-          lcm_optional, 1 / 60.0 /* publish period */);
+          lcm_optional, period /* publish period */);
 
   // The functor we create in publisher here holds a reference to scene_graph,
   // which must therefore live as long as publisher does. We can count on that
@@ -332,6 +332,14 @@ systems::lcm::LcmPublisherSystem* ConnectDrakeVisualizer(
   return ConnectDrakeVisualizer(builder, scene_graph,
                                 scene_graph.get_pose_bundle_output_port(), lcm,
                                 role);
+}
+
+systems::lcm::LcmPublisherSystem* ConnectDrakeVisualizer(
+    systems::DiagramBuilder<double>* builder,
+    const SceneGraph<double>& scene_graph, double period) {
+  return ConnectDrakeVisualizer(builder, scene_graph,
+                                scene_graph.get_pose_bundle_output_port(),
+                                nullptr, Role::kIllustration, period);
 }
 
 }  // namespace geometry

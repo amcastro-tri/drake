@@ -86,7 +86,8 @@ class SurfaceVolumeIntersector {
       const BoundingVolumeHierarchy<SurfaceMesh<T>>& bvh_N,
       const math::RigidTransform<T>& X_MN,
       std::unique_ptr<SurfaceMesh<T>>* surface_MN_M,
-      std::unique_ptr<SurfaceMeshFieldLinear<T, T>>* e_MN);
+      std::unique_ptr<SurfaceMeshFieldLinear<T, T>>* e_MN,
+      std::vector<Vector3<T>>* grad_e_MN_M = nullptr);
 
  private:
   /* Calculates the intersection point between an infinite straight line

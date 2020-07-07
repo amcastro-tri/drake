@@ -4088,7 +4088,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // friction properties for the i-th point pair in `point_pairs`.
   std::vector<CoulombFriction<double>> CalcCombinedFrictionCoefficients(
       const drake::systems::Context<T>& context,
-      const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs)
+      const std::vector<DiscreteContactPair<T>>& point_pairs)
       const;
 
   // (Advanced) Helper method to compute contact forces in the normal direction
@@ -4578,7 +4578,7 @@ template <>
 std::vector<CoulombFriction<double>>
 MultibodyPlant<symbolic::Expression>::CalcCombinedFrictionCoefficients(
     const drake::systems::Context<symbolic::Expression>&,
-    const std::vector<geometry::PenetrationAsPointPair<symbolic::Expression>>&)
+    const std::vector<DiscreteContactPair<symbolic::Expression>>&)
     const;
 template <>
 void MultibodyPlant<symbolic::Expression>::CalcHydroelasticContactForces(

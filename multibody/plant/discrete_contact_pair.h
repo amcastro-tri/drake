@@ -30,6 +30,7 @@ struct DiscreteContactPair {
   T fn0{0.0};
   /** The effective discrete stiffness. **/
   T stiffness{0.0};
+  T damping{0.0};
 };
 
 }  // namespace multibody

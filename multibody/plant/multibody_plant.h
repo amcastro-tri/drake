@@ -22,6 +22,7 @@
 #include "drake/multibody/plant/contact_jacobians.h"
 #include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/coulomb_friction.h"
+#include "drake/multibody/plant/discrete_contact_pair.h"
 #include "drake/multibody/plant/tamsi_solver.h"
 #include "drake/multibody/plant/tamsi_solver_results.h"
 #include "drake/multibody/topology/multibody_graph.h"
@@ -3896,6 +3897,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   void CalcHydroelasticWithFallback(
       const drake::systems::Context<T>& context,
       internal::HydroelasticFallbackCacheData<T>* data) const;
+
+  std::vector<DiscreteContactPair<T>> CalcDiscreteContactPairs(
+      const systems::Context<T>& context) const;
 
   // Helper method to fill in the ContactResults given the current context when
   // the model is continuous.

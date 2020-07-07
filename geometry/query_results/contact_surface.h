@@ -207,7 +207,7 @@ class ContactSurface {
     return e_MN_->Evaluate(face, barycentric);
   }
 
-  Vector3<T> EvaluateGradE_MN_W(SurfaceFaceIndex face) const {
+  const Vector3<T>& EvaluateGradE_MN_W(SurfaceFaceIndex face) const {
     return grad_e_MN_W_[face];
   }
 

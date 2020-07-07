@@ -10,6 +10,7 @@
 
 #include "drake/common/drake_throw.h"
 #include "drake/common/text_logging.h"
+#include "drake/common/unused.h"
 #include "drake/geometry/frame_kinematics_vector.h"
 #include "drake/geometry/geometry_frame.h"
 #include "drake/geometry/geometry_instance.h"
@@ -1842,6 +1843,7 @@ void MultibodyPlant<T>::CalcAppliedForces(
 template <typename T>
 std::vector<DiscreteContactPair<T>> MultibodyPlant<T>::CalcDiscreteContactPairs(
     const systems::Context<T>& context) const {
+  if constexpr (!std::is_same<T, symbolic::Expression>::value) {      
   // N.B. Assuming second order quadrature as in 
   // hydroelastic_traction_calculator.cc, today.
   // TODO: remove hardcoded 2nd order and reuse same parameter here and in
@@ -1941,6 +1943,10 @@ std::vector<DiscreteContactPair<T>> MultibodyPlant<T>::CalcDiscreteContactPairs(
   }
 
   return contact_pairs;
+  } else {
+    drake::unused(context);
+    throw std::runtime_error("Symbolic not supported");
+  }
 }
 
 template <typename T>

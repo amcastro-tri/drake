@@ -38,20 +38,13 @@ class TamsiSolverTester {
     auto v_slip = solver.variable_size_workspace_.mutable_v_slip();
     std::vector<Matrix2<double>>& dft_dvt =
         solver.variable_size_workspace_.mutable_dft_dvt();
-    auto x = solver.variable_size_workspace_.mutable_x();
 
     // Normal separation velocity.
     vn = Jn * v;
 
-    if (solver.has_two_way_coupling()) {
-      const auto x0 = solver.problem_data_aliases_.x0();
-      // Penetration distance (positive when there is penetration).
-      x = x0 - dt * vn;
-    }
-
     // Computes friction forces fn and gradients Gn as a function of x, vn,
     // Jn and dt.
-    solver.CalcNormalForces(x, vn, Jn, dt, &fn, &Gn);
+    solver.CalcNormalForces(vn, Jn, dt, &fn, &Gn);
 
     // Tangential velocity.
     vt = Jt * v;
@@ -843,6 +836,7 @@ class RollingCylinder : public ::testing::Test {
     // Initial penetration of O(dt), in tests below we use dt = 1.0e-3.
     x0_(0) = 1.0e-3;
     stiffness_(0) = m_ * g_ / penetration_allowance;
+    fn0_(0) = stiffness_(0) * x0_(0);
     const double omega = sqrt(stiffness_(0) / m_);
     const double time_scale = 1.0 / omega;
     const double damping_ratio = 1.0;
@@ -850,7 +844,7 @@ class RollingCylinder : public ::testing::Test {
         damping_ratio * time_scale / penetration_allowance;
     dissipation_(0) = dissipation;
 
-    solver_.SetTwoWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &x0_,
+    solver_.SetTwoWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &fn0_,
                                         &stiffness_, &dissipation_,
                                         &mu_vector_);
   }
@@ -895,6 +889,7 @@ class RollingCylinder : public ::testing::Test {
   VectorX<double> stiffness_{nc_};
   VectorX<double> dissipation_{nc_};
   VectorX<double> x0_{nc_};
+  VectorX<double> fn0_{nc_};
 
   // TAMSI solver for this problem.
   TamsiSolver<double> solver_{nv_};
@@ -1087,11 +1082,11 @@ GTEST_TEST(EmptyWorld, Solve) {
   TamsiSolver<double> solver{nv};
 
   // (Empty) problem data.
-  VectorX<double> p_star, mu_vector, x0, stiffness, dissipation;
+  VectorX<double> p_star, mu_vector, fn0, stiffness, dissipation;
   MatrixX<double> M, Jn, Jt;
 
   DRAKE_EXPECT_NO_THROW(solver.SetTwoWayCoupledProblemData(
-      &M, &Jn, &Jt, &p_star, &x0, &stiffness, &dissipation, &mu_vector));
+      &M, &Jn, &Jt, &p_star, &fn0, &stiffness, &dissipation, &mu_vector));
 }
 
 }  // namespace

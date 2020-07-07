@@ -17,9 +17,9 @@ struct DiscreteContactPair {
   DiscreteContactPair() = default;
 
   /** The id of the first geometry in the contact. */
-  GeometryId id_A;
+  geometry::GeometryId id_A;
   /** The id of the second geometry in the contact. */
-  GeometryId id_B;
+  geometry::GeometryId id_B;
   /** Position of contact point C in W. **/
   Vector3<T> p_WC;
   /** The unit-length normal which defines the penetration direction, pointing

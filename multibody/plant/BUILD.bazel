@@ -69,6 +69,7 @@ drake_cc_library(
         ":hydroelastic_traction",
         ":tamsi_solver",
         ":tamsi_solver_results",
+        ":discrete_contact_pair",
         "//common:default_scalars",
         "//common:essential",
         "//geometry:geometry_ids",

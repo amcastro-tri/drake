@@ -897,7 +897,7 @@ void MultibodyPlant<T>::ExcludeCollisionGeometriesWithCollisionFilterGroupPair(
 template<typename T>
 void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
     const systems::Context<T>& context,
-    const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs_set,
+    const std::vector<DiscreteContactPair<T>>& point_pairs_set,
     MatrixX<T>* Jn_ptr, MatrixX<T>* Jt_ptr,
     std::vector<RotationMatrix<T>>* R_WC_set) const {
   DRAKE_DEMAND(Jn_ptr != nullptr);
@@ -933,13 +933,7 @@ void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
 
     // Penetration depth, > 0 if bodies interpenetrate.
     const Vector3<T>& nhat_BA_W = point_pair.nhat_BA_W;
-    const Vector3<T>& p_WCa = point_pair.p_WCa;
-    const Vector3<T>& p_WCb = point_pair.p_WCb;
-
-    // TODO(amcastro-tri): Consider using the midpoint between Ac and Bc for
-    // stability reasons. Besides that, there is no other reason to use the
-    // midpoint (or any other point between Ac and Bc for that matter) since,
-    // in the limit to rigid contact, Ac = Bc.
+    const Vector3<T>& p_WC = point_pair.p_WC;
 
     // For contact point Ac of (fixed to) body A, calculate `Jv_v_WAc` (Ac's
     // translational velocity Jacobian in the world frame W with respect to
@@ -950,7 +944,7 @@ void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
                                                       JacobianWrtVariable::kV,
                                                       bodyA.body_frame(),
                                                       frame_W,
-                                                      p_WCa,
+                                                      p_WC,
                                                       frame_W,
                                                       frame_W,
                                                       &Jv_WAc);
@@ -962,7 +956,7 @@ void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
                                                       JacobianWrtVariable::kV,
                                                       bodyB.body_frame(),
                                                       frame_W,
-                                                      p_WCb,
+                                                      p_WC,
                                                       frame_W,
                                                       frame_W,
                                                       &Jv_WBc);
@@ -1897,8 +1891,8 @@ std::vector<DiscreteContactPair<T>> MultibodyPlant<T>::CalcDiscreteContactPairs(
   if (contact_model_ == ContactModel::kHydroelasticsOnly ||
       contact_model_ == ContactModel::kHydroelasticWithFallback) {
     const std::vector<geometry::ContactSurface<T>>& surfaces =
-      EvalContactSurfaces(context);      
-    for (const auto& s : surfaces)  {
+        EvalContactSurfaces(context);
+    for (const auto& s : surfaces) {
       const geometry::SurfaceMesh<T>& mesh_W = s.mesh_W();
 
       for (geometry::SurfaceFaceIndex face(0); face < mesh_W.num_faces();
@@ -1927,8 +1921,11 @@ std::vector<DiscreteContactPair<T>> MultibodyPlant<T>::CalcDiscreteContactPairs(
 
           contact_pairs.emplace_back(s.id_M(), s.id_N(), p_WQ, nhat_W, fn0, k);
         }  // qp
-      }  // face
-  }  // surface s
+      }    // face
+    }      // surface s
+  }
+
+  return contact_pairs;
 }
 
 template <typename T>
@@ -1979,22 +1976,10 @@ void MultibodyPlant<T>::CalcTamsiResults(
       &F_BBo_W_array, /* Note: these arrays get overwritten on output. */
       &minus_tau);
 
-  // Perform geometric queries, both point pairs and hydro surfaces.  
-  // TODO: Revisit logic for contact_mode. One of these does not get called
-  // depending on the mode. Can I refactor into another method? maybe some
-  // intermediate data for the discrete solver? could help for combining mu's
-  // and k's below.
+  // Compute all contact pairs, including both penetration pairs and quadrature
+  // point pairs for hydroelastic.
   const std::vector<DiscreteContactPair<T>> contact_pairs =
       CalcDiscreteContactPairs(context0);
-      
-#if 0      
-  const std::vector<PenetrationAsPointPair<T>>& point_pairs0 =
-      EvalPointPairPenetrations(context0);
-  const int num_point_pairs = point_pairs0.size();  
-  const std::vector<geometry::ContactSurface<T>>& surfaces =
-      EvalContactSurfaces(context0);
-  const int num_surfaces = surfaces.size();
-#endif  
 
   // Compute normal and tangential velocity Jacobians at t0.
   // TODO: maybe this results could containt the hydro pairs appended to the
@@ -2585,19 +2570,11 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
         auto& context = dynamic_cast<const Context<T>&>(context_base);
         auto& contact_jacobians_cache =
             cache_value->get_mutable_value<internal::ContactJacobians<T>>();
-
-        // TODO: maybe change signature to take a list of points instead of
-        // point pairs. Then here you'd need to append the Gauss points pairs to
-        // the list of penetration pairs.
-        // ContactJacobians could even store the number of penetration pairs and
-        // the number of Gauss pairs.
-        // NOTE: This method takes a list of point pairs but it does not use the
-        // distance. So probably the easiest sing to do, is to append fake
-        // penetration pairs for each Gaus pair, containing say NaN penetration
-        // distance. Then the rest from this call works since this method only
-        // uses the GeometryIds, positions and normal.
+        // TODO: consider caching contact_pairs.
+        const std::vector<DiscreteContactPair<T>> contact_pairs =
+            CalcDiscreteContactPairs(context0);
         this->CalcNormalAndTangentContactJacobians(
-            context, EvalPointPairPenetrations(context),
+            context, contact_pairs,
             &contact_jacobians_cache.Jn, &contact_jacobians_cache.Jt,
             &contact_jacobians_cache.R_WC_list);
       },

@@ -4162,7 +4162,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // contact point.
   void CalcNormalAndTangentContactJacobians(
       const systems::Context<T>& context,
-      const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs_set,
+      const std::vector<DiscreteContactPair<T>>& contact_pairs,
       MatrixX<T>* Jn, MatrixX<T>* Jt,
       std::vector<math::RotationMatrix<T>>* R_WC_set = nullptr) const;
 

@@ -1889,7 +1889,7 @@ std::vector<DiscreteContactPair<T>> MultibodyPlant<T>::CalcDiscreteContactPairs(
   // hydroelastic_traction_calculator.cc, today.
   // TODO: remove hardcoded 2nd order and reuse same parameter here and in
   // hydroelastic_traction_calculator.cc.
-  const GaussianTriangleQuadratureRule quadrature(2 /* order */);
+  const GaussianTriangleQuadratureRule quadrature(1 /* order */);
   const std::vector<Vector2<double>>& xi = quadrature.quadrature_points();
   const std::vector<double>& wq = quadrature.weights();
   const int num_quad_points = wq.size();    
@@ -2048,6 +2048,7 @@ void MultibodyPlant<T>::CalcTamsiResults(
   const std::vector<DiscreteContactPair<T>> contact_pairs =
       CalcDiscreteContactPairs(context0);
   const int num_contacts = contact_pairs.size();
+  //fmt::print("num_contacts: {}\n", num_contacts);
 
   // Compute normal and tangential velocity Jacobians at t0.
   const internal::ContactJacobians<T>& contact_jacobians =

@@ -3927,6 +3927,11 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   void CalcContactResultsDiscrete(const systems::Context<T>& context,
                                   ContactResults<T>* contact_results) const;
 
+  void CalcContactResultsDiscretePointPair(const systems::Context<T>& context,
+                                  ContactResults<T>* contact_results) const;                                  
+  void CalcContactResultsDiscreteHydroelastic(const systems::Context<T>& context,
+                                  ContactResults<T>* contact_results) const;                                      
+
   // Evaluate contact results.
   const ContactResults<T>& EvalContactResults(
       const systems::Context<T>& context) const {

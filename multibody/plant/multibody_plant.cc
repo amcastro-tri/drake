@@ -1345,6 +1345,46 @@ void MultibodyPlant<T>::CalcContactResultsDiscrete(
     const systems::Context<T>& context,
     ContactResults<T>* contact_results) const {
   DRAKE_DEMAND(contact_results != nullptr);
+  contact_results->Clear();
+  if (num_collision_geometries() == 0) return;
+
+  switch (contact_model_) {
+    case ContactModel::kPointContactOnly:
+      CalcContactResultsDiscretePointPair(context, contact_results);
+      break;
+
+    case ContactModel::kHydroelasticsOnly:
+      // N.B. We are simply computing the hydro force as function of the state,
+      // not the actual discrete approximation.
+      CalcContactResultsContinuousHydroelastic(context, contact_results);
+      break;
+
+    case ContactModel::kHydroelasticWithFallback:
+      // Simply compute the contributions of both contact representations.
+
+      // TODO(amcastro-tri): In the current semantics,
+      // CalcContactResultsContinuousPointPair() *clears* the input parameter.
+      // CalcContactResultsContinuousHydroelastic() does *not*. That suggests
+      // the *name* of CalcContactResultsContinuousHydroelastic() is
+      // inconsistent with its behavior. Reconcile the two and if it's not a
+      // name change (but rather a behavior change) modify this accumulation
+      // accordingly. But, for now, executing these methods in this order should
+      // properly accumulate all contact results.
+      CalcContactResultsDiscretePointPair(context, contact_results);
+
+      // N.B. Here we are not evaluating the exact discrete approximation to
+      // hydroelastics, but the hydro forces as a function of the state stored
+      // context.
+      CalcContactResultsContinuousHydroelastic(context, contact_results);
+      break;
+  }
+}
+
+template <typename T>
+void MultibodyPlant<T>::CalcContactResultsDiscretePointPair(
+    const systems::Context<T>& context,
+    ContactResults<T>* contact_results) const {
+  DRAKE_DEMAND(contact_results != nullptr);
   if (num_collision_geometries() == 0) return;
 
   const std::vector<PenetrationAsPointPair<T>>& point_pairs =

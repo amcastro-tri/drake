@@ -932,7 +932,7 @@ class TamsiSolver {
 
     // Returns the current (maximum) capacity of the workspace.
     int capacity() const {
-      return vt_.size();
+      return vn_.size();
     }
 
     // Returns a constant reference to the vector of separation velocities in

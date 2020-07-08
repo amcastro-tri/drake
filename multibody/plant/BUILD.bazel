@@ -60,7 +60,7 @@ drake_cc_library(
     hdrs = [
         "multibody_plant.h",
     ],
-    copts = ["-g"],
+    copts = ["-g -O0"],
     visibility = ["//visibility:private"],
     deps = [
         ":contact_jacobians",

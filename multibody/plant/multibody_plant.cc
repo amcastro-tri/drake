@@ -1359,11 +1359,12 @@ void MultibodyPlant<T>::CalcContactResultsDiscrete(
   const VectorX<T>& vt = solver_results.vt;
   const VectorX<T>& vn = solver_results.vn;
 
-  const int num_contacts = point_pairs.size();
-  DRAKE_DEMAND(fn.size() == num_contacts);
-  DRAKE_DEMAND(ft.size() == 2 * num_contacts);
-  DRAKE_DEMAND(vn.size() == num_contacts);
-  DRAKE_DEMAND(vt.size() == 2 * num_contacts);
+  //const int num_contacts = point_pairs.size();
+  // Not true anymore since now we have penetration pairs and quadrature pairs.
+  //DRAKE_DEMAND(fn.size() == num_contacts);
+  //DRAKE_DEMAND(ft.size() == 2 * num_contacts);
+  //DRAKE_DEMAND(vn.size() == num_contacts);
+  //DRAKE_DEMAND(vt.size() == 2 * num_contacts);
 
   contact_results->Clear();
   for (size_t icontact = 0; icontact < point_pairs.size(); ++icontact) {
@@ -1909,6 +1910,10 @@ std::vector<DiscreteContactPair<T>> MultibodyPlant<T>::CalcDiscreteContactPairs(
       for (geometry::SurfaceFaceIndex face(0); face < mesh_W.num_faces();
            ++face) {
         const T& Ae = mesh_W.area(face);  // Face element area.
+
+        // We will ignore infinitesimally small triangles.
+        if (Ae > 1.0e-14) {
+
         // N.B Assuming rigid-soft contact, and thus only a single pressure
         // gradient is considered.
         const Vector3<T>& grad_pres_W = s.EvaluateGradE_MN_W(face);
@@ -1937,6 +1942,7 @@ std::vector<DiscreteContactPair<T>> MultibodyPlant<T>::CalcDiscreteContactPairs(
 
           contact_pairs.push_back(
               {s.id_M(), s.id_N(), p_WQ, nhat_W, fn0, k, dissipation});
+        }
         }  // qp
       }    // face
     }      // surface s

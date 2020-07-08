@@ -53,6 +53,7 @@ namespace bouncing_ball {
 /// the new model once you are done creating it.
 std::unique_ptr<drake::multibody::MultibodyPlant<double>>
 MakeBouncingBallPlant(
+    double mbp_dt,
     double radius, double mass,
     double elastic_modulus, double dissipation,
     const drake::multibody::CoulombFriction<double>& surface_friction,

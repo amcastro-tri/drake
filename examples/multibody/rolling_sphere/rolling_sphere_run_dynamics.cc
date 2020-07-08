@@ -44,6 +44,7 @@ DEFINE_bool(add_wall, false,
             "simulation to throw when the soft ball hits the wall with the "
             "'hydroelastic' model; use the 'hybrid' or 'point' contact model "
             "to simulate beyond this contact.");
+DEFINE_double(mbp_dt, 0.0, "MBP's discrete update period.");
 
 DEFINE_bool(visualize, true,
             "If true, the simulation will publish messages for Drake "
@@ -104,9 +105,9 @@ int do_main() {
       FLAGS_friction_coefficient /* dynamic friction */);
 
   MultibodyPlant<double>& plant = *builder.AddSystem(MakeBouncingBallPlant(
-      radius, mass, FLAGS_elastic_modulus, FLAGS_dissipation, coulomb_friction,
-      -g * Vector3d::UnitZ(), FLAGS_rigid_ball, FLAGS_soft_ground,
-      &scene_graph));
+      FLAGS_mbp_dt, radius, mass, FLAGS_elastic_modulus, FLAGS_dissipation,
+      coulomb_friction, -g * Vector3d::UnitZ(), FLAGS_rigid_ball,
+      FLAGS_soft_ground, &scene_graph));
 
   if (FLAGS_add_wall) {
     geometry::Box wall{0.2, 4, 0.4};

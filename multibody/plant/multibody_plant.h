@@ -22,6 +22,7 @@
 #include "drake/multibody/plant/contact_jacobians.h"
 #include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/coulomb_friction.h"
+#include "drake/multibody/plant/discrete_contact_pair.h"
 #include "drake/multibody/plant/tamsi_solver.h"
 #include "drake/multibody/plant/tamsi_solver_results.h"
 #include "drake/multibody/topology/multibody_graph.h"
@@ -3897,6 +3898,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const drake::systems::Context<T>& context,
       internal::HydroelasticFallbackCacheData<T>* data) const;
 
+  std::vector<DiscreteContactPair<T>> CalcDiscreteContactPairs(
+      const systems::Context<T>& context) const;
+
   // Helper method to fill in the ContactResults given the current context when
   // the model is continuous.
   void CalcContactResultsContinuous(const systems::Context<T>& context,
@@ -3922,6 +3926,11 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // results are then used to compute contact results into `contacts`.
   void CalcContactResultsDiscrete(const systems::Context<T>& context,
                                   ContactResults<T>* contact_results) const;
+
+  void CalcContactResultsDiscretePointPair(const systems::Context<T>& context,
+                                  ContactResults<T>* contact_results) const;                                  
+  void CalcContactResultsDiscreteHydroelastic(const systems::Context<T>& context,
+                                  ContactResults<T>* contact_results) const;                                      
 
   // Evaluate contact results.
   const ContactResults<T>& EvalContactResults(
@@ -4084,7 +4093,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // friction properties for the i-th point pair in `point_pairs`.
   std::vector<CoulombFriction<double>> CalcCombinedFrictionCoefficients(
       const drake::systems::Context<T>& context,
-      const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs)
+      const std::vector<DiscreteContactPair<T>>& point_pairs)
       const;
 
   // (Advanced) Helper method to compute contact forces in the normal direction
@@ -4158,7 +4167,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // contact point.
   void CalcNormalAndTangentContactJacobians(
       const systems::Context<T>& context,
-      const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs_set,
+      const std::vector<DiscreteContactPair<T>>& contact_pairs,
       MatrixX<T>* Jn, MatrixX<T>* Jt,
       std::vector<math::RotationMatrix<T>>* R_WC_set = nullptr) const;
 
@@ -4574,7 +4583,7 @@ template <>
 std::vector<CoulombFriction<double>>
 MultibodyPlant<symbolic::Expression>::CalcCombinedFrictionCoefficients(
     const drake::systems::Context<symbolic::Expression>&,
-    const std::vector<geometry::PenetrationAsPointPair<symbolic::Expression>>&)
+    const std::vector<DiscreteContactPair<symbolic::Expression>>&)
     const;
 template <>
 void MultibodyPlant<symbolic::Expression>::CalcHydroelasticContactForces(

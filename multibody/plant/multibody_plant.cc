@@ -10,6 +10,7 @@
 
 #include "drake/common/drake_throw.h"
 #include "drake/common/text_logging.h"
+#include "drake/common/unused.h"
 #include "drake/geometry/frame_kinematics_vector.h"
 #include "drake/geometry/geometry_frame.h"
 #include "drake/geometry/geometry_instance.h"
@@ -19,10 +20,13 @@
 #include "drake/math/orthonormal_basis.h"
 #include "drake/math/random_rotation.h"
 #include "drake/math/rotation_matrix.h"
+#include "drake/multibody/plant/discrete_contact_pair.h"
 #include "drake/multibody/plant/externally_applied_spatial_force.h"
 #include "drake/multibody/plant/hydroelastic_traction_calculator.h"
 #include "drake/multibody/tree/prismatic_joint.h"
 #include "drake/multibody/tree/revolute_joint.h"
+#include "drake/multibody/triangle_quadrature/gaussian_triangle_quadrature_rule.h"
+#include "drake/multibody/triangle_quadrature/triangle_quadrature.h"
 
 namespace drake {
 namespace multibody {
@@ -894,7 +898,7 @@ void MultibodyPlant<T>::ExcludeCollisionGeometriesWithCollisionFilterGroupPair(
 template<typename T>
 void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
     const systems::Context<T>& context,
-    const std::vector<geometry::PenetrationAsPointPair<T>>& point_pairs_set,
+    const std::vector<DiscreteContactPair<T>>& point_pairs_set,
     MatrixX<T>* Jn_ptr, MatrixX<T>* Jt_ptr,
     std::vector<RotationMatrix<T>>* R_WC_set) const {
   DRAKE_DEMAND(Jn_ptr != nullptr);
@@ -930,13 +934,7 @@ void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
 
     // Penetration depth, > 0 if bodies interpenetrate.
     const Vector3<T>& nhat_BA_W = point_pair.nhat_BA_W;
-    const Vector3<T>& p_WCa = point_pair.p_WCa;
-    const Vector3<T>& p_WCb = point_pair.p_WCb;
-
-    // TODO(amcastro-tri): Consider using the midpoint between Ac and Bc for
-    // stability reasons. Besides that, there is no other reason to use the
-    // midpoint (or any other point between Ac and Bc for that matter) since,
-    // in the limit to rigid contact, Ac = Bc.
+    const Vector3<T>& p_WC = point_pair.p_WC;
 
     // For contact point Ac of (fixed to) body A, calculate `Jv_v_WAc` (Ac's
     // translational velocity Jacobian in the world frame W with respect to
@@ -947,7 +945,7 @@ void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
                                                       JacobianWrtVariable::kV,
                                                       bodyA.body_frame(),
                                                       frame_W,
-                                                      p_WCa,
+                                                      p_WC,
                                                       frame_W,
                                                       frame_W,
                                                       &Jv_WAc);
@@ -959,7 +957,7 @@ void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
                                                       JacobianWrtVariable::kV,
                                                       bodyB.body_frame(),
                                                       frame_W,
-                                                      p_WCb,
+                                                      p_WC,
                                                       frame_W,
                                                       frame_W,
                                                       &Jv_WBc);
@@ -1117,7 +1115,7 @@ template <>
 std::vector<CoulombFriction<double>>
 MultibodyPlant<symbolic::Expression>::CalcCombinedFrictionCoefficients(
     const drake::systems::Context<symbolic::Expression>&,
-    const std::vector<PenetrationAsPointPair<symbolic::Expression>>&) const {
+    const std::vector<DiscreteContactPair<symbolic::Expression>>&) const {
   throw std::logic_error(
       "This method doesn't support T = symbolic::Expression.");
 }
@@ -1126,7 +1124,7 @@ template<typename T>
 std::vector<CoulombFriction<double>>
 MultibodyPlant<T>::CalcCombinedFrictionCoefficients(
     const drake::systems::Context<T>& context,
-    const std::vector<PenetrationAsPointPair<T>>& point_pairs) const {
+    const std::vector<DiscreteContactPair<T>>& point_pairs) const {
   std::vector<CoulombFriction<double>> combined_frictions;
   combined_frictions.reserve(point_pairs.size());
 
@@ -1137,6 +1135,9 @@ MultibodyPlant<T>::CalcCombinedFrictionCoefficients(
   const auto& query_object = EvalGeometryQueryInput(context);
   const geometry::SceneGraphInspector<T>& inspector = query_object.inspector();
 
+  // This actually only needs to scan a list of GeometryId pairs.
+  // Therefore: replace point_pairs with a 
+  //   std::vector<std::pair<GeometryId, GeometryId>>
   for (const auto& pair : point_pairs) {
     const GeometryId geometryA_id = pair.id_A;
     const GeometryId geometryB_id = pair.id_B;
@@ -1236,11 +1237,15 @@ void MultibodyPlant<T>::CalcContactResultsContinuousPointPair(
     const systems::Context<T>& context,
     ContactResults<T>* contact_results) const {
 
+  // TODO: this is awful. Using the fact penetration pairs are first. Analyze
+  // how to re-structure.
   const std::vector<PenetrationAsPointPair<T>>& point_pairs =
       EvalPointPairPenetrations(context);
+  const std::vector<DiscreteContactPair<T>> contact_pairs =
+      CalcDiscreteContactPairs(context);    
 
   const std::vector<CoulombFriction<double>> combined_friction_pairs =
-      CalcCombinedFrictionCoefficients(context, point_pairs);
+      CalcCombinedFrictionCoefficients(context, contact_pairs);
 
   const internal::PositionKinematicsCache<T>& pc =
       EvalPositionKinematics(context);
@@ -1248,6 +1253,8 @@ void MultibodyPlant<T>::CalcContactResultsContinuousPointPair(
       EvalVelocityKinematics(context);
 
   contact_results->Clear();
+  // TODO: this is awful. Using the fact penetration pairs are first. Analyze
+  // how to re-structure.
   for (size_t icontact = 0; icontact < point_pairs.size(); ++icontact) {
     const auto& pair = point_pairs[icontact];
     const GeometryId geometryA_id = pair.id_A;
@@ -1338,6 +1345,46 @@ void MultibodyPlant<T>::CalcContactResultsDiscrete(
     const systems::Context<T>& context,
     ContactResults<T>* contact_results) const {
   DRAKE_DEMAND(contact_results != nullptr);
+  contact_results->Clear();
+  if (num_collision_geometries() == 0) return;
+
+  switch (contact_model_) {
+    case ContactModel::kPointContactOnly:
+      CalcContactResultsDiscretePointPair(context, contact_results);
+      break;
+
+    case ContactModel::kHydroelasticsOnly:
+      // N.B. We are simply computing the hydro force as function of the state,
+      // not the actual discrete approximation.
+      CalcContactResultsContinuousHydroelastic(context, contact_results);
+      break;
+
+    case ContactModel::kHydroelasticWithFallback:
+      // Simply compute the contributions of both contact representations.
+
+      // TODO(amcastro-tri): In the current semantics,
+      // CalcContactResultsContinuousPointPair() *clears* the input parameter.
+      // CalcContactResultsContinuousHydroelastic() does *not*. That suggests
+      // the *name* of CalcContactResultsContinuousHydroelastic() is
+      // inconsistent with its behavior. Reconcile the two and if it's not a
+      // name change (but rather a behavior change) modify this accumulation
+      // accordingly. But, for now, executing these methods in this order should
+      // properly accumulate all contact results.
+      CalcContactResultsDiscretePointPair(context, contact_results);
+
+      // N.B. Here we are not evaluating the exact discrete approximation to
+      // hydroelastics, but the hydro forces as a function of the state stored
+      // context.
+      CalcContactResultsContinuousHydroelastic(context, contact_results);
+      break;
+  }
+}
+
+template <typename T>
+void MultibodyPlant<T>::CalcContactResultsDiscretePointPair(
+    const systems::Context<T>& context,
+    ContactResults<T>* contact_results) const {
+  DRAKE_DEMAND(contact_results != nullptr);
   if (num_collision_geometries() == 0) return;
 
   const std::vector<PenetrationAsPointPair<T>>& point_pairs =
@@ -1352,11 +1399,12 @@ void MultibodyPlant<T>::CalcContactResultsDiscrete(
   const VectorX<T>& vt = solver_results.vt;
   const VectorX<T>& vn = solver_results.vn;
 
-  const int num_contacts = point_pairs.size();
-  DRAKE_DEMAND(fn.size() == num_contacts);
-  DRAKE_DEMAND(ft.size() == 2 * num_contacts);
-  DRAKE_DEMAND(vn.size() == num_contacts);
-  DRAKE_DEMAND(vt.size() == 2 * num_contacts);
+  //const int num_contacts = point_pairs.size();
+  // Not true anymore since now we have penetration pairs and quadrature pairs.
+  //DRAKE_DEMAND(fn.size() == num_contacts);
+  //DRAKE_DEMAND(ft.size() == 2 * num_contacts);
+  //DRAKE_DEMAND(vn.size() == num_contacts);
+  //DRAKE_DEMAND(vt.size() == 2 * num_contacts);
 
   contact_results->Clear();
   for (size_t icontact = 0; icontact < point_pairs.size(); ++icontact) {
@@ -1718,12 +1766,12 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
     const VectorX<T>& minus_tau,
     const VectorX<T>& stiffness, const VectorX<T>& damping,
     const VectorX<T>& mu,
-    const VectorX<T>& v0, const VectorX<T>& phi0) const {
+    const VectorX<T>& v0, const VectorX<T>& fn0) const {
 
   const double dt = time_step_;  // just a shorter alias.
   const double dt_substep = dt / num_substeps;
   VectorX<T> v0_substep = v0;
-  VectorX<T> phi0_substep = phi0;
+  VectorX<T> fn0_substep = fn0;
 
   // Initialize info to an unsuccessful result.
   TamsiSolverResult info{
@@ -1738,7 +1786,7 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
     // Update the data.
     tamsi_solver_->SetTwoWayCoupledProblemData(
         &M0, &Jn, &Jt,
-        &p_star_substep, &phi0_substep,
+        &p_star_substep, &fn0_substep,
         &stiffness, &damping, &mu);
 
     info = tamsi_solver_->SolveWithGuess(dt_substep,
@@ -1751,9 +1799,7 @@ TamsiSolverResult MultibodyPlant<T>::SolveUsingSubStepping(
     v0_substep = tamsi_solver_->get_generalized_velocities();
 
     // Update penetration distance consistently with the solver update.
-    const auto vn_substep =
-        tamsi_solver_->get_normal_velocities();
-    phi0_substep = phi0_substep - dt_substep * vn_substep;
+    fn0_substep = tamsi_solver_->get_normal_forces();
   }
 
   return info;
@@ -1836,6 +1882,120 @@ void MultibodyPlant<T>::CalcAppliedForces(
 }
 
 template <typename T>
+std::vector<DiscreteContactPair<T>> MultibodyPlant<T>::CalcDiscreteContactPairs(
+    const systems::Context<T>& context) const {
+  if constexpr (!std::is_same<T, symbolic::Expression>::value) {      
+  // N.B. Assuming second order quadrature as in 
+  // hydroelastic_traction_calculator.cc, today.
+  // TODO: remove hardcoded 2nd order and reuse same parameter here and in
+  // hydroelastic_traction_calculator.cc.
+  const GaussianTriangleQuadratureRule quadrature(1 /* order */);
+  const std::vector<Vector2<double>>& xi = quadrature.quadrature_points();
+  const std::vector<double>& wq = quadrature.weights();
+  const int num_quad_points = wq.size();    
+
+  // Compute the number of discrete contact pairs.
+  int num_point_pairs = 0;
+  if (contact_model_ == ContactModel::kPointContactOnly ||
+      contact_model_ == ContactModel::kHydroelasticWithFallback) {
+    num_point_pairs = EvalPointPairPenetrations(context).size();
+  }
+  int num_quadrature_pairs = 0;
+  if (contact_model_ == ContactModel::kHydroelasticsOnly ||
+      contact_model_ == ContactModel::kHydroelasticWithFallback) {
+    const std::vector<geometry::ContactSurface<T>>& surfaces =
+      EvalContactSurfaces(context);
+    for (const auto& s : surfaces)  {
+      const geometry::SurfaceMesh<T>& mesh = s.mesh_W();
+      num_quadrature_pairs += num_quad_points * mesh.num_faces();
+    }
+  }
+  const int num_contact_pairs = num_point_pairs + num_quadrature_pairs;
+
+  // Allocate proper size.
+  std::vector<DiscreteContactPair<T>> contact_pairs;
+  contact_pairs.reserve(num_contact_pairs);
+
+  // Fill in the contact pairs.
+  // First point contact pairs.
+  if (contact_model_ == ContactModel::kPointContactOnly ||
+      contact_model_ == ContactModel::kHydroelasticWithFallback) {
+    const std::vector<PenetrationAsPointPair<T>>& point_pairs =
+        EvalPointPairPenetrations(context);
+    for (const auto& pp : point_pairs) {
+      const T k = penalty_method_contact_parameters_.stiffness;
+      const T d = penalty_method_contact_parameters_.damping;
+      const T fn0 = k * pp.depth;      
+      DRAKE_DEMAND(fn0 >= 0);  // it should be since depth >= 0.
+      // For now place contact point midway between Ca and Cb.
+      // TODO(amcastro-tri): Use stiffness weighted location of point C between
+      // Ca and Cb when we allow modifying point contact parameters.
+      const Vector3<T> p_WC = 0.5 * (pp.p_WCa + pp.p_WCb);
+      contact_pairs.push_back(
+          {pp.id_A, pp.id_B, p_WC, pp.nhat_BA_W, fn0, k, d});
+    }
+  }
+
+  // Then we append the Hydroelastics quadrature points.
+  if (contact_model_ == ContactModel::kHydroelasticsOnly ||
+      contact_model_ == ContactModel::kHydroelasticWithFallback) {
+    const std::vector<geometry::ContactSurface<T>>& surfaces =
+        EvalContactSurfaces(context);
+    const auto& query_object = EvalGeometryQueryInput(context);
+    const geometry::SceneGraphInspector<T>& inspector =
+        query_object.inspector();
+    for (const auto& s : surfaces) {
+      const geometry::SurfaceMesh<T>& mesh_W = s.mesh_W();
+
+      for (geometry::SurfaceFaceIndex face(0); face < mesh_W.num_faces();
+           ++face) {
+        const T& Ae = mesh_W.area(face);  // Face element area.
+
+        // We will ignore infinitesimally small triangles.
+        if (Ae > 1.0e-14) {
+
+        // N.B Assuming rigid-soft contact, and thus only a single pressure
+        // gradient is considered.
+        const Vector3<T>& grad_pres_W = s.EvaluateGradE_MN_W(face);
+        const Vector3<T>& nhat_W = mesh_W.face_normal(face);
+        for (int qp = 0; qp < num_quad_points; ++qp) {
+          const Vector3<T> barycentric(xi[qp](0), xi[qp](1),
+                                       1.0 - xi[qp](0) - xi[qp](1));
+          // Pressure at the quadrature point.
+          const T p0 = s.EvaluateE_MN(face, barycentric);
+
+          // Force contribution by this quadrature point.
+          const T fn0 = wq[qp] * Ae * p0;
+
+          // Discrete stiffness in the normal direction.
+          const T k = wq[qp] * Ae * grad_pres_W.dot(nhat_W);
+
+          // Combined Hunt & Crossley dissipation.
+          const T dissipation =
+              hydroelastics_engine_.CalcCombinedDissipation(
+                  s.id_M(), s.id_N(), inspector);
+
+          // Position of quadrature point Q in the world frame (since mesh_W is
+          // measured and expressed in W).
+          const Vector3<T> p_WQ =
+              mesh_W.CalcCartesianFromBarycentric(face, barycentric);
+
+          contact_pairs.push_back(
+              {s.id_M(), s.id_N(), p_WQ, nhat_W, fn0, k, dissipation});
+        }
+        }  // qp
+      }    // face
+    }      // surface s
+  }
+
+  return contact_pairs;
+  } else {
+    drake::unused(context);
+    throw std::runtime_error("Symbolic not supported");
+  }
+}
+
+template <typename T>
 void MultibodyPlant<T>::CalcTamsiResults(
     const drake::systems::Context<T>& context0,
     internal::TamsiSolverResults<T>* results) const {
@@ -1883,17 +2043,24 @@ void MultibodyPlant<T>::CalcTamsiResults(
       &F_BBo_W_array, /* Note: these arrays get overwritten on output. */
       &minus_tau);
 
+  // Compute all contact pairs, including both penetration pairs and quadrature
+  // point pairs for hydroelastic.
+  const std::vector<DiscreteContactPair<T>> contact_pairs =
+      CalcDiscreteContactPairs(context0);
+  const int num_contacts = contact_pairs.size();
+  //fmt::print("num_contacts: {}\n", num_contacts);
+
   // Compute normal and tangential velocity Jacobians at t0.
-  const std::vector<PenetrationAsPointPair<T>>& point_pairs0 =
-      EvalPointPairPenetrations(context0);
-  const int num_contacts = point_pairs0.size();
   const internal::ContactJacobians<T>& contact_jacobians =
       EvalContactJacobians(context0);
 
   // Get friction coefficient into a single vector. Static friction is ignored
   // by the time stepping scheme.
+
+  // TODO: replace point_pairs0 with a
+  // std::vector<std::pair<GeometryId, GeometryId>>
   std::vector<CoulombFriction<double>> combined_friction_pairs =
-      CalcCombinedFrictionCoefficients(context0, point_pairs0);
+      CalcCombinedFrictionCoefficients(context0, contact_pairs);
   VectorX<T> mu(num_contacts);
   std::transform(combined_friction_pairs.begin(), combined_friction_pairs.end(),
                  mu.data(),
@@ -1901,22 +2068,16 @@ void MultibodyPlant<T>::CalcTamsiResults(
                    return coulomb_friction.dynamic_friction();
                  });
 
-  // Place all the penetration depths within a single vector as required by
+  // Place all the normal forces at t0 within a single vector as required by
   // the solver.
-  VectorX<T> phi0(num_contacts);
-  std::transform(point_pairs0.begin(), point_pairs0.end(),
-                 phi0.data(),
-                 [](const PenetrationAsPointPair<T>& pair) {
-                   return pair.depth;
-                 });
-
-  // TODO(amcastro-tri): Consider using different penalty parameters at each
-  // contact point.
-  // Compliance parameters used by the solver for each contact point.
-  VectorX<T> stiffness = VectorX<T>::Constant(
-      num_contacts, penalty_method_contact_parameters_.stiffness);
-  VectorX<T> damping = VectorX<T>::Constant(
-      num_contacts, penalty_method_contact_parameters_.damping);
+  VectorX<T> fn0(num_contacts);
+  VectorX<T> stiffness(num_contacts);
+  VectorX<T> damping(num_contacts);
+  for (size_t i = 0;i<contact_pairs.size(); ++i) {
+    fn0[i] = contact_pairs[i].fn0;
+    stiffness[i] = contact_pairs[i].stiffness;
+    damping[i] = contact_pairs[i].damping;
+  }
 
   // Solve for v and the contact forces.
   TamsiSolverResult info{
@@ -1942,7 +2103,7 @@ void MultibodyPlant<T>::CalcTamsiResults(
     ++num_substeps;
     info = SolveUsingSubStepping(num_substeps, M0, contact_jacobians.Jn,
                                  contact_jacobians.Jt, minus_tau, stiffness,
-                                 damping, mu, v0, phi0);
+                                 damping, mu, v0, fn0);
   } while (info != TamsiSolverResult::kSuccess &&
            num_substeps < kNumMaxSubTimeSteps);
 
@@ -1976,7 +2137,7 @@ void MultibodyPlant<T>::CalcTamsiResults(
   results->vt = tamsi_solver_->get_tangential_velocities();
   results->tau_contact =
       tamsi_solver_->get_generalized_contact_forces();
-}
+      }
 
 template <typename T>
 void MultibodyPlant<T>::CalcArticulatedBodyForceCache(
@@ -2464,8 +2625,11 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
         auto& context = dynamic_cast<const Context<T>&>(context_base);
         auto& contact_jacobians_cache =
             cache_value->get_mutable_value<internal::ContactJacobians<T>>();
+        // TODO: consider caching contact_pairs.
+        const std::vector<DiscreteContactPair<T>> contact_pairs =
+            CalcDiscreteContactPairs(context);
         this->CalcNormalAndTangentContactJacobians(
-            context, EvalPointPairPenetrations(context),
+            context, contact_pairs,
             &contact_jacobians_cache.Jn, &contact_jacobians_cache.Jt,
             &contact_jacobians_cache.R_WC_list);
       },

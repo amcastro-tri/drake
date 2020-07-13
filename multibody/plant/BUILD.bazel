@@ -33,6 +33,16 @@ drake_cc_package_library(
 )
 
 drake_cc_library(
+    name = "discrete_contact_pair",
+    srcs = [],
+    hdrs = ["discrete_contact_pair.h"],
+    deps = [
+        "//common:essential",
+        "//geometry:geometry_ids",
+    ],
+)
+
+drake_cc_library(
     name = "tamsi_solver",
     srcs = ["tamsi_solver.cc"],
     hdrs = ["tamsi_solver.h"],
@@ -50,6 +60,7 @@ drake_cc_library(
     hdrs = [
         "multibody_plant.h",
     ],
+#    copts = ["-g -O0"],
     visibility = ["//visibility:private"],
     deps = [
         ":contact_jacobians",
@@ -59,6 +70,7 @@ drake_cc_library(
         ":hydroelastic_traction",
         ":tamsi_solver",
         ":tamsi_solver_results",
+        ":discrete_contact_pair",
         "//common:default_scalars",
         "//common:essential",
         "//geometry:geometry_ids",

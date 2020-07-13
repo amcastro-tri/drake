@@ -191,6 +191,7 @@ class MeshFieldLinear final : public MeshField<T, MeshType> {
 
   const std::string& name() const { return name_; }
   const std::vector<T>& values() const { return values_; }
+  std::vector<T>& mutable_values() { return values_; }
 
   // TODO(#12173): Consider NaN==NaN to be true in equality tests.
   // TODO(DamrongGuoy): Change the type of parameter `field` from MeshField

@@ -366,10 +366,14 @@ void SurfaceVolumeIntersector<T>::SampleVolumeFieldOnSurface(
     const BoundingVolumeHierarchy<SurfaceMesh<T>>& bvh_N,
     const math::RigidTransform<T>& X_MN,
     std::unique_ptr<SurfaceMesh<T>>* surface_MN_M,
-    std::unique_ptr<SurfaceMeshFieldLinear<T, T>>* e_MN) {
+    std::unique_ptr<SurfaceMeshFieldLinear<T, T>>* e_MN,
+    std::vector<Vector3<T>>* grad_e_MN_M) {
   std::vector<SurfaceFace> surface_faces;
   std::vector<SurfaceVertex<T>> surface_vertices_M;
   std::vector<T> surface_e;
+  // Since each triangular faces is completely inside a single tet and the
+  // gradient within each tet is constant, 
+  //std::vector<Vector3<T>> surface_grad_e;  
   const auto& mesh_M = volume_field_M.mesh();
   // We know that each contact polygon has at most 7 vertices because
   // each surface triangle is clipped by four half-spaces of the four
@@ -377,9 +381,13 @@ void SurfaceVolumeIntersector<T>::SampleVolumeFieldOnSurface(
   std::vector<SurfaceVertexIndex> contact_polygon;
   contact_polygon.reserve(7);
 
-  auto callback = [&volume_field_M, &surface_N, &surface_faces,
-                   &surface_vertices_M, &surface_e, &mesh_M, &X_MN,
-                   &contact_polygon,
+  // We assume the volume field is linear.
+  const auto& volume_field_linear_M =
+      dynamic_cast<const VolumeMeshFieldLinear<T, T>&>(volume_field_M);
+
+  auto callback = [&volume_field_M, &volume_field_linear_M, &surface_N,
+                   &surface_faces, &surface_vertices_M, &surface_e, grad_e_MN_M,
+                   &mesh_M, &X_MN, &contact_polygon,
                    this](VolumeElementIndex tet_index,
                          SurfaceFaceIndex tri_index) -> BvttCallbackResult {
     if (!this->IsFaceNormalAlongPressureGradient(volume_field_M, surface_N,
@@ -414,8 +422,21 @@ void SurfaceVolumeIntersector<T>::SampleVolumeFieldOnSurface(
     }
     const Vector3<T>& nhat_M =
         X_MN.rotation() * surface_N.face_normal(tri_index);
+    const int num_previous_surface_faces = surface_faces.size();
     AddPolygonToMeshData(contact_polygon, nhat_M, &surface_faces,
                          &surface_vertices_M);
+
+    const int num_current_surface_faces = surface_faces.size();
+    // Pressure gradient is constant within each tet. Therefore we simply copy
+    // it to each new tri stemming from the clipped polygon within this tet.
+    if (grad_e_MN_M != nullptr) {
+      const Vector3<T> grad_pressure_M =
+          volume_field_linear_M.EvaluateGradient(tet_index);
+      for (int f = num_previous_surface_faces; f < num_current_surface_faces;
+           ++f) {
+        grad_e_MN_M->push_back(grad_pressure_M);
+      }
+    }
 
     const int num_current_vertices = surface_vertices_M.size();
     // Calculate values of the pressure field and the normal field at the
@@ -431,6 +452,9 @@ void SurfaceVolumeIntersector<T>::SampleVolumeFieldOnSurface(
 
   DRAKE_DEMAND(surface_vertices_M.size() == surface_e.size());
   if (surface_faces.empty()) return;
+
+  // Sanity check.
+  if (grad_e_MN_M) DRAKE_DEMAND(surface_faces.size() == grad_e_MN_M->size());
 
   *surface_MN_M = std::make_unique<SurfaceMesh<T>>(
       std::move(surface_faces), std::move(surface_vertices_M));
@@ -512,9 +536,10 @@ ComputeContactSurfaceFromSoftVolumeRigidSurface(
   // frame.
   std::unique_ptr<SurfaceMesh<T>> surface_SR;
   std::unique_ptr<SurfaceMeshFieldLinear<T, T>> e_SR;
+  std::vector<Vector3<T>> grad_e_SR_S;
 
   SurfaceVolumeIntersector<T>().SampleVolumeFieldOnSurface(
-      field_S, bvh_S, mesh_R, bvh_R, X_SR, &surface_SR, &e_SR);
+      field_S, bvh_S, mesh_R, bvh_R, X_SR, &surface_SR, &e_SR, &grad_e_SR_S);
 
   if (surface_SR == nullptr) return nullptr;
 
@@ -525,13 +550,17 @@ ComputeContactSurfaceFromSoftVolumeRigidSurface(
   // Transform the mesh from the S frame to the world frame.
   surface_SR->TransformVertices(X_WS);
   e_SR->TransformGradients(X_WS);
+  for (auto& g : grad_e_SR_S) {
+    g = X_WS.rotation() * g;
+  }
 
   // The contact surface is documented as having the normals pointing *out* of
   // the second surface and into the first. This mesh intersection creates a
   // surface mesh with normals pointing out of the rigid surface, so we make
   // sure the ids are ordered so that the rigid is the second id.
   return std::make_unique<ContactSurface<T>>(id_S, id_R, std::move(surface_SR),
-                                             std::move(e_SR));
+                                             std::move(e_SR),
+                                             std::move(grad_e_SR_S));
 }
 
 template class SurfaceVolumeIntersector<double>;

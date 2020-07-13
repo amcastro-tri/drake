@@ -68,6 +68,7 @@ void SliceTetWithPlane(VolumeElementIndex tet_index,
                        std::vector<SurfaceFace>* faces,
                        std::vector<SurfaceVertex<T>>* vertices_W,
                        std::vector<T>* surface_e,
+                       std::vector<Vector3<T>>* grad_e_W,
                        std::unordered_map<SortedPair<VolumeVertexIndex>,
                                           SurfaceVertexIndex>* cut_edges) {
   const VolumeMesh<double>& mesh_M = field_M.mesh();
@@ -137,7 +138,16 @@ void SliceTetWithPlane(VolumeElementIndex tet_index,
   // Because the vertices are measured and expressed in the world frame, we
   // need to provide a normal expressed in the same.
   const Vector3<T> nhat_W = X_WM.rotation() * plane_M.normal();
+  const int num_previous_faces = faces->size();
   AddPolygonToMeshData(polygon, nhat_W, faces, vertices_W);
+  const int num_current_faces = faces->size();
+
+  const Vector3<T> grad_pressure_M = field_M.EvaluateGradient(tet_index);
+  const Vector3<T> grad_pressure_W = X_WM.rotation() * grad_pressure_M;
+  for (int face = num_previous_faces; face < num_current_faces; ++face) {
+    grad_e_W->push_back(grad_pressure_W);
+  }
+
   // TODO(SeanCurtis-TRI): This would be faster/cheaper if I used the same
   //  area weights to compute the resulting pressure at the centroid as I do
   //  to actually *compute* the centroid. Make an overload of
@@ -158,12 +168,13 @@ std::unique_ptr<ContactSurface<T>> ComputeContactSurface(
   std::vector<SurfaceFace> faces;
   std::vector<SurfaceVertex<T>> vertices_W;
   std::vector<T> surface_e;
+  std::vector<Vector3<T>> grad_e_W;
   std::unordered_map<SortedPair<VolumeVertexIndex>, SurfaceVertexIndex>
       cut_edges;
 
   for (const auto& tet_index : tet_indices) {
     SliceTetWithPlane(tet_index, mesh_field_M, plane_M, X_WM, &faces,
-                      &vertices_W, &surface_e, &cut_edges);
+                      &vertices_W, &surface_e, &grad_e_W, &cut_edges);
   }
 
   // Construct the contact surface from the components.
@@ -178,7 +189,8 @@ std::unique_ptr<ContactSurface<T>> ComputeContactSurface(
   // SliceTetWithPlane promises to make the surface normals point in the plane
   // normal direction (i.e., out of the plane and into the mesh).
   return std::make_unique<ContactSurface<T>>(
-      mesh_id, plane_id, std::move(mesh_W), std::move(field_W));
+      mesh_id, plane_id, std::move(mesh_W), std::move(field_W),
+      std::move(grad_e_W));
 }
 
 template <typename T>
@@ -222,6 +234,7 @@ template void SliceTetWithPlane<double>(
     std::vector<SurfaceFace>* faces,
     std::vector<SurfaceVertex<double>>* vertices_W,
     std::vector<double>* surface_e,
+    std::vector<Vector3<double>>* grad_e_W,
     std::unordered_map<SortedPair<VolumeVertexIndex>, SurfaceVertexIndex>*
         cut_edges);
 

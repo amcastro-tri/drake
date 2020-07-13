@@ -174,6 +174,19 @@ class ContactSurface {
     if (id_N_ < id_M_) SwapMAndN();
   }
 
+  // Constructor that also provides the gradient of e_MN.
+  ContactSurface(
+      GeometryId id_M, GeometryId id_N, std::unique_ptr<SurfaceMesh<T>> mesh_W,
+      std::unique_ptr<SurfaceMeshFieldLinear<T, T>> e_MN,
+      std::vector<Vector3<T>>&& grad_e_MN_W)
+      : id_M_(id_M),
+        id_N_(id_N),
+        mesh_W_(std::move(mesh_W)),
+        e_MN_(std::move(e_MN)),
+        grad_e_MN_W_(grad_e_MN_W) {
+    if (id_N_ < id_M_) SwapMAndN();
+  }
+
   /** Returns the geometry id of Geometry M. */
   GeometryId id_M() const { return id_M_; }
 
@@ -192,6 +205,10 @@ class ContactSurface {
       SurfaceFaceIndex face,
       const typename SurfaceMesh<T>::Barycentric& barycentric) const {
     return e_MN_->Evaluate(face, barycentric);
+  }
+
+  const Vector3<T>& EvaluateGradE_MN_W(SurfaceFaceIndex face) const {
+    return grad_e_MN_W_[face];
   }
 
   /** Evaluates the scalar field eₘₙ at the given vertex on the contact surface
@@ -262,6 +279,10 @@ class ContactSurface {
   //  uses a different derivation.
   // Represents the scalar field eₘₙ on the surface mesh.
   std::unique_ptr<SurfaceMeshFieldLinear<T, T>> e_MN_;
+  // The gradient of e_MN_, ∇e_MN, expressed in the world frame W.
+  // Constant within each face given this comes from interpolating a linear
+  // volume field. Of size equla to the number of faces.
+  std::vector<Vector3<T>> grad_e_MN_W_;
   // TODO(DamrongGuoy): Remove this when we allow direct access to e_MN.
   template <typename U> friend class ContactSurfaceTester;
 };

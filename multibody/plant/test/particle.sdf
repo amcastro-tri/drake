@@ -36,10 +36,12 @@
         </geometry>
       </collision>
     </link>
+    <!--
     <drake:joint name="planar_joint" type="planar">
       <drake:parent>world</drake:parent>
       <drake:child>spherical_mass</drake:child>  
       <drake:damping>0.0 0.0 0.0</drake:damping>
     </drake:joint>
+    -->
   </model>
 </sdf>      

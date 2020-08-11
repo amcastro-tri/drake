@@ -318,6 +318,7 @@ drake_cc_googletest(
         "//geometry:geometry_visualization",
         "//systems/framework:diagram",
         "//systems/framework:diagram_builder",
+        "//systems/lcm",
     ],
 )
 

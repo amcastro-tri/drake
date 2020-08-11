@@ -13,6 +13,7 @@
 #include "drake/multibody/parsing/parser.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/framework/diagram.h"
+#include "drake/systems/lcm/lcm_interface_system.h"
 
 #include <iostream>
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
@@ -22,6 +23,9 @@ namespace drake {
 namespace multibody {
 namespace {
 
+using Eigen::Vector3d;
+using math::RigidTransformd;
+
 class ConstactSolverDriver {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(ConstactSolverDriver);
@@ -30,8 +34,10 @@ class ConstactSolverDriver {
 
   void LoadModel(const std::string& model_file) {
     systems::DiagramBuilder<double> builder;
+    auto lcm = builder.AddSystem<systems::lcm::LcmInterfaceSystem>();
     auto pair = AddMultibodyPlantSceneGraph(&builder, 0.0);
     plant_ = &pair.plant;
+    scene_graph_ = &pair.scene_graph;
 
     //"drake/examples/atlas/urdf/atlas_convex_hull.urdf"
     const std::string full_name = FindResourceOrThrow(model_file);
@@ -41,20 +47,86 @@ class ConstactSolverDriver {
     plant_->mutable_gravity_field().set_gravity_vector(
         Vector3<double>(0.0, 0.0, -10.0));
 
+    const double kGroundDynamicFriction = 1.0;
+    const double kGroundStiffness = 1.0e10;
+    const double kGroundDamping = 0.0;
+    AddGround(kGroundStiffness, kGroundDamping, kGroundDynamicFriction);        
+
     plant_->Finalize();
 
     // Add visualization.
+    geometry::DispatchLoadMessage(*scene_graph_, lcm);
     geometry::ConnectDrakeVisualizer(&builder, pair.scene_graph);
     diagram_ = builder.Build();
+  }
 
+  systems::Context<double>& CreateDefaultContext() {
     diagram_context_ = diagram_->CreateDefaultContext();
     plant_context_ =
         &plant_->GetMyMutableContextFromRoot(diagram_context_.get());
+    return *plant_context_;
   }
 
-  MultibodyPlant<double>& plant() {
+  const MultibodyPlant<double>& plant() const {
     DRAKE_DEMAND(plant_);
     return *plant_;
+  }
+
+  MultibodyPlant<double>& mutable_plant() {
+    DRAKE_DEMAND(plant_);
+    return *plant_;
+  }
+
+  void AddGround(double stiffness, double damping, double dynamic_friction) {
+    // We demand all geometry registration happens pre- context creation so that
+    // it is all well defined within the context post- context creation.
+    DRAKE_DEMAND(diagram_context_ == nullptr);
+    const Vector4<double> green(0.5, 1.0, 0.5, 1.0);
+    plant_->RegisterVisualGeometry(
+        plant_->world_body(), math::RigidTransformd(), geometry::HalfSpace(),
+        "GroundVisualGeometry", green);
+    // For a time-stepping model only static friction is used.
+    const multibody::CoulombFriction<double> ground_friction(dynamic_friction,
+                                                             dynamic_friction);
+    plant_->RegisterCollisionGeometry(
+        plant_->world_body(), math::RigidTransformd(), geometry::HalfSpace(),
+        "GroundCollisionGeometry", ground_friction);
+
+    SetPointContactParameters(plant_->world_body(), stiffness, damping);
+  }
+
+  void SetPointContactParameters(const Body<double>& body, double stiffness,
+                                 double damping) {
+    // We demand all geometry registration happens pre- context creation so that
+    // it is all well defined within the context post- context creation.
+    DRAKE_DEMAND(diagram_context_ == nullptr);
+    const std::vector<geometry::GeometryId>& geometries =
+        plant_->GetCollisionGeometriesForBody(body);
+
+    PRINT_VAR(body.name());
+
+    for (const auto id : geometries) {
+      PRINT_VAR(id);
+      const geometry::ProximityProperties* old_props =
+          scene_graph_->model_inspector().GetProximityProperties(id);
+      DRAKE_DEMAND(old_props);
+      geometry::ProximityProperties new_props(*old_props);
+      // Add a new property.
+      PRINT_VAR(geometry::internal::kMaterialGroup);
+      PRINT_VAR(geometry::internal::kHcDissipation);
+      new_props.AddProperty(geometry::internal::kMaterialGroup,
+                            geometry::internal::kPointStiffness, stiffness);
+      new_props.AddProperty(geometry::internal::kMaterialGroup,
+                            geometry::internal::kHcDissipation, damping);
+
+      // Remove a property previously assigned.
+      // new_props.RemoveProperty("old_group", "old_name_1");
+      // Update the *value* of an existing property (but enforce same type).
+      // new_props.UpdateProperty("old_group", "old_name_2", new_value);
+
+      scene_graph_->AssignRole(*plant_->get_source_id(),
+                               id, new_props, geometry::RoleAssign::kReplace);
+    }
   }
 
   // For viz.
@@ -97,6 +169,14 @@ class ConstactSolverDriver {
       Jn.row(i)         = Jc.row(3 * i + 2);
     }
 
+    PRINT_VARn(M);
+    PRINT_VARn(Jc);
+    PRINT_VAR(tau.transpose());
+    PRINT_VAR(v0.transpose());
+    PRINT_VAR(stiffness.transpose());
+    PRINT_VAR(dissipation.transpose());
+    PRINT_VAR(mu.transpose());
+
     ProblemData<double> data(dt, &M, &Jn, &Jt, &tau, &v0, &phi0, &stiffness,
                              &dissipation, &mu);
     FBSolver<double> solver(&data);
@@ -137,10 +217,10 @@ class ConstactSolverDriver {
     for (size_t icontact = 0; icontact < pairs.size(); ++icontact) {
       const auto& pair = pairs[icontact];
       const auto geometryA_id = pair.id_A;
-      const auto geometryB_id = pair.id_B;
+      const auto geometryB_id = pair.id_B;      
       const auto [kA, dA] = GetPointContactParameters(geometryA_id, inspector);
       const auto [kB, dB] = GetPointContactParameters(geometryB_id, inspector);
-      const auto [k, d] = CombinePointContactParameters(kA, kB, dA, dB);
+      const auto [k, d] = CombinePointContactParameters(kA, kB, dA, dB);      
 
       const auto frictionA = GetCoulombFriction(geometryA_id, inspector);
       const auto frictionB = GetCoulombFriction(geometryB_id, inspector);
@@ -165,11 +245,17 @@ class ConstactSolverDriver {
   }
 
   std::pair<double, double> GetPointContactParameters(
-      geometry::GeometryId id,
+      geometry::GeometryId geometry_id,
       const geometry::SceneGraphInspector<double>& inspector) const {
     const geometry::ProximityProperties* prop =
-        inspector.GetProximityProperties(id);
+        inspector.GetProximityProperties(geometry_id);
     DRAKE_DEMAND(prop != nullptr);
+
+    auto frame = inspector.GetFrameId(geometry_id);
+    const auto& body = *plant_->GetBodyFromFrameId(frame);
+    PRINT_VAR(geometry_id);
+    PRINT_VAR(body.name());
+
     // These properties are required by the driver. GetProperty() will throw if
     // not present.
     return std::pair(
@@ -279,6 +365,7 @@ class ConstactSolverDriver {
 
  private:
   MultibodyPlant<double>* plant_{nullptr};
+  geometry::SceneGraph<double>* scene_graph_{nullptr};
   std::unique_ptr<systems::Diagram<double>> diagram_;
   std::unique_ptr<systems::Context<double>> diagram_context_;
   systems::Context<double>* plant_context_{nullptr};
@@ -289,10 +376,26 @@ GTEST_TEST(FBSolver, Particle) {
   ConstactSolverDriver driver;
   driver.LoadModel(model_file);
   const double dt = 1.0e-3;
+  const auto& plant = driver.plant();
   const int nv = driver.plant().num_velocities();
-  const int nq = driver.plant().num_positions();
-  ASSERT_EQ(nq, 3);
-  ASSERT_EQ(nv, 3);
+  const int nq = driver.plant().num_positions();  
+  ASSERT_EQ(nq, 7);
+  ASSERT_EQ(nv, 6);
+
+  const double kStiffness = 1.0e10;
+  const double kDamping = 0.0;
+
+  const auto& sphere = plant.GetBodyByName("spherical_mass");
+  driver.SetPointContactParameters(sphere, kStiffness, kDamping);
+  auto& context = driver.CreateDefaultContext();
+
+  const double phi0 = -1.0e-3;  // Initial signed distance.
+  plant.SetFreeBodyPose(&context, sphere,
+                        RigidTransformd(Vector3d(0, 0, 0.05 + phi0)));
+
+  // Visualize initial condition.
+  driver.Publish();  // for viz.  
+
   const VectorX<double> v0 = VectorX<double>::Zero(nv);
   driver.AdvanceOneStep(v0, dt);
   driver.Publish();  // for viz.  

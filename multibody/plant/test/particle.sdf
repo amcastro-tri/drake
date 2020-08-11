@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="two_dimensional_free_body">
+    <link name="spherical_mass">
+      <inertial>
+        <pose>0 0 0.0 0 0 0</pose>
+        <mass>1</mass>
+        <inertia>
+          <!-- 2/5*m*R^2 -->  
+          <ixx>1.0e-3</ixx>
+          <iyy>1.0e-3</iyy>
+          <izz>1.0e-3</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <visual name="visual">
+        <pose>0 0 0.0 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <length>1.0</length>
+            <radius>0.05</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <diffuse>1 0 0 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.05</radius>
+          </sphere>
+        </geometry>
+      </collision>
+    </link>
+    <drake:joint name="planar_joint" type="planar">
+      <drake:parent>world</drake:parent>
+      <drake:child>spherical_mass</drake:child>  
+      <drake:damping>0.0 0.0 0.0</drake:damping>
+    </drake:joint>
+  </model>
+</sdf>      

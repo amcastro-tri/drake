@@ -24,6 +24,16 @@ drake_cc_library(
     ],
 )
 
+drake_cc_library(
+    name = "scratch_workspace",
+    srcs = ["scratch_workspace.cc"],
+    hdrs = ["scratch_workspace.h"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        "//common:default_scalars",
+    ],
+)
+
 drake_cc_googletest(
     name = "fischer_burmeister_solver_test",
     copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
@@ -40,6 +50,14 @@ drake_cc_googletest(
         "//systems/framework:diagram",
         "//systems/framework:diagram_builder",
         "//systems/lcm",
+    ],
+)
+
+drake_cc_googletest(
+    name = "scratch_workspace_test",
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":scratch_workspace",
     ],
 )
 

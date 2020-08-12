@@ -1,4 +1,4 @@
-#include "drake/multibody/plant/fischer_burmeister_solver.h"
+#include "drake/multibody/solvers/fischer_burmeister_solver.h"
 
 #include <algorithm>
 #include <limits>
@@ -10,6 +10,7 @@
 
 namespace drake {
 namespace multibody {
+namespace solvers {
 
 template <typename T>
 FBSolver<T>::FBSolver(const ProblemData<T>* data)
@@ -707,11 +708,12 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
   return FBSolverResult::kMaxIterationsReached;
 }
 
+}  // namespace solvers
 }  // namespace multibody
 }  // namespace drake
 
 DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    struct ::drake::multibody::ProblemData)
+    struct ::drake::multibody::solvers::ProblemData)
 
 DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    class ::drake::multibody::FBSolver)
+    class ::drake::multibody::solvers::FBSolver)

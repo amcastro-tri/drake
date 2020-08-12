@@ -15,6 +15,7 @@
 
 namespace drake {
 namespace multibody {
+namespace solvers {
 
 template <typename T>
 class GrantScratchWorkspaceAccess;
@@ -722,5 +723,7 @@ class FBSolver {
 
   FBSolverIterationStats stats_;
 };
-}
-}
+
+}  // namespace solvers
+}  // namespace multibody
+}  // namespace drake

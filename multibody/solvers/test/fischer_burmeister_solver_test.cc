@@ -1,4 +1,4 @@
-#include "drake/multibody/plant/fischer_burmeister_solver.h"
+#include "drake/multibody/solvers/fischer_burmeister_solver.h"
 
 #include <memory>
 
@@ -21,6 +21,7 @@
 
 namespace drake {
 namespace multibody {
+namespace solvers {
 namespace {
 
 using Eigen::Vector3d;
@@ -1413,8 +1414,7 @@ GTEST_TEST(EmptyWorld, Solve) {
       &M, &Jn, &Jt, &p_star, &fn0, &stiffness, &dissipation, &mu_vector));
 }
 #endif
-
 }  // namespace
+}  // namespace solvers
 }  // namespace multibody
 }  // namespace drake
-

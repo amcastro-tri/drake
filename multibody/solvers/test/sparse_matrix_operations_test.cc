@@ -137,3 +137,43 @@ GTEST_TEST(EigenSparse, BasisVectors) {
   PRINT_VAR(ei.nonZeros());  
 
 }
+
+GTEST_TEST(EigenSparse, ResettingNnz) {
+  const int nv = 5;
+  VectorXd xv(nv);  
+  xv.setZero();
+  xv << 1.2, 1.3;
+  std::cout << "Initial vector:" << std::endl;
+  SparseVectord xv_sparse = xv.sparseView();
+  PRINT_VAR(xv_sparse.size());
+  PRINT_VAR(xv_sparse.nonZeros());
+  PRINT_VAR(xv_sparse.outerSize());
+  PRINT_VAR(xv_sparse.innerSize());
+  PRINT_VARn(xv_sparse);
+  EXPECT_EQ(xv_sparse.nonZeros(), 2);
+
+  std::cout << ".resize()" << std::endl;
+  xv.resize(nv);
+  PRINT_VAR(xv_sparse.size());
+  PRINT_VAR(xv_sparse.nonZeros());
+  PRINT_VAR(xv_sparse.outerSize());
+  PRINT_VAR(xv_sparse.innerSize());
+  PRINT_VARn(xv_sparse);
+
+  // Makes nnz = 0 but does not free memory.
+  std::cout << ".setZero()" << std::endl;
+  xv_sparse.setZero();
+  PRINT_VAR(xv_sparse.size());
+  PRINT_VAR(xv_sparse.nonZeros());
+  PRINT_VAR(xv_sparse.outerSize());
+  PRINT_VAR(xv_sparse.innerSize());
+
+  // To free non-zeros, we need to call squeeze.
+  std::cout << ".data().squeeze()" << std::endl;
+  xv_sparse.data().squeeze();
+  PRINT_VAR(xv_sparse.size());
+  PRINT_VAR(xv_sparse.nonZeros());
+  PRINT_VAR(xv_sparse.outerSize());
+  PRINT_VAR(xv_sparse.innerSize());
+  PRINT_VARn(xv_sparse);
+}

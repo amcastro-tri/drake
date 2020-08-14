@@ -8,6 +8,9 @@
 #include "drake/common/drake_copyable.h"
 #include "drake/common/drake_throw.h"
 #include "drake/common/eigen_types.h"
+#include "drake/multibody/solvers/system_dynamics_data.h"
+#include "drake/multibody/solvers/point_contact_data.h"
+#include "drake/multibody/solvers/scratch_workspace.h"
 
 #include <iostream>
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
@@ -16,189 +19,6 @@
 namespace drake {
 namespace multibody {
 namespace solvers {
-
-template <typename T>
-class GrantScratchWorkspaceAccess;
-
-template <typename T>
-class ScratchWorkspace {
- public:
-  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(ScratchWorkspace);
-
-  ScratchWorkspace(int nv, int nc, int max_vectors)
-      : nv_(nv), nc_(nc), max_vectors_(max_vectors) {}
-
-  /// Number of vectors of size 3 * nc currently being referenced.
-  int num_xc_vectors() const { return xc_top_; }
-
-  /// The current capacity for xc vectors. The maximum number of xc vectors so
-  /// far requested.
-  int xc_vectors_capacity() const { return xc_pool_.size(); }
-
- private:
-  friend class GrantScratchWorkspaceAccess<T>;
-
-  // Pushes a vector of size 3*nc into the stack and returns a reference to
-  // it.
-  VectorX<T>& push_xc_sized_vector() {    
-    //PRINT_VAR(xc_top_);
-    return AccessVectorPoolAndMaybeAllocate(xc_top_++, 3 * nc_, &xc_pool_);
-  }
-
-  // Pops `count`  xc sized vectors from the stack.
-  void pop_xc_sized_vectors(int count) { xc_top_ -= count; }
-
-  VectorX<T>& push_xn_sized_vector() {
-    //PRINT_VAR(xn_top_);
-    return AccessVectorPoolAndMaybeAllocate(xn_top_++, nc_, &xn_pool_);
-  }
-  void pop_xn_sized_vectors(int count) { xn_top_ -= count; }
-
-  VectorX<T>& push_xt_sized_vector() {
-    //PRINT_VAR(xt_top_);
-    return AccessVectorPoolAndMaybeAllocate(xt_top_++, 2 * nc_, &xt_pool_);
-  }
-  void pop_xt_sized_vectors(int count) { xt_top_ -= count; }
-
-  VectorX<T>& push_v_sized_vector() {
-    //PRINT_VAR(v_top_);
-    return AccessVectorPoolAndMaybeAllocate(v_top_++, nv_, &v_pool_);
-  }
-  void pop_v_sized_vectors(int count) { v_top_ -= count; }
-
-  VectorX<T>& AccessVectorPoolAndMaybeAllocate(
-      int i, int vector_size, std::vector<std::unique_ptr<VectorX<T>>>* pool) {
-    if (i < static_cast<int>(pool->size())) {
-      return *pool->at(i);
-    } else {
-      if (max_vectors_ == static_cast<int>(pool->size())) {
-        throw std::runtime_error("Workspace reached maximum capacity.");
-      }
-      return *pool->emplace_back(std::make_unique<VectorX<T>>(vector_size));
-    }
-  }
-
-  int nv_, nc_;
-  int max_vectors_;
-  int xc_top_{0};
-  int xn_top_{0};
-  int xt_top_{0};
-  int v_top_{0};
-  // We save pointers instead of the actual objects so that whenever a
-  // .push_back() happens the actual vectors are not destroyed.
-  std::vector<std::unique_ptr<VectorX<T>>>
-      xc_pool_;  // pool of vectors of size 3*nc.
-  std::vector<std::unique_ptr<VectorX<T>>>
-      xn_pool_;  // pool of vectors of size nc.
-  std::vector<std::unique_ptr<VectorX<T>>>
-      xt_pool_;  // pool of vectors of size 2*nc.
-  std::vector<std::unique_ptr<VectorX<T>>>
-      v_pool_;  // pool of vectors of size nv.
-};
-
-template <typename T>
-class GrantScratchWorkspaceAccess {
- public:
-  /// Resets counter access for w.
-  GrantScratchWorkspaceAccess(ScratchWorkspace<T>& w) : w_(w) {}
-
-  /// Resets counter access for w.
-  ~GrantScratchWorkspaceAccess() {
-    w_.pop_xc_sized_vectors(xc_counter_);
-    w_.pop_xn_sized_vectors(xn_counter_);
-    w_.pop_xt_sized_vectors(xt_counter_);
-    w_.pop_v_sized_vectors(v_counter_);
-  }
-
-  // Access an i-th pool for vectors of size 3*nc.
-  VectorX<T>& xc_sized_vector() {
-    ++xc_counter_;
-    return w_.push_xc_sized_vector();
-  }
-
-  VectorX<T>& xn_sized_vector() {
-    ++xn_counter_;
-    return w_.push_xn_sized_vector();
-  }
-
-  VectorX<T>& xt_sized_vector() {
-    ++xt_counter_;
-    return w_.push_xt_sized_vector();
-  }
-
-  VectorX<T>& v_sized_vector() {
-    ++v_counter_;
-    return w_.push_v_sized_vector();
-  }
-
- private:
-  ScratchWorkspace<T>& w_;
-  int xc_counter_{0};
-  int xn_counter_{0};
-  int xt_counter_{0};
-  int v_counter_{0};
-};
-
-template <typename T>
-class ProblemData {
-    public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(ProblemData)
-
-  ProblemData(const T& dt, const MatrixX<T>* M, const MatrixX<T>* Jn,
-              const MatrixX<T>* Jt, const VectorX<T>* tau, const VectorX<T>* v0,
-              const VectorX<T>* phi0, const VectorX<T>* stiffness,
-              const VectorX<T>* dissipation, const VectorX<T>* mu)
-      : dt_(dt),
-        M_(M),
-        Jn_(Jn),
-        Jt_(Jt),
-        tau_(tau),
-        v0_(v0),
-        phi0_(phi0),
-        stiffness_(stiffness),
-        dissipation_(dissipation),
-        mu_(mu) {
-    nv_ = M_->rows();
-    nc_ = phi0_->size();
-  }
-
-  int num_contacts() const { return nc_; }
-  int num_velocities() const { return nv_; }
-
-  const T& dt() const { return dt_; }
-  const MatrixX<T>& M() const { return *M_;  };
-  const MatrixX<T>& Jn() const { return *Jn_; };
-  const MatrixX<T>& Jt() const { return *Jt_; };
-  const VectorX<T>& v0() const { return *v0_;  };
-  const VectorX<T>& tau() const { return *tau_; }
-  const VectorX<T>& phi0() const { return *phi0_;  };
-  const VectorX<T>& stiffness() const { return *stiffness_;  };
-  const VectorX<T>& dissipation() const { return *dissipation_;  };
-  const VectorX<T>& mu() const { return *mu_;  };
-
- private:        
-  // sizes.
-  int nc_;
-  int nv_;
-
-  // Time step
-  T dt_;
-
-  /// System's mass matrix.
-  const MatrixX<T>* M_;
-  const MatrixX<T>* Jn_;
-  const MatrixX<T>* Jt_;
-
-  // Right hand side.
-  const VectorX<T>* tau_;
-  const VectorX<T>* v0_;
-
-  // Point pairs information.
-  const VectorX<T>* phi0_;
-  const VectorX<T>* stiffness_;
-  const VectorX<T>* dissipation_;
-  const VectorX<T>* mu_;
-};
 
 struct FBSolverParameters {
   double stiction_tolerance{1.0e-5};  // vs in [m/s].
@@ -305,6 +125,9 @@ class FBSolver {
     VectorX<T> W;
     VectorX<T> gt;
 
+    bool contact_constraints_dirty{true};
+    VectorX<T> DgDvc;
+
     void Resize(int nv, int nc) {
       vc.resize(3 * nc);
       vn.resize(nc);
@@ -321,6 +144,7 @@ class FBSolver {
       dbeta_norm.resize(nc);
       W.resize(nc);
       gt.resize(2 * nc);
+      DgDvc.resize(3 * nc);
     }
   };
 
@@ -330,21 +154,31 @@ class FBSolver {
     // N.B. We do want to copy the cache as is during assignment.
     DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(State);
 
+    State() = default;
+
     State(int nv, int nc) { Resize(nv, nc); }
 
-    void Set(const VectorX<T>& v, const VectorX<T>& gamma, const T& m,
-             const T& dt) {
-      SetVelocities(v);
-      SetImpulses(gamma);
-      SetComplementaritySlackness(m);
-      SetDt(dt);
+    void Resize(int nv, int nc) {
+      v_.resize(nv);
+      gamma_.resize(3 * nc);
+      lambda_.resize(nc);
+      cache_.Resize(nv, nc);
     }
 
-    void SetDt(const T& dt) {
-      dt_ = dt;
+    /// Setting dt invalidates all cache entries.
+    void SetDt(const T& dt) { 
+      dt_ = dt; 
       cache_.contact_velocities_dirty = true;
       cache_.normal_constraints_dirty = true;
       cache_.normal_constraint_jacobian_dirty = true;
+      cache_.contact_constraints_dirty = true;
+      cache_.max_dissipation_constraints_dirty = true;
+    }
+
+    void Set(const VectorX<T>& v, const VectorX<T>& gamma, const T& m) {
+      SetVelocities(v);
+      SetImpulses(gamma);
+      SetComplementaritySlackness(m);
     }
 
     void SetVelocities(const VectorX<T>& v) {
@@ -357,6 +191,7 @@ class FBSolver {
       m_ = m;
       cache_.normal_constraints_dirty = true;
       cache_.normal_constraint_jacobian_dirty = true;
+      cache_.contact_constraints_dirty = true;
     }
 
     const T& dt() const { return dt_; }
@@ -371,17 +206,20 @@ class FBSolver {
       cache_.contact_velocities_dirty = true;
       cache_.normal_constraints_dirty = true;
       cache_.normal_constraint_jacobian_dirty = true;
+      cache_.contact_constraints_dirty = true;
       return v_;
     }
 
     VectorX<T>& mutable_gamma() {
       cache_.normal_constraints_dirty = true;
       cache_.normal_constraint_jacobian_dirty = true;
+      cache_.contact_constraints_dirty = true;
       return gamma_;
     }
 
     VectorX<T>& mutable_lambda() {
       cache_.max_dissipation_constraints_dirty = true;
+      cache_.contact_constraints_dirty = true;
       return lambda_;
     }
 
@@ -390,11 +228,12 @@ class FBSolver {
       // m.
       cache_.normal_constraints_dirty = true;
       cache_.normal_constraint_jacobian_dirty = true;
+      cache_.contact_constraints_dirty = true;
       return m_;
     }
 
    private:
-    T dt_;              // For now place here. Consider what to do.
+    T dt_;
     VectorX<T> v_;      // nv
     VectorX<T> gamma_;  // 3 * nc.
     VectorX<T> lambda_; // nc
@@ -402,119 +241,167 @@ class FBSolver {
     T m_;
 
     // We "cache" computations that depend on the state of the iteration.
-    mutable Cache cache_;
-
-    void Resize(int nv, int nc) {
-      v_.resize(nv);
-      gamma_.resize(3 * nc);
-      lambda_.resize(nc);
-      cache_.Resize(nv, nc);
-    }
+    mutable Cache cache_;    
   };
+  
+  FBSolver() = default;
 
-  explicit FBSolver(const ProblemData<T>* data);
+  // TODO: this should override the parent class.
+  bool supports_point_contact_data() const { return true; };
 
-  // TODO: return something more meaningful.
-  FBSolverResult SolveWithGuess(const VectorX<T>& v_guess);
+  // TODO: this should override the parent class.
+  bool supports_hybrid_contact_data() const { return false; };
+
+  // TODO: this should override the parent class.
+  void SetSystemDynamicsData(const SystemDynamicsData<T>* data);
+
+  void SetPointContactData(const PointContactData<T>* data) {
+    DRAKE_DEMAND(data != nullptr);
+    contact_data_ = data;
+  }
+
+  FBSolverResult SolveWithGuess(const T& dt, const VectorX<T>& v_guess);
 
   FBSolverResult SolveWithGuess(const State& state_guess);
 
-  int num_contacts() const { return data_.num_contacts();  }
+  int num_contacts() const { return dynamics_data_->num_contacts();  }
 
-  int num_velocities() const { return data_.num_velocities(); }
+  int num_velocities() const { return dynamics_data_->num_velocities(); }
 
   void set_parameters(const FBSolverParameters& p) { parameters_ = p; }
 
   const FBSolverIterationStats& get_stats() const { return stats_; }
 
-  VectorX<T> get_normal_forces() const {
-    VectorX<T> pi(num_contacts());
+  VectorX<T> CopyNormalForces() const {
+    GrantScratchWorkspaceAccess access(scratch_workspace_);
+    auto& pi = access.xn_sized_vector();
     ExtractNormal(state_.gamma(), &pi);
     return pi;
   }
 
   const State& get_state() const { return state_; }
 
- private:
+ private: 
+  // DgDvc is a diagonal matrix with entries DgDvc = [1, 1, DgpiDvn] for each
+  // contact point.
+  // yc = DgDvc * xc, is O(3*nc).
+  void MultiplyBy_DgDvc(const State& s, const VectorX<T>& xc,
+                        VectorX<T>* yc) const {
+    DRAKE_DEMAND(3 * num_contacts() == xc.size());
+    DRAKE_DEMAND(3 * num_contacts() == yc->size());
+    ValidateContactConstraintsCache(s);
+    const VectorX<T>& DgDvc = s.cache().DgDvc;
+    *yc = DgDvc.asDiagonal() * xc;
+  }
+
+  void MultiplyBy_DgDvc(const State& s, const Eigen::SparseVector<T>& xc,
+                        Eigen::SparseVector<T>* yc) const {
+    DRAKE_DEMAND(3 * num_contacts() == xc.size());
+    DRAKE_DEMAND(3 * num_contacts() == yc->size());
+    ValidateContactConstraintsCache(s);
+    const VectorX<T>& DgDvc = s.cache().DgDvc;
+    *yc = DgDvc.asDiagonal() * xc;
+  }
+
+  // Gc = DgDvc * Jc
+  // Then yc = Gc * v = DgDvc * Jc * v
+  template <class DenseOrSparseVector>
+  void MultiplyByGc(const State& s, const DenseOrSparseVector& v,
+                    DenseOrSparseVector* vc_tilde) const {
+    DRAKE_DEMAND(vc_tilde->size() == 3 * num_contacts());
+    get_Jc().Multiply(v, vc_tilde);                  // vc_tilde = Jc * v
+    MultiplyBy_DgDvc(s, *vc_tilde, &*vc_tilde);  // vc_tilde = Gc * v
+  }
+
+  // tau_c = Gc(s)^T * fc = (dgpi_dvn*Jc)^T * fc = Jc^T * dgpi_dvn * fc
+  template <class DenseOrSparseVector>
+  void MultiplyByGcTranspose(const State& s, const DenseOrSparseVector& fc,
+                             DenseOrSparseVector* tau_c) const {
+    GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
+    //auto& fc_tilde = access.xc_sized_vector();
+    DenseOrSparseVector fc_tilde(3 * num_contacts());
+    MultiplyBy_DgDvc(s, fc, &fc_tilde);     // fc_tilde = DgDvc * fc
+    get_JcT().Multiply(fc_tilde, &*tau_c);  // tau_c = JcT * DgDvc * fc
+  }
+
+  // Define linear operator objects for Gc and GcT.
+  class GcOperator : public SparseLinearOperator<T> {
+   public:
+    GcOperator(const FBSolver<T>* solver, const State* state)
+        : SparseLinearOperator<T>(3 * solver->num_contacts(),
+                                  solver->num_velocities()),
+          solver_(solver),
+          state_(state){};
+
+    ~GcOperator() {}
+
+    /// Performs y = Gc*x.
+    virtual void Multiply(const Eigen::SparseVector<T>& x,
+                          Eigen::SparseVector<T>* y) const final {
+      DRAKE_DEMAND(y != nullptr);
+      DRAKE_DEMAND(x.size() == this->rows());
+      DRAKE_DEMAND(y->size() == this->cols());                            
+      solver_->MultiplyByGc(*state_, x, y);
+    }
+
+    /// Performs y = Gc*x.
+    virtual void Multiply(const VectorX<T>& x, VectorX<T>* y) const {
+      DRAKE_DEMAND(y != nullptr);
+      DRAKE_DEMAND(x.size() == this->rows());
+      DRAKE_DEMAND(y->size() == this->cols());
+      solver_->MultiplyByGc(*state_, x, y);
+    }
+
+   private:
+    const FBSolver<T>* solver_{nullptr};
+    const State* state_{nullptr};
+  };
+
+  class GcTOperator : public SparseLinearOperator<T> {
+   public:
+    GcTOperator(const FBSolver<T>* solver, const State* state)
+        : SparseLinearOperator<T>(solver->num_velocities(),
+                                  3 * solver->num_contacts()),
+          solver_(solver),
+          state_(state){};
+
+    ~GcTOperator() {}
+
+    /// Performs y = GcT*x.
+    virtual void Multiply(const Eigen::SparseVector<T>& x,
+                          Eigen::SparseVector<T>* y) const final {
+      DRAKE_DEMAND(y != nullptr);
+      DRAKE_DEMAND(x.size() == this->rows());
+      DRAKE_DEMAND(y->size() == this->cols());
+      solver_->MultiplyByGcTranspose(*state_, x, y);
+    }
+
+    /// Performs y = GcT*x.
+    virtual void Multiply(const VectorX<T>& x, VectorX<T>* y) const {
+      DRAKE_DEMAND(y != nullptr);
+      DRAKE_DEMAND(x.size() == this->rows());
+      DRAKE_DEMAND(y->size() == this->cols());
+      solver_->MultiplyByGcTranspose(*state_, x, y);
+    }
+
+   private:
+    const FBSolver<T>* solver_{nullptr};
+    const State* state_{nullptr};
+  };
+
+#if 0
   // Utilities to be used as operators.
   // Performs vc = Jc(s) * v
   void MultiplyByJc(const VectorX<T>& v, VectorX<T>* vc) const {
     // Simple operator that depends on data and not the state.
-    *vc = Jc_ * v;
+    get_Jc().Multiply(v, &vc);
   }
 
-  void MultiplyByJn(const VectorX<T>& v, VectorX<T>* vn) const {
-    DRAKE_DEMAND(vn->size() == num_contacts());
-    *vn = data_.Jn() * v;
-  }
+  void MultiplyByJcTranspose(const VectorX<T>& fc, VectorX<T>* tau_c) const {
+    get_JcT().Multiply(fc, tau_c);
+  }  
 
-  void MultiplyByJt(const VectorX<T>& v, VectorX<T>* vt) const {
-    DRAKE_DEMAND(vt->size() == 2 * num_contacts());
-    *vt = data_.Jt() * v;
-  }
-
-  // tau_n = Jn^T * fn
-  void MultiplyByJnTranspose(const VectorX<T>& fn, VectorX<T>* tau_n) const {
-    DRAKE_DEMAND(fn.size() == num_contacts());                      
-    DRAKE_DEMAND(tau_n->size() == num_velocities());
-    *tau_n = data_.Jn().transpose() * fn;
-  }
-
-  // tau_t = Jt^T * ft
-  void MultiplyByJtTranspose(const VectorX<T>& ft, VectorX<T>* tau_t) const {
-    DRAKE_DEMAND(ft.size() == 2 * num_contacts());                      
-    DRAKE_DEMAND(tau_t->size() == num_velocities());
-    *tau_t = data_.Jt().transpose() * ft;
-  }
-
-  // Performs vn_tilde = Gn * v
-  void MultiplyByGn(const State& s, const VectorX<T>& v,
-                    VectorX<T>* vn_tilde) const {
-    ValidateNormalConstraintsCache(s);                      
-    MultiplyByJn(v, vn_tilde);
-    const VectorX<T>& dgpi_dvn = s.cache().dgpi_dvn;  
-    (*vn_tilde) += dgpi_dvn.asDiagonal() * (*vn_tilde);
-  }
-
-  // In this formulation Gt = Jt, i.e. vt_tilde = vt.
-  void MultiplyByGt(const State&, const VectorX<T>& v,
-                    VectorX<T>* vt_tilde) const {
-    MultiplyByJt(v, vt_tilde);
-  }
-
-  void MultiplyByGc(const State& s, const VectorX<T>& v,
-                    VectorX<T>* vc_tilde) const {
-    DRAKE_DEMAND(vc_tilde->size() == 3 * num_contacts());
-    GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
-    auto& vn_tilde = access.xn_sized_vector();
-    auto& vt_tilde = access.xt_sized_vector();
-    MultiplyByGn(s, v, &vn_tilde);
-    MultiplyByGt(s, v, &vt_tilde);
-    MergeNormalAndTangent(vn_tilde, vt_tilde, vc_tilde);
-  }
-
-  // tau_n = Gn(s)^T * fn
-  void MultiplyByGnTranspose(const State& s, const VectorX<T>& fn,
-                             VectorX<T>* tau_n) const {
-    DRAKE_DEMAND(fn.size() == num_contacts());                      
-    DRAKE_DEMAND(tau_n->size() == num_velocities());
-    ValidateNormalConstraintsCache(s);
-    const VectorX<T>& dgpi_dvn = s.cache().dgpi_dvn;
-    GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
-    auto& fn_tilde = access.xn_sized_vector();    
-    fn_tilde = dgpi_dvn.asDiagonal() * fn;
-    MultiplyByJnTranspose(fn_tilde, tau_n);
-  }
-
-  // tau_t = Gt(s)^T * ft
-  void MultiplyByGtTranspose(const State&, const VectorX<T>& ft,
-                             VectorX<T>* tau_t) const {
-    DRAKE_DEMAND(ft.size() == 2 * num_contacts());
-    DRAKE_DEMAND(tau_t->size() == num_velocities());
-    MultiplyByJtTranspose(ft, tau_t);
-  }
-
-  // tau_c = Gc(s)^T * fc
+    // tau_c = Gc(s)^T * fc
   void MultiplyByGcTranspose(const State& s, const VectorX<T>& fc,
                     VectorX<T>* tau_c) const {
     DRAKE_DEMAND(fc.size() == 3 * num_contacts());                      
@@ -537,6 +424,75 @@ class FBSolver {
     DRAKE_DEMAND(a->size() == num_velocities());
     *a = Mi_.solve(tau);
   }
+#endif
+
+#if 0
+  void MultiplyByJn(const VectorX<T>& v, VectorX<T>* vn) const {
+    DRAKE_DEMAND(vn->size() == num_contacts());
+    GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
+    auto& vc = access.xc_sized_vector();
+    MultiplyByJc(v, &vc);
+    ExtractNormal(vc, vn);
+  }  
+
+  void MultiplyByJt(const VectorX<T>& v, VectorX<T>* vt) const {
+    DRAKE_DEMAND(vt->size() == 2 * num_contacts());
+    GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
+    auto& vc = access.xc_sized_vector();
+    MultiplyByJc(v, &vc);
+    ExtractTangent(vc, vt);
+  }
+
+  // tau_n = Jn^T * fn
+  void MultiplyByJnTranspose(const VectorX<T>& fn, VectorX<T>* tau_n) const {
+    DRAKE_DEMAND(fn.size() == num_contacts());                      
+    DRAKE_DEMAND(tau_n->size() == num_velocities());
+    *tau_n = data_->Jn().transpose() * fn;
+  }
+
+  // tau_t = Jt^T * ft
+  void MultiplyByJtTranspose(const VectorX<T>& ft, VectorX<T>* tau_t) const {
+    DRAKE_DEMAND(ft.size() == 2 * num_contacts());                      
+    DRAKE_DEMAND(tau_t->size() == num_velocities());
+    *tau_t = data_->Jt().transpose() * ft;
+  }
+
+  // Performs vn_tilde = Gn * v
+  void MultiplyByGn(const State& s, const VectorX<T>& v,
+                    VectorX<T>* vn_tilde) const {
+    ValidateNormalConstraintsCache(s);                      
+    MultiplyByJn(v, vn_tilde);
+    const VectorX<T>& dgpi_dvn = s.cache().dgpi_dvn;  
+    (*vn_tilde) += dgpi_dvn.asDiagonal() * (*vn_tilde);
+  }
+
+  // In this formulation Gt = Jt, i.e. vt_tilde = vt.
+  void MultiplyByGt(const State&, const VectorX<T>& v,
+                    VectorX<T>* vt_tilde) const {
+    MultiplyByJt(v, vt_tilde);
+  }
+
+  // tau_n = Gn(s)^T * fn
+  void MultiplyByGnTranspose(const State& s, const VectorX<T>& fn,
+                             VectorX<T>* tau_n) const {
+    DRAKE_DEMAND(fn.size() == num_contacts());                      
+    DRAKE_DEMAND(tau_n->size() == num_velocities());
+    ValidateNormalConstraintsCache(s);
+    const VectorX<T>& dgpi_dvn = s.cache().dgpi_dvn;
+    GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
+    auto& fn_tilde = access.xn_sized_vector();    
+    fn_tilde = dgpi_dvn.asDiagonal() * fn;
+    MultiplyByJnTranspose(fn_tilde, tau_n);
+  }
+
+  // tau_t = Gt(s)^T * ft
+  void MultiplyByGtTranspose(const State&, const VectorX<T>& ft,
+                             VectorX<T>* tau_t) const {
+    DRAKE_DEMAND(ft.size() == 2 * num_contacts());
+    DRAKE_DEMAND(tau_t->size() == num_velocities());
+    MultiplyByJtTranspose(ft, tau_t);
+  }
+#endif
 
   // Compute residual of the generalized velocities:
   //   Fv = v - v_star - Mi * Gcᵀ * gamma.
@@ -547,7 +503,7 @@ class FBSolver {
     auto& GcT_gamma = access.v_sized_vector();
     auto& Mi_GcT_gamma = access.v_sized_vector();
     MultiplyByGcTranspose(s, gamma, &GcT_gamma);  // GcT_gamma = Gc(s)ᵀ * gamma.
-    MultiplyByMinv(GcT_gamma, &Mi_GcT_gamma);
+    get_Minv().Multiply(GcT_gamma, &Mi_GcT_gamma);
     *Fv = v - v_star_ - Mi_GcT_gamma;
   }
 
@@ -671,6 +627,19 @@ class FBSolver {
     }    
   }
 
+  void ValidateContactConstraintsCache(const State& s) const {
+    Cache& c = s.mutable_cache();
+    if (c.contact_constraints_dirty) {
+      ValidateNormalConstraintsCache(s);
+      const auto& DgnDvn = c.dgpi_dvn;
+      GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
+      auto& DgtDvt = access.xt_sized_vector();
+      DgtDvt.setOnes();
+      MergeNormalAndTangent(DgnDvn, DgtDvt, &c.DgDvc);
+      c.contact_constraints_dirty = false;
+    }
+  }
+
   void ValidateMaxDissipationConstraintsCache(const State& s) const {
     Cache& c = s.mutable_cache();
     if (c.max_dissipation_constraints_dirty) {
@@ -691,36 +660,104 @@ class FBSolver {
   T LimitNormalUpdate(const State& s_km, const State& s_kp,
                       int outer_iter) const;
 
-  const ProblemData<T>& data_;
+  // Performs multiplication W = G * Mi * JT one column at a time.
+  // G of size 3nc x nv
+  // Mi of size nv x nv
+  // JT of size nv x 3nc
+  // 
+  // Result W of size 3nc x 3nc
+  void FormDelassusOperatorMatrix(const SparseLinearOperator<T>& G,
+                                  const SparseLinearOperator<T>& Mi,
+                                  const SparseLinearOperator<T>& JT,
+                                  Eigen::SparseMatrix<T>* W) const {
+    DRAKE_DEMAND(G.rows() == 3 * num_contacts());
+    DRAKE_DEMAND(G.cols() == num_velocities());
+    DRAKE_DEMAND(Mi.rows() == num_velocities());
+    DRAKE_DEMAND(Mi.cols() == num_velocities());
+    DRAKE_DEMAND(JT.rows() == num_velocities());
+    DRAKE_DEMAND(JT.cols() == 3 * num_contacts());
+    DRAKE_DEMAND(W->rows() == 3 * num_contacts());
+    DRAKE_DEMAND(W->cols() == 3 * num_contacts());
+
+    const int nv = num_velocities();
+    const int nc = num_contacts();
+
+    Eigen::SparseVector<T> ej(3 * nc);
+    // ei.makeCompressed();   // Not available for SparseVector.
+    ej.coeffRef(0) = 1.0;  // Effectively allocate one non-zero entry.    
+
+
+    Eigen::SparseVector<T> JTcolj(nv);    
+    Eigen::SparseVector<T> MiJTcolj(nv);    
+    Eigen::SparseVector<T> Wcolj(3 * nc);
+    // Reserve maximum number of non-zeros.
+    JTcolj.reserve(nv);
+    MiJTcolj.reserve(nv);
+    Wcolj.reserve(3 * nc);
+
+    // Loop over the j-th column.
+    for (int j = 0; j < W->cols(); ++j) {
+      // By changing the inner index, we change what entry is the non-zero with
+      // value 1.0.
+      *ej.innerIndexPtr() = j;
+
+      // Reset to nnz = 0. Memory is not freed.
+      JTcolj.setZero();
+      MiJTcolj.setZero();
+      Wcolj.setZero();
+
+      // Apply each operator in sequence.
+      JT.Multiply(ej, &JTcolj);  // JTcolj = JT * ej
+      Mi.Multiply(JTcolj, &MiJTcolj);
+      G.Multiply(MiJTcolj, &Wcolj);
+      W->col(j) = Wcolj;
+    }
+  }
+
+  // Quick accessors to problem data.
+  const SparseLinearOperator<T>& get_Jc() const {
+    return dynamics_data_->get_Jc();
+  }
+  const SparseLinearOperator<T>& get_JcT() const {
+    return dynamics_data_->get_JcT();
+  }
+  const SparseLinearOperator<T>& get_Minv() const {
+    return dynamics_data_->get_Minv();
+  }
+  const VectorX<T>& get_v0() const { return dynamics_data_->get_v0(); }
+  const VectorX<T>& get_tau() const { return dynamics_data_->get_tau(); }
+  const VectorX<T>& get_phi0() const { return contact_data_->phi0(); }
+  const VectorX<T>& get_stiffness() const {
+    return contact_data_->get_stiffness();
+  }
+  const VectorX<T>& get_dissipation() const {
+    return contact_data_->get_dissipation();
+  }
+  const VectorX<T>& get_mu() const { return contact_data_->get_mu(); }
+
+  const SystemDynamicsData<T>* dynamics_data_{nullptr};
+  const PointContactData<T>* contact_data_{nullptr};
   FBSolverParameters parameters_;
 
   //////////////////////////////////////////////////////////////////////////////
-  // ALL THIS CONST AFTER LOADING DATA.
-  // The full contact Jacobian merging Jn and Jt.
-  // TODO: consider that data passes Jc and then we split into Jn and Jt.
-  MatrixX<T> Jc_;
+  // ALL THIS CONST AFTER LOADING DATA.  
   // Inverse of mass matrix in contact space.
-  Eigen::LDLT<MatrixX<T>> Mi_;
   MatrixX<T> Mi_times_JcT_;
-  MatrixX<T> N_;
+  Eigen::SparseMatrix<T> N_;
   // Scaling factors. Multiply impulses to get velocities, in [1 / Kg].
   // One per contact, of size nc.
   VectorX<T> scaling_factor;
   VectorX<T> vn0_;
   VectorX<T> v_star_;
-  VectorX<T> vn_stab_;  // Normal stabilization velocity.
+  VectorX<T> vn_stab_;
 
-  //////////////////////////////////////////////////////////////////////////////
-  // SOLVER'S ITERATION STATE, GIVEN BY SOLUTION AND MULTIPLIERS.
-  VectorX<T> v_;   // Generalized velocities.
-  VectorX<T> pi_;  // Normal forces.
-
-  //////////////////////////////////////////////////////////////////////////////
-  // THESE QUANTITIES CHANGE DURING ITERATION.
-  // They can all be computed as function of the state.
+  // The state of the solver's iteration.
   State state_;
+
+  // Workspace.
   mutable ScratchWorkspace<T> scratch_workspace_;
 
+  // Collect useful statistics.
   FBSolverIterationStats stats_;
 };
 

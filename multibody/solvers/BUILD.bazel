@@ -19,6 +19,9 @@ drake_cc_library(
     hdrs = ["fischer_burmeister_solver.h"],
     copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
     deps = [
+        ":point_contact_data",
+        ":scratch_workspace",
+        ":system_dynamics_data",
         "//common:default_scalars",
         "//common:extract_double",
     ],
@@ -28,6 +31,26 @@ drake_cc_library(
     name = "scratch_workspace",
     srcs = ["scratch_workspace.cc"],
     hdrs = ["scratch_workspace.h"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        "//common:default_scalars",
+    ],
+)
+
+drake_cc_library(
+    name = "system_dynamics_data",
+    srcs = ["system_dynamics_data.cc"],
+    hdrs = ["system_dynamics_data.h"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        "//common:default_scalars",
+    ],
+)
+
+drake_cc_library(
+    name = "point_contact_data",
+    srcs = [],
+    hdrs = ["point_contact_data.h"],
     copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
     deps = [
         "//common:default_scalars",
@@ -59,6 +82,18 @@ drake_cc_googletest(
     deps = [
         ":scratch_workspace",
     ],
+)
+
+drake_cc_googletest(
+    name = "eigen_matrix_free_test",
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [],
+)
+
+drake_cc_googletest(
+    name = "sparse_matrix_operations_test",
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = ["//common:essential",],
 )
 
 add_lint_tests()

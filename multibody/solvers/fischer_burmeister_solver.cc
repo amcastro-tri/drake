@@ -12,6 +12,47 @@ namespace drake {
 namespace multibody {
 namespace solvers {
 
+using Eigen::SparseMatrix;
+using Eigen::SparseVector;
+
+
+template <typename T>
+void FBSolver<T>::SetSystemDynamicsData(const SystemDynamicsData<T>* data) 
+{
+  DRAKE_DEMAND(data != nullptr);
+  dynamics_data_ = data;
+  const int nc = num_contacts();
+  const int nv = num_velocities();
+  state_.Resize(nv, nc);
+
+  GrantScratchWorkspaceAccess access(scratch_workspace_);
+  auto& vc0 = access.xc_sized_vector();
+  get_Jc().Multiply(get_v0(), &vc0);
+  ExtractNormal(vc0, &vn0_);
+
+#if 0
+  const T& dt = data_->dt();
+  const auto& tau = data_->get_tau();
+  v_star_.resize(nv);
+  MultiplyByMinv(tau, &v_star_);  // v_star_ = M⁻¹⋅tau
+  v_star_ = v0 + dt * v_star_;
+#endif
+
+  N_.resize(3 * nc, 3 * nc);
+  FormDelassusOperatorMatrix(get_Jc(), get_Minv(), get_JcT(), &N_);
+
+  // Compute scaling factors, one per contact.
+  scaling_factor.resize(nc);
+  for (int i = 0; i < nc; ++i) {
+    // 3x3 diagonal block. It might be singular, but definitely non-zero. That's
+    // why we use an rms norm.
+    const auto& Nii = N_.block(3 * i, 3 * i, 3, 3);
+    scaling_factor(i) = Nii.norm() / 3;  // 3 = sqrt(9).
+  }
+  PRINT_VAR(scaling_factor.transpose());
+}
+
+#if 0
 template <typename T>
 FBSolver<T>::FBSolver(const ProblemData<T>* data)
     : data_(*data),
@@ -20,26 +61,23 @@ FBSolver<T>::FBSolver(const ProblemData<T>* data)
   const int nc = num_contacts();
   const int nv = num_velocities();
 
-  state_.SetDt(data_.dt());
-
-  // Allocate workspace.
-  vn_stab_.resize(nc);
+  state_.SetDt(data_->dt());
 
   // Mass matrix inverse factorization.
-  Mi_ = data_.M().ldlt();
+  Mi_ = data_->M().ldlt();
 
   // Form full contact Jacobian.
   Jc_.resize(3 * nc, nv);
   for (int i = 0; i < nc; ++i) {
-    Jc_.block(3 * i, 0, 2, nv) = data_.Jt().block(2 * i, 0, 2, nv);
-    Jc_.block(3 * i + 2, 0, 1, nv) = data_.Jn().block(i, 0, 1, nv);
+    Jc_.block(3 * i, 0, 2, nv) = data_->Jt().block(2 * i, 0, 2, nv);
+    Jc_.block(3 * i + 2, 0, 1, nv) = data_->Jn().block(i, 0, 1, nv);
   }
 
-  const auto& v0 = data_.v0();
-  vn0_ = data_.Jn() * v0;
+  const auto& v0 = data_->get_v0();
+  vn0_ = data_->Jn() * v0;
 
-  const T& dt = data_.dt();
-  const auto& tau = data_.tau();
+  const T& dt = data_->dt();
+  const auto& tau = data_->get_tau();
   v_star_.resize(nv);
   MultiplyByMinv(tau, &v_star_);  // v_star_ = M⁻¹⋅tau
   v_star_ = v0 + dt * v_star_;
@@ -57,6 +95,7 @@ FBSolver<T>::FBSolver(const ProblemData<T>* data)
     scaling_factor(i) = Nii.norm() / 3;  // 3 = sqrt(9).
   }
 }
+#endif
 
 template <typename T>
 bool FBSolver<T>::CheckOuterLoopConvergenceCriteria(const VectorX<T>& vc,
@@ -96,7 +135,7 @@ template <typename T>
 void FBSolver<T>::UpdateContactVelocities(const VectorX<T>& v, VectorX<T>* vc,
                                           VectorX<T>* vn,
                                           VectorX<T>* vt) const {
-  *vc = Jc_ * v;
+  get_Jc().Multiply(v, vc);
   ExtractNormal(*vc, vn);
   ExtractTangent(*vc, vt);
 }
@@ -124,8 +163,8 @@ void FBSolver<T>::CalcNormalConstraintResidual(
 
   const int nc = num_contacts();
 
-  const VectorX<T>& k = data_.stiffness();
-  const VectorX<T>& d = data_.dissipation();
+  const VectorX<T>& k = get_stiffness();
+  const VectorX<T>& d = get_dissipation();
   const double min_stiffness_relative = 1.0e-10;
   const double e2 =
       parameters_.fb_velocity_scale * parameters_.fb_velocity_scale;
@@ -179,7 +218,7 @@ void FBSolver<T>::CalcMaxDissipationConstraintResidual(
   DRAKE_DEMAND(gt->size() == 2 * nc);
 
   const double vs = parameters_.stiction_tolerance;
-  const auto& mu = data_.mu();
+  const auto& mu = get_mu();
   const auto& r = scaling_factor;
 
   const auto limit_close_to_zero = [](const T& x) {
@@ -253,6 +292,7 @@ void FBSolver<T>::CalcMaxDissipationConstraintResidual(
 template <typename T>
 void FBSolver<T>::CalcNormalStabilizationVelocity(const T& dt,
                                                   VectorX<T>* vn_stab) {
+  vn_stab->resize(num_velocities());
   if (parameters_.alpha_stab < 0) {
     vn_stab->setZero();
     return;
@@ -260,7 +300,7 @@ void FBSolver<T>::CalcNormalStabilizationVelocity(const T& dt,
   const VectorX<T>& vn0 = vn0_;
   // As Todorov, use Baugmarte stabilization.
   const T tau_rigid = parameters_.alpha_stab * dt;
-  const VectorX<T>& phi0 = data_.phi0();
+  const VectorX<T>& phi0 = get_phi0();
   const T kd = dt / tau_rigid;
   const T kp = dt / (tau_rigid * tau_rigid);
   for (int i = 0; i < num_contacts(); ++i) {
@@ -425,9 +465,9 @@ T FBSolver<T>::LimitNormalUpdate(
 }
 
 template <typename T>
-FBSolverResult FBSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) {
+FBSolverResult FBSolver<T>::SolveWithGuess(const T& dt, const VectorX<T>& v_guess) {
   State s_guess(num_velocities(), num_contacts());
-  s_guess.SetDt(data_.dt());
+  s_guess.SetDt(dt);
   s_guess.SetVelocities(v_guess);
 
   // Workspace.
@@ -436,7 +476,7 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) {
   // Update vc so that we can use it to estimate a velocity scale.
   const auto& vc = EvalVc(s_guess);
   auto& vc_star = access.xc_sized_vector();
-  MultiplyByJc(v_star_, &vc_star);
+  get_Jc().Multiply(v_star_, &vc_star);
   const T m0 = EstimateVelocityScale(vc, vc_star);
   s_guess.SetComplementaritySlackness(m0);
 
@@ -472,19 +512,22 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
   const int nv = num_velocities();
   const int nc = num_contacts();  
 
-  // Aliases to problem data.
-  const auto& Jn = data_.Jn();
-  const auto& Jt = data_.Jt();
-
   GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
   auto& dv = access.v_sized_vector();
+  auto& xv_aux = access.v_sized_vector();
   auto& dpi = access.xn_sized_vector();
   auto& dbeta = access.xt_sized_vector();
   auto& dgamma = access.xc_sized_vector();
-  auto& dvc = access.xc_sized_vector();  
+  auto& dvc = access.xc_sized_vector();
+
+  const T& dt = state_guess.dt();
+
+  v_star_.resize(nv);
+  get_Minv().Multiply(get_tau(), &v_star_);  // v_star_ = Mi * tau
+  v_star_ = get_v0() + dt * v_star_;      // v_star_ = v0 + dt * Mi * tau
 
   // TODO: you might pass data_ and params_ explicitly here to show dependency?
-  CalcNormalStabilizationVelocity(data_.dt(), &vn_stab_);
+  CalcNormalStabilizationVelocity(dt, &vn_stab_);
 
   PRINT_VAR(scaling_factor.transpose());
 
@@ -505,7 +548,7 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
   // that I know is well withing the feasible region. 
   // Eg. Compute normal force analytically given the compliance, zero friction,
   // and use either v = v0 or v = v_star as a guess.
-  state_.SetDt(data_.dt());
+  state_.SetDt(data_->dt());
   state_.SetVelocities(v_guess);
 #endif
 
@@ -543,8 +586,8 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
   stats_ = {};
 
   // Maybe place these in the cache?
-  MatrixX<T> G(3 * nc, nv);
-  MatrixX<T> A(3 * nc, 3 * nc);  
+  //MatrixX<T> G(3 * nc, nv);
+  SparseMatrix<T> A(3 * nc, 3 * nc);  
   VectorX<T> C(3 * nc);
   VectorX<T>& Fv = access.v_sized_vector();
   VectorX<T>& Fg = access.xc_sized_vector();
@@ -556,6 +599,11 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
   // Auxiliary state to store update without iteration limit.
   // That is, state_kp.v = state_.v + dv, similarly for gamma.
   State state_kp(state_);
+
+  // Sice the pattern of A is the same as that of N, we analyze it here first.
+  A = N_;
+  Eigen::SparseLU<SparseMatrix<T>> solver;
+  solver.analyzePattern(A);
 
   // "Outer iteration" aka "Centering step" in barrier methods for convex
   // optimization solvers.
@@ -578,7 +626,6 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
       PRINT_VAR(inner_iter);
 
       ValidateNormalConstraintsCache(state_);
-      const auto& dgpi_dvn = state_.cache().dgpi_dvn;
       const auto& S = state_.cache().dgpi_dpi;
       const auto& gpi = state_.cache().gpi;
 
@@ -586,6 +633,14 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
       const auto& gt = state_.cache().gt;
       const auto& W = state_.cache().W;
 
+      ValidateContactConstraintsCache(state_);
+      const VectorX<T>& DgDvc = state_.cache().DgDvc;
+
+      // Operators Gc and GcT for the current state.
+      GcOperator Gc(this, &state_);   // Gc = DgDvc = [Jt, DgnDvn * Jn]
+      GcTOperator GcT(this, &state_);
+
+#if 0
       // Build G = [dgpi_dv; Jt]
       G.resize(3 * nc, nv);
       for (int i = 0; i < nc; ++i) {
@@ -595,6 +650,7 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
         // Gn
         G.block(3 * i + 2, 0, 1, nv) = dgpi_dvn(i) * Jn.block(i, 0, 1, nv);
       }      
+#endif      
       
       for (int i = 0; i < nc; ++i) {
         // Build g = [gt; gn]
@@ -607,8 +663,6 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
         C(3 * i + 2) = S(i);
       }
 
-      CalcVelocitiesResidual(state_, &Fv);
-
       // NOTE! Maybe with a CG solver we'd only need the operator form of A,
       // which I believe I can compute using operator forms of Jn, Jt since G =
       // diag(dgpi_dvn) * Jn, and similarly for Jt. Assemble Schur complement of
@@ -616,27 +670,76 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
       //     [G   C ]
       // C = [W 0]
       //     [0 S]
-      const MatrixX<T> Mi_times_GT = Mi_.solve(G.transpose());
-      A = C.asDiagonal();
-      A += G * Mi_times_GT;
+      //FormDelassusOperatorMatrix(Gc, get_Minv(), GcT, &A);
+
+      //W = DgDvc * N * DgDvc;
+      // These two multiplications are O(2*nnz(A)).
+      // We perform them explicitly by scanning the non-zeros of A.
+      A = N_;
+      for (int k = 0; k < A.outerSize(); ++k) {
+        for (typename SparseMatrix<T>::InnerIterator it(A, k); it; ++it) {
+          const int i = it.row();
+          const int j = it.col();
+          it.valueRef() *= (DgDvc(i) * DgDvc(j));
+        }
+      }
+
+      // This does not compile:
+      //A = DgDvc.asDiagonal() * N_;  // A = D * N
+      //A *= DgDvc.asDiagonal();      // A = D * N * D = Gc * Mi * GcT
+      PRINT_VARn(N_);
+      PRINT_VAR(DgDvc.transpose());
+      PRINT_VARn(A);
+
+      // this line assumes diagonal entries were allocated. See:
+      // https://forum.kde.org/viewtopic.php?f=74&t=133686&p=359423&hilit=sparse+diagonal#p359423
+      // Otherwise we'll get an error at runtime.
+      A += C.asDiagonal();
+
+      PRINT_VAR(C.transpose());
+      PRINT_VARn(A);
+
+      // Old dense version:
+      //const MatrixX<T> Mi_times_GT = Mi_.solve(G.transpose());
+     // A = C.asDiagonal();
+      //A += G * Mi_times_GT;
       
       PRINT_VAR(S.transpose());
       PRINT_VAR(W.transpose());
       PRINT_VARn(A);
 
+      CalcVelocitiesResidual(state_, &Fv);
+
       // Assemble multipliers residual. nu = [lambda, gamma = [beta, pi], mu]
-      Fg = G * Fv - g;
+      Gc.Multiply(Fv, &Fg);  // Fg = Gc * Fv
+      Fg -= g;               // Fg = Gc * Fv - g;
 
       // Solve for change in the multipliers.
       // We expect an SPD system here.
-      Eigen::LDLT<MatrixX<T>> Aldlt(A);
-      if (Aldlt.info() != Eigen::Success) {
+      //Eigen::LDLT<MatrixX<T>> Aldlt(A);
+      //if (Aldlt.info() != Eigen::Success) {
+      //  return FBSolverResult::kLinearSolverFailed;
+      //}
+      //dgamma = Aldlt.solve(Fg);
+      
+      // Pattern was analyzed at the very top with A.analyzePattern(). Here the
+      // actual numerical factorization is performed.
+      solver.factorize(A);
+      if (solver.info() != Eigen::Success) {
+        // Decomposition failed. Maybe return kLinearFactorizationFailed.
         return FBSolverResult::kLinearSolverFailed;
       }
-      dgamma = Aldlt.solve(Fg);
+      dgamma = solver.solve(Fg);
+      if (solver.info() != Eigen::Success) {
+        // Solving failed.
+        return FBSolverResult::kLinearSolverFailed;
+      }
 
       // Update dv:
-      dv = -Fv + Mi_times_GT * dgamma;
+      GcT.Multiply(dgamma, &xv_aux);     // xv_aux = GcT * dgamma
+      get_Minv().Multiply(xv_aux, &dv);  // dv = Mi * GcT * dgamma
+      dv -= Fv;                          // dv = -Fv + Mi * GcT * dgamma
+      //dv = -Fv + Mi_times_GT * dgamma;
 
       ExtractNormal(dgamma, &dpi);
       ExtractTangent(dgamma, &dbeta);
@@ -711,9 +814,6 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
 }  // namespace solvers
 }  // namespace multibody
 }  // namespace drake
-
-DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    struct ::drake::multibody::solvers::ProblemData)
 
 DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     class ::drake::multibody::solvers::FBSolver)

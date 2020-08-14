@@ -474,8 +474,12 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const T& dt, const VectorX<T>& v_gues
   // Workspace.
   GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
 
+  v_star_.resize(num_velocities());
+  get_Minv().Multiply(get_tau(), &v_star_);  // v_star_ = Mi * tau
+  v_star_ = get_v0() + dt * v_star_;        // v_star_ = v0 + dt * Mi * tau
+
   // Update vc so that we can use it to estimate a velocity scale.
-  const auto& vc = EvalVc(s_guess);
+  const auto& vc = EvalVc(s_guess);  
   auto& vc_star = access.xc_sized_vector();
   get_Jc().Multiply(v_star_, &vc_star);
   const T m0 = EstimateVelocityScale(vc, vc_star);

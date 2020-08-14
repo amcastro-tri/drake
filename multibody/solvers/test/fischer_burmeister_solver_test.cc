@@ -24,6 +24,27 @@ namespace multibody {
 namespace solvers {
 namespace {
 
+FBSolverParameters MakeSimpleNewtonNoLsParameters(int max_iters,
+                                                  double tolerance) {
+  FBSolverParameters parameters;
+  // parameters.stiction_tolerance = 0.0;
+  // parameters.alpha_stab = -1;  // for 0 < v + Rn * pi ⊥ pi > 0
+
+  parameters.outer_loop_max_iters = max_iters;
+  parameters.outer_loop_tolerance = tolerance;
+  parameters.inner_loop_max_iters = 1;
+  parameters.initialization_max_iters = 1;
+  parameters.inner_loop_tolerance = 0.5;
+
+  parameters.relaxation = 1.0;
+  parameters.delta = 0.;
+  parameters.max_ls_iters = 0;
+  parameters.limit_to_feasible_values = false;
+  parameters.complementary_slackness_tolerance = 1.0;
+
+  return parameters;
+}
+
 template <typename T>
 class DenseLinearOperator : public SparseLinearOperator<T> {
  public:
@@ -552,21 +573,9 @@ TEST_F(Particle, SteadyState) {
 
   SetProblem(v0, tau, mu, dt);
 
-  FBSolverParameters parameters;
+  FBSolverParameters parameters = MakeSimpleNewtonNoLsParameters(100, 1.0e-4);
   parameters.stiction_tolerance = 0.0;
   parameters.alpha_stab = -1;  // for 0 < v + Rn * pi ⊥ pi > 0
-
-  parameters.outer_loop_max_iters = 100;
-  parameters.outer_loop_tolerance = 1.0e-4;
-  parameters.inner_loop_max_iters = 1;
-  parameters.initialization_max_iters = 1;
-  parameters.inner_loop_tolerance = 0.5;
-
-  parameters.relaxation = 1.0;
-  parameters.delta = 0.;
-  parameters.max_ls_iters = 0;
-  parameters.limit_to_feasible_values = false;
-  parameters.complementary_slackness_tolerance = 1.0;
 
   solver_->set_parameters(parameters);
 
@@ -605,7 +614,6 @@ TEST_F(Particle, SteadyState) {
 
 }
 
-#if 0
 /* Top view of the pizza saver:
 
   ^ y               C
@@ -695,16 +703,25 @@ class PizzaSaver : public ::testing::Test {
     // All contact points have the same friction for this case.
     mu_ = mu * VectorX<double>::Ones(nc_);
 
-    Jn_ = ComputeNormalJacobian();
-    Jt_ = ComputeTangentialJacobian(theta);
+    // Linear operators already maker reference to these matrices.
+    const MatrixX<double> Jn = ComputeNormalJacobian();
+    const MatrixX<double> Jt = ComputeTangentialJacobian(theta);
+    for (int i = 0; i < nc_; ++i) {
+      Jc_.row(3 * i)   = Jt.row(2 * i);
+      Jc_.row(3 * i+1) = Jt.row(2 * i+1);
+      Jc_.row(3 * i+2) = Jn.row(i);      
+    }
+    JcT_ = Jc_.transpose();
+    Minv_ = M_.inverse();
 
-    // TODO: make ProblemData to take const pointers instead, to communicate we
-    // keep references to this data.
-    data_ = std::make_unique<ProblemData<double>>(dt, &M_, &Jn_, &Jt_, &tau,
-                                                  &v0, &phi0_, &stiffness_,
-                                                  &dissipation_, &mu_);
+    sys_data_ = std::make_unique<SystemDynamicsData<double>>(
+        &Minv_op_, &Jc_op_, &JcT_op_, &v0, &tau);
+    contacts_data_ = std::make_unique<PointContactData<double>>(
+        &phi0_, &stiffness_, &dissipation_, &mu_);
 
-    solver_ = std::make_unique<FBSolver<double>>(data_.get());
+    solver_ = std::make_unique<FBSolver<double>>(nv_, nc_);
+    solver_->SetSystemDynamicsData(sys_data_.get());
+    solver_->SetPointContactData(contacts_data_.get());
   }
 
  protected:
@@ -729,19 +746,20 @@ class PizzaSaver : public ::testing::Test {
 
   // Mass matrix.
   MatrixX<double> M_{nv_, nv_};
-
-  // The separation velocities Jacobian.
-  MatrixX<double> Jn_{nc_, nv_};
-
-  // Tangential velocities Jacobian.
-  MatrixX<double> Jt_{2 * nc_, nv_};
+  MatrixX<double> Minv_{nv_, nv_};
+  MatrixX<double> Jc_{3 * nc_, nv_};
+  MatrixX<double> JcT_{nv_, 3 * nc_};
 
   VectorX<double> stiffness_;
   VectorX<double> dissipation_;
 
-  std::unique_ptr<ProblemData<double>> data_;
+  DenseLinearOperator<double> Jc_op_{&Jc_};
+  DenseLinearOperator<double> JcT_op_{&JcT_};
+  DenseLinearOperator<double> Minv_op_{&Minv_};
 
-  // The TAMSI solver for this problem.
+  std::unique_ptr<SystemDynamicsData<double>> sys_data_;
+  std::unique_ptr<PointContactData<double>> contacts_data_;
+
   std::unique_ptr<FBSolver<double>> solver_;
 
   // Additional solver data that must outlive solver_ during solution.
@@ -765,8 +783,7 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
   const double theta = M_PI / 5;
 
   // External forcing.
-  const double Mz = 0.0;
-   //3.0;  // M_transition = 5.0
+  const double Mz = 3.0;  // M_transition = 5.0
   const VectorX<double> tau = Vector4<double>(0.0, 0.0, -m_ * g_, Mz);
 
   // Initial velocity.
@@ -774,10 +791,12 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
 
   SetProblem(v0, tau, mu, theta, dt);
 
-  FBSolverParameters parameters;
+  FBSolverParameters parameters = MakeSimpleNewtonNoLsParameters(50, 1.0e-5);
   parameters.stiction_tolerance = 1e-6;
   parameters.alpha_stab = -1;  // for 0 < v + Rn * pi ⊥ pi > 0
+  parameters.max_ls_iters = 12;
 
+#if 0
   parameters.outer_loop_max_iters = 20;
   parameters.outer_loop_tolerance = 1.0e-3;
   parameters.inner_loop_max_iters = 5;
@@ -789,10 +808,11 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
   parameters.max_ls_iters = 0;
   parameters.limit_to_feasible_values = false;
   parameters.complementary_slackness_tolerance = 1.0;
+#endif  
 
   solver_->set_parameters(parameters);
 
-  FBSolverResult info = solver_->SolveWithGuess(v0);  
+  FBSolverResult info = solver_->SolveWithGuess(dt, v0);  
 
   auto& stats = solver_->get_stats();
   PRINT_VAR(stats.initialization_iters);
@@ -807,12 +827,20 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
 
   ASSERT_EQ(info, FBSolverResult::kSuccess);
 
-  PRINT_VAR(solver_->get_normal_forces().transpose());
+  PRINT_VAR(solver_->CopyNormalForces().transpose());
 
-  const VectorX<double> pi = solver_->get_normal_forces();
+  const VectorX<double> pi = solver_->CopyNormalForces();
   const double total_force = pi.sum() / dt;
   PRINT_VAR(1.0 - total_force / (m_ * g_));
   EXPECT_NEAR(total_force, m_ * g_, parameters.outer_loop_tolerance * m_ * g_);
+
+  const auto& state = solver_->get_state();
+  PRINT_VAR(state.v().transpose());
+  PRINT_VAR(state.gamma().transpose());
+  PRINT_VAR(state.lambda().transpose());
+
+  const VectorX<double> tau_c = JcT_* state.gamma() / dt;
+  PRINT_VAR(tau_c.transpose());
 
 #if 0
   VectorX<double> tau_f = solver_.get_generalized_friction_forces();
@@ -886,8 +914,6 @@ TEST_F(PizzaSaver, SmallAppliedMoment) {
 #endif      
 }
 
-
-#if 0
 // Exactly the same problem as in PizzaSaver::SmallAppliedMoment but with an
 // applied moment Mz = 6.0 > M_transition = 5.0. In this case the pizza saver
 // transitions to sliding with a net moment of Mz - M_transition during a
@@ -905,50 +931,71 @@ TEST_F(PizzaSaver, LargeAppliedMoment) {
   // External forcing.
   const double M_transition = 5.0;
   const double Mz = 6.0;
-  const Vector3<double> tau(0.0, 0.0, Mz);
+  const VectorX<double> tau = Vector4<double>(0.0, 0.0, -m_ * g_, Mz);
 
   // Initial velocity.
-  const Vector3<double> v0 = Vector3<double>::Zero();
+  const VectorX<double> v0 = Vector4<double>::Zero();
 
   SetProblem(v0, tau, mu, theta, dt);
 
-  TamsiSolverParameters parameters;  // Default parameters.
-  parameters.stiction_tolerance = 1.0e-6;
-  parameters.outer_loop_tolerance = 1.0e-4;
-  solver_.set_solver_parameters(parameters);
+  FBSolverParameters parameters = MakeSimpleNewtonNoLsParameters(50, 1.0e-5);
+  parameters.stiction_tolerance = 1e-6;
+  parameters.alpha_stab = -1;  // for 0 < v + Rn * pi ⊥ pi > 0
+  parameters.max_ls_iters = 12;
+  solver_->set_parameters(parameters);
 
-  TamsiSolverResult info = solver_.SolveWithGuess(dt, v0);
-  ASSERT_EQ(info, TamsiSolverResult::kSuccess);
+  FBSolverResult info = solver_->SolveWithGuess(dt, v0);  
 
-  VectorX<double> tau_f = solver_.get_generalized_friction_forces();
+  auto& stats = solver_->get_stats();
+  PRINT_VAR(stats.initialization_iters);
+  PRINT_VAR(stats.outer_iters);
+  PRINT_VAR(stats.total_iterations);
+  VectorX<double> num_inner_iters(stats.num_inner_iters.size());
+  std::copy(stats.num_inner_iters.begin(), stats.num_inner_iters.end(),
+            num_inner_iters.data());
+  PRINT_VAR(num_inner_iters.transpose());
+  PRINT_VAR(stats.dvn_max_norm);
+  PRINT_VAR(stats.gpi_max_norm);
 
-  const auto& stats = solver_.get_iteration_statistics();
+  ASSERT_EQ(info, FBSolverResult::kSuccess);
+
+  const auto& state = solver_->get_state();
+  PRINT_VAR(state.v().transpose());
+  PRINT_VAR(state.gamma().transpose());
+  PRINT_VAR(state.lambda().transpose());
+
+  const VectorX<double> tau_c = JcT_* state.gamma() / dt;
+  PRINT_VAR(tau_c.transpose());
 
   const double vt_tolerance =
       // Dimensionless relative (to the stiction tolerance) tolerance.
-      solver_.get_solver_parameters().outer_loop_tolerance *
-          solver_.get_solver_parameters().stiction_tolerance;
-  EXPECT_TRUE(stats.vt_residual() < vt_tolerance);
+      parameters.outer_loop_tolerance *
+          parameters.stiction_tolerance;
+  //EXPECT_TRUE(stats.vt_residual() < vt_tolerance);
 
   // For this problem we expect the x and y components of the forces due to
   // friction to be zero.
-  EXPECT_NEAR(tau_f(0), 0.0, kTolerance);
-  EXPECT_NEAR(tau_f(1), 0.0, kTolerance);
+  EXPECT_NEAR(tau_c(0), 0.0, vt_tolerance);
+  EXPECT_NEAR(tau_c(1), 0.0, vt_tolerance);
   // Since we are sliding, the total moment should match M_transition.
   // The difference with Mz is what makes the saver to start accelerating.
-  EXPECT_NEAR(tau_f(2), -M_transition, 1.0e-13);
+  EXPECT_NEAR(tau_c(3), -M_transition, 2.0e-5);
 
-  const VectorX<double>& vt = solver_.get_tangential_velocities();
-  ASSERT_EQ(vt.size(), 2 * nc_);
+  const VectorX<double> vc = Jc_ * state.v();
+  ASSERT_EQ(vc.size(), 3 * nc_);
 
   // The problem has symmetry of revolution. Thus, for any rotation theta,
   // the three tangential velocities should have the same magnitude.
-  const double v_slipA = vt.segment<2>(0).norm();
-  const double v_slipB = vt.segment<2>(2).norm();
-  const double v_slipC = vt.segment<2>(4).norm();
-  EXPECT_NEAR(v_slipA, v_slipB, kTolerance);
-  EXPECT_NEAR(v_slipA, v_slipC, kTolerance);
-  EXPECT_NEAR(v_slipC, v_slipB, kTolerance);
+  const double v_slipA = vc.segment<2>(0).norm();
+  const double v_slipB = vc.segment<2>(3).norm();
+  const double v_slipC = vc.segment<2>(6).norm();
+  EXPECT_NEAR(v_slipA, v_slipB, 2.0e-8);
+  EXPECT_NEAR(v_slipA, v_slipC, 2.0e-8);
+  EXPECT_NEAR(v_slipC, v_slipB, 2.0e-8);
+
+  PRINT_VAR(v_slipA);
+  PRINT_VAR(v_slipB);
+  PRINT_VAR(v_slipC);
 
   // For this case where Mz > M_transition, we expect sliding, so that expected
   // velocities are larger than the stiction tolerance.
@@ -956,7 +1003,7 @@ TEST_F(PizzaSaver, LargeAppliedMoment) {
   EXPECT_GT(v_slipB, parameters.stiction_tolerance);
   EXPECT_GT(v_slipC, parameters.stiction_tolerance);
 
-  const VectorX<double>& v = solver_.get_generalized_velocities();
+  const VectorX<double>& v = state.v();
   ASSERT_EQ(v.size(), nv_);
 
   // For this problem we expect the translational velocities for the COM to be
@@ -965,33 +1012,15 @@ TEST_F(PizzaSaver, LargeAppliedMoment) {
   EXPECT_NEAR(v(1), 0.0, kTolerance);
 
   const double omega = dt * (Mz - 5.0) / I_;
-  EXPECT_NEAR(v(2), omega, kTolerance);
+  EXPECT_NEAR(v(3), omega, 2.0e-8);
 
   // Slip velocities should only be due to rotation.
-  EXPECT_NEAR(v_slipA, R_ * omega, kTolerance);
-  EXPECT_NEAR(v_slipB, R_ * omega, kTolerance);
-  EXPECT_NEAR(v_slipC, R_ * omega, kTolerance);
-
-  // Compute the Newton-Raphson Jacobian of the residual J = ∇ᵥR using the
-  // solver's internal implementation.
-  MatrixX<double> J =
-      TamsiSolverTester::CalcJacobian(solver_, v, dt);
-
-  // Compute the same Newton-Raphson Jacobian of the residual J = ∇ᵥR but with
-  // a completely separate implementation using automatic differentiation.
-  const double v_stiction = parameters.stiction_tolerance;
-  const double epsilon_v = v_stiction * parameters.outer_loop_tolerance;
-  MatrixX<double> J_expected = test::CalcOneWayCoupledJacobianWithAutoDiff(
-      M_, Jn_, Jt_, p_star_, mu_, fn_, dt, v_stiction, epsilon_v, v);
-
-  // We use a tolerance scaled by the norm and size of the matrix.
-  const double J_tolerance = J_expected.rows() * J_expected.norm() *
-      std::numeric_limits<double>::epsilon();
-
-  // Verify the result.
-  EXPECT_TRUE(CompareMatrices(
-      J, J_expected, J_tolerance, MatrixCompareType::absolute));
+  EXPECT_NEAR(v_slipA, R_ * omega, 2.0e-8);
+  EXPECT_NEAR(v_slipB, R_ * omega, 2.0e-8);
+  EXPECT_NEAR(v_slipC, R_ * omega, 2.0e-8);
 }
+
+#if 0
 
 // Verify the solver behaves correctly when the problem data contains no
 // contact points.
@@ -1398,7 +1427,6 @@ GTEST_TEST(EmptyWorld, Solve) {
 }
 #endif
 
-#endif
 
 }  // namespace
 }  // namespace solvers

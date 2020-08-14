@@ -28,6 +28,7 @@ void FBSolver<T>::SetSystemDynamicsData(const SystemDynamicsData<T>* data)
   GrantScratchWorkspaceAccess access(scratch_workspace_);
   auto& vc0 = access.xc_sized_vector();
   get_Jc().Multiply(get_v0(), &vc0);
+  vn0_.resize(nc);
   ExtractNormal(vc0, &vn0_);
 
 #if 0
@@ -587,7 +588,8 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
 
   // Maybe place these in the cache?
   //MatrixX<T> G(3 * nc, nv);
-  SparseMatrix<T> A(3 * nc, 3 * nc);  
+  SparseMatrix<T> Del(3 * nc, 3 * nc);  // Delassus op.
+  SparseMatrix<T> A(3 * nc, 3 * nc);
   VectorX<T> C(3 * nc);
   VectorX<T>& Fv = access.v_sized_vector();
   VectorX<T>& Fg = access.xc_sized_vector();
@@ -601,7 +603,10 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
   State state_kp(state_);
 
   // Sice the pattern of A is the same as that of N, we analyze it here first.
-  A = N_;
+  // Make sure diagonal entries have non-zeros (it might be N diagonals have
+  // zero entries).
+  A = VectorX<T>::Ones(3 * nc).asDiagonal();
+  A += N_;
   Eigen::SparseLU<SparseMatrix<T>> solver;
   solver.analyzePattern(A);
 
@@ -675,26 +680,28 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
       //W = DgDvc * N * DgDvc;
       // These two multiplications are O(2*nnz(A)).
       // We perform them explicitly by scanning the non-zeros of A.
-      A = N_;
-      for (int k = 0; k < A.outerSize(); ++k) {
-        for (typename SparseMatrix<T>::InnerIterator it(A, k); it; ++it) {
+      Del = N_;
+      for (int k = 0; k < Del.outerSize(); ++k) {
+        for (typename SparseMatrix<T>::InnerIterator it(Del, k); it; ++it) {
           const int i = it.row();
           const int j = it.col();
-          it.valueRef() *= (DgDvc(i) * DgDvc(j));
+          it.valueRef() *= (DgDvc(i) * DgDvc(j));          
         }
       }
 
       // This does not compile:
       //A = DgDvc.asDiagonal() * N_;  // A = D * N
       //A *= DgDvc.asDiagonal();      // A = D * N * D = Gc * Mi * GcT
-      PRINT_VARn(N_);
+      
+      PRINT_VARn(MatrixX<T>(N_));
       PRINT_VAR(DgDvc.transpose());
-      PRINT_VARn(A);
+      PRINT_VARn(Del);            
 
       // this line assumes diagonal entries were allocated. See:
       // https://forum.kde.org/viewtopic.php?f=74&t=133686&p=359423&hilit=sparse+diagonal#p359423
       // Otherwise we'll get an error at runtime.
-      A += C.asDiagonal();
+      A = C.asDiagonal();
+      A += Del;  // A = Del + C
 
       PRINT_VAR(C.transpose());
       PRINT_VARn(A);

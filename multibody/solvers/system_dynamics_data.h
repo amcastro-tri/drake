@@ -24,7 +24,7 @@ class SparseLinearOperator {
  public:
   SparseLinearOperator(int rows, int cols) : rows_(rows), cols_(cols) {}
 
-  virtual ~SparseLinearOperator() = 0;
+  virtual ~SparseLinearOperator() {};
 
   int rows() const { return rows_; }
   int cols() const { return cols_; }

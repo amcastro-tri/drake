@@ -24,9 +24,56 @@ namespace multibody {
 namespace solvers {
 namespace {
 
+template <typename T>
+class DenseLinearOperator : public SparseLinearOperator<T> {
+ public:
+  DenseLinearOperator(const MatrixX<T>* A)
+      : SparseLinearOperator<T>(A->rows(), A->cols()), A_(A) {
+    yd_.resize(this->rows());
+  }
+
+  ~DenseLinearOperator() {};
+
+  /// Performs y = A*x for this operator A.
+  void Multiply(const Eigen::SparseVector<T>& x,
+                Eigen::SparseVector<T>* y) const final {
+    DRAKE_DEMAND(y != nullptr);
+    DRAKE_DEMAND(x.size() == this->cols());
+    DRAKE_DEMAND(y->size() == this->rows());
+    yd_ = (*A_) * x;
+    *y = yd_.sparseView();
+
+    /*
+        for (int i = 0; i < A_->rows(); ++i) {
+          // Only loop over non-zero entries of x.
+          // outer size index is always equal to 0, number of columns.
+          const int outer = 0;
+          for (typename SparseMatrix<T>::InnerIterator it(A, outer); it; ++it) {
+            const int k = it.row();
+            //const int j = it.col();
+            //DRAKE_DEMAND(j == 0);  // Assert really.
+            it.valueRef() *= (DgDvc(i) * DgDvc(j));
+          }
+    */
+  }
+
+  /// Performs y = A*x for this operator A.
+  void Multiply(const VectorX<T>& x, VectorX<T>* y) const final {
+    DRAKE_DEMAND(y != nullptr);
+    DRAKE_DEMAND(x.size() == this->cols());
+    DRAKE_DEMAND(y->size() == this->rows());    
+    *y = (*A_) * x;
+  };
+
+ private:
+  const MatrixX<T>* A_{nullptr};
+  mutable VectorX<T> yd_; // temporary of size this->rows().
+};  
+
 using Eigen::Vector3d;
 using math::RigidTransformd;
 
+#if 0
 class ConstactSolverDriver {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(ConstactSolverDriver);
@@ -402,6 +449,8 @@ GTEST_TEST(FBSolver, Particle) {
   driver.Publish();  // for viz.  
 }
 
+#endif
+
 class Particle : public ::testing::Test {
  public:
   void SetUp() override {
@@ -414,9 +463,6 @@ class Particle : public ::testing::Test {
 
   void SetProblem(const VectorX<double>& v0, const VectorX<double>& tau,
                   double mu, double dt) {
-    // Next time step generalized momentum if there are no friction forces.
-    p_star_ = M_ * v0 + dt * tau;
-
     // Normal forces. Assume they are equally distributed.
     const double k = m_ * g_ / penetration_;
     stiffness_ = Vector1<double>(k);
@@ -424,17 +470,29 @@ class Particle : public ::testing::Test {
     phi0_ = Vector1<double>(penetration_);
     mu_ = Vector1<double>(mu);
 
-    Jn_.resize(1, 2);
-    Jn_ << 0.0, 1.0;
-    Jt_.resize(2, 2);
-    Jt_ << 1, 0, 
-           0, 0;
+    Jc_.resize(3, 2);
+    // Jt:
+    Jc_ << 1.0, 0.0, // Jt
+           0.0, 0.0,
+           0.0, 1.0; // Jn
 
-    data_ = std::make_unique<ProblemData<double>>(dt, &M_, &Jn_, &Jt_, &tau,
-                                                  &v0, &phi0_, &stiffness_,
-                                                  &dissipation_, &mu_);
+    Jc_op_ = std::make_unique<DenseLinearOperator<double>>(&Jc_);
 
-    solver_ = std::make_unique<FBSolver<double>>(data_.get());
+    JcT_ = Jc_.transpose();
+    JcT_op_ = std::make_unique<DenseLinearOperator<double>>(&JcT_);
+
+    Minv_ = M_.inverse();
+    Minv_op_ = std::make_unique<DenseLinearOperator<double>>(&Minv_);
+
+    sys_data_ = std::make_unique<SystemDynamicsData<double>>(
+        Minv_op_.get(), Jc_op_.get(), JcT_op_.get(), &v0, &tau);
+
+    contacts_data_ = std::make_unique<PointContactData<double>>(
+        &phi0_, &stiffness_, &dissipation_, &mu_);
+
+    solver_ = std::make_unique<FBSolver<double>>(nv_, nc_);
+    solver_->SetSystemDynamicsData(sys_data_.get());
+    solver_->SetPointContactData(contacts_data_.get());
   }
 
  protected:
@@ -453,24 +511,26 @@ class Particle : public ::testing::Test {
 
   // Mass matrix.
   MatrixX<double> M_{nv_, nv_};
+  MatrixX<double> Minv_;
 
-  // The separation velocities Jacobian.
-  MatrixX<double> Jn_{nc_, nv_};
+  // Contact Jacobian.
+  MatrixX<double> Jc_{3 * nc_, nv_};
+  MatrixX<double> JcT_;
 
-  // Tangential velocities Jacobian.
-  MatrixX<double> Jt_{2 * nc_, nv_};
+  std::unique_ptr<DenseLinearOperator<double>> Jc_op_;
+  std::unique_ptr<DenseLinearOperator<double>> JcT_op_;
+  std::unique_ptr<DenseLinearOperator<double>> Minv_op_;
 
-  VectorX<double> stiffness_;
-  VectorX<double> dissipation_;
-
-  std::unique_ptr<ProblemData<double>> data_;
+  std::unique_ptr<SystemDynamicsData<double>> sys_data_;
+  std::unique_ptr<PointContactData<double>> contacts_data_;
 
   // The TAMSI solver for this problem.
   std::unique_ptr<FBSolver<double>> solver_;
 
   // Additional solver data that must outlive solver_ during solution.
-  VectorX<double> p_star_;  // Generalized momentum.
   VectorX<double> phi0_;      // Normal forces at each contact point.
+  VectorX<double> stiffness_;
+  VectorX<double> dissipation_;
   VectorX<double> mu_;      // Friction coefficient at each contact point.
 };
 
@@ -483,7 +543,7 @@ TEST_F(Particle, SteadyState) {
   const double kTolerance = 10 * std::numeric_limits<double>::epsilon();
   const double dt = 1.0e-3;  // time step in seconds.
   const double mu = 1.0;  // Irrelevant for this problem.
-  const double Fx = 15.0; // External force in x.
+  const double Fx = 5.0; // External force in x.
 
   const double weight = m_ * g_;
   const VectorX<double> tau = Vector2<double>(Fx, -weight);
@@ -530,9 +590,9 @@ TEST_F(Particle, SteadyState) {
   PRINT_VAR(stats.dvn_max_norm);
   PRINT_VAR(stats.gpi_max_norm);  
 
-  PRINT_VAR(solver_->get_normal_forces());
+  PRINT_VAR(solver_->CopyNormalForces());
 
-  const VectorX<double> pi = solver_->get_normal_forces();
+  const VectorX<double> pi = solver_->CopyNormalForces();
   const double total_force = pi.sum() / dt;
   PRINT_VAR(1.0 - total_force / weight);
   EXPECT_NEAR(total_force, weight, parameters.outer_loop_tolerance * weight);
@@ -545,6 +605,7 @@ TEST_F(Particle, SteadyState) {
 
 }
 
+#if 0
 /* Top view of the pizza saver:
 
   ^ y               C
@@ -1336,6 +1397,9 @@ GTEST_TEST(EmptyWorld, Solve) {
       &M, &Jn, &Jt, &p_star, &fn0, &stiffness, &dissipation, &mu_vector));
 }
 #endif
+
+#endif
+
 }  // namespace
 }  // namespace solvers
 }  // namespace multibody

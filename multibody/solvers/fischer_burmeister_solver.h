@@ -244,7 +244,7 @@ class FBSolver {
     mutable Cache cache_;    
   };
   
-  FBSolver() = default;
+  FBSolver(int nv, int nc) : scratch_workspace_(nv, nc, 64) {}
 
   // TODO: this should override the parent class.
   bool supports_point_contact_data() const { return true; };
@@ -253,7 +253,7 @@ class FBSolver {
   bool supports_hybrid_contact_data() const { return false; };
 
   // TODO: this should override the parent class.
-  void SetSystemDynamicsData(const SystemDynamicsData<T>* data);
+  void SetSystemDynamicsData(const SystemDynamicsData<T>* data);  
 
   void SetPointContactData(const PointContactData<T>* data) {
     DRAKE_DEMAND(data != nullptr);
@@ -339,16 +339,16 @@ class FBSolver {
     virtual void Multiply(const Eigen::SparseVector<T>& x,
                           Eigen::SparseVector<T>* y) const final {
       DRAKE_DEMAND(y != nullptr);
-      DRAKE_DEMAND(x.size() == this->rows());
-      DRAKE_DEMAND(y->size() == this->cols());                            
+      DRAKE_DEMAND(x.size() == this->cols());
+      DRAKE_DEMAND(y->size() == this->rows());
       solver_->MultiplyByGc(*state_, x, y);
     }
 
     /// Performs y = Gc*x.
     virtual void Multiply(const VectorX<T>& x, VectorX<T>* y) const {
       DRAKE_DEMAND(y != nullptr);
-      DRAKE_DEMAND(x.size() == this->rows());
-      DRAKE_DEMAND(y->size() == this->cols());
+      DRAKE_DEMAND(x.size() == this->cols());
+      DRAKE_DEMAND(y->size() == this->rows());
       solver_->MultiplyByGc(*state_, x, y);
     }
 
@@ -371,16 +371,16 @@ class FBSolver {
     virtual void Multiply(const Eigen::SparseVector<T>& x,
                           Eigen::SparseVector<T>* y) const final {
       DRAKE_DEMAND(y != nullptr);
-      DRAKE_DEMAND(x.size() == this->rows());
-      DRAKE_DEMAND(y->size() == this->cols());
+      DRAKE_DEMAND(x.size() == this->cols());
+      DRAKE_DEMAND(y->size() == this->rows());
       solver_->MultiplyByGcTranspose(*state_, x, y);
     }
 
     /// Performs y = GcT*x.
     virtual void Multiply(const VectorX<T>& x, VectorX<T>* y) const {
       DRAKE_DEMAND(y != nullptr);
-      DRAKE_DEMAND(x.size() == this->rows());
-      DRAKE_DEMAND(y->size() == this->cols());
+      DRAKE_DEMAND(x.size() == this->cols());
+      DRAKE_DEMAND(y->size() == this->rows());
       solver_->MultiplyByGcTranspose(*state_, x, y);
     }
 
@@ -742,7 +742,6 @@ class FBSolver {
   //////////////////////////////////////////////////////////////////////////////
   // ALL THIS CONST AFTER LOADING DATA.  
   // Inverse of mass matrix in contact space.
-  MatrixX<T> Mi_times_JcT_;
   Eigen::SparseMatrix<T> N_;
   // Scaling factors. Multiply impulses to get velocities, in [1 / Kg].
   // One per contact, of size nc.

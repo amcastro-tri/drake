@@ -714,8 +714,37 @@ class PizzaSaver : public ::testing::Test {
     JcT_ = Jc_.transpose();
     Minv_ = M_.inverse();
 
+    Jc_op_ = std::make_unique<DenseLinearOperator<double>>(&Jc_);
+    JcT_op_ = std::make_unique<DenseLinearOperator<double>>(&JcT_);
+    Minv_op_ = std::make_unique<DenseLinearOperator<double>>(&Minv_);
+
     sys_data_ = std::make_unique<SystemDynamicsData<double>>(
-        &Minv_op_, &Jc_op_, &JcT_op_, &v0, &tau);
+        Minv_op_.get(), Jc_op_.get(), JcT_op_.get(), &v0, &tau);
+    contacts_data_ = std::make_unique<PointContactData<double>>(
+        &phi0_, &stiffness_, &dissipation_, &mu_);
+
+    solver_ = std::make_unique<FBSolver<double>>(nv_, nc_);
+    solver_->SetSystemDynamicsData(sys_data_.get());
+    solver_->SetPointContactData(contacts_data_.get());
+  }
+
+  void SetNoContactProblem(const VectorX<double>& v0,
+                           const VectorX<double>& tau,
+                           double dt) {
+    // Next time step generalized momentum if there are no friction forces.
+    p_star_ = M_ * v0 + dt * tau;
+
+    // No contact points.
+    Jc_.resize(0, nv_);
+    JcT_.resize(nv_, 0);
+    Minv_ = M_.inverse();
+
+    Jc_op_ = std::make_unique<DenseLinearOperator<double>>(&Jc_);
+    JcT_op_ = std::make_unique<DenseLinearOperator<double>>(&JcT_);
+    Minv_op_ = std::make_unique<DenseLinearOperator<double>>(&Minv_);
+
+    sys_data_ = std::make_unique<SystemDynamicsData<double>>(
+        Minv_op_.get(), Jc_op_.get(), JcT_op_.get(), &v0, &tau);
     contacts_data_ = std::make_unique<PointContactData<double>>(
         &phi0_, &stiffness_, &dissipation_, &mu_);
 
@@ -753,9 +782,9 @@ class PizzaSaver : public ::testing::Test {
   VectorX<double> stiffness_;
   VectorX<double> dissipation_;
 
-  DenseLinearOperator<double> Jc_op_{&Jc_};
-  DenseLinearOperator<double> JcT_op_{&JcT_};
-  DenseLinearOperator<double> Minv_op_{&Minv_};
+  std::unique_ptr<DenseLinearOperator<double>> Jc_op_;
+  std::unique_ptr<DenseLinearOperator<double>> JcT_op_;
+  std::unique_ptr<DenseLinearOperator<double>> Minv_op_;
 
   std::unique_ptr<SystemDynamicsData<double>> sys_data_;
   std::unique_ptr<PointContactData<double>> contacts_data_;
@@ -1020,7 +1049,6 @@ TEST_F(PizzaSaver, LargeAppliedMoment) {
   EXPECT_NEAR(v_slipC, R_ * omega, 2.0e-8);
 }
 
-#if 0
 
 // Verify the solver behaves correctly when the problem data contains no
 // contact points.
@@ -1031,36 +1059,41 @@ TEST_F(PizzaSaver, NoContact) {
 
   // External forcing.
   const double Mz = 6.0;
-  const Vector3<double> tau(0.0, 0.0, Mz);
+  const VectorX<double> tau = Vector4<double>(0.0, 0.0, -m_ * g_, Mz);
 
   // Initial velocity.
-  const Vector3<double> v0 = Vector3<double>::Zero();
+  const VectorX<double> v0 = Vector4<double>::Zero();
 
   SetNoContactProblem(v0, tau, dt);
 
-  TamsiSolverResult info = solver_.SolveWithGuess(dt, v0);
-  ASSERT_EQ(info, TamsiSolverResult::kSuccess);
+  FBSolverParameters parameters = MakeSimpleNewtonNoLsParameters(50, 1.0e-5);
+  parameters.stiction_tolerance = 1e-6;
+  parameters.alpha_stab = -1;  // for 0 < v + Rn * pi ⊥ pi > 0
+  parameters.max_ls_iters = 12;
+  solver_->set_parameters(parameters);
 
-  EXPECT_EQ(solver_.get_generalized_friction_forces(), Vector3<double>::Zero());
+  FBSolverResult info = solver_->SolveWithGuess(dt, v0);  
 
-  const auto& stats = solver_.get_iteration_statistics();
-  EXPECT_EQ(stats.vt_residual(), 0);
-  EXPECT_EQ(stats.num_iterations, 1);
+  auto& stats = solver_->get_stats();
+  PRINT_VAR(stats.initialization_iters);
+  PRINT_VAR(stats.outer_iters);
+  PRINT_VAR(stats.total_iterations);
+  VectorX<double> num_inner_iters(stats.num_inner_iters.size());
+  std::copy(stats.num_inner_iters.begin(), stats.num_inner_iters.end(),
+            num_inner_iters.data());
+  PRINT_VAR(num_inner_iters.transpose());
+  PRINT_VAR(stats.dvn_max_norm);
+  PRINT_VAR(stats.gpi_max_norm);
 
-  // Verify solution.
-  const VectorX<double>& v = solver_.get_generalized_velocities();
-  ASSERT_EQ(v.size(), nv_);
+  const auto& state = solver_->get_state();
+  PRINT_VAR(state.v().transpose());
+  PRINT_VAR(state.gamma().transpose());
+  PRINT_VAR(state.lambda().transpose());
 
-  // For this problem we expect the translational velocities to be zero.
-  EXPECT_NEAR(v(0), 0.0, kTolerance);
-  EXPECT_NEAR(v(1), 0.0, kTolerance);
-  // Expected angular velocity change about z due to the applied moment Mz.
-  const double omega = dt * Mz / I_;
-  EXPECT_NEAR(v(2), omega, kTolerance);
-
-  // No contact.
-  EXPECT_EQ(solver_.get_tangential_velocities().size(), 0);
+  ASSERT_EQ(info, FBSolverResult::kSuccess);
 }
+
+#if 0
 
 // This test verifies that TAMSI can correctly predict transitions in a problem
 // with impact. In this test the y axis is in the "up" vertical direction, the x

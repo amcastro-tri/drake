@@ -25,32 +25,26 @@ void FBSolver<T>::SetSystemDynamicsData(const SystemDynamicsData<T>* data)
   const int nv = num_velocities();
   state_.Resize(nv, nc);
 
-  GrantScratchWorkspaceAccess access(scratch_workspace_);
-  auto& vc0 = access.xc_sized_vector();
-  get_Jc().Multiply(get_v0(), &vc0);
-  vn0_.resize(nc);
-  ExtractNormal(vc0, &vn0_);
+  if (num_contacts() != 0) {
+    GrantScratchWorkspaceAccess access(scratch_workspace_);
+    auto& vc0 = access.xc_sized_vector();
+    get_Jc().Multiply(get_v0(), &vc0);
+    vn0_.resize(nc);
+    ExtractNormal(vc0, &vn0_);
 
-#if 0
-  const T& dt = data_->dt();
-  const auto& tau = data_->get_tau();
-  v_star_.resize(nv);
-  MultiplyByMinv(tau, &v_star_);  // v_star_ = M⁻¹⋅tau
-  v_star_ = v0 + dt * v_star_;
-#endif
+    N_.resize(3 * nc, 3 * nc);
+    FormDelassusOperatorMatrix(get_Jc(), get_Minv(), get_JcT(), &N_);
 
-  N_.resize(3 * nc, 3 * nc);
-  FormDelassusOperatorMatrix(get_Jc(), get_Minv(), get_JcT(), &N_);
-
-  // Compute scaling factors, one per contact.
-  scaling_factor.resize(nc);
-  for (int i = 0; i < nc; ++i) {
-    // 3x3 diagonal block. It might be singular, but definitely non-zero. That's
-    // why we use an rms norm.
-    const auto& Nii = N_.block(3 * i, 3 * i, 3, 3);
-    scaling_factor(i) = Nii.norm() / 3;  // 3 = sqrt(9).
+    // Compute scaling factors, one per contact.
+    scaling_factor.resize(nc);
+    for (int i = 0; i < nc; ++i) {
+      // 3x3 diagonal block. It might be singular, but definitely non-zero.
+      // That's why we use an rms norm.
+      const auto& Nii = N_.block(3 * i, 3 * i, 3, 3);
+      scaling_factor(i) = Nii.norm() / 3;  // 3 = sqrt(9).
+    }
+    PRINT_VAR(scaling_factor.transpose());
   }
-  PRINT_VAR(scaling_factor.transpose());
 }
 
 #if 0
@@ -476,7 +470,13 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const T& dt, const VectorX<T>& v_gues
 
   v_star_.resize(num_velocities());
   get_Minv().Multiply(get_tau(), &v_star_);  // v_star_ = Mi * tau
-  v_star_ = get_v0() + dt * v_star_;        // v_star_ = v0 + dt * Mi * tau
+  v_star_ = get_v0() + dt * v_star_;        // v_star_ = v0 + dt * Mi * tau  
+
+  if (num_contacts() == 0) {
+    state_.mutable_v() = v_star_;
+    stats_ = {};
+    return FBSolverResult::kSuccess;
+  }
 
   // Update vc so that we can use it to estimate a velocity scale.
   const auto& vc = EvalVc(s_guess);  
@@ -531,12 +531,18 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
   get_Minv().Multiply(get_tau(), &v_star_);  // v_star_ = Mi * tau
   v_star_ = get_v0() + dt * v_star_;      // v_star_ = v0 + dt * Mi * tau
 
+  state_ = state_guess;
+  stats_ = {};
+
+  if (num_contacts() == 0) {
+    state_.mutable_v() = v_star_;
+    return FBSolverResult::kSuccess;
+  }
+
   // TODO: you might pass data_ and params_ explicitly here to show dependency?
   CalcNormalStabilizationVelocity(dt, &vn_stab_);
 
-  PRINT_VAR(scaling_factor.transpose());
-
-  state_ = state_guess;
+  PRINT_VAR(scaling_factor.transpose());  
 
   // Initialize lambda.
   ValidateContactVelocitiesCache(state_);
@@ -586,9 +592,7 @@ FBSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
 #endif  
 
   const double m_final = parameters_.complementary_slackness_tolerance *
-                         parameters_.stiction_tolerance;
-
-  stats_ = {};
+                         parameters_.stiction_tolerance;  
 
   // Maybe place these in the cache?
   //MatrixX<T> G(3 * nc, nv);

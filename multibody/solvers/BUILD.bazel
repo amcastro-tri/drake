@@ -1,0 +1,34 @@
+# -*- python -*-
+# This file contains rules for Bazel; see drake/doc/bazel.rst.
+
+load(
+    "@drake//tools/skylark:drake_cc.bzl",
+    "drake_cc_googletest",
+    "drake_cc_library",
+    "drake_cc_package_library",
+)
+load("//tools/lint:lint.bzl", "add_lint_tests")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+drake_cc_library(
+    name = "scratch_workspace",
+    srcs = ["scratch_workspace.cc"],
+    hdrs = ["scratch_workspace.h"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        "//common:default_scalars",
+    ],
+)
+
+drake_cc_googletest(
+    name = "scratch_workspace_test",
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":scratch_workspace",
+    ],
+)
+
+add_lint_tests()

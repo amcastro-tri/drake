@@ -14,17 +14,17 @@ template <typename Scalar>
 using Vector1 = Eigen::Matrix<Scalar, 1, 1>;
 
 //template <typename T>
-//using SparseLinearOperator =
+//using LinearOperator =
 //    std::function<void(const Eigen::SparseVector<T>&, Eigen::SparseVector<T>*)>;
 
 /// Class representing a linear map that operates on sparse vectors. Subclasses
 /// must implement operators.
 template <typename T>
-class SparseLinearOperator {
+class LinearOperator {
  public:
-  SparseLinearOperator(int rows, int cols) : rows_(rows), cols_(cols) {}
+  LinearOperator(int rows, int cols) : rows_(rows), cols_(cols) {}
 
-  virtual ~SparseLinearOperator() {};
+  virtual ~LinearOperator() {};
 
   int rows() const { return rows_; }
   int cols() const { return cols_; }
@@ -47,9 +47,9 @@ class SystemDynamicsData {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(SystemDynamicsData)
 
-  SystemDynamicsData(const SparseLinearOperator<T>* Minv,
-                     const SparseLinearOperator<T>* Jc, 
-                     const SparseLinearOperator<T>* JcT, 
+  SystemDynamicsData(const LinearOperator<T>* Minv,
+                     const LinearOperator<T>* Jc, 
+                     const LinearOperator<T>* JcT, 
                      const VectorX<T>* v0,
                      const VectorX<T>* tau)
       : Minv_(Minv), Jc_(Jc), JcT_(JcT), v0_(v0), tau_(tau) {
@@ -70,9 +70,9 @@ class SystemDynamicsData {
   int num_contacts() const { return nc_; }
   int num_velocities() const { return nv_; }
 
-  const SparseLinearOperator<T>& get_Minv() const { return *Minv_; };
-  const SparseLinearOperator<T>& get_Jc() const { return *Jc_; };
-  const SparseLinearOperator<T>& get_JcT() const { return *JcT_; };
+  const LinearOperator<T>& get_Minv() const { return *Minv_; };
+  const LinearOperator<T>& get_Jc() const { return *Jc_; };
+  const LinearOperator<T>& get_JcT() const { return *JcT_; };
   const VectorX<T>& get_v0() const { return *v0_; };
   const VectorX<T>& get_tau() const { return *tau_; }
 
@@ -81,9 +81,9 @@ class SystemDynamicsData {
   int nc_;
   int nv_;
 
-  const SparseLinearOperator<T>* Minv_{nullptr};
-  const SparseLinearOperator<T>* Jc_{nullptr};
-  const SparseLinearOperator<T>* JcT_{nullptr};
+  const LinearOperator<T>* Minv_{nullptr};
+  const LinearOperator<T>* Jc_{nullptr};
+  const LinearOperator<T>* JcT_{nullptr};
 
   // Right hand side.
   const VectorX<T>* v0_{nullptr};

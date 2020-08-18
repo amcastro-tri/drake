@@ -21,8 +21,14 @@ template <typename T>
 class ContactSolver {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(ContactSolver);
- 
-  
+
+  virtual void SetSystemDynamicsData(const SystemDynamicsData<T>* data) = 0;
+
+  virtual void SetPointContactData(const PointContactData<T>* data) = 0;
+
+  virtual bool supports_matrix_form_data() const = 0;
+
+  virtual bool supports_operator_form_data() const = 0;
 };
 }
 }

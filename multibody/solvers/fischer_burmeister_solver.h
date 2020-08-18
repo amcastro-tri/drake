@@ -325,10 +325,10 @@ class FBSolver {
   }
 
   // Define linear operator objects for Gc and GcT.
-  class GcOperator : public SparseLinearOperator<T> {
+  class GcOperator : public LinearOperator<T> {
    public:
     GcOperator(const FBSolver<T>* solver, const State* state)
-        : SparseLinearOperator<T>(3 * solver->num_contacts(),
+        : LinearOperator<T>(3 * solver->num_contacts(),
                                   solver->num_velocities()),
           solver_(solver),
           state_(state){};
@@ -357,10 +357,10 @@ class FBSolver {
     const State* state_{nullptr};
   };
 
-  class GcTOperator : public SparseLinearOperator<T> {
+  class GcTOperator : public LinearOperator<T> {
    public:
     GcTOperator(const FBSolver<T>* solver, const State* state)
-        : SparseLinearOperator<T>(solver->num_velocities(),
+        : LinearOperator<T>(solver->num_velocities(),
                                   3 * solver->num_contacts()),
           solver_(solver),
           state_(state){};
@@ -666,9 +666,9 @@ class FBSolver {
   // JT of size nv x 3nc
   // 
   // Result W of size 3nc x 3nc
-  void FormDelassusOperatorMatrix(const SparseLinearOperator<T>& G,
-                                  const SparseLinearOperator<T>& Mi,
-                                  const SparseLinearOperator<T>& JT,
+  void FormDelassusOperatorMatrix(const LinearOperator<T>& G,
+                                  const LinearOperator<T>& Mi,
+                                  const LinearOperator<T>& JT,
                                   Eigen::SparseMatrix<T>* W) const {
     DRAKE_DEMAND(G.rows() == 3 * num_contacts());
     DRAKE_DEMAND(G.cols() == num_velocities());
@@ -715,13 +715,13 @@ class FBSolver {
   }
 
   // Quick accessors to problem data.
-  const SparseLinearOperator<T>& get_Jc() const {
+  const LinearOperator<T>& get_Jc() const {
     return dynamics_data_->get_Jc();
   }
-  const SparseLinearOperator<T>& get_JcT() const {
+  const LinearOperator<T>& get_JcT() const {
     return dynamics_data_->get_JcT();
   }
-  const SparseLinearOperator<T>& get_Minv() const {
+  const LinearOperator<T>& get_Minv() const {
     return dynamics_data_->get_Minv();
   }
   const VectorX<T>& get_v0() const { return dynamics_data_->get_v0(); }

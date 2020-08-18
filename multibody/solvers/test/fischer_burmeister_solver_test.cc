@@ -46,10 +46,10 @@ FBSolverParameters MakeSimpleNewtonNoLsParameters(int max_iters,
 }
 
 template <typename T>
-class DenseLinearOperator : public SparseLinearOperator<T> {
+class DenseLinearOperator : public LinearOperator<T> {
  public:
   DenseLinearOperator(const MatrixX<T>* A)
-      : SparseLinearOperator<T>(A->rows(), A->cols()), A_(A) {
+      : LinearOperator<T>(A->rows(), A->cols()), A_(A) {
     yd_.resize(this->rows());
   }
 

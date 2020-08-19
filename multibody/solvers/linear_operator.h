@@ -22,24 +22,31 @@ namespace solvers {
       "Only drake::VectorX<T> and Eigen::SparseVector<T> are supported " \
       "argument types.");
 
-/// Class representing a linear map that operates on sparse vectors. Subclasses
-/// must implement operators.
+/// This abstract class provides a generic interface for linear operators
+/// A ∈ ℝⁿˣᵐ defined by their application from ℝᵐ into ℝⁿ, y = A⋅x.
+/// Derived classes must provide a implementation for this application
+/// with specifics that exploit the operator's structure, e.g. sparsity, block
+/// diagonal, etc.
 template <typename T>
 class LinearOperator {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(LinearOperator)
 
+  /// Creates an operator with a given `name`.
   LinearOperator(const std::string& name) : name_(name) {}
 
   virtual ~LinearOperator() = default;
 
+  /// Returns the name of the operator. Especially useful during debugging
+  /// sessions.
   const std::string& name() const { return name_; }
 
   virtual int rows() const = 0;
   virtual int cols() const = 0;
 
   /// Performs y = A⋅x for `this` operator A.
-  /// Derived classes must provide an implementation.
+  /// Derived classes must provide an implementation of the virtual interface
+  /// DoMultiply().
   template <class VectorType>
   void Multiply(const VectorType& x,
                 VectorType* y) const {
@@ -52,6 +59,8 @@ class LinearOperator {
 
   /// For `this` operator A, performs y = Aᵀ⋅x.
   /// The default implementation throws a std::runtime_error exception.
+  /// Derived classes can provide an implementation through the virtual
+  /// interface MultiplyByTranspose().
   template <class VectorType>
   void MultiplyByTranspose(const VectorType& x, VectorType* y) const {
     STATIC_ASSERT_DENSE_OR_SPARSE_VECTOR_TYPE(VectorType);
@@ -99,6 +108,8 @@ class LinearOperator {
  private:
   std::string name_;
 
+  // Helper to throw a specific exception when a given override was not
+  // implemented.  
   void ThrowIfNotImplemented(const char* source_method) const {
     throw std::logic_error(std::string(source_method) + "()': Instance '" +
                            name_ + "' of type '" + NiceTypeName::Get(*this) +

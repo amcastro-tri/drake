@@ -1,6 +1,7 @@
 #include "drake/multibody/solvers/sparse_linear_operator.h"
 
 #include <memory>
+#include <unordered_set>
 
 #include <gtest/gtest.h>
 
@@ -9,10 +10,6 @@
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/common/test_utilities/expect_no_throw.h"
 
-#include <iostream>
-#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
-#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
-
 namespace drake {
 namespace multibody {
 namespace solvers {
@@ -20,7 +17,6 @@ namespace {
 
 using SparseMatrixd = Eigen::SparseMatrix<double>;
 using SparseVectord = Eigen::SparseVector<double>;
-using MatrixXd = Eigen::MatrixXd;
 using VectorXd = Eigen::VectorXd;
 using Triplet = Eigen::Triplet<double>;
 
@@ -28,12 +24,15 @@ using Triplet = Eigen::Triplet<double>;
 // would have in an application in which a subset of the vertices of a mesh is
 // in contact.
 //
-// nc is the number of contact ponts, which in this case coincides with the
-// number of particles.
-// nv is the number of velocities.
-// particle is a vector of size nc. For each ic-th entry, it contains the index
-// of the only particle that contributes to the ic-th velocity.
-// The resulting matrix is (3nc)x(3np) in size.
+// num_vertices:
+//   The number of vertices in a hypothetical mesh. The number of
+//   generalized velocities in this case equals 3 * num_vertices.
+// vertices_in_contact:
+//   set of the vertices that are in "contact".
+//
+// For each contact point ic, its velocity simply equals the velocity for that
+// vertex iv. Therefore the Jacobian contains an identity matrix at 3x3 bock
+// (ic, iv). All other entries are zero. Thus the Jacobian is very sparse.
 SparseMatrixd MakeMeshInContactJacobian(
     int num_vertices,
     const std::vector<int>& vertices_in_contact) {

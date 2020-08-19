@@ -11,6 +11,7 @@
 #include "drake/multibody/solvers/system_dynamics_data.h"
 #include "drake/multibody/solvers/point_contact_data.h"
 #include "drake/multibody/solvers/scratch_workspace.h"
+#include "drake/multibody/solvers/contact_solver.h"
 
 #include <iostream>
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
@@ -89,7 +90,7 @@ enum class FBSolverResult {
 
 
 template <typename T>
-class FBSolver {
+class FBSolver : public ContactSolver<T> {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(FBSolver);
 
@@ -250,12 +251,12 @@ class FBSolver {
   bool supports_point_contact_data() const { return true; };
 
   // TODO: this should override the parent class.
-  bool supports_hybrid_contact_data() const { return false; };
+  bool supports_hybrid_contact_data() const { return false; };  
 
   // TODO: this should override the parent class.
-  void SetSystemDynamicsData(const SystemDynamicsData<T>* data);  
+  void SetSystemDynamicsData(const SystemDynamicsData<T>* data) final;
 
-  void SetPointContactData(const PointContactData<T>* data) {
+  void SetPointContactData(const PointContactData<T>* data) final {
     DRAKE_DEMAND(data != nullptr);
     contact_data_ = data;
   }

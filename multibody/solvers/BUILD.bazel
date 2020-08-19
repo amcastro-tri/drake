@@ -14,16 +14,46 @@ package(
 )
 
 drake_cc_library(
+    name = "contact_solver",
+    srcs = [],
+    hdrs = ["contact_solver.h"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        "//common:default_scalars",
+    ],
+)
+
+drake_cc_library(
     name = "fischer_burmeister_solver",
     srcs = ["fischer_burmeister_solver.cc"],
     hdrs = ["fischer_burmeister_solver.h"],
     copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
     deps = [
+        ":contact_solver",
         ":point_contact_data",
         ":scratch_workspace",
         ":system_dynamics_data",
         "//common:default_scalars",
         "//common:extract_double",
+    ],
+)
+
+drake_cc_library(
+    name = "linear_operator",
+    srcs = ["linear_operator.cc"],
+    hdrs = ["linear_operator.h"],
+    deps = [
+        "//common:default_scalars",
+    ],
+)
+
+drake_cc_library(
+    name = "sparse_linear_operator",
+    srcs = ["sparse_linear_operator.cc"],
+    hdrs = ["sparse_linear_operator.h"],
+    deps = [
+        ":linear_operator",
+        "//common:default_scalars",
     ],
 )
 
@@ -34,6 +64,7 @@ drake_cc_library(
     copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
     deps = [
         "//common:default_scalars",
+        "//common:nice_type_name",
     ],
 )
 
@@ -81,6 +112,15 @@ drake_cc_googletest(
     copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
     deps = [
         ":scratch_workspace",
+    ],
+)
+
+drake_cc_googletest(
+    name = "sparse_linear_operator_test",
+    deps = [
+        ":sparse_linear_operator",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_no_throw",
     ],
 )
 

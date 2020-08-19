@@ -5,42 +5,13 @@
 #include "drake/common/drake_copyable.h"
 #include "drake/common/drake_throw.h"
 #include "drake/common/eigen_types.h"
+#include "drake/multibody/solvers/linear_operator.h"
+
+#include <string>
 
 namespace drake {
 namespace multibody {
 namespace solvers {  
-
-template <typename Scalar>
-using Vector1 = Eigen::Matrix<Scalar, 1, 1>;
-
-//template <typename T>
-//using LinearOperator =
-//    std::function<void(const Eigen::SparseVector<T>&, Eigen::SparseVector<T>*)>;
-
-/// Class representing a linear map that operates on sparse vectors. Subclasses
-/// must implement operators.
-template <typename T>
-class LinearOperator {
- public:
-  LinearOperator(int rows, int cols) : rows_(rows), cols_(cols) {}
-
-  virtual ~LinearOperator() {};
-
-  int rows() const { return rows_; }
-  int cols() const { return cols_; }
-
-  /// Performs y = A*x for this operator A.
-  virtual void Multiply(const Eigen::SparseVector<T>& x,
-                        Eigen::SparseVector<T>* y) const = 0;
-
-  /// Performs y = A*x for this operator A.
-  virtual void Multiply(const VectorX<T>& x,
-                        VectorX<T>* y) const = 0;
-
- private:
-  int rows_;
-  int cols_;
-};
 
 template <typename T>
 class SystemDynamicsData {

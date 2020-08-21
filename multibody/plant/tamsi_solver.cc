@@ -604,6 +604,9 @@ TamsiSolverResult TamsiSolver<T>::SolveWithGuess(
     double dt, const VectorX<T>& v_guess) const {
   DRAKE_THROW_UNLESS(v_guess.size() == nv_);
 
+  // Stores the dt on the last call to this method.
+  dt_ = dt;
+
   // Clear statistics so that we can update them with new ones for this call to
   // SolveWithGuess().
   statistics_.Reset();

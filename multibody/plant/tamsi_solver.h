@@ -8,6 +8,7 @@
 #include "drake/common/drake_copyable.h"
 #include "drake/common/drake_throw.h"
 #include "drake/common/eigen_types.h"
+#include "drake/multibody/solvers/contact_solver_utils.h"
 
 namespace drake {
 namespace multibody {
@@ -685,6 +686,34 @@ class TamsiSolver {
 
   /// @}
 
+  /// @anchor contact_solver_api
+  /// @name API compatible with ContactSolver
+  /// These methods implement an API compatible with ContactSolver so that we
+  /// can share unit tests with other solvers.
+  /// @{
+  void CopyNormalImpulses(VectorX<T>* pi) const {
+    DRAKE_DEMAND(pi != nullptr);
+    DRAKE_DEMAND(pi->size() == nc_);
+    (*pi) = dt_ * get_normal_forces();
+  }
+
+  void CopyImpulses(VectorX<T>* gamma) const {
+    DRAKE_DEMAND(gamma != nullptr);
+    DRAKE_DEMAND(gamma->size() == 3 * nc_);
+    const auto& fn = variable_size_workspace_.fn();
+    const auto& ft = variable_size_workspace_.ft();
+    multibody::solvers::MergeNormalAndTangent(fn, ft, gamma);
+    (*gamma) *= dt_;
+  }
+
+  void CopyVelocities(VectorX<T>* v) const {
+    DRAKE_DEMAND(v != nullptr);
+    DRAKE_DEMAND(v->size() == nv_);
+    (*v) = get_generalized_velocities();
+  }
+
+  /// @}
+
   /// Returns statistics recorded during the last call to SolveWithGuess().
   /// See IterationStats for details.
   const TamsiSolverIterationStats& get_iteration_statistics() const {
@@ -1149,6 +1178,10 @@ class TamsiSolver {
   // We save solver statistics such as number of iterations and residuals so
   // that we can report them if requested.
   mutable TamsiSolverIterationStats statistics_;
+
+  // Stores the time step used on the last call to SolveWithGuess() so that we
+  // can report impulses to be compatible with ContactSolver's API.
+  mutable double dt_;
 };
 
 }  // namespace multibody

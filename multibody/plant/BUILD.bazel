@@ -304,6 +304,14 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "tamsi_direction_limiter_test",
+    deps = [
+        ":tamsi_solver",
+        "//common/test_utilities:eigen_matrix_compare",
+    ],
+)
+
+drake_cc_googletest(
     name = "fischer_burmeister_solver_test",
     copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
     data = [

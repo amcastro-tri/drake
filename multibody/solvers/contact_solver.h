@@ -8,10 +8,8 @@
 #include "drake/common/drake_copyable.h"
 #include "drake/common/drake_throw.h"
 #include "drake/common/eigen_types.h"
-
-#include <iostream>
-#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
-#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+#include "drake/multibody/solvers/point_contact_data.h"
+#include "drake/multibody/solvers/system_dynamics_data.h"
 
 namespace drake {
 namespace multibody {
@@ -24,10 +22,86 @@ class ContactSolver {
 
   ContactSolver() = default;
 
+  virtual ~ContactSolver() = default;
+
   virtual void SetSystemDynamicsData(const SystemDynamicsData<T>* data) = 0;
 
   virtual void SetPointContactData(const PointContactData<T>* data) = 0;
+
+  virtual int num_contacts() const = 0;
+  virtual int num_velocities() const = 0;
+
+  // TODO: return a more interesting generic success return code.
+  // At this level either kFail or kSuccess, maybe kInvalidData.
+  virtual void SolveWithGuess(double dt, const VectorX<T>& v_guess) = 0;
+
+  /// Returns a copy to the vector pi of normal impulses, of size
+  /// num_contacts(), in Ns.
+  virtual void CopyNormalImpulses(VectorX<T>* pi) const = 0;
+
+  virtual void CopyImpulses(VectorX<T>* gamma) const = 0;
+
+  virtual void CopyVelocities(VectorX<T>* v) const = 0;
+
+ protected:
+  // Helper method to form the Delassus operator. Most solvers will need to form
+  // it whether if used directly, as part of a pre-processing stage or to just
+  // determine scales.
+  // 
+  // Performs multiplication W = G * Mi * JT one column at a time.
+  // G of size 3nc x nv
+  // Mi of size nv x nv
+  // JT of size nv x 3nc
+  //
+  // Result W of size 3nc x 3nc
+  /// @pre An implementation to MultiplyByTranspose() is required on JT.
+  void FormDelassusOperatorMatrix(const LinearOperator<T>& G,
+                                  const LinearOperator<T>& Mi,
+                                  const LinearOperator<T>& JT,
+                                  Eigen::SparseMatrix<T>* W) const {
+    DRAKE_DEMAND(G.rows() == 3 * num_contacts());
+    DRAKE_DEMAND(G.cols() == num_velocities());
+    DRAKE_DEMAND(Mi.rows() == num_velocities());
+    DRAKE_DEMAND(Mi.cols() == num_velocities());
+    DRAKE_DEMAND(JT.rows() == 3 * num_contacts());
+    DRAKE_DEMAND(JT.cols() == num_velocities());
+    DRAKE_DEMAND(W->rows() == 3 * num_contacts());
+    DRAKE_DEMAND(W->cols() == 3 * num_contacts());
+
+    const int nv = num_velocities();
+    const int nc = num_contacts();
+
+    Eigen::SparseVector<T> ej(3 * nc);
+    // ei.makeCompressed();   // Not available for SparseVector.
+    ej.coeffRef(0) = 1.0;  // Effectively allocate one non-zero entry.
+
+    Eigen::SparseVector<T> JTcolj(nv);
+    Eigen::SparseVector<T> MiJTcolj(nv);
+    Eigen::SparseVector<T> Wcolj(3 * nc);
+    // Reserve maximum number of non-zeros.
+    JTcolj.reserve(nv);
+    MiJTcolj.reserve(nv);
+    Wcolj.reserve(3 * nc);
+
+    // Loop over the j-th column.
+    for (int j = 0; j < W->cols(); ++j) {
+      // By changing the inner index, we change what entry is the non-zero with
+      // value 1.0.
+      *ej.innerIndexPtr() = j;
+
+      // Reset to nnz = 0. Memory is not freed.
+      JTcolj.setZero();
+      MiJTcolj.setZero();
+      Wcolj.setZero();
+
+      // Apply each operator in sequence.
+      JT.MultiplyByTranspose(ej, &JTcolj);  // JTcolj = JT * ej
+      Mi.Multiply(JTcolj, &MiJTcolj);
+      G.Multiply(MiJTcolj, &Wcolj);
+      W->col(j) = Wcolj;
+    }
+  }
 };
-}
-}
-}
+}  // namespace solvers
+}  // namespace multibody
+}  // namespace drake

@@ -34,6 +34,13 @@ struct TamsiSolverResults {
   VectorX<T> tau_contact;
 };
 
+template <class T>
+struct ContactSolverResults {
+  /// Vector of generalized velocities at the next time step.
+  VectorX<T> v_next;
+
+};
+
 }  // namespace internal
 }  // namespace multibody
 }  // namespace drake

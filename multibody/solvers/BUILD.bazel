@@ -14,12 +14,43 @@ package(
 )
 
 drake_cc_library(
+    name = "contact_solver_driver",
+    srcs = ["test/contact_solver_driver.cc"],
+    hdrs = ["test/contact_solver_driver.h"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    testonly = 1,
+    deps = [
+        "//multibody/plant",
+        "//multibody/parsing",
+        "//common:find_resource",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_no_throw",
+        "//geometry:geometry_visualization",
+        "//systems/framework:diagram",
+        "//systems/framework:diagram_builder",
+        "//systems/analysis:simulator",
+        "//systems/lcm",
+    ],
+)
+
+drake_cc_library(
     name = "contact_solver",
     srcs = [],
     hdrs = ["contact_solver.h"],
     copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
     deps = [
+        ":point_contact_data",
+        ":system_dynamics_data",
         "//common:default_scalars",
+    ],
+)
+
+drake_cc_library(
+    name = "contact_solver_utils",
+    srcs = [],
+    hdrs = ["contact_solver_utils.h"],
+    deps = [
+        "//common:essential",
     ],
 )
 
@@ -74,6 +105,7 @@ drake_cc_library(
     hdrs = ["system_dynamics_data.h"],
     copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
     deps = [
+        ":linear_operator",
         "//common:default_scalars",
     ],
 )
@@ -85,6 +117,20 @@ drake_cc_library(
     copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
     deps = [
         "//common:default_scalars",
+    ],
+)
+
+drake_cc_googletest(
+    name = "contact_solver_test",
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    data = [
+        "test/pizza_saver.sdf"],
+    deps = [
+        ":contact_solver",
+        ":contact_solver_driver",
+        "//multibody/plant",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_no_throw",        
     ],
 )
 

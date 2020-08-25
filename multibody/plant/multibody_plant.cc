@@ -2073,6 +2073,25 @@ void MultibodyPlant<T>::CalcTamsiResults(
 
     contact_solver_->SolveWithGuess(time_step(), v0);
 
+    // Update the results.
+    results->v_next.resize(num_velocities());
+    results->fn.resize(num_contacts);
+    results->ft.resize(2 * num_contacts);
+    results->vn.resize(num_contacts);
+    results->vt.resize(2 * num_contacts);
+    results->tau_contact.resize(num_velocities());
+
+    results->v_next = contact_solver_->GetVelocities();
+    contact_solver_->CopyNormalImpulses(&results->fn);
+    contact_solver_->CopyFrictionImpulses(&results->ft);    
+    contact_solver_->CopyNormalContactVelocities(&results->vn);
+    contact_solver_->CopyTangentialContactVelocities(&results->vt);
+    results->tau_contact = contact_solver_->GetGeneralizedContactImpulses();
+    // Scale to contact forces.
+    results->fn /= time_step();
+    results->ft /= time_step();
+    results->tau_contact /= time_step();
+
     }else {
       throw std::domain_error(
           "Eigen::SparseMatrix does not support non-numeric types.");

@@ -10,10 +10,21 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/solvers/point_contact_data.h"
 #include "drake/multibody/solvers/system_dynamics_data.h"
+#include "drake/multibody/solvers/contact_solver_utils.h"
 
 namespace drake {
 namespace multibody {
 namespace solvers {
+
+/// The result from ContactSolver::SolveWithGuess() used to report the
+/// success or failure of the solver.
+enum class ContactSolverResult {
+  /// Successful computation.
+  kSuccess = 0,
+
+  /// The solver could not find a solution at the specified tolerances.
+  kFailure = 1,
+};
 
 template <typename T>
 class ContactSolver {
@@ -33,15 +44,38 @@ class ContactSolver {
 
   // TODO: return a more interesting generic success return code.
   // At this level either kFail or kSuccess, maybe kInvalidData.
-  virtual void SolveWithGuess(double dt, const VectorX<T>& v_guess) = 0;
+  virtual ContactSolverResult SolveWithGuess(double dt,
+                                             const VectorX<T>& v_guess) = 0;
+
+  virtual const VectorX<T>& GetImpulses() const = 0;
+
+  virtual const VectorX<T>& GetVelocities() const = 0;
+
+  virtual const VectorX<T>& GetGeneralizedContactImpulses() const = 0;
+
+  virtual const VectorX<T>& GetContactVelocities() const = 0;
 
   /// Returns a copy to the vector pi of normal impulses, of size
   /// num_contacts(), in Ns.
-  virtual void CopyNormalImpulses(VectorX<T>* pi) const = 0;
+  void CopyNormalImpulses(VectorX<T>* pi) const {
+    DRAKE_DEMAND(pi != nullptr);
+    ExtractNormal(GetImpulses(), pi);
+  }
 
-  virtual void CopyImpulses(VectorX<T>* gamma) const = 0;
+  void CopyFrictionImpulses(VectorX<T>* beta) const {
+    DRAKE_DEMAND(beta != nullptr);
+    ExtractTangent(GetImpulses(), beta);
+  }  
 
-  virtual void CopyVelocities(VectorX<T>* v) const = 0;
+  void CopyNormalContactVelocities(VectorX<T>* vn) const {
+    DRAKE_DEMAND(vn != nullptr);
+    ExtractNormal(GetContactVelocities(), vn);
+  }
+
+  void CopyTangentialContactVelocities(VectorX<T>* vt) const {
+    DRAKE_DEMAND(vt != nullptr);
+    ExtractTangent(GetContactVelocities(), vt);
+  }
 
  protected:
   // Helper method to form the Delassus operator. Most solvers will need to form

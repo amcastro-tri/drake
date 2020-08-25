@@ -8,6 +8,7 @@
 #include "drake/common/test_utilities/expect_no_throw.h"
 #include "drake/multibody/solvers/test/contact_solver_driver.h"
 #include "drake/multibody/solvers/contact_solver_utils.h"
+#include "drake/multibody/plant/externally_applied_spatial_force.h"
 
 #include <iostream>
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
@@ -314,6 +315,13 @@ GTEST_TEST(ContactSolver, PizzaSaver) {
   //driver.SetPointContactParameters(sphere, kStiffness, kDamping);
   auto& context = driver.mutable_plant_context();
 
+  std::vector<ExternallyAppliedSpatialForce<double>> forces(1);
+  forces[0].body_index = body.index();
+  forces[0].p_BoBq_B = Vector3d::Zero();
+  forces[0].F_Bq_W =
+      SpatialForce<double>(Vector3d(0.0, 0.0, 6.0), Vector3d::Zero());
+  plant.get_applied_spatial_force_input_port().FixValue(&context, forces);
+
   const double phi0 = -1.0e-3;  // Initial penetration into the ground, [m].
   plant.SetFreeBodyPose(&context, body,
                         RigidTransformd(Vector3d(0, 0, phi0)));
@@ -339,11 +347,13 @@ GTEST_TEST(ContactSolver, PizzaSaver) {
   PRINT_VAR(solver.GetImpulses().transpose());
   PRINT_VAR(solver.GetVelocities().transpose());
   PRINT_VAR(solver.GetContactVelocities().transpose());
+  PRINT_VAR(solver.GetGeneralizedContactImpulses().transpose());
 
   auto& stats = solver.get_iteration_stats();
   PRINT_VAR(stats.iterations);
   PRINT_VAR(stats.vc_err);
   PRINT_VAR(stats.gamma_err);
+  
 
   //const VectorX<double> v0 = VectorX<double>::Zero(nv);
   //driver.AdvanceOneStep(v0, dt);

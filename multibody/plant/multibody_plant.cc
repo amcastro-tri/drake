@@ -2050,13 +2050,14 @@ void MultibodyPlant<T>::CalcTamsiResults(
       int rows() const { return nv_; }
       int cols() const { return nv_; }
      private:
-      void DoMultiply(const VectorX<T>& x, VectorX<T>* y) const final {
-        *y = M_ldlt_.solve(x);
-      };
-      void DoMultiply(const Eigen::SparseVector<T>& x,
+      void DoMultiply(const Eigen::Ref<const Eigen::SparseVector<T>>& x,
                       Eigen::SparseVector<T>* y) const final {
         tmp_ = VectorX<T>(x);
         *y = M_ldlt_.solve(tmp_).sparseView();
+      }
+      void DoMultiply(const Eigen::Ref<const VectorX<T>>& x,
+                      VectorX<T>* y) const final {
+        *y = M_ldlt_.solve(x);
       }
       int nv_;
       mutable VectorX<T> tmp_;  // temporary workspace.

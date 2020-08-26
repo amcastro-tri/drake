@@ -4,6 +4,7 @@
 
 #include <Eigen/SparseCore>
 
+#include "drake/common/default_scalars.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/solvers/linear_operator.h"
@@ -12,8 +13,9 @@ namespace drake {
 namespace multibody {
 namespace solvers {
 
-/// This class allows to instantiate a LinearOperator when an explicit
-/// Eigen::Sparse matrix is available.
+/// A LinearOperator that wraps an existing Eigen::SparseMatrix.
+///
+/// @tparam_nonsymbolic_scalar
 template <typename T>
 class SparseLinearOperator final : public LinearOperator<T> {
  public:
@@ -30,20 +32,16 @@ class SparseLinearOperator final : public LinearOperator<T> {
 
   ~SparseLinearOperator() = default;
 
-  int rows() const { return A_->rows(); }
-  int cols() const { return A_->cols(); }
-
-  void AssembleMatrix(Eigen::SparseMatrix<T>* A) const final {
-    DRAKE_DEMAND(A != nullptr);
-    *A = *A_;
-  }
+  int rows() const final { return A_->rows(); }
+  int cols() const final { return A_->cols(); }
 
  protected:
-  void DoMultiply(const VectorX<T>& x, VectorX<T>* y) const final {
+  void DoMultiply(const Eigen::Ref<const VectorX<T>>& x,
+                  VectorX<T>* y) const final {
     *y = *A_ * x;
   };
 
-  void DoMultiply(const Eigen::SparseVector<T>& x,
+  void DoMultiply(const Eigen::Ref<const Eigen::SparseVector<T>>& x,
                   Eigen::SparseVector<T>* y) const final {
     *y = *A_ * x;
   }
@@ -57,6 +55,10 @@ class SparseLinearOperator final : public LinearOperator<T> {
     *y = A_->transpose() * x;
   }
 
+  void DoAssembleMatrix(Eigen::SparseMatrix<T>* A) const final {
+    *A = *A_;
+  }
+
  private:
   const Eigen::SparseMatrix<T>* A_{nullptr};
 };
@@ -64,3 +66,6 @@ class SparseLinearOperator final : public LinearOperator<T> {
 }  // namespace solvers
 }  // namespace multibody
 }  // namespace drake
+
+DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
+    class ::drake::multibody::solvers::SparseLinearOperator)

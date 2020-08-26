@@ -13,6 +13,19 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
+# The purpose of default_visibility to be private is to be able to develop this
+# code on master, but without yet exposing it to users until we're sure it is
+# API-stable. Furthermore, the code in this directory is meant for advanced
+# developers working on contact solvers.
+drake_cc_package_library(
+    name = "solvers",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":linear_operator",
+        ":sparse_linear_operator",
+    ],
+)
+
 drake_cc_library(
     name = "contact_solver_driver",
     srcs = ["test/contact_solver_driver.cc"],
@@ -158,6 +171,14 @@ drake_cc_googletest(
     copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
     deps = [
         ":scratch_workspace",
+    ],
+)
+
+drake_cc_googletest(
+    name = "linear_operator_test",
+    deps = [
+        ":linear_operator",
+        "//common/test_utilities:expect_throws_message",
     ],
 )
 

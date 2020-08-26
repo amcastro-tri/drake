@@ -6,23 +6,21 @@ namespace drake {
 namespace multibody {
 namespace solvers {
 
-#define DRAKE_THROW_IF_NOT_IMPLEMENTED() ThrowIfNotImplemented(__func__)
+template <typename T>
+void LinearOperator<T>::DoMultiplyByTranspose(const Eigen::SparseVector<T>&,
+                                              Eigen::SparseVector<T>*) const {
+  ThrowIfNotImplemented(__func__);
+}
 
 template <typename T>
 void LinearOperator<T>::DoMultiplyByTranspose(const VectorX<T>&,
                                               VectorX<T>*) const {
-  DRAKE_THROW_IF_NOT_IMPLEMENTED();
+  ThrowIfNotImplemented(__func__);
 }
 
 template <typename T>
-void LinearOperator<T>::DoMultiplyByTranspose(const Eigen::SparseVector<T>&,
-                                              Eigen::SparseVector<T>*) const {
-  DRAKE_THROW_IF_NOT_IMPLEMENTED();
-}
-
-template <typename T>
-void LinearOperator<T>::AssembleMatrix(Eigen::SparseMatrix<T>*) const {
-  DRAKE_THROW_IF_NOT_IMPLEMENTED();
+void LinearOperator<T>::DoAssembleMatrix(Eigen::SparseMatrix<T>*) const {
+  ThrowIfNotImplemented(__func__);
 }
 
 }  // namespace solvers

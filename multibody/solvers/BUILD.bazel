@@ -68,6 +68,21 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "pgs_solver",
+    srcs = ["test/pgs_solver.cc"],
+    hdrs = ["test/pgs_solver.h"],
+    visibility = ["//visibility:private"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":contact_solver_utils",
+        ":point_contact_data",
+        ":system_dynamics_data",
+        "//common:default_scalars",
+    ],
+)
+
+drake_cc_library(
     name = "fischer_burmeister_solver",
     srcs = ["fischer_burmeister_solver.cc"],
     hdrs = ["fischer_burmeister_solver.h"],
@@ -141,6 +156,7 @@ drake_cc_googletest(
     deps = [
         ":contact_solver",
         ":contact_solver_driver",
+        ":pgs_solver",
         "//multibody/plant",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_no_throw",        

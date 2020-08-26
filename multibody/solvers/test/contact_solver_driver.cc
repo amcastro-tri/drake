@@ -40,7 +40,9 @@ void ContactSolverDriver::BuildModel(double dt, const std::string& model_file) {
 
   simulator_ = std::make_unique<systems::Simulator<double>>(*diagram_);
   diagram_context_ = &simulator_->get_mutable_context();
-  plant_context_ = &plant_->GetMyMutableContextFromRoot(diagram_context_);  
+  plant_context_ = &plant_->GetMyMutableContextFromRoot(diagram_context_);
+  scene_graph_context_ =
+      &scene_graph_->GetMyMutableContextFromRoot(diagram_context_);
   simulator_->Initialize();
 }
 
@@ -98,6 +100,36 @@ void ContactSolverDriver::SetPointContactParameters(const Body<double>& body,
   }
 }
 
+void ContactSolverDriver::SetDynamicFrictionCoefficient(
+    const Body<double>& body, double mu_d) {
+  // We demand this method to be called post- contex creation.
+  DRAKE_DEMAND(diagram_context_ != nullptr);
+  const std::vector<geometry::GeometryId>& geometries =
+      plant_->GetCollisionGeometriesForBody(body);
+
+  PRINT_VAR(body.name());
+  PRINT_VAR(mu_d);
+
+  const auto& query_object =
+      plant_->get_geometry_query_input_port()
+          .Eval<geometry::QueryObject<double>>(*plant_context_);
+  const auto& inspector = query_object.inspector();
+
+  for (const auto id : geometries) {
+    PRINT_VAR(id);
+    const geometry::ProximityProperties* old_props =
+        inspector.GetProximityProperties(id);
+    DRAKE_DEMAND(old_props);
+    geometry::ProximityProperties new_props(*old_props);
+    // Add a new property.
+    CoulombFriction<double> friction(mu_d, mu_d);
+    new_props.UpdateProperty(geometry::internal::kMaterialGroup,
+                             geometry::internal::kFriction, friction);
+    scene_graph_->AssignRole(scene_graph_context_, *plant_->get_source_id(),
+                             id, new_props, geometry::RoleAssign::kReplace);
+  }
+}
+
 std::vector<std::pair<double, double>>
 ContactSolverDriver::GetPointContactComplianceParameters(
     const Body<double>& body) {
@@ -124,6 +156,33 @@ ContactSolverDriver::GetPointContactComplianceParameters(
     params.push_back({k, d});
   }
   return params;
+}
+
+std::vector<double> ContactSolverDriver::GetDynamicFrictionCoefficients(
+    const Body<double>& body) const {
+  DRAKE_DEMAND(diagram_context_ != nullptr);
+  const std::vector<geometry::GeometryId>& geometries =
+      plant_->GetCollisionGeometriesForBody(body);
+
+  PRINT_VAR(body.name());
+
+  const auto& query_object =
+      plant_->get_geometry_query_input_port()
+          .Eval<geometry::QueryObject<double>>(*plant_context_);
+  const auto& inspector = query_object.inspector();
+
+  std::vector<double> params;
+  for (const auto id : geometries) {
+    PRINT_VAR(id);
+    const geometry::ProximityProperties* props =
+        inspector.GetProximityProperties(id);
+    DRAKE_DEMAND(props);
+
+    const auto& friction = props->GetProperty<CoulombFriction<double>>(
+        geometry::internal::kMaterialGroup, geometry::internal::kFriction);
+    params.push_back(friction.dynamic_friction());
+  }
+  return params;    
 }
 
 }  // namespace test

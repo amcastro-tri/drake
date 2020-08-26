@@ -256,7 +256,6 @@ class PgsSolver final : public ContactSolver<T> {
   void ProjectAllImpulses(const VectorX<T>& vc, VectorX<T>* gamma_inout) const {
     VectorX<T>& gamma = *gamma_inout;
     const auto& mu = get_mu();
-
     for (int ic = 0; ic < num_contacts(); ++ic) {
       auto vci = vc.template segment<3>(3 * ic);
       auto gi = gamma.template segment<3>(3 * ic);
@@ -315,11 +314,20 @@ GTEST_TEST(ContactSolver, PizzaSaver) {
   //driver.SetPointContactParameters(sphere, kStiffness, kDamping);
   auto& context = driver.mutable_plant_context();
 
+  // For this test we want the ground to have the same friction as "body".
+  const auto per_geometry_mu = driver.GetDynamicFrictionCoefficients(body);
+  ASSERT_EQ(per_geometry_mu.size(), 3u);
+  // Verify they are all equal.
+  EXPECT_EQ(per_geometry_mu[0], per_geometry_mu[1]);
+  EXPECT_EQ(per_geometry_mu[1], per_geometry_mu[2]);
+  PRINT_VAR(per_geometry_mu[2]);
+  driver.SetDynamicFrictionCoefficient(plant.world_body(), per_geometry_mu[0]);
+
   std::vector<ExternallyAppliedSpatialForce<double>> forces(1);
   forces[0].body_index = body.index();
   forces[0].p_BoBq_B = Vector3d::Zero();
   forces[0].F_Bq_W =
-      SpatialForce<double>(Vector3d(0.0, 0.0, 6.0), Vector3d::Zero());
+      SpatialForce<double>(Vector3d(0.0, 0.0, 3.0), Vector3d(0.0, 0.0, 0.0));
   plant.get_applied_spatial_force_input_port().FixValue(&context, forces);
 
   const double phi0 = -1.0e-3;  // Initial penetration into the ground, [m].

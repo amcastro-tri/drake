@@ -52,10 +52,14 @@ class ContactSolverDriver {
   void AddGround(double stiffness, double damping, double dynamic_friction);
 
   void SetPointContactParameters(const Body<double>& body, double stiffness,
-                                 double damping);
+                                 double damping);  
 
   std::vector<std::pair<double, double>> GetPointContactComplianceParameters(
       const Body<double>& body);
+
+  void SetDynamicFrictionCoefficient(const Body<double>& body, double mu_d);
+
+  std::vector<double> GetDynamicFrictionCoefficients(const Body<double>& body) const;
 
   // For viz.
   void Publish() const { diagram_->Publish(*diagram_context_); }
@@ -87,6 +91,7 @@ class ContactSolverDriver {
   std::unique_ptr<systems::Diagram<double>> diagram_;
   systems::Context<double>* diagram_context_{nullptr};  
   systems::Context<double>* plant_context_{nullptr};
+  systems::Context<double>* scene_graph_context_{nullptr};
   std::unique_ptr<systems::DiscreteValues<double>> discrete_values_;
   std::unique_ptr<systems::Simulator<double>> simulator_;
 };

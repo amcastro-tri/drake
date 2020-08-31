@@ -18,6 +18,7 @@
 #include "drake/common/random.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/math/rigid_transform.h"
+#include "drake/multibody/contact_solvers/contact_solver.h"
 #include "drake/multibody/hydroelastics/hydroelastic_engine.h"
 #include "drake/multibody/plant/contact_jacobians.h"
 #include "drake/multibody/plant/contact_results.h"
@@ -1485,6 +1486,31 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// The default contact model is ContactModel::kPointContactOnly.
   /// @throws std::exception iff called post-finalize.
   void set_contact_model(ContactModel model);
+
+#ifndef DRAKE_DOXYGEN_CXX
+  // (Experimental) set_contact_solver() should only be called by advanced
+  // developers wanting to try out their custom contact solvers. We choose not
+  // to show it in public documentations rather than making it private with
+  // friends.
+  // @param solver The contact solver to be used for simulations of discrete
+  // models with frictional contact. Discrete updates will use this solver after
+  // this call.
+  // @pre solver must not be nullptr.
+  // @pre SolverType must be a subclass of
+  // multibody::contact_solvers::ContactSolver.
+  // @returns a mutable reference to `solver`, now owned by `this`
+  // MultibodyPlant.
+  template <class SolverType>
+  SolverType& set_contact_solver(std::unique_ptr<SolverType> solver) {
+    DRAKE_DEMAND(solver != nullptr);
+    static_assert(
+        std::is_base_of<contact_solvers::ContactSolver<T>, SolverType>::value,
+        "SolverType must be a sub-class of ContactSolver.");
+    SolverType* solver_ptr = solver.get();
+    contact_solver_ = std::move(solver);
+    return *solver_ptr;
+  }
+#endif
 
   // TODO(amcastro-tri): per work in #13064, we should reconsider whether to
   // deprecate/remove this method alltogether or at least promote to proper
@@ -4255,6 +4281,22 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
                               joint.child_body().index());
   }
 
+  // Helper to invoke our TamsiSolver.
+  void CallTamsiSolver(const T& time0, const VectorX<T>& v0,
+                       const MatrixX<T>& M0, const VectorX<T>& minus_tau,
+                       const VectorX<T>& fn0, const MatrixX<T>& Jn,
+                       const MatrixX<T>& Jt, const VectorX<T>& stiffness,
+                       const VectorX<T>& damping, const VectorX<T>& mu,
+                       internal::TamsiSolverResults<T>* results) const;
+
+  // Helper to invoke ContactSolver when one is available.
+  void CallContactSolver(const T& time0, const VectorX<T>& v0,
+                         const MatrixX<T>& M0, const VectorX<T>& minus_tau,
+                         const VectorX<T>& phi0, const MatrixX<T>& Jc,
+                         const VectorX<T>& stiffness, const VectorX<T>& damping,
+                         const VectorX<T>& mu,
+                         internal::TamsiSolverResults<T>* results) const;
+
   // Geometry source identifier for this system to interact with geometry
   // system. It is made optional for plants that do not register geometry
   // (dynamics only).
@@ -4465,6 +4507,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
 
   // The solver used when the plant is modeled as a discrete system.
   std::unique_ptr<TamsiSolver<T>> tamsi_solver_;
+
+  // When not the nullptr, this is the solver to be used for discrete updates.
+  std::unique_ptr<contact_solvers::ContactSolver<T>> contact_solver_;
 
   hydroelastics::internal::HydroelasticEngine<T> hydroelastics_engine_;
 

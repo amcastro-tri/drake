@@ -1,4 +1,4 @@
-#include "drake/multibody/solvers/sparse_linear_operator.h"
+#include "drake/multibody/contact_solvers/sparse_linear_operator.h"
 
 #include <memory>
 
@@ -7,7 +7,7 @@
 
 namespace drake {
 namespace multibody {
-namespace solvers {
+namespace contact_solvers {
 namespace {
 
 using SparseMatrixd = Eigen::SparseMatrix<double>;
@@ -146,6 +146,6 @@ TEST_F(ContactJacobianTest, AssembleMatrix) {
 }
 
 }  // namespace
-}  // namespace solvers
+}  // namespace contact_solvers
 }  // namespace multibody
 }  // namespace drake

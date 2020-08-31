@@ -1,4 +1,4 @@
-#include "drake/multibody/solvers/linear_operator.h"
+#include "drake/multibody/contact_solvers/linear_operator.h"
 
 #include <Eigen/SparseCore>
 #include <gtest/gtest.h>
@@ -8,7 +8,7 @@
 
 namespace drake {
 namespace multibody {
-namespace solvers {
+namespace contact_solvers {
 namespace {
 
 using Eigen::MatrixXd;
@@ -102,6 +102,6 @@ GTEST_TEST(LinearOperator, AssembleMatrix) {
 }
 
 }  // namespace
-}  // namespace solvers
+}  // namespace contact_solvers
 }  // namespace multibody
 }  // namespace drake

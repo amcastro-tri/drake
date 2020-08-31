@@ -20,6 +20,7 @@
 #include "drake/math/orthonormal_basis.h"
 #include "drake/math/random_rotation.h"
 #include "drake/math/rotation_matrix.h"
+#include "drake/multibody/contact_solvers/sparse_linear_operator.h"
 #include "drake/multibody/plant/discrete_contact_pair.h"
 #include "drake/multibody/plant/externally_applied_spatial_force.h"
 #include "drake/multibody/plant/hydroelastic_traction_calculator.h"
@@ -1891,6 +1892,7 @@ MultibodyPlant<T>::CalcDiscreteContactPairs(
         const auto [kB, dB] =
             GetPointContactParameters(pair.id_B, inspector);
         const auto [k, d] = CombinePointContactParameters(kA, kB, dA, dB);
+        const T phi0 = -pair.depth;
         const T fn0 = k * pair.depth;
         DRAKE_DEMAND(fn0 >= 0);  // it should be since depth >= 0.
         // For now place contact point midway between Ca and Cb.
@@ -1898,7 +1900,7 @@ MultibodyPlant<T>::CalcDiscreteContactPairs(
         // point C between Ca and Cb.
         const Vector3<T> p_WC = 0.5 * (pair.p_WCa + pair.p_WCb);
         contact_pairs.push_back(
-            {pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W, fn0, k, d});
+            {pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W, phi0, fn0, k, d});
       }
     }
 
@@ -1935,7 +1937,6 @@ void MultibodyPlant<T>::CalcTamsiResults(
   // Mass matrix and its factorization.
   MatrixX<T> M0(nv, nv);
   internal_tree().CalcMassMatrix(context0, &M0);
-  auto M0_ldlt = M0.ldlt();
 
   // Forces at the previous time step.
   MultibodyForces<T> forces0(internal_tree());
@@ -1983,12 +1984,31 @@ void MultibodyPlant<T>::CalcTamsiResults(
   VectorX<T> fn0(num_contacts);
   VectorX<T> stiffness(num_contacts);
   VectorX<T> damping(num_contacts);
+  VectorX<T> phi0(num_contacts);
   for (int i = 0; i < num_contacts; ++i) {
     fn0[i] = contact_pairs[i].fn0;
     stiffness[i] = contact_pairs[i].stiffness;
     damping[i] = contact_pairs[i].damping;
+    phi0[i] = contact_pairs[i].phi0;
   }
 
+  if (contact_solver_ != nullptr) {
+    CallContactSolver(context0.get_time(), v0, M0, minus_tau, phi0,
+                      contact_jacobians.Jc, stiffness, damping, mu, results);
+  } else {
+    CallTamsiSolver(context0.get_time(), v0, M0, minus_tau, fn0,
+                    contact_jacobians.Jn, contact_jacobians.Jt, stiffness,
+                    damping, mu, results);
+  }
+}
+
+template <typename T>
+void MultibodyPlant<T>::CallTamsiSolver(
+    const T& time0, const VectorX<T>& v0, const MatrixX<T>& M0,
+    const VectorX<T>& minus_tau, const VectorX<T>& fn0, const MatrixX<T>& Jn,
+    const MatrixX<T>& Jt, const VectorX<T>& stiffness,
+    const VectorX<T>& damping, const VectorX<T>& mu,
+    internal::TamsiSolverResults<T>* results) const {
   // Solve for v and the contact forces.
   TamsiSolverResult info{TamsiSolverResult::kMaxIterationsReached};
 
@@ -2002,15 +2022,14 @@ void MultibodyPlant<T>::CalcTamsiResults(
   // progressively larger number of sub-steps (i.e each using a smaller time
   // step than in the previous attempt). This loop breaks on the first
   // successful attempt.
-  // We only allow a maximum number of trials. If the solver is unsuccessful in
-  // this number of trials, the user should probably decrease the discrete
+  // We only allow a maximum number of trials. If the solver is unsuccessful
+  // in this number of trials, the user should probably decrease the discrete
   // update time step dt or evaluate the validity of the model.
   const int kNumMaxSubTimeSteps = 20;
   int num_substeps = 0;
   do {
     ++num_substeps;
-    info = SolveUsingSubStepping(num_substeps, M0, contact_jacobians.Jn,
-                                 contact_jacobians.Jt, minus_tau, stiffness,
+    info = SolveUsingSubStepping(num_substeps, M0, Jn, Jt, minus_tau, stiffness,
                                  damping, mu, v0, fn0);
   } while (info != TamsiSolverResult::kSuccess &&
            num_substeps < kNumMaxSubTimeSteps);
@@ -2018,19 +2037,24 @@ void MultibodyPlant<T>::CalcTamsiResults(
   if (info != TamsiSolverResult::kSuccess) {
     const std::string msg = fmt::format(
         "MultibodyPlant's discrete update solver failed to converge at "
-        "simulation time = {:7.3g} with discrete update period = {:7.3g}. This "
-        "usually means that the plant's discrete update period is too large to "
+        "simulation time = {:7.3g} with discrete update period = {:7.3g}. "
+        "This "
+        "usually means that the plant's discrete update period is too large "
+        "to "
         "resolve the system's dynamics for the given simulation conditions. "
         "This is often the case during abrupt collisions or during complex "
-        "and fast changing contact configurations. Another common cause is the "
+        "and fast changing contact configurations. Another common cause is "
+        "the "
         "use of high gains in the simulation of closed loop systems. These "
-        "might cause numerical instabilities given our discrete solver uses an "
-        "explicit treatment of actuation inputs. Possible solutions include:\n"
+        "might cause numerical instabilities given our discrete solver uses "
+        "an "
+        "explicit treatment of actuation inputs. Possible solutions "
+        "include:\n"
         "  1. reduce the discrete update period set at construction,\n"
         "  2. decrease the high gains in your controller whenever possible,\n"
         "  3. switch to a continuous model (discrete update period is zero), "
         "     though this might affect the simulation run time.",
-        context0.get_time(), this->time_step());
+        time0, this->time_step());
     throw std::runtime_error(msg);
   }
 
@@ -2044,6 +2068,117 @@ void MultibodyPlant<T>::CalcTamsiResults(
   results->vn = tamsi_solver_->get_normal_velocities();
   results->vt = tamsi_solver_->get_tangential_velocities();
   results->tau_contact = tamsi_solver_->get_generalized_contact_forces();
+}
+
+template <typename T>
+void MultibodyPlant<T>::CallContactSolver(
+    const T& time0, const VectorX<T>& v0, const MatrixX<T>& M0,
+    const VectorX<T>& minus_tau, const VectorX<T>& phi0, const MatrixX<T>& Jc,
+    const VectorX<T>& stiffness, const VectorX<T>& damping,
+    const VectorX<T>& mu, internal::TamsiSolverResults<T>* results) const {
+  if constexpr (scalar_predicate<T>::is_bool) {
+    const double kPruneTolerance = 20 * std::numeric_limits<double>::epsilon();
+    // TODO(amcastro-tri): Here MultibodyPlant should provide an actual O(n)
+    // operator per #12210.
+    const Eigen::SparseMatrix<T> Jc_sparse = Jc.sparseView(kPruneTolerance);
+    const contact_solvers::SparseLinearOperator<T> Jc_op("Jc", &Jc_sparse);
+
+    class MassMatrixInverseOperator
+        : public contact_solvers::LinearOperator<T> {
+     public:
+      MassMatrixInverseOperator(const std::string& name, const MatrixX<T>* M)
+          : contact_solvers::LinearOperator<T>(name) {
+        DRAKE_DEMAND(M != nullptr);
+        nv_ = M->rows();
+        M_ldlt_ = M->ldlt();
+        tmp_.resize(nv_);
+      }
+      ~MassMatrixInverseOperator() = default;
+
+      int rows() const { return nv_; }
+      int cols() const { return nv_; }
+
+     private:
+      void DoMultiply(const Eigen::Ref<const Eigen::SparseVector<T>>& x,
+                      Eigen::SparseVector<T>* y) const final {
+        tmp_ = VectorX<T>(x);
+        *y = M_ldlt_.solve(tmp_).sparseView();
+      }
+      void DoMultiply(const Eigen::Ref<const VectorX<T>>& x,
+                      VectorX<T>* y) const final {
+        *y = M_ldlt_.solve(x);
+      }
+      int nv_;
+      mutable VectorX<T> tmp_;  // temporary workspace.
+      Eigen::LDLT<MatrixX<T>> M_ldlt_;
+    };
+    MassMatrixInverseOperator Minv_op("Minv", &M0);
+
+    // Perform the "predictor" step, in the absence of contact forces. See
+    // ContactSolver's class documentation for details.
+    // TODO(amcastro-tri): here the predictor step could be implicit in tau so
+    // that for instance we'd be able do deal with force elements implicitly.
+    const int nv = num_velocities();
+    VectorX<T> v_star(nv);
+    Minv_op.Multiply(minus_tau, &v_star);  // v_star = -M⁻¹⋅tau
+    v_star = v0 - time_step() * v_star;    // v_star = v₀ + dt⋅M⁻¹⋅τ
+
+    contact_solvers::SystemDynamicsData<T> dynamics_data(&Minv_op, &v_star);
+    contact_solvers::PointContactData<T> contact_data(&phi0, &Jc_op, &stiffness,
+                                                      &damping, &mu);
+    contact_solver_->SetSystemDynamicsData(&dynamics_data);
+    contact_solver_->SetPointContactData(&contact_data);
+
+    const contact_solvers::ContactSolverResult info =
+        contact_solver_->SolveWithGuess(v0);
+
+    if (info != contact_solvers::ContactSolverResult::kSuccess) {
+      const std::string msg =
+          fmt::format("MultibodyPlant's contact solver of type '" +
+                          NiceTypeName::Get(*contact_solver_) +
+                          "' failed to converge at "
+                          "simulation time = {:7.3g} with discrete update "
+                          "period = {:7.3g}.",
+                      time0, time_step());
+      throw std::runtime_error(msg);
+    }
+
+    // Update the results.
+    const int num_contacts = phi0.size();
+    results->v_next.resize(num_velocities());
+    results->fn.resize(num_contacts);
+    results->ft.resize(2 * num_contacts);
+    results->vn.resize(num_contacts);
+    results->vt.resize(2 * num_contacts);
+    results->tau_contact.resize(num_velocities());
+
+    results->v_next = contact_solver_->GetVelocities();
+    contact_solver_->CopyNormalImpulses(&results->fn);
+    contact_solver_->CopyFrictionImpulses(&results->ft);
+    contact_solver_->CopyNormalContactVelocities(&results->vn);
+    contact_solver_->CopyTangentialContactVelocities(&results->vt);
+    results->tau_contact = contact_solver_->GetGeneralizedContactImpulses();
+    // Scale to contact forces.
+    results->fn /= time_step();
+    results->ft /= time_step();
+    results->tau_contact /= time_step();
+
+  } else {
+    drake::unused(time0);
+    drake::unused(v0);
+    drake::unused(M0);
+    drake::unused(minus_tau);
+    drake::unused(phi0);
+    drake::unused(Jc);
+    drake::unused(stiffness);
+    drake::unused(damping);
+    drake::unused(mu);
+    drake::unused(results);
+    // N.B. Eigen::SparseMatrix does not compiler with symbolic::Expression.
+    throw std::domain_error(
+        "MultibodyPlant's ContactSolver suuport does not include non-numeric "
+        "types.");
+  }
 }
 
 template <typename T>
@@ -2488,6 +2623,15 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
             context, contact_pairs,
             &contact_jacobians_cache.Jn, &contact_jacobians_cache.Jt,
             &contact_jacobians_cache.R_WC_list);
+        auto& Jc = contact_jacobians_cache.Jc;
+        const auto& Jn = contact_jacobians_cache.Jn;
+        const auto& Jt = contact_jacobians_cache.Jt;
+        Jc.resize(3 * Jn.rows(), num_velocities());
+        for (int i = 0; i < Jn.rows(); ++i) {
+          Jc.row(3 * i) = Jt.row(2 * i);
+          Jc.row(3 * i + 1) = Jt.row(2 * i + 1);
+          Jc.row(3 * i + 2) = Jn.row(i);
+        }
       },
       // We explicitly declare the configuration dependence even though the
       // Eval() above implicitly evaluates configuration dependent cache

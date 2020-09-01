@@ -265,8 +265,9 @@ class ParticleTest : public ::testing::Test {
 TEST_F(ParticleTest, Stiction) {
   // Apply an in plane force:
   const Vector3d fapplied_P_W(2.0, 0.0, 0.0);
+  const SpatialForce<double> Fapplied_P_W(Vector3d::Zero(), fapplied_P_W);
   const auto& particle = driver_.plant().GetBodyByName("particle");
-  driver_.FixAppliedForce(particle, fapplied_P_W);
+  driver_.FixAppliedForce(particle, Fapplied_P_W);
 
   const Vector3d weight_P_W(0.0, 0.0, -5.0);
   const Vector3d f_Pc_W_expected = -(weight_P_W + fapplied_P_W);
@@ -277,8 +278,9 @@ TEST_F(ParticleTest, Stiction) {
 
 TEST_F(ParticleTest, Sliding) {
   const Vector3d fapplied_P_W(3.0, 0.0, 0.0);
+  const SpatialForce<double> Fapplied_P_W(Vector3d::Zero(), fapplied_P_W);
   const auto& particle = driver_.plant().GetBodyByName("particle");
-  driver_.FixAppliedForce(particle, fapplied_P_W);
+  driver_.FixAppliedForce(particle, Fapplied_P_W);
 
   // The maximum friction force is mu * Weight = 2.5 N.
   const Vector3d weight_P_W(0.0, 0.0, -5.0);

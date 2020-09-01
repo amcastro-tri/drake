@@ -98,15 +98,18 @@ class MultibodySimDriver {
   // that a constant force `f_Bo_W` is applied on `body`, at its origin Bo. The
   // force is expressed in the world frame.
   // @pre We called Initialize().
-  void FixAppliedForce(const Body<double>& body, const Vector3d& f_Bo_W) {
+  void FixAppliedForce(const Body<double>& body,
+                       const SpatialForce<double>& F_Bo_W) {
     DRAKE_DEMAND(initialized_);
     std::vector<ExternallyAppliedSpatialForce<double>> forces(1);
     forces[0].body_index = body.index();
     forces[0].p_BoBq_B = Vector3d::Zero();
-    forces[0].F_Bq_W = SpatialForce<double>(Vector3d(0.0, 0.0, 0.0), f_Bo_W);
+    forces[0].F_Bq_W = F_Bo_W;
     plant_->get_applied_spatial_force_input_port().FixValue(plant_context_,
                                                             forces);
   }
+
+  void AdvanceNumSteps(int num_steps);
 
  private:
   void SetPointContactParameters(const Body<double>& body, double stiffness,

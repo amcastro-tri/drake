@@ -111,6 +111,13 @@ const geometry::SceneGraphInspector<double>& MultibodySimDriver::GetInspector()
   return *inspector;
 }
 
+void MultibodySimDriver::AdvanceNumSteps(int num_steps) {
+  const double time = diagram_context_->get_time();
+  const double dt = plant_->time_step();
+  const double next_time = time + dt * num_steps;
+  simulator_->AdvanceTo(next_time);
+}
+
 }  // namespace test
 }  // namespace multibody
 }  // namespace drake

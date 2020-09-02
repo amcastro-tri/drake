@@ -223,6 +223,9 @@ class ContactSolver {
   /// Generic interface to invoke the contact solver given an initial guess
   /// `v_guess`. Some solvers might decide to ingore this guess, refer to each
   /// solver specific documentation to find out how this gets used.
+  /// `dt` is the time step used by the physics engine to advance the solution
+  /// in time. In some solvers, `dt` is often needed for the computation of
+  /// Baumgarte-like stabilization terms.
   // TODO(amcastro-tri): Consider an API that also provides a guess to contact
   // forces, though usually not possible given the contact set changes as time
   // progresses.

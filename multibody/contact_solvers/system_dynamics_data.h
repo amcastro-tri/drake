@@ -25,10 +25,13 @@ class SystemDynamicsData {
   /// @param Ainv The system's dynamics matrix inverse operator. Of size nv x
   /// nv, with nv = num_velocities().
   /// @param v_star Predictor's step velocity v*, of size nv.
+  /// @param v0 Velocity at the previous time step. Some solvers could use this
+  /// information to compute Baumgarte-like stabilization terms.
   ///
   /// @pre data must not be nullptr and must point to data with the documented
   /// sizes.
-  SystemDynamicsData(const LinearOperator<T>* Ainv, const VectorX<T>* v_star);
+  SystemDynamicsData(const LinearOperator<T>* Ainv, const VectorX<T>* v_star,
+                     const VectorX<T>* v0, const T& dt);
 
   /// Returns the the number of generalized velocities nv in accordance to the
   /// data provided at construction.
@@ -40,10 +43,18 @@ class SystemDynamicsData {
   /// Retrieve predicted velocity v*.
   const VectorX<T>& get_v_star() const { return *v_star_; }
 
+  /// Retrieve previous time step velocity. Some solvers might use this
+  /// information to compute stabilization terms.
+  const VectorX<T>& get_v0() const { return *v0_; }
+
+  const T& get_dt() const { return dt_; }
+
  private:
   int nv_;
   const LinearOperator<T>* Ainv_{nullptr};
   const VectorX<T>* v_star_{nullptr};
+  const VectorX<T>* v0_{nullptr};
+  const T dt_{0.0};
 };
 
 }  // namespace contact_solvers

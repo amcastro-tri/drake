@@ -2123,7 +2123,8 @@ void MultibodyPlant<T>::CallContactSolver(
     Minv_op.Multiply(minus_tau, &v_star);  // v_star = -M⁻¹⋅tau
     v_star = v0 - time_step() * v_star;    // v_star = v₀ + dt⋅M⁻¹⋅τ
 
-    contact_solvers::SystemDynamicsData<T> dynamics_data(&Minv_op, &v_star);
+    contact_solvers::SystemDynamicsData<T> dynamics_data(&Minv_op, &v_star,
+                                                         &v0, time_step());
     contact_solvers::PointContactData<T> contact_data(&phi0, &Jc_op, &stiffness,
                                                       &damping, &mu);
     contact_solver_->SetSystemDynamicsData(&dynamics_data);

@@ -31,6 +31,21 @@ drake_cc_package_library(
 )
 
 drake_cc_library(
+    name = "fischer_burmeister_solver",
+    srcs = ["fischer_burmeister_solver.cc"],
+    hdrs = ["fischer_burmeister_solver.h"],
+    copts = ["-w", "-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":point_contact_data",
+        ":scratch_workspace",
+        ":system_dynamics_data",
+        "//common:default_scalars",
+        "//common:extract_double",
+    ],
+)
+
+drake_cc_library(
     name = "multibody_sim_driver",
     testonly = 1,
     srcs = ["test/multibody_sim_driver.cc"],
@@ -106,6 +121,17 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "scratch_workspace",
+    srcs = ["scratch_workspace.cc"],
+    hdrs = ["scratch_workspace.h"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        "//common:default_scalars",
+        "//common:nice_type_name",
+    ],
+)
+
+drake_cc_library(
     name = "sparse_linear_operator",
     srcs = ["sparse_linear_operator.cc"],
     hdrs = ["sparse_linear_operator.h"],
@@ -153,6 +179,14 @@ drake_cc_googletest(
         ":pgs_solver",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "scratch_workspace_test",
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":scratch_workspace",
     ],
 )
 

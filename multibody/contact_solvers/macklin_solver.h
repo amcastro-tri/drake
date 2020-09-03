@@ -22,7 +22,7 @@ namespace drake {
 namespace multibody {
 namespace contact_solvers {
 
-struct FBSolverParameters {
+struct MacklinSolverParameters {
   double stiction_tolerance{1.0e-5};  // vs in [m/s].
   // stabilization parameter, tau_rigid = alpha_stab * dt.
   // With alpha_stab = 1.0 we have the position based constraint as Anitescu.
@@ -56,7 +56,7 @@ struct FBSolverParameters {
   double complementary_slackness_tolerance{1.0};
 };
 
-struct FBSolverIterationStats {
+struct MacklinSolverIterationStats {
   int total_iterations{0};
   int outer_iters{0};
   double dvn_max_norm{-1.0};
@@ -75,9 +75,9 @@ struct FBSolverIterationStats {
 };
 
 template <typename T>
-class FBSolver : public ContactSolver<T> {
+class MacklinSolver : public ContactSolver<T> {
  public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(FBSolver);
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(MacklinSolver);
 
   // "cached quantities". They are all function of "state".
   struct Cache {
@@ -92,7 +92,6 @@ class FBSolver : public ContactSolver<T> {
     VectorX<T> vt;  // 2* nc
 
     // Normal constraint quantities.
-    // TODO(maybe): place all together in within FBSolver::NormalConstraintsData
     bool normal_constraints_dirty{true};
     VectorX<T> Rn;  // nc
     VectorX<T> cn;  // nc
@@ -102,13 +101,23 @@ class FBSolver : public ContactSolver<T> {
     VectorX<T> dgpi_dvn;  // Diagonal matrix.
     VectorX<T> dgpi_dpi;  // Diagonal matrix.
 
+    // The normal constraints are written as:
+    //   gpiᵢ = ϕ(cₙᵢ(v, π), π) = 0.
+    // with:
+    //   cₙᵢ(v, π) = vₙᵢ − vₛᵢ + Rₙᵢ πᵢ
+    // Its Jacobian is defined as:
+    //   Gₙ = ∂cₙᵢ(v, π)/∂v = diag(∂cₙᵢ(v, π)/∂vₙᵢ)⋅Jₙ
     bool normal_constraint_jacobian_dirty{true};
     MatrixX<T> G;  // dgpi_dv;
 
+    // The MDP constraints are written as:
+    //   μ π vₜ + λ β = 0
+    // Using the fixed-point iteration scheme in [Macklin et al. 2019] we write:
+    //    vₜ + Wmdp β = 0
     bool max_dissipation_constraints_dirty{true};
     VectorX<T> dlambda;
     VectorX<T> dbeta_norm;
-    VectorX<T> W;
+    VectorX<T> Wmdp;
     VectorX<T> gt;
 
     bool contact_constraints_dirty{true};
@@ -128,7 +137,7 @@ class FBSolver : public ContactSolver<T> {
       G.resize(nc, nv);
       dlambda.resize(nc);
       dbeta_norm.resize(nc);
-      W.resize(nc);
+      Wmdp.resize(nc);
       gt.resize(2 * nc);
       DgDvc.resize(3 * nc);
     }
@@ -137,7 +146,8 @@ class FBSolver : public ContactSolver<T> {
   // The state of the iteration.
   class State {
    public:
-    // N.B. We do want to copy the cache as is during assignment.
+    // N.B. We do want to copy the cache as is during assignment, including
+    // cached quantities.
     DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(State);
 
     State() = default;
@@ -150,18 +160,6 @@ class FBSolver : public ContactSolver<T> {
       lambda_.resize(nc);
       cache_.Resize(nv, nc);
     }
-
-#if 0
-    /// Setting dt invalidates all cache entries.
-    void SetDt(const T& dt) { 
-      dt_ = dt; 
-      cache_.contact_velocities_dirty = true;
-      cache_.normal_constraints_dirty = true;
-      cache_.normal_constraint_jacobian_dirty = true;
-      cache_.contact_constraints_dirty = true;
-      cache_.max_dissipation_constraints_dirty = true;
-    }
-#endif
 
     void Set(const VectorX<T>& v, const VectorX<T>& gamma, const T& m) {
       SetVelocities(v);
@@ -230,15 +228,11 @@ class FBSolver : public ContactSolver<T> {
     mutable Cache cache_;    
   };
   
-  FBSolver(int nv, int nc) : scratch_workspace_(nv, nc, 64) {}
+  MacklinSolver(int nv, int nc) : scratch_workspace_(nv, nc, 64) {}
 
-  // TODO: this should override the parent class.
   void SetSystemDynamicsData(const SystemDynamicsData<T>* data) final;
 
-  void SetPointContactData(const PointContactData<T>* data) final {
-    DRAKE_DEMAND(data != nullptr);
-    contact_data_ = data;
-  }
+  void SetPointContactData(const PointContactData<T>* data) final;
 
   int num_contacts() const final { return contact_data_->num_contacts();  }
 
@@ -247,9 +241,9 @@ class FBSolver : public ContactSolver<T> {
   ContactSolverResult SolveWithGuess(const VectorX<T>& v_guess) final;
   ContactSolverResult SolveWithGuess(const State& state_guess);
 
-  void set_parameters(const FBSolverParameters& p) { parameters_ = p; }
+  void set_parameters(const MacklinSolverParameters& p) { parameters_ = p; }
 
-  const FBSolverIterationStats& get_stats() const { return stats_; }
+  const MacklinSolverIterationStats& get_stats() const { return stats_; }
 
   // TODO: remove, we have COntactSolver::CopyNormalImpulses().
   VectorX<T> CopyNormalForces() const {
@@ -331,7 +325,7 @@ class FBSolver : public ContactSolver<T> {
   // Define linear operator objects for Gc and GcT.
   class GcOperator : public LinearOperator<T> {
    public:
-    GcOperator(const FBSolver<T>* solver, const State* state)
+    GcOperator(const MacklinSolver<T>* solver, const State* state)
         : LinearOperator<T>("Gc"), solver_(solver), state_(state){};
 
     ~GcOperator() {}
@@ -374,7 +368,7 @@ class FBSolver : public ContactSolver<T> {
       DRAKE_DEMAND(y->size() == this->rows());
       solver_->MultiplyByGcTranspose(*state_, x, y);
     }
-    const FBSolver<T>* solver_{nullptr};
+    const MacklinSolver<T>* solver_{nullptr};
     const State* state_{nullptr};
   };
 
@@ -542,69 +536,13 @@ class FBSolver : public ContactSolver<T> {
       ExtractNormal(s.gamma(), &pi);
       ExtractTangent(s.gamma(), &beta);
       CalcMaxDissipationConstraintResidual(vt, lambda, beta, pi, &c.dlambda,
-                                           &c.dbeta_norm, &c.W, &c.gt);
+                                           &c.dbeta_norm, &c.Wmdp, &c.gt);
       c.max_dissipation_constraints_dirty = false;
     }
   }
 
   T LimitNormalUpdate(const State& s_km, const State& s_kp,
                       int outer_iter) const;
-
-  // Performs multiplication W = G * Mi * JT one column at a time.
-  // G of size 3nc x nv
-  // Mi of size nv x nv
-  // JT of size nv x 3nc
-  // 
-  // Result W of size 3nc x 3nc
-#if 0  
-  void FormDelassusOperatorMatrix(const LinearOperator<T>& G,
-                                  const LinearOperator<T>& Mi,
-                                  const LinearOperator<T>& JT,
-                                  Eigen::SparseMatrix<T>* W) const {
-    DRAKE_DEMAND(G.rows() == 3 * num_contacts());
-    DRAKE_DEMAND(G.cols() == num_velocities());
-    DRAKE_DEMAND(Mi.rows() == num_velocities());
-    DRAKE_DEMAND(Mi.cols() == num_velocities());
-    DRAKE_DEMAND(JT.rows() == num_velocities());
-    DRAKE_DEMAND(JT.cols() == 3 * num_contacts());
-    DRAKE_DEMAND(W->rows() == 3 * num_contacts());
-    DRAKE_DEMAND(W->cols() == 3 * num_contacts());
-
-    const int nv = num_velocities();
-    const int nc = num_contacts();
-
-    Eigen::SparseVector<T> ej(3 * nc);
-    // ei.makeCompressed();   // Not available for SparseVector.
-    ej.coeffRef(0) = 1.0;  // Effectively allocate one non-zero entry.    
-
-
-    Eigen::SparseVector<T> JTcolj(nv);    
-    Eigen::SparseVector<T> MiJTcolj(nv);    
-    Eigen::SparseVector<T> Wcolj(3 * nc);
-    // Reserve maximum number of non-zeros.
-    JTcolj.reserve(nv);
-    MiJTcolj.reserve(nv);
-    Wcolj.reserve(3 * nc);
-
-    // Loop over the j-th column.
-    for (int j = 0; j < W->cols(); ++j) {
-      // By changing the inner index, we change what entry is the non-zero with
-      // value 1.0.
-      *ej.innerIndexPtr() = j;
-
-      // Reset to nnz = 0. Memory is not freed.
-      JTcolj.setZero();
-      MiJTcolj.setZero();
-      Wcolj.setZero();
-
-      // Apply each operator in sequence.
-      JT.Multiply(ej, &JTcolj);  // JTcolj = JT * ej
-      Mi.Multiply(JTcolj, &MiJTcolj);
-      G.Multiply(MiJTcolj, &Wcolj);
-      W->col(j) = Wcolj;
-    }
-  }
-#endif
 
   void PreProcessData();
 
@@ -629,20 +567,20 @@ class FBSolver : public ContactSolver<T> {
 
   const SystemDynamicsData<T>* dynamics_data_{nullptr};
   const PointContactData<T>* contact_data_{nullptr};
-  FBSolverParameters parameters_;
+  MacklinSolverParameters parameters_;
 
-  //////////////////////////////////////////////////////////////////////////////
-  // ALL THIS CONST AFTER LOADING DATA.  
+  // Pre-processed data must remain "const" after the first call to
+  // PreProcessData() and it should only be modified by that method.
   PreProcessedData pre_proc_data_;
 
   // The state of the solver's iteration.
   State state_;
 
-  // Workspace.
+  // Workspace storing temporary variables.
   mutable ScratchWorkspace<T> scratch_workspace_;
 
   // Collect useful statistics.
-  FBSolverIterationStats stats_;
+  MacklinSolverIterationStats stats_;
 };
 
 }  // namespace contact_solvers

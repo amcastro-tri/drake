@@ -16,7 +16,21 @@ using Eigen::SparseMatrix;
 using Eigen::SparseVector;
 
 template <typename T>
-void FBSolver<T>::PreProcessData() {
+void MacklinSolver<T>::SetPointContactData(
+    const PointContactData<T>* data) {
+  DRAKE_DEMAND(data != nullptr);
+  contact_data_ = data;
+}
+
+template <typename T>
+void MacklinSolver<T>::SetSystemDynamicsData(const SystemDynamicsData<T>* data) 
+{
+  DRAKE_DEMAND(data != nullptr);
+  dynamics_data_ = data;
+}
+
+template <typename T>
+void MacklinSolver<T>::PreProcessData() {
   const int nc = num_contacts();
   const int nv = num_velocities();
   state_.Resize(nv, nc);
@@ -55,14 +69,7 @@ void FBSolver<T>::PreProcessData() {
 }
 
 template <typename T>
-void FBSolver<T>::SetSystemDynamicsData(const SystemDynamicsData<T>* data) 
-{
-  DRAKE_DEMAND(data != nullptr);
-  dynamics_data_ = data;
-}
-
-template <typename T>
-bool FBSolver<T>::CheckOuterLoopConvergenceCriteria(const VectorX<T>& vc,
+bool MacklinSolver<T>::CheckOuterLoopConvergenceCriteria(const VectorX<T>& vc,
                                            const VectorX<T>& dvc,
                                            double* max_dvc_norm) const {
   DRAKE_DEMAND(vc.size() == 3*num_contacts());
@@ -85,7 +92,7 @@ bool FBSolver<T>::CheckOuterLoopConvergenceCriteria(const VectorX<T>& vc,
 }
 
 template <typename T>
-bool FBSolver<T>::CheckInnerLoopConvergenceCriteria(const VectorX<T>& g,
+bool MacklinSolver<T>::CheckInnerLoopConvergenceCriteria(const VectorX<T>& g,
                                            const T& m,
                                            double* g_max_norm) const {
   DRAKE_DEMAND(g.size() == num_contacts());  // for now only normal.
@@ -96,7 +103,7 @@ bool FBSolver<T>::CheckInnerLoopConvergenceCriteria(const VectorX<T>& g,
 }
 
 template <typename T>
-void FBSolver<T>::UpdateContactVelocities(const VectorX<T>& v, VectorX<T>* vc,
+void MacklinSolver<T>::UpdateContactVelocities(const VectorX<T>& v, VectorX<T>* vc,
                                           VectorX<T>* vn,
                                           VectorX<T>* vt) const {
   get_Jc().Multiply(v, vc);
@@ -105,7 +112,7 @@ void FBSolver<T>::UpdateContactVelocities(const VectorX<T>& v, VectorX<T>* vc,
 }
 
 template <typename T>
-T FBSolver<T>::CalcFischerBurmeister(const T& x, const T& y,
+T MacklinSolver<T>::CalcFischerBurmeister(const T& x, const T& y,
                                      double epsilon_squared, EigenPtr<Vector2<T>> grad_phi) {
   using std::sqrt;
   const T soft_norm = sqrt(x * x + y * y + epsilon_squared);
@@ -119,7 +126,7 @@ T FBSolver<T>::CalcFischerBurmeister(const T& x, const T& y,
 // Assumes cache updated with:
 //  - vn
 template <typename T>
-void FBSolver<T>::CalcNormalConstraintResidual(
+void MacklinSolver<T>::CalcNormalConstraintResidual(
     const VectorX<T>& vn, const VectorX<T>& pi, const T& m_vc, const T& dt,
     VectorX<T>* cn, VectorX<T>* phi, VectorX<T>* gpi, VectorX<T>* Rn,
     VectorX<T>* dcn_dvn, VectorX<T>* dgpi_dvn, VectorX<T>* dgpi_dpi) const {
@@ -171,7 +178,7 @@ void FBSolver<T>::CalcNormalConstraintResidual(
 }
 
 template <typename T>
-void FBSolver<T>::CalcMaxDissipationConstraintResidual(
+void MacklinSolver<T>::CalcMaxDissipationConstraintResidual(
     const VectorX<T>& vt, const VectorX<T>& lambda, const VectorX<T>& beta,
     const VectorX<T>& pi, VectorX<T>* dlambda, VectorX<T>* dbeta_norm,
     VectorX<T>* W, VectorX<T>* gt) const {
@@ -258,7 +265,7 @@ void FBSolver<T>::CalcMaxDissipationConstraintResidual(
 }
 
 template <typename T>
-void FBSolver<T>::CalcNormalStabilizationVelocity(const T& dt,
+void MacklinSolver<T>::CalcNormalStabilizationVelocity(const T& dt,
                                                   double alpha_stab,
                                                   const VectorX<T>& vn0,
                                                   const VectorX<T>& phi0,
@@ -277,7 +284,7 @@ void FBSolver<T>::CalcNormalStabilizationVelocity(const T& dt,
 }
 
 template <typename T>
-T FBSolver<T>::EstimateVelocityScale(const VectorX<T>& vc,
+T MacklinSolver<T>::EstimateVelocityScale(const VectorX<T>& vc,
                                      const VectorX<T>& vc_star) const {
   const T vc_norm = vc.template lpNorm<Eigen::Infinity>();
   const T vc_star_norm = vc_star.template lpNorm<Eigen::Infinity>();
@@ -291,7 +298,7 @@ T FBSolver<T>::EstimateVelocityScale(const VectorX<T>& vc,
 }
 
 template <typename T>
-T FBSolver<T>::LimitNormalUpdate(
+T MacklinSolver<T>::LimitNormalUpdate(
   const State& s_km, const State& s_kp, int outer_iter) const {
   using std::min;
   using std::sqrt;
@@ -435,10 +442,10 @@ T FBSolver<T>::LimitNormalUpdate(
   return alpha;
 }
 
-//FBSolverResult FBSolver<T>::SolveWithGuess(const T& dt, const VectorX<T>& v_guess) {
+//MacklinSolverResult MacklinSolver<T>::SolveWithGuess(const T& dt, const VectorX<T>& v_guess) {
 
 template <typename T>
-ContactSolverResult FBSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) {
+ContactSolverResult MacklinSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) {
   PreProcessData();
 
   State s_guess(num_velocities(), num_contacts());
@@ -483,7 +490,7 @@ ContactSolverResult FBSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) {
 }
 
 template <typename T>
-ContactSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
+ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
   using std::abs;
   using std::max;
   using std::min;
@@ -574,7 +581,7 @@ ContactSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
 
       ValidateMaxDissipationConstraintsCache(state_);
       const auto& gt = state_.cache().gt;
-      const auto& Wmdp = state_.cache().W;   // Maximum Diss Principle W.
+      const auto& Wmdp = state_.cache().Wmdp;   // Maximum Diss Principle W.
 
       ValidateContactConstraintsCache(state_);
       const VectorX<T>& DgDvc = state_.cache().DgDvc;
@@ -651,7 +658,7 @@ ContactSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
       // We expect an SPD system here.
       //Eigen::LDLT<MatrixX<T>> Aldlt(A);
       //if (Aldlt.info() != Eigen::Success) {
-      //  return FBSolverResult::kLinearSolverFailed;
+      //  return MacklinSolverResult::kLinearSolverFailed;
       //}
       //dgamma = Aldlt.solve(Fg);
       
@@ -749,4 +756,4 @@ ContactSolverResult FBSolver<T>::SolveWithGuess(const State& state_guess) {
 }  // namespace drake
 
 DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    class ::drake::multibody::contact_solvers::FBSolver)
+    class ::drake::multibody::contact_solvers::MacklinSolver)

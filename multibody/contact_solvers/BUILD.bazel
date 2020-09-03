@@ -46,6 +46,22 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "macklin_solver",
+    srcs = ["macklin_solver.cc"],
+    hdrs = ["macklin_solver.h"],
+    copts = ["-w", "-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":point_contact_data",
+        ":scratch_workspace",
+        ":system_dynamics_data",
+        "//common:default_scalars",
+        "//common:extract_double",
+    ],
+)
+
+
+drake_cc_library(
     name = "multibody_sim_driver",
     testonly = 1,
     srcs = ["test/multibody_sim_driver.cc"],

@@ -69,40 +69,6 @@ void MacklinSolver<T>::PreProcessData() {
 }
 
 template <typename T>
-bool MacklinSolver<T>::CheckOuterLoopConvergenceCriteria(const VectorX<T>& vc,
-                                           const VectorX<T>& dvc,
-                                           double* max_dvc_norm) const {
-  DRAKE_DEMAND(vc.size() == 3*num_contacts());
-  using std::abs;
-  using std::max;
-  bool converged = true;
-  *max_dvc_norm = 0;
-  // Convergence is monitored component wise.
-  for (int i = 0; i < num_contacts(); ++i) {
-    const T vs = parameters_.stiction_tolerance;
-    const T vc_norm = vc.template segment<3>(3 * i).norm();
-    const T tol = parameters_.outer_loop_tolerance * max(vs, vc_norm);
-    const T dvc_norm = dvc.template segment<3>(3 * i).norm();    
-    if (dvc_norm > tol) {
-      converged = false;
-    }
-    *max_dvc_norm = max(*max_dvc_norm, ExtractDoubleOrThrow(dvc_norm));
-  }
-  return converged;
-}
-
-template <typename T>
-bool MacklinSolver<T>::CheckInnerLoopConvergenceCriteria(const VectorX<T>& g,
-                                           const T& m,
-                                           double* g_max_norm) const {
-  DRAKE_DEMAND(g.size() == num_contacts());  // for now only normal.
-  *g_max_norm = ExtractDoubleOrThrow(g.template lpNorm<Eigen::Infinity>());
-  double m_double = ExtractDoubleOrThrow(m);  // TODO: m should be double.
-  bool converged = *g_max_norm < parameters_.inner_loop_tolerance * m_double;
-  return converged;
-}
-
-template <typename T>
 void MacklinSolver<T>::UpdateContactVelocities(const VectorX<T>& v, VectorX<T>* vc,
                                           VectorX<T>* vn,
                                           VectorX<T>* vt) const {
@@ -127,9 +93,9 @@ T MacklinSolver<T>::CalcFischerBurmeister(const T& x, const T& y,
 //  - vn
 template <typename T>
 void MacklinSolver<T>::CalcNormalConstraintResidual(
-    const VectorX<T>& vn, const VectorX<T>& pi, const T& m_vc, const T& dt,
-    VectorX<T>* cn, VectorX<T>* phi, VectorX<T>* gpi, VectorX<T>* Rn,
-    VectorX<T>* dcn_dvn, VectorX<T>* dgpi_dvn, VectorX<T>* dgpi_dpi) const {
+    const VectorX<T>& vn, const VectorX<T>& pi, const T& dt,
+    VectorX<T>* cn, VectorX<T>* gn, VectorX<T>* Rn,
+    VectorX<T>* DcnDvn, VectorX<T>* DgnDvn, VectorX<T>* DgnDpi) const {
   using std::max;
 
   const int nc = num_contacts();
@@ -156,20 +122,19 @@ void MacklinSolver<T>::CalcNormalConstraintResidual(
     const T& ri = scaling_factor(i);  // scales impulse (Ns) to velocity (m/s).
     const T x = cn_ic;
     const T y = ri * pi(i);
-    Vector2<T> grad_phi;
-    const T phi_ic = CalcFischerBurmeister(x, y, e2, &grad_phi);
-    (*phi)(i) = phi_ic;
-    (*gpi)(i) = phi_ic - m_vc;
+    Vector2<T> grad_fFB;
+    const T fFB_ic = CalcFischerBurmeister(x, y, e2, &grad_fFB);
+    (*gn)(i) = fFB_ic;
 
     // Calc gradients.
-    if (dcn_dvn && dgpi_dvn && dgpi_dpi) {
+    if (DcnDvn && DgnDvn && DgnDpi) {
       const T H_dampig = damping >= 0 ? 1.0 : 0.0;
       const T dRn_dvn = Rn_ic / kv * k(i) * d(i) * H_dampig;
-      const T dcn_dvn_ic = 1.0 + dRn_dvn * pi(i);
-      (*dcn_dvn)(i) = dcn_dvn_ic;
+      const T DcnDvn_ic = 1.0 + dRn_dvn * pi(i);
+      (*DcnDvn)(i) = DcnDvn_ic;
 
-      (*dgpi_dvn)(i) = grad_phi(0) * dcn_dvn_ic;
-      (*dgpi_dpi)(i) = grad_phi(0) * Rn_ic + grad_phi(1) * ri;
+      (*DgnDvn)(i) = grad_fFB(0) * DcnDvn_ic;
+      (*DgnDpi)(i) = grad_fFB(0) * Rn_ic + grad_fFB(1) * ri;
     }
   }
 
@@ -274,29 +239,23 @@ void MacklinSolver<T>::CalcNormalStabilizationVelocity(const T& dt,
     vn_stab->setZero();
     return;
   }
-  // As Todorov, use Baugmarte stabilization.
+  // As Todorov, use a Baugmarte-like stabilization.
+  // Note that at alpha_stab = 1.0, we retrieve the stabilization velocity used
+  // by [Anitescu, 2006]. We want alpha_stab = 1.0 to recover the law π = −kϕ
+  // linear with the signed distance ϕ.
   const T tau_rigid = alpha_stab * dt;
   const T kd = dt / tau_rigid;
   const T kp = dt / (tau_rigid * tau_rigid);
-  for (int i = 0; i < num_contacts(); ++i) {
-    (*vn_stab)(i) = vn0(i) - kd * vn0(i) - kp * phi0(i);
-  }
+  (*vn_stab) = vn0 - kd * vn0 - kp * phi0;
 }
 
 template <typename T>
-T MacklinSolver<T>::EstimateVelocityScale(const VectorX<T>& vc,
-                                     const VectorX<T>& vc_star) const {
-  const T vc_norm = vc.template lpNorm<Eigen::Infinity>();
-  const T vc_star_norm = vc_star.template lpNorm<Eigen::Infinity>();
-  const T vc_min = 1000.0 * parameters_.stiction_tolerance;
-  using std::max;
-  const T v_scale = max(vc_min, max(vc_norm, vc_star_norm));
-  PRINT_VAR(vc_norm);
-  PRINT_VAR(vc_star_norm)
-  PRINT_VAR(vc_min);  
-  return v_scale;
+T MacklinSolver<T>::CalcLineSearchParameter(
+  const State& s_km, const State& s_kp) const {
+  return parameters_.relaxation;
 }
 
+#if 0
 template <typename T>
 T MacklinSolver<T>::LimitNormalUpdate(
   const State& s_km, const State& s_kp, int outer_iter) const {
@@ -441,8 +400,7 @@ T MacklinSolver<T>::LimitNormalUpdate(
 
   return alpha;
 }
-
-//MacklinSolverResult MacklinSolver<T>::SolveWithGuess(const T& dt, const VectorX<T>& v_guess) {
+#endif
 
 template <typename T>
 ContactSolverResult MacklinSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) {
@@ -451,40 +409,53 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) 
   State s_guess(num_velocities(), num_contacts());
   s_guess.SetVelocities(v_guess);
 
-  // Workspace.
-  GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
-
   if (num_contacts() == 0) {
     state_.mutable_v() = get_v_star();
+    state_.mutable_gamma().setZero();
+    // Even when for no contact lambda has no meaning, we set it to something
+    // sensible, the minimum value lambda can have.
+    state_.mutable_lambda().setZero();
     stats_ = {};
     return ContactSolverResult::kSuccess;
   }
 
+  // Workspace.
+  GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
+
   // Update vc so that we can use it to estimate a velocity scale.
-  const auto& vc = EvalVc(s_guess);
+  //const auto& vc = EvalVc(s_guess);
   auto& vc_star = pre_proc_data_.vc_star;
-  const T m0 = EstimateVelocityScale(vc, vc_star);
-  s_guess.SetComplementaritySlackness(m0);
+  //const T m0 = EstimateVelocityScale(vc, vc_star);
 
   // Estimate a value of pi such that r * pi = m0.
+  // To estimate an initial guess for pi, we essentially start from:
+  //   vc = W * gamma + vc_star
+  // and simplify it to:
+  //   vn = r * pi + vn_star, r = ‖Wᵢᵢ‖ᵣₘₛ
+  // With the goal of being able to estimate pi by a proper dimensional scaling
+  // of vn_star.
+  // Setting vn = 0 and enforcing pi > 0, we get:
+  //   pi = max(0, -vn_star / r)
+  auto& vn_star = access.xn_sized_vector();
+  ExtractNormal(vc_star, &vn_star);
+  const auto& r = pre_proc_data_.Wii_norm;
   auto& pi = access.xn_sized_vector();
-  const auto& scaling_factor = pre_proc_data_.Wii_norm;
-  pi = m0 * scaling_factor.cwiseInverse();
+  pi = (-vn_star.array() / r.array()).max(T(0.0));
 
-  // TODO: Estimate friction forces.
+  // TODO(amcastro-tri): Estimate friction forces.
+  // We could use: β = −μπ vₜ/‖vₜ‖ₛ, with ‖vₜ‖ₛ the "soft" norm of vt.
   auto& beta = access.xt_sized_vector();
   beta.setZero();
 
   // Set the initial guess for gamma.
-  auto& gamma = access.xc_sized_vector();
-  MergeNormalAndTangent(pi, beta, &gamma);
-  s_guess.SetImpulses(gamma);
+  MergeNormalAndTangent(pi, beta, &s_guess.mutable_gamma());
 
   // Print initial conditions.
+  PRINT_VAR(s_guess.cache().vt.transpose());
   PRINT_VAR(s_guess.cache().vn.transpose());
+  PRINT_VAR(s_guess.cache().vc.transpose());
   PRINT_VAR(pi.transpose());
   PRINT_VAR(s_guess.gamma().transpose());
-  PRINT_VAR(m0);
 
   return SolveWithGuess(s_guess);
 }
@@ -518,17 +489,15 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
   const auto& scaling_factor = pre_proc_data_.Wii_norm;
   PRINT_VAR(scaling_factor.transpose());  
 
-  // Initialize lambda.
-  ValidateContactVelocitiesCache(state_);
-  auto& vt = access.xt_sized_vector();
-  ExtractTangent(state_.cache().vc, &vt);
+  // Initialize lambda. Upon convergence, lambda is the magnitude of the
+  // tangential velocity at the i-th conctact. Therefore it does make sense to
+  // initialize it using the magnitude of the first predicted tangential
+  // velocity.
+  auto& vt = EvalVt(state_);
   auto& lambda = state_.mutable_lambda();
   for (int i = 0; i < nc; ++i) {
     lambda(i) = vt.template segment<2>(2 * i).norm();
   }
-
-  const double m_final = parameters_.complementary_slackness_tolerance *
-                         parameters_.stiction_tolerance;  
 
   // Maybe place these in the cache?
   //MatrixX<T> G(3 * nc, nv);
@@ -536,11 +505,8 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
   SparseMatrix<T> A(3 * nc, 3 * nc);
   VectorX<T> C(3 * nc);
   VectorX<T>& Fv = access.v_sized_vector();
-  VectorX<T>& Fg = access.xc_sized_vector();
-  VectorX<T>& g = access.xc_sized_vector();
-
-  // State of the previous outer iteration.
-  State state_km(state_);
+  VectorX<T>& Fgamma = access.xc_sized_vector();
+  VectorX<T>& gc = access.xc_sized_vector();
 
   // Auxiliary state to store update without iteration limit.
   // That is, state_kp.v = state_.v + dv, similarly for gamma.
@@ -555,199 +521,102 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
   Eigen::SparseLU<SparseMatrix<T>> solver;
   solver.analyzePattern(A);
 
-  // "Outer iteration" aka "Centering step" in barrier methods for convex
-  // optimization solvers.
-  int num_outer = 0;
-  for (int outer_iter = 0; outer_iter < parameters_.outer_loop_max_iters;
-       ++outer_iter) {
-    ++num_outer;
+  int num_inner = 0;
+  for (int iter = 0; iter < parameters_.max_iters; ++iter) {
+    ++num_inner;
     PRINT_VAR("---------------------------------------------\n");
-    PRINT_VAR(outer_iter);
-    PRINT_VAR(state_.m());
+    PRINT_VAR(iter);
 
-    // Inner loop seeks to converge to the specified value of m_vs.
-    const int inner_loop_max_iters = outer_iter == 0
-                                         ? parameters_.initialization_max_iters
-                                         : parameters_.inner_loop_max_iters;
-    int num_inner = 0;
-    for (int inner_iter = 0; inner_iter < inner_loop_max_iters; ++inner_iter) {
-      ++num_inner;
-      PRINT_VAR("---------------------------------------------\n");
-      PRINT_VAR(inner_iter);
+    // Build contact constraint residual gc, such that for the ic-ith contact
+    // point we have gc_ic = [gt_ic(0); gt_ic(1); gn_ic]
+    const VectorX<T>& gn = Eval_gn(state_);
+    const VectorX<T>& gt = Eval_gt(state_);
+    MergeNormalAndTangent(gn, gt, &gc);
 
-      ValidateNormalConstraintsCache(state_);
-      const auto& S = state_.cache().dgpi_dpi;
-      const auto& gpi = state_.cache().gpi;
-
-      ValidateMaxDissipationConstraintsCache(state_);
-      const auto& gt = state_.cache().gt;
-      const auto& Wmdp = state_.cache().Wmdp;   // Maximum Diss Principle W.
-
-      ValidateContactConstraintsCache(state_);
-      const VectorX<T>& DgDvc = state_.cache().DgDvc;
-
-      // Operators Gc and GcT for the current state.
-      GcOperator Gc(this, &state_);   // Gc = DgDvc = [Jt, DgnDvn * Jn]
-      
-      for (int i = 0; i < nc; ++i) {
-        // Build g = [gt; gn]
-        g.template segment<2>(3 * i) = gt.template segment<2>(2 * i);
-        g(3 * i + 2) = gpi(i);
-
-        // Build C = [Wmdp 0]
-        //           [0 S]
-        C.template segment<2>(3 * i) = Vector2<T>(Wmdp(i), Wmdp(i));
-        C(3 * i + 2) = S(i);
-      }
-
-      // NOTE! Maybe with a CG solver we'd only need the operator form of A,
-      // which I believe I can compute using operator forms of Jn, Jt since G =
-      // diag(dgpi_dvn) * Jn, and similarly for Jt. Assemble Schur complement of
-      // J = [M -G^T]
-      //     [G   C ]
-      // C = [Wmdp 0]
-      //     [   0 S]
-      //FormDelassusOperatorMatrix(Gc, get_Ainv(), GcT, &A);
-
-      //Del = DgDvc * W * DgDvc;
-      // TODO: rename to Del_tilde for consistency.
-      // These two multiplications are O(2*nnz(A)).
-      // We perform them explicitly by scanning the non-zeros of A.
-      Del = W;
-      for (int k = 0; k < Del.outerSize(); ++k) {
-        for (typename SparseMatrix<T>::InnerIterator it(Del, k); it; ++it) {
-          const int i = it.row();
-          const int j = it.col();
-          it.valueRef() *= (DgDvc(i) * DgDvc(j));          
-        }
-      }
-
-      // This does not compile:
-      //A = DgDvc.asDiagonal() * W;  // A = D * N
-      //A *= DgDvc.asDiagonal();      // A = D * N * D = Gc * Mi * GcT
-      
-      PRINT_VARn(MatrixX<T>(W));
-      PRINT_VAR(DgDvc.transpose());
-      PRINT_VARn(Del);            
-
-      // this line assumes diagonal entries were allocated. See:
-      // https://forum.kde.org/viewtopic.php?f=74&t=133686&p=359423&hilit=sparse+diagonal#p359423
-      // Otherwise we'll get an error at runtime.
-      A = C.asDiagonal();
-      A += Del;  // A = Del + C
-
-      PRINT_VAR(C.transpose());
-      PRINT_VARn(A);
-
-      // Old dense version:
-      //const MatrixX<T> Mi_times_GT = Mi_.solve(G.transpose());
-     // A = C.asDiagonal();
-      //A += G * Mi_times_GT;
-      
-      PRINT_VAR(S.transpose());
-      PRINT_VAR(Wmdp.transpose());
-      PRINT_VARn(A);
-
-      CalcVelocitiesResidual(state_, &Fv);
-
-      // Assemble multipliers residual. nu = [lambda, gamma = [beta, pi], mu]
-      Gc.Multiply(Fv, &Fg);  // Fg = Gc * Fv
-      Fg -= g;               // Fg = Gc * Fv - g;
-
-      // Solve for change in the multipliers.
-      // We expect an SPD system here.
-      //Eigen::LDLT<MatrixX<T>> Aldlt(A);
-      //if (Aldlt.info() != Eigen::Success) {
-      //  return MacklinSolverResult::kLinearSolverFailed;
-      //}
-      //dgamma = Aldlt.solve(Fg);
-      
-      // Pattern was analyzed at the very top with A.analyzePattern(). Here the
-      // actual numerical factorization is performed.
-      solver.factorize(A);
-      if (solver.info() != Eigen::Success) {
-        // Decomposition failed. Maybe return kLinearFactorizationFailed.
-        return ContactSolverResult::kFailure;
-      }
-      dgamma = solver.solve(Fg);
-      if (solver.info() != Eigen::Success) {
-        // Solving failed.
-        return ContactSolverResult::kFailure;
-      }
-
-      // Update dv:
-      Gc.MultiplyByTranspose(dgamma, &xv_aux);     // xv_aux = GcT * dgamma
-      get_Ainv().Multiply(xv_aux, &dv);  // dv = Mi * GcT * dgamma
-      dv -= Fv;                          // dv = -Fv + Mi * GcT * dgamma
-      //dv = -Fv + Mi_times_GT * dgamma;
-
-      ExtractNormal(dgamma, &dpi);
-      ExtractTangent(dgamma, &dbeta);
-
-      // Store v += dv and g += dg in state_kp.
-      state_kp = state_;
-      state_kp.mutable_v() += dv;
-      state_kp.mutable_gamma() += dgamma;
-      state_kp.mutable_lambda() += state_.cache().dlambda;
-
-      // Limit the final update either by LS or so that we dont cross outside
-      // the feasible region.
-      T alpha = LimitNormalUpdate(state_, state_kp, outer_iter);
-      PRINT_VAR(alpha);
-
-      // Perform the actual solver state update.
-      state_.mutable_v() += alpha * dv;
-      state_.mutable_gamma() += alpha * dgamma;
-      state_.mutable_lambda() += alpha * state_.cache().dlambda;
-
-      // Update constraints to new state_ so that we can compute residual.
-      ValidateNormalConstraintsCache(state_);
-
-      // Check inner loop convergence.
-      double gpi_max_norm;
-      const bool inner_converged = CheckInnerLoopConvergenceCriteria(
-          state_.cache().gpi, state_.m(), &gpi_max_norm);
-      PRINT_VAR(inner_converged);
-      PRINT_VAR(gpi_max_norm);
-
-      if (inner_converged) break;
-    }  // inner_iter
-
-    if( outer_iter == 0) {
-      stats_.initialization_iters = num_inner;
+    // Build diagonal matrix C, st. C_ic = [Wmdp_ic; Wmdp_ic; S_ic]
+    const VectorX<T>& Wmdp = Eval_Wmdp(state_);
+    const VectorX<T>& DgnDpi = Eval_DgnDpi(state_);
+    for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
+      C.template segment<2>(ic3) = Vector2<T>(Wmdp(ic), Wmdp(ic));
+      C(ic3 + 2) = DgnDpi(ic);
     }
 
-    // Update complementarity slackness parameter.
-    if (state_.m() > m_final) {
-      state_.mutable_m() *= parameters_.delta;
+    // NOTE! Maybe with a CG solver we'd only need the operator form of A,
+    // which I believe I can compute using operator forms of Jn, Jt since G =
+    // diag(DgnDvn) * Jn, and similarly for Jt. Assemble Schur complement of
+    // J = [M -G^T]
+    //     [G   C ]
+    // C = [Wmdp 0]
+    //     [   0 DgnDpi]
+
+    // TODO(amcastro-tri): Implement operator form of A.
+    const SparseMatrix<T> Wtilde = EvalWtilde(state_);
+
+    // This line assumes diagonal entries were allocated. See:
+    // https://forum.kde.org/viewtopic.php?f=74&t=133686&p=359423&hilit=sparse+diagonal#p359423
+    // Otherwise we'll get an error at runtime.
+    A = C.asDiagonal();
+    A += Wtilde;  // A = Wtilde + C
+
+    PRINT_VARn(MatrixX<T>(Wtilde));
+    PRINT_VARn(Wtilde);
+    PRINT_VAR(C.transpose());
+    PRINT_VAR(DgnDpi.transpose());
+    PRINT_VAR(Wmdp.transpose());
+    PRINT_VARn(A);
+
+    CalcVelocitiesResidual(state_, &Fv);
+
+    // We will solve the for the impulses using the Schur-Complement of the
+    // system of equations on v and gamma. This leads to:
+    // A * dgamma = Gc * Fv - gc    
+
+    // Compute the residual for the impulses, Fgamma.
+    GcOperator Gc(this, &state_);  // Gc = DgcDv = DgcDvc * Jc
+    Gc.Multiply(Fv, &Fgamma);      // Fgamma = Gc * Fv
+    Fgamma -= gc;                  // Fgamma = Gc * Fv - gc;
+
+    // Pattern was analyzed at the very top with A.analyzePattern(). Here the
+    // actual numerical factorization is performed.
+    solver.factorize(A);
+    if (solver.info() != Eigen::Success) {
+      return ContactSolverResult::kFailure;
+    }
+    dgamma = solver.solve(Fgamma);
+    if (solver.info() != Eigen::Success) {
+      return ContactSolverResult::kFailure;
     }
 
-    //if (outer_iter >= 1) {      
-      const auto& vc = EvalVc(state_);
-      const auto& vc_km = EvalVc(state_km);
+    // Update dv:
+    const LinearOperator<T>& Jv =
+        parameters_.macklin_jacobian ? Gc : get_Jc();
+    Jv.MultiplyByTranspose(dgamma, &xv_aux);  // xv_aux = Jvᵀ * dgamma
+    get_Ainv().Multiply(xv_aux, &dv);         // dv = A⁻¹ * Jvᵀ * dgamma
+    dv -= Fv;                                 // dv = -Fv + A⁻¹ * Jvᵀ * dgamma
 
-      dvc = vc - vc_km;
-      double dvc_max_norm;
-      bool dvc_converged =
-          CheckOuterLoopConvergenceCriteria(vc, dvc, &dvc_max_norm);
-  
-      // TODO: consider also checking the norm of scaling_factor.*pi (same
-      // units)
-      PRINT_VAR(dvc_converged);
-      PRINT_VAR(dvc_max_norm);
+    // Store v += dv, gamma += dgamma and lambda += dlambda in state_kp.
+    state_kp = state_;
+    state_kp.mutable_v() += dv;
+    state_kp.mutable_gamma() += dgamma;
+    state_kp.mutable_lambda() += state_.cache().dlambda;
 
-      stats_.Update(dvc_max_norm, 0.0 /*update with true value of phi */,
-                    num_inner);
-      if (dvc_converged) {
-        return ContactSolverResult::kSuccess;
-      }
-    //}    
+    // Line search.
+    const T alpha = CalcLineSearchParameter(state_, state_kp);
+    PRINT_VAR(alpha);
 
-    // Store previous state so that we can compute the outer loop's convergence
-    // error.
-    state_km = state_;
-  }  // outer_iter
+    // Perform the actual solver state update.
+    state_.mutable_v() += alpha * dv;
+    state_.mutable_gamma() += alpha * dgamma;
+    state_.mutable_lambda() += alpha * state_.cache().dlambda;
 
+    ErrorMetrics errors;
+    const bool converged = CheckConvergenceCriteria(state_, &errors);
+    // Update stats.
+    stats_.iterations++;
+    stats_.iteration_errors.push_back(errors);
+
+    if (converged) return ContactSolverResult::kSuccess;;
+  }  // iter
   return ContactSolverResult::kFailure;
 }
 

@@ -73,8 +73,8 @@ c = 2*sqrt(m/3*k) = 2108.18510677892
         </geometry>        
         <drake:proximity_properties>
           <drake:point_contact_stiffness>
-          3.333333333333e6</drake:point_contact_stiffness>
-          <drake:hunt_crossley_dissipation>2108.18510677892
+          1.0e16</drake:point_contact_stiffness>
+          <drake:hunt_crossley_dissipation>0.0
           </drake:hunt_crossley_dissipation>
           <drake:mu_dynamic>0.5</drake:mu_dynamic>
           <drake:mu_static>0.5</drake:mu_static>
@@ -102,8 +102,8 @@ c = 2*sqrt(m/3*k) = 2108.18510677892
         </geometry>
         <drake:proximity_properties>
           <drake:point_contact_stiffness>
-          3.333333333333e6</drake:point_contact_stiffness>
-          <drake:hunt_crossley_dissipation>2108.18510677892
+          1.0e16</drake:point_contact_stiffness>
+          <drake:hunt_crossley_dissipation>0.0
           </drake:hunt_crossley_dissipation>
           <drake:mu_dynamic>0.5</drake:mu_dynamic>
           <drake:mu_static>0.5</drake:mu_static>
@@ -131,8 +131,8 @@ c = 2*sqrt(m/3*k) = 2108.18510677892
         </geometry>
         <drake:proximity_properties>
           <drake:point_contact_stiffness>
-          3.333333333333e6</drake:point_contact_stiffness>
-          <drake:hunt_crossley_dissipation>2108.18510677892
+          1.0e16</drake:point_contact_stiffness>
+          <drake:hunt_crossley_dissipation>0.0
           </drake:hunt_crossley_dissipation>
           <drake:mu_dynamic>0.5</drake:mu_dynamic>
           <drake:mu_static>0.5</drake:mu_static>

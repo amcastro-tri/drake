@@ -43,7 +43,7 @@ struct MacklinSolverParameters {
   int max_ls_iters = 12;
 
   // Outer loop:
-  int max_iters{400};
+  int max_iters{5};
   double absolute_tolerance{1.0e-6};  // Absolute tolerance in [m/s].
   double relative_tolerance{1e-4};    // Relative tolerance.
 
@@ -88,6 +88,11 @@ class MacklinSolver : public ContactSolver<T> {
     VectorX<T> vn;                        // nc
     VectorX<T> vt;                        // 2* nc
 
+    // Generalized impulses due to contact.
+    // tau_c = Jcᵀ⋅γ
+    bool generalized_contact_impulses_dirty{true};  // It depends on gamma only.
+    VectorX<T> tau_c;
+
     // The nc normal constraints are written as:
     //   gnᵢ(v, π) = fFB(cₙᵢ(v, π), π) = 0.
     // with:
@@ -123,6 +128,7 @@ class MacklinSolver : public ContactSolver<T> {
       vc.resize(3 * nc);
       vn.resize(nc);
       vt.resize(2 * nc);
+      tau_c.resize(nv);
       Rn.resize(nc);
       cn.resize(nc);
       DcnDvn.resize(nc);
@@ -178,6 +184,7 @@ class MacklinSolver : public ContactSolver<T> {
     }
 
     VectorX<T>& mutable_gamma() {
+      cache_.generalized_contact_impulses_dirty = true;
       cache_.normal_constraints_dirty = true;
       cache_.delassus_dirty = true;
       return gamma_;
@@ -197,7 +204,7 @@ class MacklinSolver : public ContactSolver<T> {
     mutable Cache cache_;
   };
 
-  MacklinSolver(int nv, int nc) : scratch_workspace_(nv, nc, 64) {}
+  MacklinSolver() = default;
 
   void SetSystemDynamicsData(const SystemDynamicsData<T>* data) final;
 
@@ -209,6 +216,15 @@ class MacklinSolver : public ContactSolver<T> {
 
   ContactSolverResult SolveWithGuess(const VectorX<T>& v_guess) final;
   ContactSolverResult SolveWithGuess(const State& state_guess);
+
+  const VectorX<T>& GetImpulses() const final { return state_.gamma(); }
+  const VectorX<T>& GetVelocities() const final { return state_.v(); }
+  const VectorX<T>& GetGeneralizedContactImpulses() const final {
+    return Eval_tau_c(state_);
+  }
+  const VectorX<T>& GetContactVelocities() const final {
+    return EvalVc(state_);
+  }
 
   void set_parameters(const MacklinSolverParameters& p) { parameters_ = p; }
 
@@ -325,35 +341,23 @@ class MacklinSolver : public ContactSolver<T> {
     /// Performs y = Gc*x.
     void DoMultiply(const Eigen::Ref<const Eigen::SparseVector<T>>& x,
                     Eigen::SparseVector<T>* y) const final {
-      DRAKE_DEMAND(y != nullptr);
-      DRAKE_DEMAND(x.size() == this->cols());
-      DRAKE_DEMAND(y->size() == this->rows());
       solver_->MultiplyByGc(*state_, x, y);
     }
 
     /// Performs y = Gc*x.
     void DoMultiply(const Eigen::Ref<const VectorX<T>>& x,
                     VectorX<T>* y) const final {
-      DRAKE_DEMAND(y != nullptr);
-      DRAKE_DEMAND(x.size() == this->cols());
-      DRAKE_DEMAND(y->size() == this->rows());
       solver_->MultiplyByGc(*state_, x, y);
     }
 
     /// Performs y = GcT*x.
     void DoMultiplyByTranspose(const Eigen::SparseVector<T>& x,
                                Eigen::SparseVector<T>* y) const final {
-      DRAKE_DEMAND(y != nullptr);
-      DRAKE_DEMAND(x.size() == this->cols());
-      DRAKE_DEMAND(y->size() == this->rows());
       solver_->MultiplyByGcTranspose(*state_, x, y);
     }
 
     /// Performs y = GcT*x.
     void DoMultiplyByTranspose(const VectorX<T>& x, VectorX<T>* y) const final {
-      DRAKE_DEMAND(y != nullptr);
-      DRAKE_DEMAND(x.size() == this->cols());
-      DRAKE_DEMAND(y->size() == this->rows());
       solver_->MultiplyByGcTranspose(*state_, x, y);
     }
     const MacklinSolver<T>* solver_{nullptr};
@@ -374,7 +378,7 @@ class MacklinSolver : public ContactSolver<T> {
     // JvT_gamma = Jᵀ * gamma.
     if (parameters_.macklin_jacobian) {
       // JvT_gamma = Gc(s)ᵀ * gamma.
-      MultiplyByGc(s, gamma, &JvT_gamma);
+      MultiplyByGcTranspose(s, gamma, &JvT_gamma);
     } else {
       // JvT_gamma = Jcᵀ * gamma.
       get_Jc().MultiplyByTranspose(gamma, &JvT_gamma);
@@ -457,7 +461,8 @@ class MacklinSolver : public ContactSolver<T> {
     for (int ic = 0, ic2 = 0; ic < num_contacts(); ++ic, ic2 += 2) {
       const auto vt_ic = vt.template segment<2>(ic2);
       const auto beta_ic = beta.template segment<2>(ic2);
-      const T error_ic = (mu(ic) * pi(ic) * vt_ic + vt_ic.norm() * beta).norm();
+      const T error_ic =
+          (mu(ic) * pi(ic) * vt_ic + vt_ic.norm() * beta_ic).norm();
       error = max(error, error_ic);
     }
     return error;
@@ -483,6 +488,12 @@ class MacklinSolver : public ContactSolver<T> {
     errors->mdp_error =
         ExtractDoubleOrThrow(CalcMaximumDissipationPrincipleError(s));
     errors->momentum_error = ExtractDoubleOrThrow(CalcMomentumError(s));
+
+    PRINT_VAR(errors->normal_slackness_error);
+    PRINT_VAR(errors->tangential_slackness_error);
+    PRINT_VAR(errors->mdp_error);
+    PRINT_VAR(errors->momentum_error);
+
     const VectorX<T>& vc = EvalVc(s);
     const double vel_scale = ExtractDoubleOrThrow(vc.norm());
     auto within_error_bounds = [& p = parameters_, &vel_scale](double error) {
@@ -490,8 +501,8 @@ class MacklinSolver : public ContactSolver<T> {
           p.absolute_tolerance + p.relative_tolerance * vel_scale;
       return error < bounds;
     };
-    return within_error_bounds(errors->normal_slackness_error) &&
-           within_error_bounds(errors->tangential_slackness_error) &&
+    //within_error_bounds(errors->tangential_slackness_error) &&
+    return within_error_bounds(errors->normal_slackness_error) &&           
            within_error_bounds(errors->mdp_error) &&
            within_error_bounds(errors->momentum_error);
   }
@@ -532,6 +543,15 @@ class MacklinSolver : public ContactSolver<T> {
   const VectorX<T>& EvalVt(const State& s) const {
     ValidateContactVelocitiesCache(s);
     return s.cache().vt;
+  }
+
+  const VectorX<T>& Eval_tau_c(const State& s) const {
+    Cache& c = s.mutable_cache();
+    if (c.generalized_contact_impulses_dirty) {
+      get_Jc().MultiplyByTranspose(s.gamma(), &c.tau_c);
+      c.generalized_contact_impulses_dirty = false;
+    }
+    return c.tau_c;
   }
 
   const VectorX<T>& EvalCn(const State& s) const {
@@ -586,6 +606,8 @@ class MacklinSolver : public ContactSolver<T> {
       // From above, we conclude this operation is O(2/3*nnz(W)).
       // We perform it explicitly by scanning the non-zeros of W.
       const VectorX<T>& DgnDvn = EvalDgnDvn(s);
+      PRINT_VAR(DgnDvn.transpose());
+      PRINT_VARn(MatrixX<T>(pre_proc_data_.W));
       Wtilde = pre_proc_data_.W;
       for (int k = 0; k < Wtilde.outerSize(); ++k) {
         for (typename Eigen::SparseMatrix<T>::InnerIterator it(Wtilde, k); it;
@@ -636,11 +658,11 @@ class MacklinSolver : public ContactSolver<T> {
   void ValidateNormalConstraintsCache(const State& s) const {
     Cache& c = s.mutable_cache();
     if (c.normal_constraints_dirty) {
-      ValidateContactVelocitiesCache(s);
+      const VectorX<T>& vn = EvalVn(s);
       GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
       auto& pi = access.xn_sized_vector();
       ExtractNormal(s.gamma(), &pi);
-      CalcNormalConstraintResidual(c.vn, pi, get_dt(), &c.cn, &c.gn, &c.Rn,
+      CalcNormalConstraintResidual(vn, pi, get_dt(), &c.cn, &c.gn, &c.Rn,
                                    &c.DcnDvn, &c.DgnDvn, &c.DgnDpi);
       c.normal_constraints_dirty = false;
     }

@@ -16,10 +16,20 @@ class GrantScratchWorkspaceAccess;
 template <typename T>
 class ScratchWorkspace {
  public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(ScratchWorkspace)  
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(ScratchWorkspace)
 
-  ScratchWorkspace(int nv, int nc, int max_vectors)
-      : nv_(nv), nc_(nc), max_vectors_(max_vectors) {}
+  ScratchWorkspace() = default;
+
+  void Resize(int nv, int nc, int max_vectors) { 
+    nv_ = nv;
+    nc_ = nc;
+    max_vectors_ = max_vectors;
+    xc_top_ = xn_top_ = xt_top_ = v_top_ = 0;
+    xc_pool_.clear();
+    xn_pool_.clear();
+    xn_pool_.clear();
+    v_pool_.clear();
+  }
 
   /// Number of vectors of size 3 * nc currently being referenced.
   int num_xc_vectors() const { return xc_top_; }

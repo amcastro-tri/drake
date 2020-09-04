@@ -35,6 +35,7 @@ void MacklinSolver<T>::PreProcessData() {
   const int nv = num_velocities();
   state_.Resize(nv, nc);
   pre_proc_data_.Resize(nv, nc);
+  scratch_workspace_.Resize(nv, nc, 64);
 
   if (nc != 0) {
     // Contact velocities when contact forces are zero.
@@ -106,9 +107,14 @@ void MacklinSolver<T>::CalcNormalConstraintResidual(
   const double e2 =
       parameters_.fb_velocity_scale * parameters_.fb_velocity_scale;
 
+  PRINT_VAR(k.transpose());
+  PRINT_VAR(d.transpose());
+
   const auto& scaling_factor = pre_proc_data_.Wii_norm;
 
   const auto& vn_stab = pre_proc_data_.vn_stab;
+
+  PRINT_VAR(vn.transpose());
 
   for (int i = 0; i < nc; ++i) {
     const T min_stiffness = k(i) * min_stiffness_relative;
@@ -451,9 +457,9 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) 
   MergeNormalAndTangent(pi, beta, &s_guess.mutable_gamma());
 
   // Print initial conditions.
-  PRINT_VAR(s_guess.cache().vt.transpose());
-  PRINT_VAR(s_guess.cache().vn.transpose());
-  PRINT_VAR(s_guess.cache().vc.transpose());
+  PRINT_VAR(EvalVt(s_guess).transpose());
+  PRINT_VAR(EvalVn(s_guess).transpose());
+  PRINT_VAR(EvalVc(s_guess).transpose());
   PRINT_VAR(pi.transpose());
   PRINT_VAR(s_guess.gamma().transpose());
 
@@ -608,6 +614,9 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
     state_.mutable_v() += alpha * dv;
     state_.mutable_gamma() += alpha * dgamma;
     state_.mutable_lambda() += alpha * state_.cache().dlambda;
+
+    PRINT_VAR(state_.v().transpose());
+    PRINT_VAR(state_.gamma().transpose());
 
     ErrorMetrics errors;
     const bool converged = CheckConvergenceCriteria(state_, &errors);

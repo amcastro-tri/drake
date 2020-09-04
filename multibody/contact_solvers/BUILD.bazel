@@ -193,6 +193,7 @@ drake_cc_googletest(
         ":contact_solver",
         ":multibody_sim_driver",
         ":pgs_solver",
+        ":macklin_solver",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
     ],

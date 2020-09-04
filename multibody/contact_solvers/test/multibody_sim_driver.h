@@ -81,6 +81,9 @@ class MultibodySimDriver {
   std::vector<double> GetDynamicFrictionCoefficients(
       const Body<double>& body) const;
 
+  std::vector<std::pair<double, double>> GetPointContactParameters(
+      const Body<double>& body) const;
+
   // Retrieves contact results by evaluating MultibodyPlant's port.
   // Unless results are already cached, this computation will trigger the
   // expensive computation required to find out contact impulses and the

@@ -200,6 +200,20 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "particle_test",
+    data = ["test/particle.sdf"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":multibody_sim_driver",
+        ":pgs_solver",
+        ":macklin_solver",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
     name = "scratch_workspace_test",
     copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
     deps = [

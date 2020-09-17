@@ -8,8 +8,9 @@
       <inertial>
         <pose>0 0 0.0 0 0 0</pose>
         <mass>0.5</mass>
-        <!-- Inertia values irrelevant for this test since this body can
-             only move in the z direction.
+        <!-- Inertia values are set to very large values so that rotational
+        motions are negligible. This is so that rotational contributions become
+        negligible in the computation of the Delassus operator for unit testing.
         -->
         <inertia>
           <ixx>1.0e40</ixx>
@@ -38,29 +39,12 @@
           <sphere>
             <radius>0.0</radius>
           </sphere>
-        </geometry>        
+        </geometry>
         <drake:proximity_properties>
-          <drake:point_contact_stiffness>
-          1.0e16</drake:point_contact_stiffness>
-          <drake:hunt_crossley_dissipation>0.0
-          </drake:hunt_crossley_dissipation>
           <drake:mu_dynamic>0.5</drake:mu_dynamic>
           <drake:mu_static>0.5</drake:mu_static>
         </drake:proximity_properties>
-      </collision>      
+      </collision>
     </link>
-
-    <joint name="slider" type="prismatic">
-      <parent>world</parent>
-      <child>particle</child>
-      <axis>
-        <xyz expressed_in="__model__">0 0 1</xyz>
-        <limit>
-          <!-- No actuator. -->
-          <effort>0</effort>
-        </limit>
-      </axis>
-    </joint>
-
   </model>
 </sdf>

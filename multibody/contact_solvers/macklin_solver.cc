@@ -534,11 +534,11 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
     A = C.asDiagonal();
     A += Wtilde;  // A = Wtilde + C
 
-    //PRINT_VARn(MatrixX<T>(Wtilde));
-    //PRINT_VAR(C.transpose());
-    //PRINT_VAR(DgnDpi.transpose());
-    //PRINT_VAR(Wmdp.transpose());
-    //PRINT_VARn(MatrixX<T>(A));
+    PRINT_VARn(MatrixX<T>(Wtilde));
+    PRINT_VAR(C.transpose());
+    PRINT_VAR(DgnDpi.transpose());
+    PRINT_VAR(Wmdp.transpose());
+    PRINT_VARn(MatrixX<T>(A));
 
     CalcVelocitiesResidual(state_, &Fv);
 

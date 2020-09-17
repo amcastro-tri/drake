@@ -157,7 +157,7 @@ class ParticleTest : public ::testing::Test {
  public:
   void SetUp() override {
     const std::string model_file =
-        "drake/multibody/contact_solvers/test/particle.sdf";
+        "drake/multibody/contact_solvers/test/particle_with_large_moments.sdf";
     driver_.BuildModel(dt_, model_file);
     const auto& plant = driver_.plant();
     const auto& particle = plant.GetBodyByName("particle");

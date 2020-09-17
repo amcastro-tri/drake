@@ -107,14 +107,9 @@ void MacklinSolver<T>::CalcNormalConstraintResidual(
   const double e2 =
       parameters_.fb_velocity_scale * parameters_.fb_velocity_scale;
 
-  PRINT_VAR(k.transpose());
-  PRINT_VAR(d.transpose());
-
   const auto& scaling_factor = pre_proc_data_.Wii_norm;
 
   const auto& vn_stab = pre_proc_data_.vn_stab;
-
-  PRINT_VAR(vn.transpose());
 
   for (int i = 0; i < nc; ++i) {
     const T min_stiffness = k(i) * min_stiffness_relative;
@@ -185,18 +180,8 @@ void MacklinSolver<T>::CalcMaxDissipationConstraintResidual(
     const T gamma = mu(i) * pi(i) - beta_norm;
     const T y = r(i) * gamma;
 
-    PRINT_VAR(beta_i.transpose());
-    PRINT_VAR(pi(i));
-    PRINT_VAR(gamma);
-    PRINT_VAR(lambda(i));
-
-    PRINT_VAR(x);
-    PRINT_VAR(y);
-
     Vector2<T> grad_phi;
     const T phi = CalcFischerBurmeister(x, y, e2, &grad_phi);
-
-    PRINT_VAR(phi);
 
     // Fischer: norm_grad_phi >= 3 - 2*sqrt(2) > 0 always.
     const T norm_grad_phi = grad_phi.norm();
@@ -206,16 +191,9 @@ void MacklinSolver<T>::CalcMaxDissipationConstraintResidual(
 
     // Nvidia's approximation.
     const Vector2<T> dz(-phi, -phi);  // as if grad_phi = 1/sqrt(2) * (1, 1).
-    PRINT_VAR(grad_phi.transpose());
-    PRINT_VAR(norm_grad_phi);
-    PRINT_VAR(dz.transpose());
-    PRINT_VAR(r(i));
 
     (*dlambda)(i) = dz(0);
     (*dbeta_norm)(i) = -dz(1) / r(i);
-
-    PRINT_VAR((*dlambda)(i));
-    PRINT_VAR((*dbeta_norm)(i));
 
     const T num = lambda(i) + (*dlambda)(i);
     const T den = limit_close_to_zero(beta_norm + (*dbeta_norm)(i));
@@ -223,15 +201,8 @@ void MacklinSolver<T>::CalcMaxDissipationConstraintResidual(
     const T W_i = num / den;
     (*W)(i) = W_i;    
 
-    PRINT_VAR(W_i);
-
     const Vector2<T> vt_i = vt.template segment<2>(2 * i);
     gt->template segment<2>(2 * i) = vt_i + W_i * beta_i;
-
-    PRINT_VAR(vt.transpose());
-    PRINT_VAR(beta_i.transpose());
-    PRINT_VAR(gt->transpose());
-
   }
 }
 
@@ -492,8 +463,7 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
     return ContactSolverResult::kSuccess;
   }
 
-  const auto& scaling_factor = pre_proc_data_.Wii_norm;
-  PRINT_VAR(scaling_factor.transpose());  
+  const auto& scaling_factor = pre_proc_data_.Wii_norm;  
 
   // Initialize lambda. Upon convergence, lambda is the magnitude of the
   // tangential velocity at the i-th conctact. Therefore it does make sense to
@@ -564,12 +534,11 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
     A = C.asDiagonal();
     A += Wtilde;  // A = Wtilde + C
 
-    PRINT_VARn(MatrixX<T>(Wtilde));
-    PRINT_VARn(Wtilde);
-    PRINT_VAR(C.transpose());
-    PRINT_VAR(DgnDpi.transpose());
-    PRINT_VAR(Wmdp.transpose());
-    PRINT_VARn(A);
+    //PRINT_VARn(MatrixX<T>(Wtilde));
+    //PRINT_VAR(C.transpose());
+    //PRINT_VAR(DgnDpi.transpose());
+    //PRINT_VAR(Wmdp.transpose());
+    //PRINT_VARn(MatrixX<T>(A));
 
     CalcVelocitiesResidual(state_, &Fv);
 
@@ -600,6 +569,11 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
     get_Ainv().Multiply(xv_aux, &dv);         // dv = A⁻¹ * Jvᵀ * dgamma
     dv -= Fv;                                 // dv = -Fv + A⁻¹ * Jvᵀ * dgamma
 
+    PRINT_VAR(Fgamma.transpose());
+    PRINT_VAR(Fv.transpose());
+    PRINT_VAR(dgamma.transpose());
+    PRINT_VAR(dv.transpose());
+
     // Store v += dv, gamma += dgamma and lambda += dlambda in state_kp.
     state_kp = state_;
     state_kp.mutable_v() += dv;
@@ -608,7 +582,6 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
 
     // Line search.
     const T alpha = CalcLineSearchParameter(state_, state_kp);
-    PRINT_VAR(alpha);
 
     // Perform the actual solver state update.
     state_.mutable_v() += alpha * dv;
@@ -616,7 +589,7 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
     state_.mutable_lambda() += alpha * state_.cache().dlambda;
 
     PRINT_VAR(state_.v().transpose());
-    PRINT_VAR(state_.gamma().transpose());
+    PRINT_VAR(state_.gamma().transpose());    
 
     ErrorMetrics errors;
     const bool converged = CheckConvergenceCriteria(state_, &errors);

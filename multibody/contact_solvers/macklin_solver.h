@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -606,8 +607,8 @@ class MacklinSolver : public ContactSolver<T> {
       // From above, we conclude this operation is O(2/3*nnz(W)).
       // We perform it explicitly by scanning the non-zeros of W.
       const VectorX<T>& DgnDvn = EvalDgnDvn(s);
-      PRINT_VAR(DgnDvn.transpose());
-      PRINT_VARn(MatrixX<T>(pre_proc_data_.W));
+      //PRINT_VAR(DgnDvn.transpose());
+      //PRINT_VARn(MatrixX<T>(pre_proc_data_.W));
       Wtilde = pre_proc_data_.W;
       for (int k = 0; k < Wtilde.outerSize(); ++k) {
         for (typename Eigen::SparseMatrix<T>::InnerIterator it(Wtilde, k); it;
@@ -726,6 +727,8 @@ class MacklinSolver : public ContactSolver<T> {
 
   // Collect useful statistics.
   MacklinSolverIterationStats stats_;
+
+  std::function<void(const State&)> monitor_;
 };
 
 }  // namespace contact_solvers

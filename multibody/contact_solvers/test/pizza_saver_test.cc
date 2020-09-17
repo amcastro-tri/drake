@@ -105,6 +105,7 @@ class PizzaSaverTest : public ::testing::Test {
     params.absolute_tolerance = 1.0e-8;
     params.relative_tolerance = 1.0e-6;
     params.stiction_tolerance = 1.0e-7;
+    params.macklin_jacobian = false;
     solver->set_parameters(params);
   }
 

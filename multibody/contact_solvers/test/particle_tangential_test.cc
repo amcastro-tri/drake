@@ -57,20 +57,23 @@ class ParticleTest : public ::testing::Test {
     plant.AddJoint<PrismaticJoint>("slider", plant.world_body(), X_WS, particle,
                                    {}, axis);
 
+    // Set stiffness so that at the fixed penetration we set we do have a
+    // non-zero normal force, even if motions can only happen in the tangential
+    // direction.
+    const double weight = 5.0;  // mass = 0.5 Kg and g = 10.0 m/s².
+    const double k = -weight / this->kSignedDistance_;
+    PRINT_VAR(k);
+    this->driver_.SetPointContactParameters(particle, k, 0.0);
+
     // Add the ground, with the same friction as specified in the SDF file for
     // the particle.
     const std::vector<double> geometry_mu =
         driver_.GetDynamicFrictionCoefficients(particle);
-    // For this test there should be three geometries with the same friction
-    // coefficient.
     ASSERT_EQ(geometry_mu.size(), 1u);
 
-    const std::vector<std::pair<double, double>> point_params =
-        driver_.GetPointContactParameters(particle);
-    ASSERT_EQ(point_params.size(), 1u);
-
-    driver_.AddGround(point_params[0].first, point_params[0].second,
-                      geometry_mu[0]);
+    // We make the ground infinitely stiff.
+    driver_.AddGround(1.0e20, 0.0, geometry_mu[0]);
+    
     driver_.Initialize();
     const int nq = plant.num_positions();
     const int nv = plant.num_velocities();
@@ -175,52 +178,17 @@ class ParticleTest : public ::testing::Test {
 
 TYPED_TEST_SUITE_P(ParticleTest);
 
-TYPED_TEST_P(ParticleTest, NormalDirection) {
-  this->SetParticleWithASingleMotionAxis(Vector3d::UnitZ());
-
-  TypeParam& solver = *this->solver_;
-  this->SetParams(NormalConstraintType::kVelocity, &solver);
-  
-  const double abs_tolerance = this->kContactVelocityAbsoluteTolerance_;
-
-  // Verify forces in static equilibrium.
-  // TODO(amcastro-tri): allow acces to scaling diagonals of W from
-  // ContactSolver so that we can convert units.
-  // Here we are assuming Wii = 1.0, which is OK for this problem.
-  const VectorXd tau_c = this->EvalGeneralizedContactForces();
-  const VectorXd& vc = solver.GetContactVelocities();
-  PRINT_VAR(tau_c.transpose());
-  PRINT_VAR(vc.transpose());
-
-  this->PrintStats(solver);
-
-  
-  ASSERT_EQ(tau_c.size(), 1);
-  const double normal_force = tau_c(0);
-  const double weight = 5.0;  // mass = 0.5 Kg and g = 10.0 m/s².
-  EXPECT_NEAR(normal_force, weight, abs_tolerance);
-}
-
-TYPED_TEST_P(ParticleTest, TangentialDirection) {
+TYPED_TEST_P(ParticleTest, Stiction) {
   this->SetParticleWithASingleMotionAxis(Vector3d::UnitX());
 
   // External forcing.
   const double Fx = 1.0;  // Fx_transition = 2.5
   const SpatialForce<double> F_Bo_W(Vector3d::Zero(), Vector3d(Fx, 0, 0));
   const auto& particle = this->driver_.plant().GetBodyByName("particle");
-  this->driver_.FixAppliedForce(particle, F_Bo_W);
-
-  // Set stiffness so that at the fixed penetration we set we do have a non-zero
-  // normal force, even if motions can only happen in the tangential direction.
-  const double weight = 5.0;  // mass = 0.5 Kg and g = 10.0 m/s².
-  const double k = -weight / this->kSignedDistance_;
-  PRINT_VAR(k);
-  this->driver_.SetPointContactParameters(particle, k, 0.0);
+  this->driver_.FixAppliedForce(particle, F_Bo_W);  
 
   TypeParam& solver = *this->solver_;
   this->SetParams(NormalConstraintType::kPosition, &solver);
-  
-  const double abs_tolerance = this->kContactVelocityAbsoluteTolerance_;
 
   // Verify forces in static equilibrium.
   // TODO(amcastro-tri): allow acces to scaling diagonals of W from
@@ -232,15 +200,33 @@ TYPED_TEST_P(ParticleTest, TangentialDirection) {
   PRINT_VAR(vc.transpose());
 
   this->PrintStats(solver);
-
-  
-  //ASSERT_EQ(tau_c.size(), 1);
- // const double normal_force = tau_c(0);
-  //const double weight = 5.0;  // mass = 0.5 Kg and g = 10.0 m/s².
-  //EXPECT_NEAR(normal_force, weight, abs_tolerance);
 }
 
-REGISTER_TYPED_TEST_SUITE_P(ParticleTest, NormalDirection, TangentialDirection);
+TYPED_TEST_P(ParticleTest, Sliding) {
+  this->SetParticleWithASingleMotionAxis(Vector3d::UnitX());
+
+  // External forcing.
+  const double Fx = 4.0;  // Fx_transition = 2.5
+  const SpatialForce<double> F_Bo_W(Vector3d::Zero(), Vector3d(Fx, 0, 0));
+  const auto& particle = this->driver_.plant().GetBodyByName("particle");
+  this->driver_.FixAppliedForce(particle, F_Bo_W);  
+
+  TypeParam& solver = *this->solver_;
+  this->SetParams(NormalConstraintType::kPosition, &solver);
+
+  // Verify forces in static equilibrium.
+  // TODO(amcastro-tri): allow acces to scaling diagonals of W from
+  // ContactSolver so that we can convert units.
+  // Here we are assuming Wii = 1.0, which is OK for this problem.
+  const VectorXd tau_c = this->EvalGeneralizedContactForces();
+  const VectorXd& vc = solver.GetContactVelocities();
+  PRINT_VAR(tau_c.transpose());
+  PRINT_VAR(vc.transpose());
+
+  this->PrintStats(solver);
+}
+
+REGISTER_TYPED_TEST_SUITE_P(ParticleTest, Stiction, Sliding);
 
 typedef ::testing::Types<test::PgsSolver<double>, MacklinSolver<double>>
     ContactSolverTypes;

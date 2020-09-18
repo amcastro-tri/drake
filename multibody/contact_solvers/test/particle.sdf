@@ -50,17 +50,5 @@
       </collision>      
     </link>
 
-    <joint name="slider" type="prismatic">
-      <parent>world</parent>
-      <child>particle</child>
-      <axis>
-        <xyz expressed_in="__model__">0 0 1</xyz>
-        <limit>
-          <!-- No actuator. -->
-          <effort>0</effort>
-        </limit>
-      </axis>
-    </joint>
-
   </model>
 </sdf>

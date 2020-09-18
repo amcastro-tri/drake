@@ -84,6 +84,9 @@ class MultibodySimDriver {
   std::vector<std::pair<double, double>> GetPointContactParameters(
       const Body<double>& body) const;
 
+  void SetPointContactParameters(const Body<double>& body, double stiffness,
+                                 double damping);
+
   // Retrieves contact results by evaluating MultibodyPlant's port.
   // Unless results are already cached, this computation will trigger the
   // expensive computation required to find out contact impulses and the
@@ -115,9 +118,6 @@ class MultibodySimDriver {
   void AdvanceNumSteps(int num_steps);
 
  private:
-  void SetPointContactParameters(const Body<double>& body, double stiffness,
-                                 double damping);
-
   // Helper to get an inspector pre-initialization (no context available) or
   // post-initialization (a context is available).
   const geometry::SceneGraphInspector<double>& GetInspector() const;

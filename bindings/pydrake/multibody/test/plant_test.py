@@ -23,6 +23,7 @@ from pydrake.multibody.tree import (
     JointActuator_,
     JointActuatorIndex,
     JointIndex,
+    LinearBushingRollPitchYaw_,
     LinearSpringDamper_,
     ModelInstanceIndex,
     MultibodyForces_,
@@ -59,8 +60,6 @@ from pydrake.multibody.plant import (
     PointPairContactInfo_,
     PropellerInfo,
     Propeller_,
-    VectorExternallyAppliedSpatialForced,
-    VectorExternallyAppliedSpatialForced_,
 )
 from pydrake.multibody.parsing import Parser
 from pydrake.multibody.benchmarks.acrobot import (
@@ -71,7 +70,6 @@ from pydrake.common.cpp_param import List
 from pydrake.common import FindResourceOrThrow
 from pydrake.common.deprecation import install_numpy_warning_filters
 from pydrake.common.test_utilities import numpy_compare
-from pydrake.common.test_utilities.deprecation import catch_drake_warnings
 from pydrake.common.value import AbstractValue, Value
 from pydrake.geometry import (
     Box,
@@ -466,10 +464,17 @@ class TestPlant(unittest.TestCase):
         LinearSpringDamper = LinearSpringDamper_[T]
         RevoluteSpring = RevoluteSpring_[T]
         DoorHinge = DoorHinge_[T]
+        LinearBushingRollPitchYaw = LinearBushingRollPitchYaw_[T]
         SpatialInertia = SpatialInertia_[float]
+        UnitInertia = UnitInertia_[float]
+        SpatialForce = SpatialForce_[T]
 
         plant = MultibodyPlant(0.0)
-        spatial_inertia = SpatialInertia()
+        spatial_inertia = SpatialInertia(
+            mass=1,
+            p_PScm_E=[0, 0, 0],
+            G_SP_E=UnitInertia(1, 1, 1),
+        )
         body_a = plant.AddRigidBody(name="body_a",
                                     M_BBo_B=spatial_inertia)
         body_b = plant.AddRigidBody(name="body_b",
@@ -491,7 +496,21 @@ class TestPlant(unittest.TestCase):
         door_hinge_config = DoorHingeConfig()
         door_hinge = plant.AddForceElement(DoorHinge(
             joint=revolute_joint, config=door_hinge_config))
+
+        torque_stiffness = np.array([10.0, 11.0, 12.0])
+        torque_damping = np.array([1.0, 1.1, 1.2])
+        force_stiffness = np.array([20.0, 21.0, 22.0])
+        force_damping = np.array([2.0, 2.1, 2.2])
+        bushing = plant.AddForceElement(LinearBushingRollPitchYaw(
+            frameA=body_a.body_frame(),
+            frameC=body_b.body_frame(),
+            torque_stiffness_constants=torque_stiffness,
+            torque_damping_constants=torque_damping,
+            force_stiffness_constants=force_stiffness,
+            force_damping_constants=force_damping,
+        ))
         plant.Finalize()
+        context = plant.CreateDefaultContext()
 
         # Test LinearSpringDamper accessors
         self.assertEqual(linear_spring.bodyA(), body_a)
@@ -526,6 +545,42 @@ class TestPlant(unittest.TestCase):
                 angle=0.01), -2.265)
             self.assertEqual(door_hinge.CalcHingeTorque(
                 angle=0.01, angular_rate=0.0), -2.265)
+
+        # Test LinearBushingRollPitchYaw accessors.
+        self.assertIs(bushing.link0(), body_a)
+        self.assertIs(bushing.link1(), body_b)
+        self.assertIs(bushing.frameA(), body_a.body_frame())
+        self.assertIs(bushing.frameC(), body_b.body_frame())
+        numpy_compare.assert_float_equal(
+            bushing.torque_stiffness_constants(), torque_stiffness)
+        numpy_compare.assert_float_equal(
+            bushing.torque_damping_constants(), torque_damping)
+        numpy_compare.assert_float_equal(
+            bushing.force_stiffness_constants(), force_stiffness)
+        numpy_compare.assert_float_equal(
+            bushing.force_damping_constants(), force_damping)
+        # Set to 2x the original value and ensure it was updated in the given
+        # context.
+        bushing.SetTorqueStiffnessConstants(
+            context=context, torque_stiffness=2 * torque_stiffness)
+        numpy_compare.assert_float_equal(
+            bushing.GetTorqueStiffnessConstants(context=context),
+            2 * torque_stiffness)
+        bushing.SetTorqueDampingConstants(
+            context=context, torque_damping=2 * torque_damping)
+        numpy_compare.assert_float_equal(
+            bushing.GetTorqueDampingConstants(context=context),
+            2 * torque_damping)
+        bushing.SetForceStiffnessConstants(
+            context=context, force_stiffness=2 * force_stiffness)
+        numpy_compare.assert_float_equal(
+            bushing.GetForceStiffnessConstants(context=context),
+            2 * force_stiffness)
+        bushing.SetForceDampingConstants(
+            context=context, force_damping=2 * force_damping)
+        numpy_compare.assert_float_equal(
+            bushing.GetForceDampingConstants(context=context),
+            2 * force_damping)
 
     @numpy_compare.check_all_types
     def test_multibody_gravity_default(self, T):
@@ -571,6 +626,12 @@ class TestPlant(unittest.TestCase):
             (JacobianWrtVariable.kV, nv),
         ]
         for wrt, nw in wrt_list:
+            Js_v_ACcm_E = plant.CalcJacobianCenterOfMassTranslationalVelocity(
+                context=context, with_respect_to=wrt, frame_A=base_frame,
+                frame_E=world_frame)
+            self.assert_sane(Js_v_ACcm_E)
+            self.assertEqual(Js_v_ACcm_E.shape, (3, nw))
+
             Js_V_ABp_E = plant.CalcJacobianSpatialVelocity(
                 context=context, with_respect_to=wrt, frame_B=base_frame,
                 p_BP=np.zeros(3), frame_A=world_frame,
@@ -594,6 +655,12 @@ class TestPlant(unittest.TestCase):
                 frame_E=world_frame)
             self.assert_sane(Js_v_AB_E)
             self.assertEqual(Js_v_AB_E.shape, (9, nw))
+
+        abias_ACcm_E = plant.CalcBiasCenterOfMassTranslationalAcceleration(
+            context=context, with_respect_to=JacobianWrtVariable.kV,
+            frame_A=world_frame, frame_E=world_frame)
+        self.assert_sane(abias_ACcm_E, nonzero=False)
+        self.assertEqual(abias_ACcm_E.shape, (3,))
 
         AsBias_ABp_E = plant.CalcBiasSpatialAcceleration(
             context=context, with_respect_to=JacobianWrtVariable.kV,
@@ -728,35 +795,6 @@ class TestPlant(unittest.TestCase):
         self.assertEqual(plant.GetVelocityUpperLimits().shape, (nv,))
         self.assertEqual(plant.GetAccelerationLowerLimits().shape, (nv,))
         self.assertEqual(plant.GetAccelerationUpperLimits().shape, (nv,))
-
-    @numpy_compare.check_all_types
-    def test_deprecated_vector_externally_applied_spatial_forced(self, T):
-        # Deprecated custom template instantiation.
-        with catch_drake_warnings(expected_count=1) as w:
-            cls = VectorExternallyAppliedSpatialForced_[T]
-        self.assertIn(
-            "Value[List[ExternallyAppliedSpatialForce]]",
-            str(w[0].message))
-        message_expected = str(w[0].message)
-
-        if T == float:
-            # Check alias.
-            self.assertIs(cls, VectorExternallyAppliedSpatialForced)
-
-        # Deprecated Value[] instantiation which aliases to correct
-        # instantiation.
-        with catch_drake_warnings(expected_count=1) as w:
-            value_cls = Value[cls]
-        self.assertEqual(str(w[0].message), message_expected)
-        self.assertIs(
-            value_cls, Value[List[ExternallyAppliedSpatialForce_[T]]])
-
-        # Deprecated constructor which simply creates a list (not a derived
-        # class).
-        with catch_drake_warnings(expected_count=1) as w:
-            x = cls()
-        self.assertEqual(type(x), list)
-        self.assertEqual(str(w[0].message), message_expected)
 
     @numpy_compare.check_all_types
     def test_port_access(self, T):

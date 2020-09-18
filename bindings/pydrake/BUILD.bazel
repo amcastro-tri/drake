@@ -64,9 +64,7 @@ generate_pybind_documentation_header(
     out_xml = "documentation_pybind.xml",
     root_name = "pydrake_doc",
     targets = [
-        # TODO(eric.cousineau): Replace `drake_headers_no_attic` with
-        # `drake_shared_library` once the attic is removed.
-        "//tools/install/libdrake:drake_headers_no_attic",
+        "//tools/install/libdrake:drake_headers",
         "//examples/compass_gait:compass_gait",
         "//examples/manipulation_station:manipulation_station",
         "//examples/manipulation_station:manipulation_station_hardware_interface",  # noqa
@@ -276,7 +274,6 @@ PY_LIBRARIES_WITH_INSTALL = [
     ":polynomial_py",
     ":symbolic_py",
     ":trajectories_py",
-    "//bindings/pydrake/attic",
     "//bindings/pydrake/third_party",
     "//bindings/pydrake/visualization",
 ] + PYBIND_SUBPACKAGES_FOR_COVERAGE
@@ -342,6 +339,12 @@ drake_py_unittest(
         ":all_py",
         "//bindings/pydrake/common/test_utilities:deprecation_py",
     ],
+)
+
+drake_py_unittest(
+    name = "all_each_import_test",
+    timeout = "moderate",
+    deps = [":all_py"],
 )
 
 drake_py_library(
@@ -533,7 +536,9 @@ drake_py_unittest(
 drake_py_unittest(
     name = "trajectories_test",
     deps = [
+        ":math_py",
         ":trajectories_py",
+        "//bindings/pydrake/common:eigen_geometry_py",
         "//bindings/pydrake/common/test_utilities:numpy_compare_py",
     ],
 )

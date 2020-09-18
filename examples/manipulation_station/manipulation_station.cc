@@ -54,7 +54,8 @@ namespace internal {
 SpatialInertia<double> MakeCompositeGripperInertia(
     const std::string& wsg_sdf_path,
     const std::string& gripper_body_frame_name) {
-  MultibodyPlant<double> plant(0.0);
+  // Set timestep to 1.0 since it is arbitrary, to quiet joint limit warnings.
+  MultibodyPlant<double> plant(1.0);
   multibody::Parser parser(&plant);
   parser.AddModelFromFile(wsg_sdf_path);
   plant.Finalize();
@@ -157,9 +158,9 @@ ManipulationStation<T>::ManipulationStation(double time_step)
     : owned_plant_(std::make_unique<MultibodyPlant<T>>(time_step)),
       owned_scene_graph_(std::make_unique<SceneGraph<T>>()),
       // Given the controller does not compute accelerations, it is irrelevant
-      // whether the plant is continuous or discrete. We arbitrarily make it
-      // continuous.
-      owned_controller_plant_(std::make_unique<MultibodyPlant<T>>(0.0)) {
+      // whether the plant is continuous or discrete. We make it
+      // discrete to avoid warnings about joint limits.
+      owned_controller_plant_(std::make_unique<MultibodyPlant<T>>(1.0)) {
   // This class holds the unique_ptrs explicitly for plant and scene_graph
   // until Finalize() is called (when they are moved into the Diagram). Grab
   // the raw pointers, which should stay valid for the lifetime of the Diagram.
@@ -191,7 +192,7 @@ void ManipulationStation<T>::AddManipulandFromFile(
 template <typename T>
 void ManipulationStation<T>::SetupClutterClearingStation(
     const std::optional<const math::RigidTransform<double>>& X_WCameraBody,
-    IiwaCollisionModel collision_model) {
+    IiwaCollisionModel collision_model, SchunkCollisionModel schunk_model) {
   DRAKE_DEMAND(setup_ == Setup::kNone);
   setup_ = Setup::kClutterClearing;
 
@@ -237,12 +238,13 @@ void ManipulationStation<T>::SetupClutterClearingStation(
   }
 
   AddDefaultIiwa(collision_model);
-  AddDefaultWsg();
+  AddDefaultWsg(schunk_model);
 }
 
 template <typename T>
 void ManipulationStation<T>::SetupManipulationClassStation(
-    IiwaCollisionModel collision_model) {
+  IiwaCollisionModel collision_model,
+  SchunkCollisionModel schunk_model) {
   DRAKE_DEMAND(setup_ == Setup::kNone);
   setup_ = Setup::kManipulationClass;
 
@@ -282,7 +284,7 @@ void ManipulationStation<T>::SetupManipulationClassStation(
 
   // Add the default iiwa/wsg models.
   AddDefaultIiwa(collision_model);
-  AddDefaultWsg();
+  AddDefaultWsg(schunk_model);
 
   // Add default cameras.
   {
@@ -311,7 +313,8 @@ void ManipulationStation<T>::SetupManipulationClassStation(
 }
 
 template <typename T>
-void ManipulationStation<T>::SetupPlanarIiwaStation() {
+void ManipulationStation<T>::SetupPlanarIiwaStation(
+  SchunkCollisionModel schunk_model) {
   DRAKE_DEMAND(setup_ == Setup::kNone);
   setup_ = Setup::kPlanarIiwa;
 
@@ -344,7 +347,7 @@ void ManipulationStation<T>::SetupPlanarIiwaStation() {
   }
 
   // Add the default wsg model.
-  AddDefaultWsg();
+  AddDefaultWsg(schunk_model);
 }
 
 template <typename T>
@@ -611,7 +614,14 @@ void ManipulationStation<T>::Finalize(
         builder.template AddSystem<systems::Adder>(2, num_iiwa_positions);
     builder.Connect(iiwa_controller->get_output_port_control(),
                     adder->get_input_port(0));
-    builder.ExportInput(adder->get_input_port(1), "iiwa_feedforward_torque");
+    // Use a passthrough to make the port optional.  (Will provide zero values
+    // if not connected).
+    auto torque_passthrough = builder.template AddSystem<systems::PassThrough>(
+        Eigen::VectorXd::Zero(num_iiwa_positions));
+    builder.Connect(torque_passthrough->get_output_port(),
+                    adder->get_input_port(1));
+    builder.ExportInput(torque_passthrough->get_input_port(),
+                        "iiwa_feedforward_torque");
     builder.Connect(adder->get_output_port(), plant_->get_actuation_input_port(
                                                   iiwa_model_.model_instance));
 
@@ -914,8 +924,6 @@ void ManipulationStation<T>::AddDefaultIiwa(
           "drake/manipulation/models/iiwa_description/iiwa7/"
           "iiwa7_with_box_collision.sdf");
       break;
-    default:
-      throw std::domain_error("Unrecognized collision_model.");
   }
   const auto X_WI = RigidTransform<double>::Identity();
   auto iiwa_instance = internal::AddAndWeldModelFrom(
@@ -927,9 +935,21 @@ void ManipulationStation<T>::AddDefaultIiwa(
 
 // Add default wsg.
 template <typename T>
-void ManipulationStation<T>::AddDefaultWsg() {
-  const std::string sdf_path = FindResourceOrThrow(
-      "drake/manipulation/models/wsg_50_description/sdf/schunk_wsg_50.sdf");
+void ManipulationStation<T>::AddDefaultWsg(
+    const SchunkCollisionModel schunk_model) {
+  std::string sdf_path;
+  switch (schunk_model) {
+    case SchunkCollisionModel::kBox:
+      sdf_path = FindResourceOrThrow(
+          "drake/manipulation/models/wsg_50_description/sdf"
+          "/schunk_wsg_50_no_tip.sdf");
+      break;
+    case SchunkCollisionModel::kBoxPlusFingertipSpheres:
+      sdf_path = FindResourceOrThrow(
+          "drake/manipulation/models/wsg_50_description/sdf"
+          "/schunk_wsg_50_with_tip.sdf");
+      break;
+  }
   const multibody::Frame<T>& link7 =
       plant_->GetFrameByName("iiwa_link_7", iiwa_model_.model_instance);
   const RigidTransform<double> X_7G(RollPitchYaw<double>(M_PI_2, 0, M_PI_2),

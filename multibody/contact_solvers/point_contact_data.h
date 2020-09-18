@@ -9,13 +9,15 @@
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
+namespace internal {
 
-/// This class specifies the dynamics of the physical system as needed by
-/// ContactSolver. Refer to ContactSolver's class documentation for details.
+/// This class specifies the set of parameters needed to describe contact
+/// constraints as needed by ContactSolver. Refer to ContactSolver's class
+/// documentation for details.
 template <typename T>
 class PointContactData {
  public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(PointContactData)
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(PointContactData)
 
   /// Specifies the set of possible discrete contacts characterized by:
   ///  1. Signed distance phi0, negative when objects interpenetrate.
@@ -70,7 +72,7 @@ class PointContactData {
   /// @anchor point_contact_data_accessors
   /// @name   Data getters
   /// These methods provide access to the underlying contact data. We
-  /// purposedely use the naming convention `get_foo()` so that calling code can
+  /// purposely use the naming convention `get_foo()` so that calling code can
   /// still use `foo` as a variable name.
   /// @{
   const VectorX<T>& get_phi0() const { return *phi0_; }
@@ -89,9 +91,10 @@ class PointContactData {
   const VectorX<T>* mu_{nullptr};
 };
 
+}  // namespace internal
 }  // namespace contact_solvers
 }  // namespace multibody
 }  // namespace drake
 
 DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    class ::drake::multibody::contact_solvers::PointContactData)
+    class ::drake::multibody::contact_solvers::internal::PointContactData)

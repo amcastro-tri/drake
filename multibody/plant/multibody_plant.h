@@ -13,19 +13,18 @@
 #include <vector>
 
 #include "drake/common/default_scalars.h"
-#include "drake/common/drake_deprecated.h"
 #include "drake/common/nice_type_name.h"
 #include "drake/common/random.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/contact_solvers/contact_solver.h"
+#include "drake/multibody/contact_solvers/contact_solver_results.h"
 #include "drake/multibody/hydroelastics/hydroelastic_engine.h"
 #include "drake/multibody/plant/contact_jacobians.h"
 #include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/coulomb_friction.h"
 #include "drake/multibody/plant/discrete_contact_pair.h"
 #include "drake/multibody/plant/tamsi_solver.h"
-#include "drake/multibody/plant/tamsi_solver_results.h"
 #include "drake/multibody/topology/multibody_graph.h"
 #include "drake/multibody/tree/force_element.h"
 #include "drake/multibody/tree/multibody_tree-inl.h"
@@ -150,6 +149,8 @@ enum class ContactModel {
 ///   Select and parameterize contact models.
 /// - @ref mbp_state_accessors_and_mutators "State access and modification":
 ///   Obtain and manipulate position and velocity state variables.
+/// - @ref mbp_parameters "Parameters"
+///   Working with system parameters for various multibody elements.
 /// - @ref mbp_working_with_free_bodies "Free bodies":
 ///   Work conveniently with free (floating) bodies.
 /// - @ref mbp_kinematic_and_dynamic_computations "Kinematics and dynamics":
@@ -369,7 +370,7 @@ enum class ContactModel {
  obtained from geometry::SceneGraph will provide the default registered
  values for a given parameter. These are the values that will
  initially appear in a systems::Context created by CreateDefaultContext().
- Subsequently, true system paramters can be accessed and changed through a
+ Subsequently, true system parameters can be accessed and changed through a
  systems::Context once available. For both of the above cases, proximity
  properties are accessed through geometry::SceneGraphInspector APIs.
 
@@ -401,6 +402,57 @@ enum class ContactModel {
                                             "coulomb_friction");
  @endcode
 */
+/// @anchor mbp_parameters
+///               ### Working with %MultibodyElement parameters
+/// Several %MultibodyElements expose parameters, allowing the user flexible
+/// modification of some aspects of the plant's model, post systems::Context
+/// creation. For details, refer to the docmentation for the MultibodyElement
+/// whose parameters you are trying to modify/access (e.g. RigidBody,
+/// FixedOffsetFrame, etc.)
+///
+/// As an example, here is how to access and modify rigid body mass parameters:
+/// @code
+///   MultibodyPlant<double> plant;
+///   // ... Code to add bodies, finalize plant, and to obtain a context.
+///   const RigidBody<double>& body =
+///       plant.GetRigidBodyByName("BodyName");
+///   const SpatialInertia<double> M_BBo_B =
+///       body.GetSpatialInertiaInBodyFrame(context);
+///   // .. logic to determine a new SpatialInertia parameter for body.
+///   const SpatialInertia<double>& M_BBo_B_new = ....
+///
+///   // Modify the body parameter for spatial inertia.
+///   body.SetSpatialInertiaInBodyFrame(&context, M_BBo_B_new);
+/// @endcode
+///
+/// Another example, working with automatic differentiation in order to take
+/// derivatives with respect to one of the bodies' masses:
+/// @code
+///   MultibodyPlant<double> plant;
+///   // ... Code to add bodies, finalize plant, and to obtain a
+///   // context and a body's spatial inertia M_BBo_B.
+///
+///   // Scalar convert the plant.
+///   unique_ptr<MultibodyPlant<AutoDiffXd>> plant_autodiff =
+///       systems::System<double>::ToAutoDiffXd(plant);
+///   unique_ptr<Context<AutoDiffXd>> context_autodiff =
+///       plant_autodiff->CreateDefaultContext();
+///   context_autodiff->SetTimeStateAndParametersFrom(context);
+///
+///   const RigidBody<AutoDiffXd>& body =
+///       plant_autodiff->GetRigidBodyByName("BodyName");
+///
+///   // Modify the body parameter for mass.
+///   const AutoDiffXd mass_autodiff(mass, Vector1d(1));
+///   body.SetMass(context_autodiff.get(), mass_autodiff);
+///
+///   // M_autodiff(i, j).derivatives()(0), contains the derivatives of
+///   // M(i, j) with respect to the body's mass.
+///   MatrixX<AutoDiffXd> M_autodiff(plant_autodiff->num_velocities(),
+///       plant_autodiff->num_velocities());
+///   plant_autodiff->CalcMassMatrix(*context_autodiff, &M_autodiff);
+/// @endcode
+///
 /// @anchor mbp_adding_elements
 ///                    ### Adding modeling elements
 ///
@@ -837,8 +889,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   }
 
   /// This method adds a Joint of type `JointType` between two bodies.
-  /// For more information, see the below overload of `AddJoint<>`, and the
-  /// related `MultibodyTree::AddJoint<>` method.
+  /// For more information, see the below overload of `AddJoint<>`.
   template <template<typename Scalar> class JointType>
   const JointType<T>& AddJoint(std::unique_ptr<JointType<T>> joint) {
     DRAKE_MBP_THROW_IF_FINALIZED();
@@ -849,12 +900,14 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   }
 
   /// This method adds a Joint of type `JointType` between two bodies.
-  /// The two bodies connected by this Joint object are referred to as the
-  /// _parent_ and _child_ bodies. Although the terms _parent_ and _child_ are
-  /// sometimes used synonymously to describe the relationship between inboard
-  /// and outboard bodies in multibody models, this usage is wholly unrelated
-  /// and implies nothing about the inboard-outboard relationship between the
-  /// bodies.
+  /// The two bodies connected by this Joint object are referred to as _parent_
+  /// and _child_ bodies. The parent/child ordering defines the sign conventions
+  /// for the generalized coordinates and the coordinate ordering for multi-DOF
+  /// joints.
+  /// @image html multibody/plant/images/BodyParentChildJointCM.png width=50%
+  /// Note: The previous figure also shows Pcm which is body P's center of mass
+  /// and point Bcm which is body B's center of mass.
+  ///
   /// As explained in the Joint class's documentation, in Drake we define a
   /// frame F attached to the parent body P with pose `X_PF` and a frame M
   /// attached to the child body B with pose `X_BM`. This method helps creating
@@ -926,6 +979,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const std::optional<math::RigidTransform<double>>& X_PF,
       const Body<T>& child,
       const std::optional<math::RigidTransform<double>>& X_BM, Args&&... args) {
+    // TODO(Mitiguy) Per discussion in PR# 13961 and issues #12789 and #13040,
+    //  consider changing frame F to frame Jp and changing frame M to frame Jc.
     static_assert(std::is_base_of<Joint<T>, JointType<T>>::value,
                   "JointType<T> must be a sub-class of Joint<T>.");
 
@@ -1121,7 +1176,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// Registers `this` plant to serve as a source for an instance of
   /// SceneGraph. This registration allows %MultibodyPlant to
   /// register geometry with `scene_graph` for visualization and/or
-  /// collision queries.
+  /// collision queries.  The string returned by `this->get_name()` is passed
+  /// to SceneGraph's RegisterSource, so it is highly recommended that you give
+  /// the plant a recognizable name before calling this.
   /// Successive registration calls with SceneGraph **must** be performed on
   /// the same instance to which the pointer argument `scene_graph` points
   /// to. Failure to do so will result in runtime exceptions.
@@ -1497,15 +1554,15 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // this call.
   // @pre solver must not be nullptr.
   // @pre SolverType must be a subclass of
-  // multibody::contact_solvers::ContactSolver.
+  // multibody::contact_solvers::internal::ContactSolver.
   // @returns a mutable reference to `solver`, now owned by `this`
   // MultibodyPlant.
   template <class SolverType>
   SolverType& set_contact_solver(std::unique_ptr<SolverType> solver) {
     DRAKE_DEMAND(solver != nullptr);
-    static_assert(
-        std::is_base_of<contact_solvers::ContactSolver<T>, SolverType>::value,
-        "SolverType must be a sub-class of ContactSolver.");
+    static_assert(std::is_base_of<contact_solvers::internal::ContactSolver<T>,
+                                  SolverType>::value,
+                  "SolverType must be a sub-class of ContactSolver.");
     SolverType* solver_ptr = solver.get();
     contact_solver_ = std::move(solver);
     return *solver_ptr;
@@ -2714,117 +2771,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
         context, with_respect_to, frame_B, p_BoBp_B, frame_A, frame_E);
   }
 
-  /// For a point Fp that is fixed to a frame F, calculates Fp's translational
-  /// acceleration "bias" term `abias_AFp = J̇s_v_AFp(q, s) * s` in frame A with
-  /// respect to "speeds" 𝑠.
-  /// <pre>
-  ///   a_AFp = J𝑠_v_AFp(q)⋅ṡ + abias_AFp(q, v)
-  /// </pre>
-  /// a_AFp is point Fp's translational acceleration in frame A and 𝑠 is either
-  /// q̇ ≜ [q̇₁ ... q̇ⱼ]ᵀ (time-derivatives of generalized positions) or
-  /// v ≜ [v₁ ... vₖ]ᵀ (generalized velocities).
-  /// Note: `abias_AFp = J̇s_v_AFp(q, s)⋅s`  is quadratic in 𝑠 ≜ [𝑠₁ ... 𝑠ₙ]ᵀ
-  /// Note: This method is misnamed CalcBiasForJacobianTranslationalVelocity.
-  /// Expect a name change to reflect its acceleration (not velocity) nature.
-  ///
-  /// This method computes `abias_AFp` for each point Fp in the `p_FP_list`.
-  /// The `p_FP_list` is a list of position vectors from Fo (Frame F's origin)
-  /// to each such point Fp, expressed in frame F.
-  ///
-  /// @see CalcJacobianTranslationalVelocity() to compute `J𝑠_v_AFp`, point Fp's
-  /// translational velocity Jacobian in frame A with respect to s.
-  ///
-  /// @param[in] context The state of the multibody system, which includes the
-  /// generalized positions q and generalized velocities v.
-  /// @param[in] with_respect_to Enum equal to JacobianWrtVariable::kQDot or
-  /// JacobianWrtVariable::kV, indicating whether the Jacobian `J𝑠_v_AFp` is
-  /// partial derivatives with respect to 𝑠 = q̇ (time-derivatives of generalized
-  /// positions) or with respect to 𝑠 = v (generalized velocities).
-  /// @param[in] frame_F The frame on which point Fp is fixed/welded.
-  /// @param[in] p_FP_list `3 x n` matrix of position vectors `p_FoFp_F` from
-  /// Fo (frame F's origin) to each such point Fp, expressed in frame F.
-  /// @param[in] frame_A The frame that measures `abias_AFp`.
-  /// Currently, an exception is thrown if frame_A is not the World frame.
-  /// @param[in] frame_E The frame in which `abias_AFp` is expressed on output.
-  /// @returns abias_AFp_E matrix of translational acceleration bias terms
-  /// in frame_A and expressed in frame_E for each of the `n` points associated
-  /// with p_FP_list.  These bias terms are functions of the generalized
-  /// positions q and the generalized velocities v and depend on whether
-  /// `with_respect_to` is kQDot or kV.
-  /// @throws std::exception if `p_FP_list` does not have 3 rows.
-  /// @throws std::exception if `with_respect_to` is not JacobianWrtVariable::kV
-  /// @throws std::exception if frame_A is not the world frame.
-  DRAKE_DEPRECATED("2020-09-01", "Use CalcBiasTranslationalAcceleration "
-                 "instead of CalcBiasForJacobianTranslationalVelocity().")
-  VectorX<T> CalcBiasForJacobianTranslationalVelocity(
-      const systems::Context<T>& context,
-      JacobianWrtVariable with_respect_to,
-      const Frame<T>& frame_F,
-      const Eigen::Ref<const MatrixX<T>>& p_FP_list,
-      const Frame<T>& frame_A,
-      const Frame<T>& frame_E) const {
-    // TODO(Mitiguy) Issue #12140: Rename to CalcBiasTranslationalAcceleration.
-    // TODO(Mitiguy) Allow `with_respect_to` to be JacobianWrtVariable::kQDot
-    // and/or allow frame_A to be a non-world frame.
-    return CalcBiasTranslationalAcceleration(context, with_respect_to,
-        frame_F, p_FP_list, frame_A, frame_E);
-  }
-
-  /// For a point Fp that is fixed to a frame F, calculates Fp's spatial
-  /// acceleration "bias" term `Abias_AFp = J̇s_V_AFp * s` in frame A with
-  /// respect to "speeds" 𝑠.
-  /// <pre>
-  ///   A_AFp = J𝑠_V_AFp(q)⋅ṡ + Abias_AFp(q, v)
-  /// </pre>
-  /// A_AFp is point Fp's spatial acceleration in frame A and 𝑠 is either
-  /// q̇ ≜ [q̇₁ ... q̇ⱼ]ᵀ (time-derivatives of generalized positions) or
-  /// v ≜ [v₁ ... vₖ]ᵀ (generalized velocities).
-  /// Note: `Abias_AFp = J̇s_V_AFp(q, s)⋅s`  is quadratic in 𝑠 ≜ [𝑠₁ ... 𝑠ₙ]ᵀ
-  /// Note: This method is misnamed CalcBiasForJacobianSpatialVelocity.
-  /// Expect a name change to reflect its acceleration (not velocity) nature.
-  ///
-  /// @see CalcJacobianSpatialVelocity() to compute `J𝑠_V_AFp`, point Fp's
-  /// spatial velocity Jacobian in frame A with respect to 𝑠.
-  ///
-  /// @param[in] context The state of the multibody system, which includes the
-  /// generalized positions q and generalized velocities v.
-  /// @param[in] with_respect_to Enum equal to JacobianWrtVariable::kQDot or
-  /// JacobianWrtVariable::kV, indicating whether the Jacobian `J𝑠_v_AFp` is
-  /// partial derivatives with respect to 𝑠 = q̇ (time-derivatives of generalized
-  /// positions) or with respect to 𝑠 = v (generalized velocities).
-  /// @param[in] frame_F The frame on which point Fp is fixed/welded.
-  /// @param[in] p_FoFp_F position vector from Fo (frame F's origin) to
-  /// point Fp, expressed in frame F.
-  /// @param[in] frame_A The frame that measures `Abias_AFp`.
-  /// Currently, an exception is thrown if frame_A is not the World frame.
-  /// @param[in] frame_E The frame in which `Abias_AFp` is expressed on output.
-  /// @returns Abias_AFp_E Fp's spatial acceleration bias in frame_A is returned
-  /// in a `6 x 1` matrix whose first three elements are frame_F's angular
-  /// acceleration bias in frame_A (expressed in frame_E) and whose last three
-  /// elements are point Fp's translational acceleration bias in frame_A
-  /// (expressed in frame_E).  These bias terms are functions of the generalized
-  /// positions q and the generalized velocities v and depend on whether
-  /// `with_respect_to` is kQDot or kV.  Note: Although the return quantity is a
-  /// Vector6, it is actually a SpatialAcceleration (having units of that type).
-  /// @throws std::exception if `with_respect_to` is not JacobianWrtVariable::kV
-  /// @throws std::exception if frame_A is not the world frame.
-  DRAKE_DEPRECATED("2020-09-01", "Use CalcBiasSpatialAcceleration() instead "
-                                 "of CalcBiasForJacobianSpatialVelocity().")
-  Vector6<T> CalcBiasForJacobianSpatialVelocity(
-      const systems::Context<T>& context,
-      JacobianWrtVariable with_respect_to,
-      const Frame<T>& frame_F,
-      const Eigen::Ref<const Vector3<T>>& p_FoFp_F,
-      const Frame<T>& frame_A,
-      const Frame<T>& frame_E) const {
-    // TODO(Mitiguy) Issue #12140: Rename to CalcBiasSpatialAcceleration.
-    // TODO(Mitiguy) Allow `with_respect_to` to be JacobianWrtVariable::kQDot
-    // and/or allow frame_A to be a non-world frame.
-    const SpatialAcceleration<T> Abias_WFp = CalcBiasSpatialAcceleration(
-        context, with_respect_to, frame_F, p_FoFp_F, frame_A, frame_E);
-    return Abias_WFp.get_coeffs();
-  }
-
   /// For one point Bp fixed/welded to a frame B, calculates J𝑠_V_ABp, Bp's
   /// spatial velocity Jacobian in frame A with respect to "speeds" 𝑠.
   /// <pre>
@@ -3622,28 +3568,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// Returns the model used for contact. See documentation for ContactModel.
   ContactModel get_contact_model() const;
 
-  /// Returns the friction coefficients provided during geometry registration
-  /// for the given geometry `id`. We call these the "default" coefficients but
-  /// note that we mean user-supplied per-geometry default, not something more
-  /// global.
-  /// @throws std::exception if `id` does not correspond to a geometry in `this`
-  /// model registered for contact modeling.
-  /// @see RegisterCollisionGeometry() for details on geometry registration.
-  DRAKE_DEPRECATED(
-      "2020-09-01",
-      "default_coulomb_friction() will be removed. Please use SceneGraph which "
-      "now stores friction properties in ProximityProperties. See the section "
-      "\"Accessing point contact parameters\" in the documentation for "
-      "MultibodyPlant.")
-  const CoulombFriction<double>& default_coulomb_friction(
-      geometry::GeometryId id) const {
-    // TODO(amcastro-tri): This API might change or disappear completely as GS
-    // provides support for the specification of surface properties.
-    DRAKE_DEMAND(is_collision_geometry(id));
-    const int collision_index = geometry_id_to_collision_index_.at(id);
-    return default_coulomb_friction_[collision_index];
-  }
-
   /// Returns the number of geometries registered for visualization.
   /// This method can be called at any time during the lifetime of `this` plant,
   /// either pre- or post-finalize, see Finalize().
@@ -3929,17 +3853,17 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // TamsiSolver to advance the model's state stored in
   // `context0` taking a time step of size time_step().
   // Contact forces and velocities are computed and stored in `results`. See
-  // TamsiSolverResults for further details on the returned data.
+  // ContactSolverResults for further details on the returned data.
   void CalcTamsiResults(
       const drake::systems::Context<T>& context0,
-      internal::TamsiSolverResults<T>* results) const;
+      contact_solvers::internal::ContactSolverResults<T>* results) const;
 
   // Eval version of the method CalcTamsiResults().
-  const internal::TamsiSolverResults<T>& EvalTamsiResults(
+  const contact_solvers::internal::ContactSolverResults<T>& EvalTamsiResults(
       const systems::Context<T>& context) const {
-    return this
-        ->get_cache_entry(cache_indexes_.tamsi_solver_results)
-        .template Eval<internal::TamsiSolverResults<T>>(context);
+    return this->get_cache_entry(cache_indexes_.tamsi_solver_results)
+        .template Eval<contact_solvers::internal::ContactSolverResults<T>>(
+            context);
   }
 
   // Computes the vector of ContactSurfaces for hydroelastic contact.
@@ -4130,7 +4054,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Calc method to output per model instance vector of generalized contact
   // forces.
   void CopyGeneralizedContactForcesOut(
-      const internal::TamsiSolverResults<T>&,
+      const contact_solvers::internal::ContactSolverResults<T>&,
       ModelInstanceIndex, systems::BasicVector<T>* tau_vector) const;
 
   // Helper method to declare output ports used by this plant to communicate
@@ -4282,20 +4206,20 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   }
 
   // Helper to invoke our TamsiSolver.
-  void CallTamsiSolver(const T& time0, const VectorX<T>& v0,
-                       const MatrixX<T>& M0, const VectorX<T>& minus_tau,
-                       const VectorX<T>& fn0, const MatrixX<T>& Jn,
-                       const MatrixX<T>& Jt, const VectorX<T>& stiffness,
-                       const VectorX<T>& damping, const VectorX<T>& mu,
-                       internal::TamsiSolverResults<T>* results) const;
+  void CallTamsiSolver(
+      const T& time0, const VectorX<T>& v0, const MatrixX<T>& M0,
+      const VectorX<T>& minus_tau, const VectorX<T>& fn0, const MatrixX<T>& Jn,
+      const MatrixX<T>& Jt, const VectorX<T>& stiffness,
+      const VectorX<T>& damping, const VectorX<T>& mu,
+      contact_solvers::internal::ContactSolverResults<T>* results) const;
 
   // Helper to invoke ContactSolver when one is available.
-  void CallContactSolver(const T& time0, const VectorX<T>& v0,
-                         const MatrixX<T>& M0, const VectorX<T>& minus_tau,
-                         const VectorX<T>& phi0, const MatrixX<T>& Jc,
-                         const VectorX<T>& stiffness, const VectorX<T>& damping,
-                         const VectorX<T>& mu,
-                         internal::TamsiSolverResults<T>* results) const;
+  void CallContactSolver(
+      const T& time0, const VectorX<T>& v0, const MatrixX<T>& M0,
+      const VectorX<T>& minus_tau, const VectorX<T>& phi0, const MatrixX<T>& Jc,
+      const VectorX<T>& stiffness, const VectorX<T>& damping,
+      const VectorX<T>& mu,
+      contact_solvers::internal::ContactSolverResults<T>* results) const;
 
   // Geometry source identifier for this system to interact with geometry
   // system. It is made optional for plants that do not register geometry
@@ -4509,7 +4433,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   std::unique_ptr<TamsiSolver<T>> tamsi_solver_;
 
   // When not the nullptr, this is the solver to be used for discrete updates.
-  std::unique_ptr<contact_solvers::ContactSolver<T>> contact_solver_;
+  std::unique_ptr<contact_solvers::internal::ContactSolver<T>> contact_solver_;
 
   hydroelastics::internal::HydroelasticEngine<T> hydroelastics_engine_;
 
@@ -4679,6 +4603,15 @@ template <>
 void MultibodyPlant<double>::CalcHydroelasticWithFallback(
     const systems::Context<double>&,
     internal::HydroelasticFallbackCacheData<double>*) const;
+template <>
+void MultibodyPlant<symbolic::Expression>::CallContactSolver(
+    const symbolic::Expression&, const VectorX<symbolic::Expression>&,
+    const MatrixX<symbolic::Expression>&, const VectorX<symbolic::Expression>&,
+    const VectorX<symbolic::Expression>&, const MatrixX<symbolic::Expression>&,
+    const VectorX<symbolic::Expression>&, const VectorX<symbolic::Expression>&,
+    const VectorX<symbolic::Expression>&,
+    contact_solvers::internal::ContactSolverResults<symbolic::Expression>*)
+    const;
 #endif
 
 }  // namespace multibody

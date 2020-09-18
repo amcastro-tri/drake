@@ -30,7 +30,6 @@ drake_cc_package_library(
         ":point_pair_contact_info",
         ":propeller",
         ":tamsi_solver",
-        ":tamsi_solver_results",
     ],
 )
 
@@ -72,7 +71,6 @@ drake_cc_library(
         ":externally_applied_spatial_force",
         ":hydroelastic_traction",
         ":tamsi_solver",
-        ":tamsi_solver_results",
         "//common:default_scalars",
         "//common:essential",
         "//geometry:geometry_ids",
@@ -143,19 +141,6 @@ drake_cc_library(
     ],
     deps = [
         "//geometry/proximity:surface_mesh",
-    ],
-)
-
-drake_cc_library(
-    name = "tamsi_solver_results",
-    srcs = [
-        "tamsi_solver_results.cc",
-    ],
-    hdrs = [
-        "tamsi_solver_results.h",
-    ],
-    deps = [
-        "//common:default_scalars",
     ],
 )
 
@@ -461,8 +446,10 @@ drake_cc_googletest(
 drake_cc_googletest(
     name = "multibody_plant_mass_matrix_test",
     data = [
+        "test/atlas_with_fixed_joints.urdf",
         "//examples/atlas:models",
         "//manipulation/models/iiwa_description:models",
+        "//manipulation/models/wsg_50_description:models",
     ],
     deps = [
         ":plant",

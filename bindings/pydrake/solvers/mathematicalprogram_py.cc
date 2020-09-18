@@ -8,7 +8,6 @@
 
 #include "drake/bindings/pydrake/autodiff_types_pybind.h"
 #include "drake/bindings/pydrake/common/cpp_param_pybind.h"
-#include "drake/bindings/pydrake/common/deprecation_pybind.h"
 #include "drake/bindings/pydrake/documentation_pybind.h"
 #include "drake/bindings/pydrake/pydrake_pybind.h"
 #include "drake/bindings/pydrake/symbolic_types_pybind.h"
@@ -927,6 +926,22 @@ top-level documentation for :py:mod:`pydrake.math`.
       .def("indeterminates_index", &MathematicalProgram::indeterminates_index,
           doc.MathematicalProgram.indeterminates_index.doc)
       .def(
+          "EvalBindingVectorized",
+          [](const MathematicalProgram& prog,
+              const Binding<EvaluatorBase>& binding,
+              const MatrixX<double>& prog_var_vals) {
+            DRAKE_DEMAND(prog_var_vals.rows() == prog.num_vars());
+            MatrixX<double> Y(
+                binding.evaluator()->num_outputs(), prog_var_vals.cols());
+            for (int i = 0; i < prog_var_vals.cols(); ++i) {
+              Y.col(i) = prog.EvalBinding(binding, prog_var_vals.col(i));
+            }
+            return Y;
+          },
+          py::arg("binding"), py::arg("prog_var_vals"),
+          R"""(A "vectorized" version of EvalBinding.  It evaluates the binding 
+for every column of ``prog_var_vals``. )""")
+      .def(
           "EvalBinding",
           [](const MathematicalProgram& prog,
               const Binding<EvaluatorBase>& binding,
@@ -1160,6 +1175,19 @@ top-level documentation for :py:mod:`pydrake.math`.
       .def("upper_bound", &Constraint::upper_bound,
           doc.Constraint.upper_bound.doc)
       .def(
+          "CheckSatisfiedVectorized",
+          [](Constraint& self, const Eigen::Ref<const Eigen::MatrixXd>& x,
+              double tol) {
+            DRAKE_DEMAND(x.rows() == self.num_vars());
+            std::vector<bool> satisfied(x.cols());
+            for (int i = 0; i < x.cols(); ++i) {
+              satisfied[i] = self.CheckSatisfied(x.col(i), tol);
+            }
+            return satisfied;
+          },
+          py::arg("x"), py::arg("tol"),
+          R"""(A "vectorized" version of CheckSatisfied.  It evaluates the constraint for every column of ``x``. )""")
+      .def(
           "CheckSatisfied",
           [](Constraint& self, const Eigen::Ref<const Eigen::VectorXd>& x,
               double tol) { return self.CheckSatisfied(x, tol); },
@@ -1321,14 +1349,6 @@ top-level documentation for :py:mod:`pydrake.math`.
               const std::optional<SolverOptions>&>(&solvers::Solve),
           py::arg("prog"), py::arg("initial_guess") = py::none(),
           py::arg("solver_options") = py::none(), doc.Solve.doc_3args);
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  m.def("GetInfeasibleConstraints",
-      WrapDeprecated(doc.GetInfeasibleConstraints.doc_deprecated,
-          &solvers::GetInfeasibleConstraints),
-      py::arg("prog"), py::arg("result"), py::arg("tol") = std::nullopt,
-      doc.GetInfeasibleConstraints.doc_deprecated);
-#pragma GCC diagnostic pop
 
   ExecuteExtraPythonCode(m);
 }  // NOLINT(readability/fn_size)

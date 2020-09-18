@@ -5,6 +5,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <vector>
 
 #include "drake/common/eigen_types.h"
 #include "drake/geometry/geometry_roles.h"
@@ -76,6 +77,8 @@ class RenderEngineGl final : public RenderEngine {
   void ImplementGeometry(const Cylinder& cylinder, void* user_data) final;
   void ImplementGeometry(const HalfSpace& half_space, void* user_data) final;
   void ImplementGeometry(const Box& box, void* user_data) final;
+  void ImplementGeometry(const Capsule& capsule, void* user_data) final;
+  void ImplementGeometry(const Ellipsoid& ellipsoid, void* user_data) final;
   void ImplementGeometry(const Mesh& mesh, void* user_data) final;
   void ImplementGeometry(const Convex& convex, void* user_data) final;
   //@}
@@ -173,11 +176,9 @@ class RenderEngineGl final : public RenderEngine {
       const CameraProperties& camera, const internal::ShaderProgram& program,
       double near_clip, double far_clip, ImageType image_type) const;
 
-  // Creates an OpenGlGeometry from the mesh defined by the given vertices and
-  // triangle indices.
+  // Creates an OpenGlGeometry from the mesh defined by the given `mesh_data`.
   static internal::OpenGlGeometry CreateGlGeometry(
-      const internal::VertexBuffer& vertices,
-      const internal::IndexBuffer& indices);
+      const internal::MeshData& mesh_data);
 
   // Sets the display window visibility and populates it with the _last_ image
   // rendered, if visible.
@@ -213,6 +214,12 @@ class RenderEngineGl final : public RenderEngine {
   internal::OpenGlGeometry cylinder_;
   internal::OpenGlGeometry half_space_;
   internal::OpenGlGeometry box_;
+  // TODO(SeanCurtis-TRI): Figure out how to re-use capsules - if two capsules
+  // have the same dimensions (or are related by a *uniform* scale*), we can
+  // re-use the same geometry.
+  // Each capsule is unique; they cannot generally be related by a linear
+  // transform (i.e., translation, rotation, and non-uniform scale).
+  std::vector<internal::OpenGlGeometry> capsules_;
 
   // Mapping from obj filename to the mesh loaded into an OpenGlGeometry.
   std::unordered_map<std::string, internal::OpenGlGeometry> meshes_;

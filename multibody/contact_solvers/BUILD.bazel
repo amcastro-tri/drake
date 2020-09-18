@@ -13,15 +13,12 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
-# The purpose of default_visibility to be private is to be able to develop this
-# code on master, but without yet exposing it to users until we're sure it is
-# API-stable. Furthermore, the code in this directory is meant for advanced
-# developers working on contact solvers.
 drake_cc_package_library(
     name = "contact_solvers",
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
     deps = [
         ":contact_solver",
+        ":contact_solver_results",
         ":contact_solver_utils",
         ":linear_operator",
         ":point_contact_data",
@@ -62,14 +59,19 @@ drake_cc_library(
 
 
 drake_cc_library(
+    name = "contact_solver_results",
+    srcs = ["contact_solver_results.cc"],
+    hdrs = ["contact_solver_results.h"],
+    deps = ["//common:default_scalars"],
+)
+
+drake_cc_library(
     name = "multibody_sim_driver",
     testonly = 1,
     srcs = ["test/multibody_sim_driver.cc"],
     hdrs = ["test/multibody_sim_driver.h"],
     deps = [
         "//common:find_resource",
-        "//common/test_utilities:eigen_matrix_compare",
-        "//common/test_utilities:expect_no_throw",
         "//geometry:geometry_visualization",
         "//multibody/parsing",
         "//multibody/plant",
@@ -100,6 +102,7 @@ drake_cc_library(
     srcs = ["contact_solver.cc"],
     hdrs = ["contact_solver.h"],
     deps = [
+        ":contact_solver_results",
         ":contact_solver_utils",
         ":point_contact_data",
         ":system_dynamics_data",
@@ -170,10 +173,12 @@ drake_cc_library(
 
 drake_cc_googletest(
     name = "contact_solver_test",
-    data = ["test/particle.sdf"],
+    data = ["test/particle_with_infinite_inertia.sdf"],
     deps = [
         ":contact_solver",
+        ":contact_solver_utils",
         ":multibody_sim_driver",
+        "//common/test_utilities:eigen_matrix_compare",
     ],
 )
 

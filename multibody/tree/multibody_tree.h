@@ -2932,6 +2932,12 @@ class MultibodyTree {
   // The gravity field force element.
   UniformGravityFieldElement<T>* gravity_field_{nullptr};
 
+  // Vector of size num_velocities() that stores rotor reflected inertia for
+  // each mobility corresponding to a 1-dof mobilizer (i.e. revolute,
+  // prismatic). By default it is intialized to the zero vector, meaning we do
+  // not model the effect of reflected inertia.
+  VectorX<T> reflected_inertia_;
+
   // TODO(amcastro-tri): Consider moving these maps into MultibodyTreeTopology
   // since they are not templated on <T>.
 

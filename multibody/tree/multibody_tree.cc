@@ -221,6 +221,14 @@ void MultibodyTree<T>::FinalizeInternals() {
   }
 
   CreateModelInstances();
+
+  // We load the vector of reflected inertias here now the model including
+  // joints and actuators is complete.
+  reflected_inertia_ = VectorX<T>::Zero(num_velocities());
+  for (const auto& actuator : owned_actuators_) {
+    const int v = actuator->joint().velocity_start();
+    reflected_inertia_(v) = actuator->reflected_inertia();
+  }
 }
 
 template <typename T>
@@ -879,6 +887,11 @@ void MultibodyTree<T>::CalcInverseDynamics(
           tau_array);
     }
   }
+
+  // Add the effect of reflected inertias.
+  for (int v = 0; v < num_velocities(); ++v) {
+    (*tau_array)(v) += reflected_inertia_(v) * known_vdot(v);
+  }
 }
 
 template <typename T>
@@ -1011,7 +1024,9 @@ void MultibodyTree<T>::CalcMassMatrix(const systems::Context<T>& context,
 
   // The algorithm below does not recurse zero entries and therefore these must
   // be set a priori.
-  M->setZero();
+  // In addition, we initialize diagonal entries to include the effect of rotor
+  // reflected inertia.
+  (*M) = reflected_inertia_.asDiagonal();
 
   // Perform tip-to-base recursion for each composite body, skipping the world.
   for (int depth = tree_height() - 1; depth > 0; --depth) {
@@ -2097,7 +2112,7 @@ void MultibodyTree<T>::CalcArticulatedBodyInertiaCache(
           spatial_inertia_in_world_cache[body_node_index];
 
       node.CalcArticulatedBodyInertiaCache_TipToBase(
-          context, pc, H_PB_W, M_B_W, abic);
+          context, pc, H_PB_W, M_B_W, reflected_inertia_, abic);
     }
   }
 }

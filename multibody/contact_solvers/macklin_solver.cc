@@ -11,28 +11,17 @@
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
+namespace internal {
 
 using Eigen::SparseMatrix;
 using Eigen::SparseVector;
 
 template <typename T>
-void MacklinSolver<T>::SetPointContactData(
-    const PointContactData<T>* data) {
-  DRAKE_DEMAND(data != nullptr);
-  contact_data_ = data;
-}
-
-template <typename T>
-void MacklinSolver<T>::SetSystemDynamicsData(const SystemDynamicsData<T>* data) 
-{
-  DRAKE_DEMAND(data != nullptr);
-  dynamics_data_ = data;
-}
-
-template <typename T>
-void MacklinSolver<T>::PreProcessData() {
-  const int nc = num_contacts();
-  const int nv = num_velocities();
+void MacklinSolver<T>::PreProcessData(
+    const T& time_step, const SystemDynamicsData<T>& dynamics_data,
+    const PointContactData<T>& contact_data) {
+  const int nc = contact_data.num_contacts();
+  const int nv = dynamics_data.num_velocities();
   state_.Resize(nv, nc);
   pre_proc_data_.Resize(nv, nc);
   scratch_workspace_.Resize(nv, nc, 64);
@@ -57,22 +46,22 @@ void MacklinSolver<T>::PreProcessData() {
     PRINT_VAR(Wii_norm.transpose());
 
     // Update vn0, used to compute vn_stab.
-    GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
-    auto& vc0 = access.xc_sized_vector();
-    get_Jc().Multiply(get_v0(), &vc0);
-    auto& vn0 = pre_proc_data_.vn0;
-    ExtractNormal(vc0, &vn0);
+    //GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
+    //auto& vc0 = access.xc_sized_vector();
+    //get_Jc().Multiply(get_v0(), &vc0);
+    //auto& vn0 = pre_proc_data_.vn0;
+    //ExtractNormal(vc0, &vn0);
 
     // Calc stabilization velocity.
-    CalcNormalStabilizationVelocity(get_dt(), parameters_.alpha_stab, vn0,
+    CalcNormalStabilizationVelocity(time_step, parameters_.alpha_stab,
                                     get_phi0(), &pre_proc_data_.vn_stab);
   }
 }
 
 template <typename T>
-void MacklinSolver<T>::UpdateContactVelocities(const VectorX<T>& v, VectorX<T>* vc,
-                                          VectorX<T>* vn,
-                                          VectorX<T>* vt) const {
+void MacklinSolver<T>::UpdateContactVelocities(const VectorX<T>& v,
+                                               VectorX<T>* vc, VectorX<T>* vn,
+                                               VectorX<T>* vt) const {
   get_Jc().Multiply(v, vc);
   ExtractNormal(*vc, vn);
   ExtractTangent(*vc, vt);
@@ -80,7 +69,8 @@ void MacklinSolver<T>::UpdateContactVelocities(const VectorX<T>& v, VectorX<T>* 
 
 template <typename T>
 T MacklinSolver<T>::CalcFischerBurmeister(const T& x, const T& y,
-                                     double epsilon_squared, EigenPtr<Vector2<T>> grad_phi) {
+                                          double epsilon_squared,
+                                          EigenPtr<Vector2<T>> grad_phi) {
   using std::sqrt;
   const T soft_norm = sqrt(x * x + y * y + epsilon_squared);
   if (grad_phi) {
@@ -94,9 +84,9 @@ T MacklinSolver<T>::CalcFischerBurmeister(const T& x, const T& y,
 //  - vn
 template <typename T>
 void MacklinSolver<T>::CalcNormalConstraintResidual(
-    const VectorX<T>& vn, const VectorX<T>& pi, const T& dt,
-    VectorX<T>* cn, VectorX<T>* gn, VectorX<T>* Rn,
-    VectorX<T>* DcnDvn, VectorX<T>* DgnDvn, VectorX<T>* DgnDpi) const {
+    const VectorX<T>& vn, const VectorX<T>& pi, const T& dt, VectorX<T>* cn,
+    VectorX<T>* gn, VectorX<T>* Rn, VectorX<T>* DcnDvn, VectorX<T>* DgnDvn,
+    VectorX<T>* DgnDpi) const {
   using std::max;
 
   const int nc = num_contacts();
@@ -136,6 +126,7 @@ void MacklinSolver<T>::CalcNormalConstraintResidual(
 
       (*DgnDvn)(i) = grad_fFB(0) * DcnDvn_ic;
       (*DgnDpi)(i) = grad_fFB(0) * Rn_ic + grad_fFB(1) * ri;
+      DRAKE_DEMAND((*DgnDpi)(i) >= 0);
     }
   }
 
@@ -187,7 +178,7 @@ void MacklinSolver<T>::CalcMaxDissipationConstraintResidual(
     const T norm_grad_phi = grad_phi.norm();
 
     // My approximation:
-    //const Vector2<T> dz = -phi / norm_grad_phi * grad_phi;
+    // const Vector2<T> dz = -phi / norm_grad_phi * grad_phi;
 
     // Nvidia's approximation.
     const Vector2<T> dz(-phi, -phi);  // as if grad_phi = 1/sqrt(2) * (1, 1).
@@ -197,9 +188,9 @@ void MacklinSolver<T>::CalcMaxDissipationConstraintResidual(
 
     const T num = lambda(i) + (*dlambda)(i);
     const T den = limit_close_to_zero(beta_norm + (*dbeta_norm)(i));
-    
+
     const T W_i = num / den;
-    (*W)(i) = W_i;    
+    (*W)(i) = W_i;
 
     const Vector2<T> vt_i = vt.template segment<2>(2 * i);
     gt->template segment<2>(2 * i) = vt_i + W_i * beta_i;
@@ -207,15 +198,181 @@ void MacklinSolver<T>::CalcMaxDissipationConstraintResidual(
 }
 
 template <typename T>
+void MacklinSolver<T>::CalcMaxDissipationConstraintResidual2(
+    const VectorX<T>& vt, const VectorX<T>& lambda, const VectorX<T>& beta,
+    const VectorX<T>& pi, VectorX<T>* dlambda, VectorX<T>* dbeta_norm,
+    VectorX<T>* W, VectorX<T>* gt) const {
+  const int nc = num_contacts();
+  DRAKE_DEMAND(vt.size() == 2 * nc);
+  DRAKE_DEMAND(beta.size() == 2 * nc);
+  DRAKE_DEMAND(pi.size() == nc);
+  DRAKE_DEMAND(lambda.size() == nc);
+  DRAKE_DEMAND(dlambda->size() == nc);
+  DRAKE_DEMAND(dbeta_norm->size() == nc);
+  DRAKE_DEMAND(W->size() == nc);
+  DRAKE_DEMAND(gt->size() == 2 * nc);
+
+  const double vs = parameters_.stiction_tolerance;
+  const auto& mu = get_mu();
+  const auto& r = pre_proc_data_.Wii_norm;
+
+  const double e2 =
+      parameters_.fb_velocity_scale * parameters_.fb_velocity_scale;
+
+  using std::abs;
+  using std::max;
+
+  for (int ic = 0, ic2 = 0; ic < nc; ic++, ic2 += 2) {
+    const Vector2<T> vt_i = vt.template segment<2>(ic2);
+    const Vector2<T> beta_i = beta.template segment<2>(ic2);
+    const T pi_i = pi(ic);
+    const T mu_i = mu(ic);
+
+    const T beta_norm = beta_i.norm();
+
+    const T mupi_soft = mu_i * abs(pi_i) + 1.0e-14;
+
+    const T Wnum = max(vs, vt_i.norm());
+    const T Wden = max(mupi_soft, beta_norm);
+    const T W0 = Wnum / Wden;
+
+    // A factor of 0.9 or 1.1 makes ContactSolvers/ParticleTest/1.Sliding
+    // diverge. Only with factor of 1.0 it works.
+    const double factor = 1.0;
+    const T beta_factor = max(1.0, beta_norm / mupi_soft * factor);
+    const T Wi = W0 * beta_factor;
+
+    (*W)(ic) = Wi;
+
+    gt->template segment<2>(ic2) = vt_i + Wi * beta_i;
+  }
+}
+
+template <typename T>
+void MacklinSolver<T>::CalcMaxDissipationConstraintResidual3(
+    const VectorX<T>& vt, const VectorX<T>& lambda, const VectorX<T>& beta,
+    const VectorX<T>& pi, VectorX<T>* dlambda, VectorX<T>* dbeta_norm,
+    VectorX<T>* W, VectorX<T>* gt) const {
+  const int nc = num_contacts();
+  DRAKE_DEMAND(vt.size() == 2 * nc);
+  DRAKE_DEMAND(beta.size() == 2 * nc);
+  DRAKE_DEMAND(pi.size() == nc);
+  DRAKE_DEMAND(lambda.size() == nc);
+  DRAKE_DEMAND(dlambda->size() == nc);
+  DRAKE_DEMAND(dbeta_norm->size() == nc);
+  DRAKE_DEMAND(W->size() == nc);
+  DRAKE_DEMAND(gt->size() == 2 * nc);
+
+  const double vs = parameters_.stiction_tolerance;
+  const auto& mu = get_mu();
+  const auto& r = pre_proc_data_.Wii_norm;
+
+  const double e2 =
+      parameters_.fb_velocity_scale * parameters_.fb_velocity_scale;
+
+  using std::abs;
+  using std::max;
+
+  for (int ic = 0, ic2 = 0; ic < nc; ic++, ic2 += 2) {
+    const Vector2<T> vt_i = vt.template segment<2>(ic2);
+    const Vector2<T> beta_i = beta.template segment<2>(ic2);
+    const T pi_i = pi(ic);
+    const T mu_i = mu(ic);
+    const T beta_norm = beta_i.norm();
+    const T mupi_soft = mu_i * abs(pi_i) + 1.0e-14;
+
+    // Calc fFB:
+    const T x = vt_i.norm();
+    const T y = beta_norm * r(ic);  // in m/s.
+
+    Vector2<T> grad_fFB;
+    const T fFB = CalcFischerBurmeister(x, y, e2, &grad_fFB);
+
+    const T Wnum = max(vs, vt_i.norm() - fFB);
+    const T Wden = max(mupi_soft, beta_norm + fFB / r(ic));    
+    const T Wi = Wnum / Wden;
+
+    (*W)(ic) = Wi;
+
+    gt->template segment<2>(ic2) = vt_i + Wi * beta_i;
+  }
+}
+
+template <typename T>
+void MacklinSolver<T>::CalcMaxDissipationConstraintResidual4(
+    const VectorX<T>& vt, const VectorX<T>& lambda, const VectorX<T>& beta,
+    const VectorX<T>& pi, VectorX<T>* dlambda, VectorX<T>* dbeta_norm,
+    VectorX<T>* W, VectorX<T>* gt) const {
+  const int nc = num_contacts();
+  DRAKE_DEMAND(vt.size() == 2 * nc);
+  DRAKE_DEMAND(beta.size() == 2 * nc);
+  DRAKE_DEMAND(pi.size() == nc);
+  DRAKE_DEMAND(lambda.size() == nc);
+  DRAKE_DEMAND(dlambda->size() == nc);
+  DRAKE_DEMAND(dbeta_norm->size() == nc);
+  DRAKE_DEMAND(W->size() == nc);
+  DRAKE_DEMAND(gt->size() == 2 * nc);
+
+  const double vs = parameters_.stiction_tolerance;
+  const auto& mu = get_mu();
+  const auto& r = pre_proc_data_.Wii_norm;
+
+  const double e2 =
+      parameters_.fb_velocity_scale * parameters_.fb_velocity_scale;
+
+  using std::abs;
+  using std::max;
+  using std::min;
+
+  // Here I'll do:
+  //   lambda_kp = max(vs, |vt|) - minmap(|vt|-vs, delta = mu*pi - |beta|)
+  // And define the tangential compliance Ct = lambda_kp / (mu * abs(pi) + eps).
+  // So that Ct --> +infty if pi --> 0, which has the desired effect of
+  // freeing vt and enforcing beta = 0.
+
+  for (int ic = 0, ic2 = 0; ic < nc; ic++, ic2 += 2) {
+    const Vector2<T> vt_i = vt.template segment<2>(ic2);
+    const Vector2<T> beta_i = beta.template segment<2>(ic2);
+    const T pi_i = pi(ic);
+    const T mu_i = mu(ic);
+    const T beta_norm = beta_i.norm();
+    const T vt_norm = vt_i.norm();
+    // TODO(amcastro-tri): make this hardcoded 1.0e-14 a function of vs_soft and
+    // r(ic). Or simply make all variables have the same units of m/s.
+    const T mupi_soft = mu_i * abs(pi_i) + 1.0e-14;
+
+    // Minmap.
+    const T delta = (mu_i * abs(pi_i) - beta_norm) * r(ic);
+    const T lambda = max(vs, vt_norm);
+    const T fminmap = min(lambda - vs, delta);
+
+    // Next iteration approximation of lambda when using the minmap.
+    const T lambda_kp = lambda - fminmap;
+
+    const T Ct = lambda_kp / mupi_soft;
+    DRAKE_DEMAND(Ct > 0); // I believe this is always positive. Check.
+
+    (*W)(ic) = Ct;
+
+    gt->template segment<2>(ic2) = vt_i + Ct * beta_i;
+  }
+}
+
+template <typename T>
 void MacklinSolver<T>::CalcNormalStabilizationVelocity(const T& dt,
-                                                  double alpha_stab,
-                                                  const VectorX<T>& vn0,
-                                                  const VectorX<T>& phi0,
-                                                  VectorX<T>* vn_stab) {
+                                                       double alpha_stab,
+                                                       const VectorX<T>& phi0,
+                                                       VectorX<T>* vn_stab) {
+  // Velocity constraint.
   if (alpha_stab < 0) {
     vn_stab->setZero();
     return;
   }
+
+  // Position constraint.
+  (*vn_stab) = -phi0 / dt;
+
+#if 0  
   // As Todorov, use a Baugmarte-like stabilization.
   // Note that at alpha_stab = 1.0, we retrieve the stabilization velocity used
   // by [Anitescu, 2006]. We want alpha_stab = 1.0 to recover the law π = −kϕ
@@ -224,11 +381,12 @@ void MacklinSolver<T>::CalcNormalStabilizationVelocity(const T& dt,
   const T kd = dt / tau_rigid;
   const T kp = dt / (tau_rigid * tau_rigid);
   (*vn_stab) = vn0 - kd * vn0 - kp * phi0;
+#endif  
 }
 
 template <typename T>
-T MacklinSolver<T>::CalcLineSearchParameter(
-  const State& s_km, const State& s_kp) const {
+T MacklinSolver<T>::CalcLineSearchParameter(const State& s_km,
+                                            const State& s_kp) const {
   return parameters_.relaxation;
 }
 
@@ -380,8 +538,14 @@ T MacklinSolver<T>::LimitNormalUpdate(
 #endif
 
 template <typename T>
-ContactSolverResult MacklinSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) {
-  PreProcessData();
+ContactSolverStatus MacklinSolver<T>::SolveWithGuess(
+    const T& time_step, const SystemDynamicsData<T>& dynamics_data,
+    const PointContactData<T>& contact_data, const VectorX<T>& v_guess,
+    ContactSolverResults<T>* results) {
+  time_step_ = time_step;
+  dynamics_data_ = dynamics_data;
+  contact_data_ = contact_data;
+  PreProcessData(time_step, dynamics_data, contact_data);
 
   State s_guess(num_velocities(), num_contacts());
   s_guess.SetVelocities(v_guess);
@@ -393,16 +557,22 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) 
     // sensible, the minimum value lambda can have.
     state_.mutable_lambda().setZero();
     stats_ = {};
-    return ContactSolverResult::kSuccess;
+    PackContactResults(state_, results);
+
+    stats_.iterations++;
+    stats_.iteration_errors.push_back(ErrorMetrics{});
+    stats_.num_contacts = num_contacts();
+    stats_history_.push_back(stats_);
+    return ContactSolverStatus::kSuccess;
   }
 
   // Workspace.
   GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
 
   // Update vc so that we can use it to estimate a velocity scale.
-  //const auto& vc = EvalVc(s_guess);
+  // const auto& vc = EvalVc(s_guess);
   auto& vc_star = pre_proc_data_.vc_star;
-  //const T m0 = EstimateVelocityScale(vc, vc_star);
+  // const T m0 = EstimateVelocityScale(vc, vc_star);
 
   // Estimate a value of pi such that r * pi = m0.
   // To estimate an initial guess for pi, we essentially start from:
@@ -427,6 +597,11 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) 
   // Set the initial guess for gamma.
   MergeNormalAndTangent(pi, beta, &s_guess.mutable_gamma());
 
+  if (guess_ != nullptr) {    
+    s_guess = *guess_;
+    guess_.release();  // used only once.
+  }
+
   // Print initial conditions.
   PRINT_VAR(EvalVt(s_guess).transpose());
   PRINT_VAR(EvalVn(s_guess).transpose());
@@ -434,18 +609,20 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) 
   PRINT_VAR(pi.transpose());
   PRINT_VAR(s_guess.gamma().transpose());
 
-  return SolveWithGuess(s_guess);
+  return SolveWithGuess(time_step, s_guess, &*results);
 }
 
 template <typename T>
-ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
+ContactSolverStatus MacklinSolver<T>::SolveWithGuess(
+    const T& time_step, const State& state_guess,
+    ContactSolverResults<T>* results) {
   using std::abs;
   using std::max;
   using std::min;
   using std::sqrt;
 
   const int nv = num_velocities();
-  const int nc = num_contacts();  
+  const int nc = num_contacts();
 
   GrantScratchWorkspaceAccess<T> access(scratch_workspace_);
   auto& dv = access.v_sized_vector();
@@ -460,10 +637,17 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
 
   if (num_contacts() == 0) {
     state_.mutable_v() = get_v_star();
-    return ContactSolverResult::kSuccess;
+    state_.mutable_gamma().setZero();
+    PackContactResults(state_, results);
+
+    stats_.iterations++;
+    stats_.iteration_errors.push_back(ErrorMetrics{});
+    stats_.num_contacts = num_contacts();
+    stats_history_.push_back(stats_);
+    return ContactSolverStatus::kSuccess;
   }
 
-  const auto& scaling_factor = pre_proc_data_.Wii_norm;  
+  const auto& scaling_factor = pre_proc_data_.Wii_norm;
 
   // Initialize lambda. Upon convergence, lambda is the magnitude of the
   // tangential velocity at the i-th conctact. Therefore it does make sense to
@@ -476,7 +660,7 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
   }
 
   // Maybe place these in the cache?
-  //MatrixX<T> G(3 * nc, nv);
+  // MatrixX<T> G(3 * nc, nv);
   SparseMatrix<T> Del(3 * nc, 3 * nc);  // Delassus op.
   SparseMatrix<T> A(3 * nc, 3 * nc);
   VectorX<T> C(3 * nc);
@@ -544,7 +728,7 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
 
     // We will solve the for the impulses using the Schur-Complement of the
     // system of equations on v and gamma. This leads to:
-    // A * dgamma = Gc * Fv - gc    
+    // A * dgamma = Gc * Fv - gc
 
     // Compute the residual for the impulses, Fgamma.
     GcOperator Gc(this, &state_);  // Gc = DgcDv = DgcDvc * Jc
@@ -555,19 +739,18 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
     // actual numerical factorization is performed.
     solver.factorize(A);
     if (solver.info() != Eigen::Success) {
-      return ContactSolverResult::kFailure;
+      return ContactSolverStatus::kFailure;
     }
     dgamma = solver.solve(Fgamma);
     if (solver.info() != Eigen::Success) {
-      return ContactSolverResult::kFailure;
+      return ContactSolverStatus::kFailure;
     }
 
     // Update dv:
-    const LinearOperator<T>& Jv =
-        parameters_.macklin_jacobian ? Gc : get_Jc();
+    const LinearOperator<T>& Jv = parameters_.macklin_jacobian ? Gc : get_Jc();
     Jv.MultiplyByTranspose(dgamma, &xv_aux);  // xv_aux = Jvᵀ * dgamma
     get_Ainv().Multiply(xv_aux, &dv);         // dv = A⁻¹ * Jvᵀ * dgamma
-    dv -= Fv;                                 // dv = -Fv + A⁻¹ * Jvᵀ * dgamma
+    dv -= Fv;  // dv = -Fv + A⁻¹ * Jvᵀ * dgamma
 
     PRINT_VAR(Fgamma.transpose());
     PRINT_VAR(Fv.transpose());
@@ -589,22 +772,46 @@ ContactSolverResult MacklinSolver<T>::SolveWithGuess(const State& state_guess) {
     state_.mutable_lambda() += alpha * state_.cache().dlambda;
 
     PRINT_VAR(state_.v().transpose());
-    PRINT_VAR(state_.gamma().transpose());    
+    PRINT_VAR(state_.gamma().transpose());
 
     ErrorMetrics errors;
     const bool converged = CheckConvergenceCriteria(state_, &errors);
     // Update stats.
     stats_.iterations++;
     stats_.iteration_errors.push_back(errors);
+    stats_.num_contacts = num_contacts();
 
-    if (converged) return ContactSolverResult::kSuccess;;
+    if (converged) {
+      PackContactResults(state_, results);      
+      stats_history_.push_back(stats_);
+      return ContactSolverStatus::kSuccess;
+    }
   }  // iter
-  return ContactSolverResult::kFailure;
+  return ContactSolverStatus::kFailure;
 }
 
+template <typename T>
+void MacklinSolver<T>::PackContactResults(
+    const State& s, ContactSolverResults<T>* results) const {
+  results->Resize(num_velocities(), num_contacts());
+  results->v_next = s.v();
+  const auto& vc = EvalVc(s);
+  ExtractNormal(vc, &results->vn);
+  ExtractTangent(vc, &results->vt);
+  ExtractNormal(s.gamma(), &results->fn);
+  ExtractTangent(s.gamma(), &results->ft);
+  get_Jc().MultiplyByTranspose(s.gamma(), &results->tau_contact);
+  // N.B. While contact solver works with impulses, results are reported as
+  // forces.
+  results->fn /= time_step_;
+  results->ft /= time_step_;
+  results->tau_contact /= time_step_;
+}
+
+}  // namespace internal
 }  // namespace contact_solvers
 }  // namespace multibody
 }  // namespace drake
 
 DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    class ::drake::multibody::contact_solvers::MacklinSolver)
+    class ::drake::multibody::contact_solvers::internal::MacklinSolver)

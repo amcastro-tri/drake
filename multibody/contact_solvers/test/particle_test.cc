@@ -21,6 +21,7 @@ namespace multibody {
 using test::MultibodySimDriver;
 
 namespace contact_solvers {
+namespace internal {
 namespace {
 
 using Eigen::Matrix3d;
@@ -71,7 +72,7 @@ class ParticleTest : public ::testing::Test {
 
     driver_.AddGround(point_params[0].first, point_params[0].second,
                       geometry_mu[0]);
-    driver_.Initialize();
+    driver_.Finalize();
     const int nq = plant.num_positions();
     const int nv = plant.num_velocities();
     // Assert plant sizes.
@@ -104,8 +105,8 @@ class ParticleTest : public ::testing::Test {
   }
 
   void SetParams(NormalConstraintType,
-                 test::PgsSolver<double>* solver) const {
-    test::PgsSolverParameters params; 
+                 PgsSolver<double>* solver) const {
+    PgsSolverParameters params; 
     // PGS diverges for this case if relaxation > 0.6. Therefore we use half of
     // that and we observe convergence in 8 iterations.
     // A small change to relaxation = 0.2 leads to 18 iterations.
@@ -116,7 +117,7 @@ class ParticleTest : public ::testing::Test {
     solver->set_parameters(params);
   }
 
-  void PrintStats(const test::PgsSolver<double>& solver) const {
+  void PrintStats(const PgsSolver<double>& solver) const {
     auto& stats = solver.get_iteration_stats();
     PRINT_VAR(stats.iterations);
     PRINT_VAR(stats.vc_err);
@@ -242,14 +243,13 @@ TYPED_TEST_P(ParticleTest, TangentialDirection) {
 
 REGISTER_TYPED_TEST_SUITE_P(ParticleTest, NormalDirection, TangentialDirection);
 
-typedef ::testing::Types<test::PgsSolver<double>, MacklinSolver<double>>
+typedef ::testing::Types<PgsSolver<double>, MacklinSolver<double>>
     ContactSolverTypes;
 INSTANTIATE_TYPED_TEST_SUITE_P(ContactSolvers, ParticleTest,
                                ContactSolverTypes);
 
 }  // namespace
+}  // namespace internal
 }  // namespace contact_solvers
 }  // namespace multibody
 }  // namespace drake
-
-

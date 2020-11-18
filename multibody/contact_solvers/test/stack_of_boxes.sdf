@@ -1,0 +1,228 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="StackOfObjects">
+    <!-- All spheres in the stack have a density of ρ=1000 kg/m³ (density of
+         water at 1 atm and 3.98 °C). The inertia for a sphere of radius R and
+         mass m is computed as: I = 2/5*m R².  -->
+    <link name="Object1">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0 0 0.0 0 0 0</pose>
+        <mass>8.0</mass>
+        <inertia>
+          <ixx>0.032</ixx>
+          <iyy>0.032</iyy>
+          <izz>0.032</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <visual name="visual">
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.1</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <diffuse>1 0 0 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.1</radius>
+          </sphere>
+        </geometry>        
+        <drake:proximity_properties>
+          <drake:point_contact_stiffness>
+          1.0e16</drake:point_contact_stiffness>
+          <drake:hunt_crossley_dissipation>0.0
+          </drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>0.5</drake:mu_dynamic>
+          <drake:mu_static>0.5</drake:mu_static>
+        </drake:proximity_properties>
+      </collision>      
+    </link>    
+
+    <link name="Object2">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>64.0</mass>
+        <inertia>
+          <ixx>1.024</ixx>
+          <iyy>1.024</iyy>
+          <izz>1.024</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <visual name="visual">
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.2</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <diffuse>0 1 0 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.2</radius>
+          </sphere>
+        </geometry>        
+        <drake:proximity_properties>
+          <drake:point_contact_stiffness>
+          1.0e16</drake:point_contact_stiffness>
+          <drake:hunt_crossley_dissipation>0.0
+          </drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>0.5</drake:mu_dynamic>
+          <drake:mu_static>0.5</drake:mu_static>
+        </drake:proximity_properties>
+      </collision>      
+    </link>
+
+    <link name="Object3">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>512.0</mass>
+        <inertia>
+          <ixx>32.768</ixx>
+          <iyy>32.768</iyy>
+          <izz>32.768</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <visual name="visual">
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.4</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <diffuse>0 0 1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.4</radius>
+          </sphere>
+        </geometry>        
+        <drake:proximity_properties>
+          <drake:point_contact_stiffness>
+          1.0e16</drake:point_contact_stiffness>
+          <drake:hunt_crossley_dissipation>0.0
+          </drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>0.5</drake:mu_dynamic>
+          <drake:mu_static>0.5</drake:mu_static>
+        </drake:proximity_properties>
+      </collision>      
+    </link>
+
+    <link name="Object4">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>4096.0</mass>
+        <inertia>
+          <ixx>1048.576</ixx>
+          <iyy>1048.576</iyy>
+          <izz>1048.576</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <visual name="visual">
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.8</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <diffuse>0.99 0 0.5 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.8</radius>
+          </sphere>
+        </geometry>        
+        <drake:proximity_properties>
+          <drake:point_contact_stiffness>
+          1.0e16</drake:point_contact_stiffness>
+          <drake:hunt_crossley_dissipation>0.0
+          </drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>0.5</drake:mu_dynamic>
+          <drake:mu_static>0.5</drake:mu_static>
+        </drake:proximity_properties>
+      </collision>      
+    </link>
+
+    <link name="Object5">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>32768.0</mass>
+        <inertia>
+          <ixx>33554.432</ixx>
+          <iyy>33554.432</iyy>
+          <izz>33554.432</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <visual name="visual">
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>1.6</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <diffuse>0.95 0.67 0 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>1.6</radius>
+          </sphere>
+        </geometry>        
+        <drake:proximity_properties>
+          <drake:point_contact_stiffness>
+          1.0e16</drake:point_contact_stiffness>
+          <drake:hunt_crossley_dissipation>0.0
+          </drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>0.5</drake:mu_dynamic>
+          <drake:mu_static>0.5</drake:mu_static>
+        </drake:proximity_properties>
+      </collision>      
+    </link>
+
+  </model>
+</sdf>

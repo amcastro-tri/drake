@@ -27,7 +27,7 @@ class ScratchWorkspace {
     xc_top_ = xn_top_ = xt_top_ = v_top_ = 0;
     xc_pool_.clear();
     xn_pool_.clear();
-    xn_pool_.clear();
+    xt_pool_.clear();
     v_pool_.clear();
   }
 

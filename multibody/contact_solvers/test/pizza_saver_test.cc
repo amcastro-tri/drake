@@ -11,8 +11,16 @@
 #include "drake/multibody/contact_solvers/macklin_solver.h"
 #include "drake/multibody/contact_solvers/test/multibody_sim_driver.h"
 #include "drake/multibody/contact_solvers/test/pgs_solver.h"
+#include "drake/multibody/contact_solvers/convex_pgs_solver.h"
+#include "drake/multibody/contact_solvers/convex_solver.h"
+#include "drake/multibody/contact_solvers/convex_barrier_solver.h"
+#include "drake/multibody/contact_solvers/mp_convex_solver.h"
 #include "drake/multibody/contact_solvers/contact_solver.h"
 #include "drake/multibody/plant/contact_results.h"
+
+#include "drake/solvers/ipopt_solver.h"
+#include "drake/solvers/nlopt_solver.h"
+#include "drake/solvers/snopt_solver.h"
 
 namespace drake {
 namespace multibody {
@@ -20,6 +28,7 @@ namespace multibody {
 using test::MultibodySimDriver;
 
 namespace contact_solvers {
+namespace internal {
 namespace {
 
 using Eigen::Matrix3d;
@@ -54,7 +63,7 @@ class PizzaSaverTest : public ::testing::Test {
     ASSERT_EQ(point_params.size(), 3u);
 
     driver_.AddGround(point_params[0].first, point_params[0].second, mu);
-    driver_.Initialize();
+    driver_.Finalize();
     const int nq = plant.num_positions();
     const int nv = plant.num_velocities();
     // Assert plant sizes.
@@ -69,11 +78,11 @@ class PizzaSaverTest : public ::testing::Test {
   }
 
   // Set the particle to be in contact with the ground.
-  void SetInitialState() {
+  void SetInitialState(double signed_distance = -1.0e-3) {
     const auto& plant = driver_.plant();
     const auto& body = plant.GetBodyByName("body");
     auto& context = driver_.mutable_plant_context();
-    const Vector3d p_WB(0, 0, kSignedDistance_);
+    const Vector3d p_WB(0, 0, signed_distance);
     plant.SetFreeBodyPose(&context, body, math::RigidTransformd(p_WB));
     plant.SetFreeBodySpatialVelocity(&context, body,
                                      SpatialVelocity<double>::Zero());
@@ -88,15 +97,33 @@ class PizzaSaverTest : public ::testing::Test {
     return tau_c;
   }
 
-  void SetParams(test::PgsSolver<double>*) const {
-    
+  void SetParams(MpConvexSolver<double>* solver) const {
+    MpConvexSolverParameters params;
+    //params.solver_id = solvers::NloptSolver::id();
+    solver->set_parameters(params);
   }
 
-  void PrintStats(const test::PgsSolver<double>& solver) const {
+  void PrintStats(const MpConvexSolver<double>& solver) const {
     auto& stats = solver.get_iteration_stats();
+    std::cout << std::string(80, '-') << std::endl;  
+    std::cout << std::string(80, '-') << std::endl;
+    PRINT_VAR(stats.num_contacts);
+    PRINT_VAR(stats.iteration_errors.vs_max);
+    PRINT_VAR(stats.iteration_errors.id_rel_error);
+  }
+
+  void SetParams(PgsSolver<double>*) const {}
+
+  void PrintStats(const PgsSolver<double>& solver) const {
+    auto& stats = solver.get_iteration_stats();
+    std::cout << std::string(80, '-') << std::endl;  
+    std::cout << std::string(80, '-') << std::endl;
+
     PRINT_VAR(stats.iterations);
-    PRINT_VAR(stats.vc_err);
-    PRINT_VAR(stats.gamma_err);
+    fmt::print("{:>18} {:>18}\n", "vc", "gamma");
+    for (const auto& errors : stats.iteration_errors) {
+      fmt::print("{:18.6g} {:18.6g}\n", errors.vc_err, errors.gamma_err);
+    }
   }
 
   void SetParams(MacklinSolver<double>* solver) const {
@@ -106,8 +133,37 @@ class PizzaSaverTest : public ::testing::Test {
     params.relative_tolerance = 1.0e-6;
     params.stiction_tolerance = 1.0e-7;
     params.macklin_jacobian = false;
-    params.relaxation = 0.7;
+    params.relaxation = 1.0;
     solver->set_parameters(params);
+  }
+
+  void PrintStats(const ConvexPgsSolver<double>& solver) const {
+    auto& stats = solver.get_iteration_stats();
+    std::cout << std::string(80, '-') << std::endl;  
+    std::cout << std::string(80, '-') << std::endl;
+
+    PRINT_VAR(stats.iterations);    
+    fmt::print("{:>18} {:>18} {:>18} {:>18}\n", "vc", "gamma", "ID", "ell");
+    for (const auto& errors : stats.iteration_errors) {
+      fmt::print("{:18.6g} {:18.6g} {:18.6g} {:18.6g}\n", errors.vc_err,
+                 errors.gamma_err, errors.id_err, errors.ell);
+    }
+  }
+
+  void PrintStats(const ConvexSolver<double>& solver) const {
+    auto& stats = solver.get_iteration_stats();
+    std::cout << std::string(80, '-') << std::endl;  
+    std::cout << std::string(80, '-') << std::endl;
+
+    PRINT_VAR(stats.iterations);
+    PRINT_VAR(stats.ls_iterations);
+    fmt::print("{:>18} {:>18} {:>18} {:>18} {:>18}\n", "vc", "gamma", "ID",
+               "ell", "vs_max");
+    for (const auto& errors : stats.iteration_errors) {
+      fmt::print("{:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g}\n",
+                 errors.vc_err, errors.gamma_err, errors.id_err, errors.ell,
+                 errors.vs_max);
+    }
   }
 
   void PrintStats(const MacklinSolver<double>& solver) const {
@@ -129,6 +185,51 @@ class PizzaSaverTest : public ::testing::Test {
     }
   }
 
+  void SetParams(ConvexSolver<double>* solver) const {
+    ConvexSolverParameters params;
+    params.max_iterations = 20;    
+    // Note: regularization R scales as alpha^2.
+    params.alpha = 1;
+    params.Rt_factor = 1;
+    params.relaxation = 1.0;
+    params.max_ls_iters = 15;
+    solver->set_parameters(params);
+  }
+
+  void SetParams(ConvexBarrierSolver<double>* solver) const {
+    ConvexBarrierSolverParameters params;
+    params.max_iterations = 20;    
+    // Note: regularization R scales as alpha^2.
+    params.alpha = 1;
+    params.Rt_factor = 1e-3;
+    params.relaxation = 1.0;
+    params.rel_tolerance = 1.0e-4;
+    params.ls_factor = 0.99;
+    params.max_ls_iters = 12;
+    params.kappa_epsilon = 1.0e-4;
+    params.kappa_min_factor = 1.0e-5;
+    params.dynamic_kappa = true;
+    solver->set_parameters(params);
+  }
+
+  void PrintStats(const ConvexBarrierSolver<double>& solver) const {
+    auto& stats = solver.get_iteration_stats();
+    std::cout << std::string(80, '-') << std::endl;  
+    std::cout << std::string(80, '-') << std::endl;
+
+    PRINT_VAR(stats.iterations);
+    PRINT_VAR(stats.ls_iterations);
+    fmt::print("{:>18} {:>18} {:>18} {:>18} {:>18} {:>18} {:>18}\n", "vc",
+               "gamma", "ID", "ell", "vs_max", "beta", "ID kappa rel error");
+    for (const auto& errors : stats.iteration_errors) {
+      fmt::print(
+          "{:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g}\n",
+          errors.vc_err, errors.gamma_err, errors.id_err, errors.ell,
+          errors.vs_max, errors.beta, errors.id_rel_error);
+    }
+  }
+
+
  protected:
   const double dt_{1.0e-3};
   const double kSignedDistance_{-1.0e-3};
@@ -139,6 +240,26 @@ class PizzaSaverTest : public ::testing::Test {
 };
 
 TYPED_TEST_SUITE_P(PizzaSaverTest);
+
+TYPED_TEST_P(PizzaSaverTest, NoContact) {
+  // No external forcing.
+  const auto& body = this->driver_.plant().GetBodyByName("body");
+  this->driver_.FixAppliedForce(body, SpatialForce<double>::Zero());
+
+  // Set a no-contact state.
+  this->SetInitialState(0.1);
+
+  TypeParam& solver = *this->solver_;
+  this->SetParams(&solver);
+
+  // Verify forces in static equilibrium.
+  // TODO(amcastro-tri): allow acces to scaling diagonals of W from
+  // ContactSolver so that we can convert units.
+  // Here we are assuming Wii = 1.0, which is OK for this problem.
+  const VectorXd tau_c = this->EvalGeneralizedContactForces();
+
+  this->PrintStats(solver);
+}
 
 TYPED_TEST_P(PizzaSaverTest, ZeroMoment) {
   // Inside a test, refer to TypeParam to get the type parameter.
@@ -226,7 +347,7 @@ TYPED_TEST_P(PizzaSaverTest, SmallAppliedMoment) {
   const auto& body = this->driver_.plant().GetBodyByName("body");
   this->driver_.FixAppliedForce(body, F_Bo_W);
 
-  this->driver_.AdvanceNumSteps(1);
+  //this->driver_.AdvanceNumSteps(1);
 
   const TypeParam& solver = *this->solver_;
   const int nc = 3;
@@ -312,7 +433,7 @@ TYPED_TEST_P(PizzaSaverTest, LargeAppliedMoment) {
   EXPECT_NEAR(normal, weight, abs_tolerance);
 
   const TypeParam& solver = *this->solver_;
-  const int nc = solver.num_contacts();
+  const int nc = 3;
 
   // Verify contact velocities.
   const VectorXd& vc = solver.GetContactVelocities();
@@ -347,14 +468,21 @@ TYPED_TEST_P(PizzaSaverTest, LargeAppliedMoment) {
 }
 
 REGISTER_TYPED_TEST_SUITE_P(PizzaSaverTest, ZeroMoment, SmallAppliedMoment,
-                            LargeAppliedMoment);
+                            LargeAppliedMoment, NoContact);
 
-typedef ::testing::Types<test::PgsSolver<double>, MacklinSolver<double>>
+#if 0
+typedef ::testing::Types<PgsSolver<double>, MacklinSolver<double>,
+                         ConvexPgsSolver<double>, ConvexSolver<double>, ConvexBarrierSolver<double>>
+    ContactSolverTypes;
+#endif
+
+typedef ::testing::Types<PgsSolver<double>, MpConvexSolver<double>>
     ContactSolverTypes;
 INSTANTIATE_TYPED_TEST_SUITE_P(ContactSolvers, PizzaSaverTest,
                                ContactSolverTypes);
 
 }  // namespace
+}  // namespace internal
 }  // namespace contact_solvers
 }  // namespace multibody
 }  // namespace drake

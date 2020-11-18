@@ -3,33 +3,30 @@
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
-namespace test {
+namespace internal {
 
 template <typename T>
-void PgsSolver<T>::SetSystemDynamicsData(const SystemDynamicsData<T>* data) {
-  DRAKE_DEMAND(data != nullptr);
-  nv_ = data->num_velocities();
-  dynamics_data_ = data;
-}
+ContactSolverStatus PgsSolver<T>::SolveWithGuess(
+    const T& time_step, const SystemDynamicsData<T>& dynamics_data,
+    const PointContactData<T>& contact_data, const VectorX<T>& v_guess,
+    ContactSolverResults<T>* results) {
+  PreProcessData(dynamics_data, contact_data);
 
-template <typename T>
-void PgsSolver<T>::SetPointContactData(const PointContactData<T>* data) {
-  DRAKE_DEMAND(data != nullptr);
-  nc_ = data->num_contacts();
-  contact_data_ = data;
-}
+  const int nv = dynamics_data.num_velocities();
+  const int nc = contact_data.num_contacts();
 
-template <typename T>
-ContactSolverResult PgsSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) {
-  PreProcessData();
   // Aliases to data.
-  const auto& v_star = get_v_star();
+  const auto& Ainv = dynamics_data.get_Ainv();
+  const auto& v_star = dynamics_data.get_v_star();
+  const auto& Jc = contact_data.get_Jc();
+  const auto& mu = contact_data.get_mu();
 
   // Aliases to pre-processed (const) data.
   const auto& vc_star = pre_proc_data_.vc_star;
+  const auto& W = pre_proc_data_.W;
   const auto& Dinv = pre_proc_data_.Dinv;
 
-  // Aliases so solver's state.
+  // Aliases to solver's state.
   auto& v = state_.mutable_v();
   auto& gamma = state_.mutable_gamma();
 
@@ -51,51 +48,108 @@ ContactSolverResult PgsSolver<T>::SolveWithGuess(const VectorX<T>& v_guess) {
   // State dependent quantities.
   vc_ = vc_star;  // Contact velocity at state_, intialized to when gamma = 0.
   VectorX<T> vc_kp(3 * num_contacts());  // Contact velocity at state_kp.
-  stats_ = {};  // Reset stats.
+  stats_ = {};                           // Reset stats.
+  stats_.num_contacts = num_contacts();
   for (int k = 0; k < max_iters; ++k) {
     // N.B. This is more of a "Projected Jacobi" update since we are not using
     // the already updated values. A small variation from PGS ok for testing
     // purposes.
-    gamma_kp = gamma - omega * Dinv.asDiagonal() * vc_;
-    ProjectAllImpulses(vc_, &gamma_kp);
+    //gamma_kp = gamma - omega * Dinv.asDiagonal() * vc_;
+    //ProjectAllImpulses(vc_, mu, &gamma_kp);
+
+    // Gauss-Seidel
+    gamma_kp = gamma;
+    for (int ic = 0, ic3 = 0; ic < num_contacts(); ic++, ic3 += 3) {
+      auto gamma_ic = gamma_kp.template segment<3>(ic3);      
+
+      // W rows for the ic-th contact.
+//      const auto& Wic = W.block(3, 3 * nc, ic3, 0);
+
+      // Update of contact velocity with last values of impulses.
+      // N.B. gamma_kp(0:ic-1) have been updated while gamma_kp(ic:nc-1) have
+      // the previous iteration values.
+      const Vector3<T> vc_ic =
+          W.middleRows(ic3, 3) * gamma_kp + vc_star.template segment<3>(ic3);
+
+      // Update ic-th contact impulse.
+      gamma_ic = gamma_ic - omega * Dinv(ic3) * vc_ic;
+      gamma_ic = ProjectImpulse(vc_ic, gamma_ic, mu(ic));
+    }
+
     // Update generalized velocities; v = v* + M⁻¹⋅Jᵀ⋅γ.
-    get_Jc().MultiplyByTranspose(gamma_kp, &tau_c_);  // tau_c = Jᵀ⋅γ
-    get_Ainv().Multiply(tau_c_, &v_kp);  // v_kp = M⁻¹⋅Jᵀ⋅γ
-    v_kp += v_star;                      // v_kp = v* + M⁻¹⋅Jᵀ⋅γ
+    Jc.MultiplyByTranspose(gamma_kp, &jc_);  // tau_c = Jᵀ⋅γ
+    Ainv.Multiply(jc_, &v_kp);               // v_kp = M⁻¹⋅Jᵀ⋅γ
+    v_kp += v_star;                          // v_kp = v* + M⁻¹⋅Jᵀ⋅γ
     // Update contact velocities; vc = J⋅v.
-    get_Jc().Multiply(v_kp, &vc_kp);
+    Jc.Multiply(v_kp, &vc_kp);
 
     // Verify convergence and update stats.
+    PgsErrorMetrics error_metrics;
     const bool converged = VerifyConvergenceCriteria(
-        vc_, vc_kp, gamma, gamma_kp, omega, &stats_.vc_err, &stats_.gamma_err);
+        vc_, vc_kp, gamma, gamma_kp, omega, &error_metrics.vc_err,
+        &error_metrics.gamma_err);
+    stats_.iteration_errors.push_back(error_metrics);
     stats_.iterations++;
 
     // Update state for the next iteration.
     state_ = state_kp;
     vc_ = vc_kp;
     if (converged) {
-      return ContactSolverResult::kSuccess;
+      // Pack results into ContactSolverResults.
+      results->Resize(nv, nc);
+      results->v_next = state_.v();
+      ExtractNormal(vc_, &results->vn);
+      ExtractTangent(vc_, &results->vt);
+      ExtractNormal(state_.gamma(), &results->fn);
+      ExtractTangent(state_.gamma(), &results->ft);
+      // N.B. While contact solver works with impulses, results are reported as
+      // forces.
+      results->fn /= time_step;
+      results->ft /= time_step;
+      results->tau_contact = jc_ / time_step;
+
+      return ContactSolverStatus::kSuccess;
     }
   }
-  return ContactSolverResult::kFailure;
+
+  // Pack results into ContactSolverResults.
+  results->Resize(nv, nc);
+  results->v_next = state_.v();
+  ExtractNormal(vc_, &results->vn);
+  ExtractTangent(vc_, &results->vt);
+  ExtractNormal(state_.gamma(), &results->fn);
+  ExtractTangent(state_.gamma(), &results->ft);
+  // N.B. While contact solver works with impulses, results are reported as
+  // forces.
+  results->fn /= time_step;
+  results->ft /= time_step;
+  results->tau_contact = jc_ / time_step;
+
+  // N.B. We always return success for PGS so that we can look at the solution
+  // even if not converged.
+  return ContactSolverStatus::kSuccess;
 }
 
 template <typename T>
-void PgsSolver<T>::PreProcessData() {
-  const int nc = num_contacts();
-  const int nv = num_velocities();
+void PgsSolver<T>::PreProcessData(const SystemDynamicsData<T>& dynamics_data,
+                                  const PointContactData<T>& contact_data) {
+  const int nc = contact_data.num_contacts();
+  const int nv = dynamics_data.num_velocities();
   state_.Resize(nv, nc);
   pre_proc_data_.Resize(nv, nc);
-  tau_c_.resize(nv);
+  jc_.resize(nv);
   vc_.resize(3 * nc);
 
+  // Aliases to data.
+  const auto& Ainv = dynamics_data.get_Ainv();
+  const auto& v_star = dynamics_data.get_v_star();
+  const auto& Jc = contact_data.get_Jc();
+
   if (nc != 0) {
-    // Contact velocities when contact forces are zero.
-    auto& vc_star = pre_proc_data_.vc_star;
-    get_Jc().Multiply(get_v_star(), &vc_star);
+    Jc.Multiply(v_star, &pre_proc_data_.vc_star);
 
     auto& W = pre_proc_data_.W;
-    this->FormDelassusOperatorMatrix(get_Jc(), get_Ainv(), get_Jc(), &W);
+    this->FormDelassusOperatorMatrix(Jc, Ainv, Jc, &W);
     PRINT_VARn(W);
 
     // Compute scaling factors, one per contact.
@@ -126,8 +180,8 @@ bool PgsSolver<T>::VerifyConvergenceCriteria(const VectorX<T>& vc,
   *vc_err = 0;
   *gamma_err = 0;
   for (int ic = 0; ic < num_contacts(); ++ic) {
-    auto within_error_bounds = [& p = parameters_](const T& error,
-                                                   const T& scale) {
+    auto within_error_bounds = [&p = parameters_](const T& error,
+                                                  const T& scale) {
       const T bounds = p.abs_tolerance + p.rel_tolerance * scale;
       return error < bounds;
     };
@@ -145,10 +199,9 @@ bool PgsSolver<T>::VerifyConvergenceCriteria(const VectorX<T>& vc,
     // metric is compatible with that of contact velocity.
     const auto gi = gamma.template segment<3>(3 * ic);
     const auto gi_kp = gamma_kp.template segment<3>(3 * ic);
-    const T g_norm = gi.norm() / Wii_norm(ic);
-    T g_err = (gi_kp - gi).norm() / omega;
+    const T g_norm = gi.norm() * Wii_norm(ic);
+    T g_err = (gi_kp - gi).norm() * Wii_norm(ic) / omega;
     *gamma_err = max(*gamma_err, g_err);
-    g_err /= Wii_norm(ic);
     if (!within_error_bounds(g_err, g_norm)) {
       converged = false;
     }
@@ -158,9 +211,9 @@ bool PgsSolver<T>::VerifyConvergenceCriteria(const VectorX<T>& vc,
 
 template <typename T>
 void PgsSolver<T>::ProjectAllImpulses(const VectorX<T>& vc,
+                                      const VectorX<T>& mu,
                                       VectorX<T>* gamma_inout) const {
   VectorX<T>& gamma = *gamma_inout;
-  const auto& mu = get_mu();
   for (int ic = 0; ic < num_contacts(); ++ic) {
     auto vci = vc.template segment<3>(3 * ic);
     auto gi = gamma.template segment<3>(3 * ic);
@@ -194,9 +247,9 @@ Vector3<T> PgsSolver<T>::ProjectImpulse(
   return Vector3<T>(projected_beta(0), projected_beta(1), pi);
 }
 
-}  // namespace test
+}  // namespace internal
 }  // namespace contact_solvers
 }  // namespace multibody
 }  // namespace drake
 
-template class ::drake::multibody::contact_solvers::test::PgsSolver<double>;
+template class ::drake::multibody::contact_solvers::internal::PgsSolver<double>;

@@ -1,4 +1,7 @@
 #include "drake/multibody/contact_solvers/test/multibody_sim_driver.h"
+
+#include "drake/multibody/plant/contact_results_to_lcm.h"
+
 namespace drake {
 namespace multibody {
 namespace test {
@@ -15,29 +18,34 @@ void MultibodySimDriver::BuildModel(double dt, const std::string& model_file) {
       Vector3<double>(0.0, 0.0, -10.0));
 }
 
-void MultibodySimDriver::Initialize() {
-  DRAKE_DEMAND(!initialized_);
+void MultibodySimDriver::Finalize() {
+  DRAKE_DEMAND(!finalized_);
   plant_->Finalize();
 
   // Add visualization.
   auto lcm = builder_.AddSystem<systems::lcm::LcmInterfaceSystem>();
   geometry::DispatchLoadMessage(*scene_graph_, lcm);
   geometry::ConnectDrakeVisualizer(&builder_, *scene_graph_);
+  ConnectContactResultsToDrakeVisualizer(&builder_, *plant_, lcm);
   diagram_ = builder_.Build();
 
   simulator_ = std::make_unique<systems::Simulator<double>>(*diagram_);
   diagram_context_ = &simulator_->get_mutable_context();
   plant_context_ = &plant_->GetMyMutableContextFromRoot(diagram_context_);
   scene_graph_context_ =
-      &scene_graph_->GetMyMutableContextFromRoot(diagram_context_);
-  simulator_->Initialize();
+      &scene_graph_->GetMyMutableContextFromRoot(diagram_context_);  
 
-  initialized_ = true;
+  finalized_ = true;
+}
+
+void MultibodySimDriver::Initialize() {
+  DRAKE_DEMAND(finalized_);
+  simulator_->Initialize();
 }
 
 void MultibodySimDriver::AddGround(double stiffness, double damping,
                                    double dynamic_friction) {
-  DRAKE_DEMAND(!initialized_);
+  DRAKE_DEMAND(!finalized_);
   const Vector4<double> green(0.5, 1.0, 0.5, 1.0);
   plant_->RegisterVisualGeometry(plant_->world_body(), math::RigidTransformd(),
                                  geometry::HalfSpace(), "GroundVisualGeometry",
@@ -70,7 +78,7 @@ void MultibodySimDriver::SetPointContactParameters(const Body<double>& body,
                              geometry::internal::kPointStiffness, stiffness);
     new_props.UpdateProperty(geometry::internal::kMaterialGroup,
                              geometry::internal::kHcDissipation, damping);
-    if (initialized_) {
+    if (finalized_) {
       scene_graph_->AssignRole(scene_graph_context_, *plant_->get_source_id(),
                                id, new_props, geometry::RoleAssign::kReplace);
     } else {
@@ -120,7 +128,7 @@ std::vector<double> MultibodySimDriver::GetDynamicFrictionCoefficients(
 const geometry::SceneGraphInspector<double>& MultibodySimDriver::GetInspector()
     const {
   const geometry::SceneGraphInspector<double>* inspector{nullptr};
-  if (initialized_) {
+  if (finalized_) {
     const auto& query_object =
         plant_->get_geometry_query_input_port()
             .Eval<geometry::QueryObject<double>>(*plant_context_);

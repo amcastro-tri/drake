@@ -8,6 +8,7 @@
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/solvers/mathematical_program.h"
 #include "drake/solvers/solver_interface.h"
+#include "drake/solvers/constraint.h"
 
 namespace drake {
 namespace solvers {
@@ -287,10 +288,25 @@ class MinimalDistanceFromSphereProblem {
     lorentz_cone_expr(0) = radius_;
     lorentz_cone_expr.tail(Dim) = x_ - center_;
 
-    prog_.AddLorentzConeConstraint(lorentz_cone_expr);
+    MatrixX<double> A(4, 3);
+    A.setZero();
+    A.bottomRows<3>().setIdentity();
+    VectorX<double> b(4);
+    b << radius, -center;
+    auto cone_constraint = std::make_shared<LorentzConeConstraint>(
+        A, b, LorentzConeConstraint::EvalType::kConvexSmooth);
+    Binding<LorentzConeConstraint> binding(cone_constraint, x_);
+    prog_.AddConstraint(binding);
+
+    //prog_.AddLorentzConeConstraint(lorentz_cone_expr);
   }
 
   MathematicalProgram* get_mutable_prog() { return &prog_; }
+
+  const Eigen::Matrix<symbolic::Variable, Dim, 1>& continuous_variables()
+      const {
+    return x_;
+  }
 
   void SolveAndCheckSolution(const SolverInterface& solver, double tol) const {
     if (solver.available()) {

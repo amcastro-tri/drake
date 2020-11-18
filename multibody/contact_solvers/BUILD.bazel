@@ -28,10 +28,103 @@ drake_cc_package_library(
 )
 
 drake_cc_library(
+    name = "fischer_burmeister_solver",
+    srcs = ["fischer_burmeister_solver.cc"],
+    hdrs = ["fischer_burmeister_solver.h"],
+    copts = ["-w", "-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":point_contact_data",
+        ":scratch_workspace",
+        ":system_dynamics_data",
+        "//common:default_scalars",
+        "//common:extract_double",
+    ],
+)
+
+drake_cc_library(
+    name = "macklin_solver",
+    srcs = ["macklin_solver.cc"],
+    hdrs = ["macklin_solver.h"],
+    copts = ["-w", "-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":point_contact_data",
+        ":scratch_workspace",
+        ":system_dynamics_data",
+        "//common:default_scalars",
+        "//common:extract_double",
+    ],
+)
+
+
+drake_cc_library(
     name = "contact_solver_results",
     srcs = ["contact_solver_results.cc"],
     hdrs = ["contact_solver_results.h"],
     deps = ["//common:default_scalars"],
+)
+
+drake_cc_library(
+    name = "convex_pgs_solver",
+    srcs = ["convex_pgs_solver.cc"],
+    hdrs = ["convex_pgs_solver.h"],
+    visibility = ["//visibility:private"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":contact_solver_utils",
+        ":point_contact_data",
+        ":system_dynamics_data",
+        "//common:default_scalars",
+    ],
+)
+
+drake_cc_library(
+    name = "convex_solver",
+    srcs = ["convex_solver.cc"],
+    hdrs = ["convex_solver.h"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":contact_solver_utils",
+        ":point_contact_data",
+        ":system_dynamics_data",
+        "//common:default_scalars",
+    ],
+)
+
+drake_cc_library(
+    name = "mp_convex_solver",
+    srcs = ["mp_convex_solver.cc"],
+    hdrs = ["mp_convex_solver.h"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":contact_solver_utils",
+        ":point_contact_data",
+        ":system_dynamics_data",
+        "//common:default_scalars",
+        ":friction_cone_constraint",
+        "//common:essential",
+        "//solvers:choose_best_solver",
+        "//solvers:mathematical_program",
+        "//solvers:solve",
+    ],
+)
+
+drake_cc_library(
+    name = "convex_barrier_solver",
+    srcs = ["convex_barrier_solver.cc"],
+    hdrs = ["convex_barrier_solver.h"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":contact_solver_utils",
+        ":point_contact_data",
+        ":system_dynamics_data",
+        "//common:default_scalars",
+    ],
 )
 
 drake_cc_library(
@@ -44,10 +137,39 @@ drake_cc_library(
         "//geometry:drake_visualizer",
         "//multibody/parsing",
         "//multibody/plant",
+        "//multibody/plant:contact_results_to_lcm",
         "//systems/analysis:simulator",
         "//systems/framework:diagram",
         "//systems/framework:diagram_builder",
         "//systems/lcm",
+    ],
+)
+
+drake_cc_library(
+    name = "pgs_solver",
+    srcs = ["test/pgs_solver.cc"],
+    hdrs = ["test/pgs_solver.h"],
+    visibility = ["//visibility:private"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":contact_solver_utils",
+        ":point_contact_data",
+        ":system_dynamics_data",
+        "//common:default_scalars",
+    ],
+)
+
+drake_cc_library(
+    name = "friction_cone_constraint",
+    srcs = ["friction_cone_constraint.cc"],
+    hdrs = ["friction_cone_constraint.h"],
+    deps = [
+        "//common:essential",
+        "//solvers:constraint",
+        "//common:autodiff",        
+        "//common:symbolic",
+        "//math:gradient",
     ],
 )
 
@@ -84,12 +206,46 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "analytical_inverse_dynamics",
+    srcs = [],
+    hdrs = ["analytical_inverse_dynamics.h"],
+    deps = [
+        "//common:essential",
+    ],
+)
+
+
+drake_cc_library(
+    name = "numerical_inverse_dynamics",
+    srcs = ["numerical_inverse_dynamics.cc"],
+    hdrs = ["numerical_inverse_dynamics.h"],
+    deps = [
+        ":friction_cone_constraint",
+        "//common:essential",
+        "//solvers:choose_best_solver",
+        "//solvers:mathematical_program",
+        "//solvers:solve",
+    ],
+)
+
+drake_cc_library(
     name = "point_contact_data",
     srcs = ["point_contact_data.cc"],
     hdrs = ["point_contact_data.h"],
     deps = [
         ":linear_operator",
         "//common:default_scalars",
+    ],
+)
+
+drake_cc_library(
+    name = "scratch_workspace",
+    srcs = ["scratch_workspace.cc"],
+    hdrs = ["scratch_workspace.h"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        "//common:default_scalars",
+        "//common:nice_type_name",
     ],
 )
 
@@ -114,6 +270,33 @@ drake_cc_library(
     ],
 )
 
+drake_cc_library(
+    name = "stack_of_objects_test",
+    testonly = 1,
+    hdrs = ["test/stack_of_objects_test.h"],
+    data = ["test/stack_of_boxes.sdf"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":multibody_sim_driver",
+        ":pgs_solver",
+        ":macklin_solver",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "pgs_solver_test",
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":pgs_solver",
+        ":stack_of_objects_test",
+        ":multibody_sim_driver",
+        "//common/test_utilities:eigen_matrix_compare",
+    ],
+)
+
 drake_cc_googletest(
     name = "contact_solver_test",
     data = ["test/particle_with_infinite_inertia.sdf"],
@@ -126,10 +309,87 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "inverse_dynamics_test",
+    deps = [
+        ":analytical_inverse_dynamics",
+        ":numerical_inverse_dynamics",
+        "//common/test_utilities:eigen_matrix_compare",
+    ],
+)
+
+drake_cc_googletest(
     name = "linear_operator_test",
     deps = [
         ":linear_operator",
         "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "pizza_saver_test",
+    data = ["test/pizza_saver.sdf"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":convex_solver",
+        ":mp_convex_solver",
+        ":convex_barrier_solver",
+        ":convex_pgs_solver",
+        ":multibody_sim_driver",
+        ":pgs_solver",        
+        ":macklin_solver",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "particle_test",
+    data = ["test/particle.sdf"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":multibody_sim_driver",
+        ":pgs_solver",
+        ":macklin_solver",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "particle_tangential_test",
+    data = ["test/particle.sdf"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":multibody_sim_driver",
+        ":pgs_solver",
+        ":macklin_solver",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "stack_of_boxes_test",
+    data = ["test/stack_of_boxes.sdf"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":contact_solver",
+        ":multibody_sim_driver",
+        ":pgs_solver",
+        ":macklin_solver",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "scratch_workspace_test",
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        ":scratch_workspace",
     ],
 )
 

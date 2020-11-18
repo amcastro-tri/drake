@@ -1352,6 +1352,19 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "projection_test",
+    deps = [
+        ":choose_best_solver",
+        ":mathematical_program",
+        ":mathematical_program_test_util",
+        ":optimization_examples",
+        ":second_order_cone_program_examples",
+        ":solve",
+        "//common/test_utilities",
+    ],
+)
+
+drake_cc_googletest(
     name = "mosek_solver_moseklm_license_file_test",
     tags = mosek_test_tags(),
     deps = [

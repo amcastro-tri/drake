@@ -7,7 +7,7 @@
 #include <gflags/gflags.h>
 
 #include "drake/common/nice_type_name.h"
-#include "drake/geometry/geometry_visualization.h"
+//#include "drake/geometry/geometry_visualization.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/lcm/drake_lcm.h"
 #include "drake/math/rigid_transform.h"
@@ -25,6 +25,7 @@
 //#include "drake/multibody/contact_solvers/convex_solver.h"
 #include "drake/multibody/contact_solvers/mp_convex_solver.h"
 #include "drake/multibody/contact_solvers/convex_barrier_solver.h"
+#include "drake/geometry/drake_visualizer.h"
 
 #include "drake/solvers/ipopt_solver.h"
 #include "drake/solvers/nlopt_solver.h"
@@ -88,6 +89,7 @@ DEFINE_int32(objects_per_pile, 3, "Number of objects per pile.");
 DEFINE_bool(visualize, true, "Whether to visualize (true) or not (false).");
 DEFINE_int32(num_spheres, 3, "Number of spheres per box direction.");
 DEFINE_bool(tamsi, true, "Use TAMSI (true) or Macklin (false).");
+DEFINE_string(solver, "gurobi", "Underlying solver. 'gurobi', 'scs'");
 
 using drake::math::RigidTransform;
 using drake::math::RigidTransformd;
@@ -457,12 +459,16 @@ int do_main() {
     // Nlopt: "converges", but analytical ID errors are large.
     // params.solver_id = solvers::NloptSolver::id();
 
-    // ScsSolver: Shows good performance/convergence.
-    params.solver_id = solvers::ScsSolver::id();
-
-    // GurobiSolver.
-    // Compile with: bazel run --config gurobi ....
-    params.solver_id = solvers::GurobiSolver::id();
+    if (FLAGS_solver == "scs") {
+      // ScsSolver: Shows good performance/convergence.
+      params.solver_id = solvers::ScsSolver::id();
+    } else if (FLAGS_solver == "gurobi") {
+      // GurobiSolver.
+      // Compile with: bazel run --config gurobi ....
+      params.solver_id = solvers::GurobiSolver::id();
+    } else {
+      throw std::runtime_error("Solver not supported.");
+    }
     solver->set_parameters(params);
   }
 
@@ -471,8 +477,11 @@ int do_main() {
 
   // Publish contact results for visualization.
   if (FLAGS_visualize) {
+    geometry::DrakeVisualizerParams viz_params;
+    viz_params.publish_period = FLAGS_viz_period;
+    geometry::DrakeVisualizer::AddToBuilder(&builder, scene_graph, nullptr,
+                                            viz_params);
     ConnectContactResultsToDrakeVisualizer(&builder, plant);
-    geometry::ConnectDrakeVisualizer(&builder, scene_graph);//, FLAGS_viz_period);
   }
   auto diagram = builder.Build();
 

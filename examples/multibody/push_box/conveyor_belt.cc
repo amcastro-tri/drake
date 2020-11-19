@@ -32,6 +32,7 @@ DEFINE_double(simulation_time, 2.0, "Duration of the simulation in seconds.");
 DEFINE_double(friction_coefficient, 0.2, "Friction coefficient.");
 DEFINE_bool(use_tamsi, true,
             "If true it uses TAMSI, otherwise MpConvexSolver.");
+DEFINE_string(solver, "gurobi", "Underlying solver. 'gurobi', 'scs'");
 
 #include <iostream>
 #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
@@ -114,12 +115,16 @@ int do_main() {
     // Nlopt: "converges", but analytical ID errors are large.
     // params.solver_id = solvers::NloptSolver::id();
 
-    // ScsSolver: Shows good performance/convergence.
-    //params.solver_id = solvers::ScsSolver::id();
-
-    // GurobiSolver.
-    // Compile with: bazel run --config gurobi ....
-    params.solver_id = solvers::GurobiSolver::id();
+    if (FLAGS_solver == "scs") {
+      // ScsSolver: Shows good performance/convergence.
+      params.solver_id = solvers::ScsSolver::id();
+    } else if (FLAGS_solver == "gurobi") {
+      // GurobiSolver.
+      // Compile with: bazel run --config gurobi ....
+      params.solver_id = solvers::GurobiSolver::id();
+    } else {
+      throw std::runtime_error("Solver not supported.");
+    }
     solver->set_parameters(params);
   }
 
@@ -146,11 +151,16 @@ int do_main() {
     const double vn = point_pair_info.separation_speed();
     const double slip = point_pair_info.slip_speed();
 
-    // time, z, zdot, ft, fn, vr, vn.
+    const MpConvexSolverStats& stats = solver->get_iteration_stats();
+
+    // time, z, zdot, ft, fn, vr, vn, id_rel_err, id_abs_err
     file << fmt::format(
-        "{:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g}\n",
+        "{:20.8g} {:20.8g} {:20.8g} {:20.8g} {:20.8g} {:20.8g} {:20.8g} "
+        "{:20.8g} {:20.8g}\n",
         ctxt.get_time(), z_slider.get_translation(ctxt),
-        z_slider.get_translation_rate(ctxt), f_Bc_W(0), f_Bc_W(2), slip, vn);
+        z_slider.get_translation_rate(ctxt), f_Bc_W(0), f_Bc_W(2), slip, vn,
+        stats.iteration_errors.id_rel_error,
+        stats.iteration_errors.id_abs_error);
     return systems::EventStatus::Succeeded();
   });
 
@@ -171,7 +181,7 @@ int do_main() {
     fmt::print("{:>18} {:>18} {:>18}  {:>18}\n", "num_contacts", "id_rel_err",
                "id_abs_error", "gamma_norm", "vs_max");
     for (const auto& s : stats_hist) {
-      fmt::print("{:d} {:18.6g} {:18.6g} {:18.6g} {:18.6g}\n", s.num_contacts,
+      fmt::print("{:d} {:20.8g} {:20.8g} {:20.8g} {:20.8g}\n", s.num_contacts,
                  s.iteration_errors.id_rel_error,
                  s.iteration_errors.id_abs_error,
                  s.iteration_errors.gamma_norm,

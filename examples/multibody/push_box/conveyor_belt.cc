@@ -21,6 +21,7 @@
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
 #include "drake/systems/framework/diagram_builder.h"
+#include "drake/geometry/drake_visualizer.h"
 
 DEFINE_double(time_step, 1.0E-3,
               "If time_step > 0, the fixed-time step period (in seconds) of "
@@ -66,8 +67,12 @@ int do_main() {
   // We are done defining the model. Finalize.
   plant.Finalize();
 
-  ConnectDrakeVisualizer(&builder, scene_graph);
-  ConnectContactResultsToDrakeVisualizer(&builder, plant);
+  //ConnectDrakeVisualizer(&builder, scene_graph);
+  geometry::DrakeVisualizerParams viz_params;
+  viz_params.publish_period = FLAGS_time_step;
+  geometry::DrakeVisualizer::AddToBuilder(&builder, scene_graph, nullptr,
+                                          viz_params);
+//  ConnectContactResultsToDrakeVisualizer(&builder, plant);
 
   // Create full Diagram for with the model.
   auto diagram = builder.Build();

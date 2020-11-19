@@ -1442,8 +1442,8 @@ void MultibodyPlant<double>::CalcContactResultsDiscrete(
     //const Body<T>& bodyA = get_body(bodyA_index);
     //const Body<T>& bodyB = get_body(bodyB_index);
 
-    const RigidTransform<double>& X_WA = query_object.X_WG(pair.id_A);
-    const RigidTransform<double>& X_WB = query_object.X_WG(pair.id_B);
+    const RigidTransform<double>& X_WA = query_object.GetPoseInWorld(pair.id_A);
+    const RigidTransform<double>& X_WB = query_object.GetPoseInWorld(pair.id_B);
 
     // The the poses and spatial velocities of bodies A and B.
     //const RigidTransform<T>& X_WA = bodyA.EvalPoseInWorld(context);
@@ -1978,8 +1978,8 @@ MultibodyPlant<T>::CalcDiscreteContactPairs(
         //const Body<T>& bodyB = get_body(bodyB_index);
 
         // The the poses and spatial velocities of bodies A and B.
-        const RigidTransform<T>& X_WA = query_object.X_WG(pair.id_A);
-        const RigidTransform<T>& X_WB = query_object.X_WG(pair.id_B);
+        const RigidTransform<T>& X_WA = query_object.GetPoseInWorld(pair.id_A);
+        const RigidTransform<T>& X_WB = query_object.GetPoseInWorld(pair.id_B);
 
         //const RigidTransform<T>& X_AM = inspector.GetPoseInFrame(pair.id_A);
         //const RigidTransform<T>& X_BN = inspector.GetPoseInFrame(pair.id_B);

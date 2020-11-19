@@ -44,6 +44,7 @@ drake_cc_binary(
         "//common:add_text_logging_gflags",
         "//common:find_resource",
         "//geometry:geometry_visualization",
+        "//geometry:drake_visualizer",
         "//multibody/parsing",
         "//multibody/plant",
         "//multibody/contact_solvers:mp_convex_solver",

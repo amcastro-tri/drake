@@ -90,13 +90,16 @@ int do_main() {
   //plant.get_actuation_input_port().FixValue(&plant_context,
   //                                          Vector1d(FLAGS_horizontal_force));
 
-  // Set initial conditions.
-  const double phi0 = 0.0;
+  const double vt0 = -0.1;  // Conveyor belt velocity.
+  const double mu = 0.5; // Friction. In sync with the model.
+
+  // Set initial conditions.  
+  const double phi0 = mu * std::abs(vt0) * FLAGS_time_step;
   const auto& z_slider = plant.GetJointByName<PrismaticJoint>("z_slider");
   z_slider.set_translation(&plant_context, phi0);
+  z_slider.set_translation_rate(&plant_context, 0.0);
 
-  // Ground horizontal velocity.
-  const double vt0 = -0.1;
+  // Ground horizontal velocity.  
   const auto& belt_slider = plant.GetJointByName<PrismaticJoint>("belt_slider");
   belt_slider.set_translation_rate(&plant_context, vt0);
   belt_slider.set_translation(&plant_context, 0.0);

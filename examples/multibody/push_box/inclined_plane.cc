@@ -19,6 +19,7 @@
 #include "drake/solvers/snopt_solver.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
+#include "drake/systems/analysis/simulator_config_functions.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/geometry/drake_visualizer.h"
@@ -30,7 +31,8 @@ DEFINE_double(time_step, 1.0E-3,
               "and no contact forces are displayed.  time_step must be >= 0.");
 DEFINE_double(simulation_time, 2.0, "Duration of the simulation in seconds.");
 DEFINE_double(friction_coefficient, 0.2, "Friction coefficient.");
-DEFINE_double(inclined_plane_angle, 30.0, "Inclined plane angle, [degrees]");
+DEFINE_double(force, 0.0, "External forces in x, [N]");
+DEFINE_double(vx0, 1.0, "Initial horizontal velocity, [m/s]");
 DEFINE_bool(use_tamsi, true,
             "If true it uses TAMSI, otherwise MpConvexSolver.");
 DEFINE_string(solver, "gurobi", "Underlying solver. 'gurobi', 'scs'");
@@ -72,7 +74,7 @@ int do_main() {
   plant.Finalize();
 
   const auto& box = plant.GetBodyByName("box");
-  const double mass = box.get_default_mass();
+  //const double mass = box.get_default_mass();
 
   //ConnectDrakeVisualizer(&builder, scene_graph);
   geometry::DrakeVisualizerParams viz_params;
@@ -93,24 +95,15 @@ int do_main() {
 
   // Add external forcing.
   DRAKE_DEMAND(plant.num_actuators() == 1);
-  const double theta = FLAGS_inclined_plane_angle * M_PI / 180.0;
-  const double Fx = mass * gravity * std::sin(theta);
   plant.get_actuation_input_port().FixValue(&plant_context,
-                                            Vector1d(Fx));
-
-  const double vt0 = -0.1;  // Conveyor belt velocity.
-  const double mu = 0.5; // Friction. In sync with the model.
-
+                                            Vector1d(FLAGS_force));
   // Set initial conditions.  
-  const double phi0 = mu * std::abs(vt0) * FLAGS_time_step;
+  const double phi0 = FLAGS_time_step * 0.5 * 1.0; // = dt * mu * ||vt||
   const auto& z_slider = plant.GetJointByName<PrismaticJoint>("z_slider");
+  const auto& x_slider = plant.GetJointByName<PrismaticJoint>("x_slider");
   z_slider.set_translation(&plant_context, phi0);
   z_slider.set_translation_rate(&plant_context, 0.0);
-
-  // Ground horizontal velocity.  
-  const auto& belt_slider = plant.GetJointByName<PrismaticJoint>("belt_slider");
-  belt_slider.set_translation_rate(&plant_context, vt0);
-  belt_slider.set_translation(&plant_context, 0.0);
+  x_slider.set_translation_rate(&plant_context, FLAGS_vx0);
 
   // Set contact solver.
   MpConvexSolver<double>* solver{nullptr};
@@ -140,9 +133,21 @@ int do_main() {
   }
 
   // Create a simulator and run the simulation.
-  std::unique_ptr<systems::Simulator<double>> simulator =
-      systems::MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
+  //std::unique_ptr<systems::Simulator<double>> simulator =
+    //  systems::MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
 
+
+  auto simulator = std::make_unique<systems::Simulator<double>>(
+      *diagram, std::move(diagram_context));
+  const systems::SimulatorConfig config {
+    FLAGS_simulator_integration_scheme,
+    FLAGS_simulator_max_time_step,
+    FLAGS_simulator_accuracy,
+    FLAGS_simulator_use_error_control,
+    FLAGS_simulator_target_realtime_rate,
+    FLAGS_simulator_publish_every_time_step
+  };
+  systems::ApplySimulatorConfig(simulator.get(), config);
 
   std::ofstream file("sol.dat");  
   //file << fmt::format("{:>18} {:>18}\n", "time", "z");
@@ -157,23 +162,27 @@ int do_main() {
         contact_results.point_pair_contact_info(0);
     const double sign =
         point_pair_info.bodyB_index() == box.index() ? 1.0 : -1.0;
+    // Force as applied to the box B.    
     const Vector3d f_Bc_W = point_pair_info.contact_force() * sign;
     const double vn = point_pair_info.separation_speed();
     const double slip = point_pair_info.slip_speed();
 
     const MpConvexSolverStats& stats = solver->get_iteration_stats();
 
-    // time, z, zdot, ft, fn, vr, vn, id_rel_err, id_abs_err
+    // time, x, xdot, z, zdot, ft, fn, vr, vn, id_rel_err, id_abs_err
     file << fmt::format(
         "{:20.8g} {:20.8g} {:20.8g} {:20.8g} {:20.8g} {:20.8g} {:20.8g} "
+        "{:20.8g} {:20.8g} "
         "{:20.8g} {:20.8g}\n",
-        ctxt.get_time(), z_slider.get_translation(ctxt),
-        z_slider.get_translation_rate(ctxt), f_Bc_W(0), f_Bc_W(2), slip, vn,
+        ctxt.get_time(), 
+        x_slider.get_translation(ctxt), x_slider.get_translation_rate(ctxt),
+        z_slider.get_translation(ctxt), z_slider.get_translation_rate(ctxt), f_Bc_W(0), f_Bc_W(2), slip, vn,
         stats.iteration_errors.id_rel_error,
         stats.iteration_errors.id_abs_error);
     return systems::EventStatus::Succeeded();
   });
 
+  simulator->Initialize();
   simulator->AdvanceTo(FLAGS_simulation_time);
   file.close();
 

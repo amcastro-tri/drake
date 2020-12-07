@@ -40,6 +40,10 @@ struct MpConvexSolverErrorMetrics {
 struct MpConvexSolverStats {
   int num_contacts{0};
   MpConvexSolverErrorMetrics iteration_errors;
+  double total_time{0};
+  double preproc_time{0}; 
+  double mp_setup_time{0};
+  double solver_time{0};
 };
 
 template <typename T>

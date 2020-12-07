@@ -1,5 +1,6 @@
 #include "drake/multibody/contact_solvers/mp_convex_solver.h"
 
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <numeric>
@@ -41,6 +42,8 @@ using Eigen::Vector3d;
 using Eigen::SparseMatrix;
 using Eigen::SparseVector;
 
+using clock = std::chrono::steady_clock;
+
 template <typename T>
 MpConvexSolver<T>::MpConvexSolver() {}
 
@@ -60,6 +63,8 @@ ContactSolverStatus MpConvexSolver<double>::SolveWithGuess(
   using std::abs;
   using std::max;
 
+  const auto global_start_time = clock::now();
+
   const int nv = dynamics_data.num_velocities();
   const int nc = contact_data.num_contacts();
   const int nc3 = 3 * nc;
@@ -72,10 +77,19 @@ ContactSolverStatus MpConvexSolver<double>::SolveWithGuess(
     results->v_next = dynamics_data.get_v_star();    
     stats_.iteration_errors = MpConvexSolverErrorMetrics{};
     stats_history_.push_back(stats_);
+    const auto global_end_time = clock::now();
+    stats_.total_time =
+        std::chrono::duration<double>(global_end_time - global_start_time)
+            .count();
     return ContactSolverStatus::kSuccess;
   }
 
+  const auto preproc_start_time = clock::now();
   pre_proc_data_ = PreProcessData(time_step, dynamics_data, contact_data);
+  const auto preproc_end_time = clock::now();
+  stats_.preproc_time =
+      std::chrono::duration<double>(preproc_end_time - preproc_start_time)
+          .count();
   state_.Resize(pre_proc_data_.nv, pre_proc_data_.nc);
 
   // Aliases to data.
@@ -97,8 +111,13 @@ ContactSolverStatus MpConvexSolver<double>::SolveWithGuess(
   const auto& Rinv = pre_proc_data_.Rinv;
   const auto& mu_tilde = pre_proc_data_.mu_tilde;
 
-  drake::solvers::MathematicalProgram prog_;
+  const auto mp_setup_start_time = clock::now();
+  drake::solvers::MathematicalProgram prog_;  
   SetUpSolver(&prog_);
+  const auto mp_setup_end_time = clock::now();
+  stats_.mp_setup_time =
+      std::chrono::duration<double>(mp_setup_end_time - mp_setup_start_time)
+          .count();
 
   // Make solver based on id.
   std::optional<SolverId> optional_id = parameters_.solver_id;
@@ -120,8 +139,13 @@ ContactSolverStatus MpConvexSolver<double>::SolveWithGuess(
   CalcInverseDynamics(pre_proc_data_, vc, &gamma);
   PRINT_VAR(gamma.transpose());
 
+  const auto solver_start_time = clock::now();
   MathematicalProgramResult result;
   solver->Solve(prog_, gamma, {}, &result);
+  const auto solver_end_time = clock::now();
+  stats_.solver_time =
+      std::chrono::duration<double>(solver_end_time - solver_start_time)
+          .count();
   if (!result.is_success()) return ContactSolverStatus::kFailure;
 
   state_.mutable_gamma() = result.GetSolution();  
@@ -180,11 +204,6 @@ ContactSolverStatus MpConvexSolver<double>::SolveWithGuess(
     }
   }
 
-  // Update solution statistics.
-  stats_.num_contacts = nc;
-  stats_.iteration_errors = error_metrics;
-  stats_history_.push_back(stats_);
-
   // Pack results into ContactSolverResults.
   ExtractNormal(vc, &results->vn);
   ExtractTangent(vc, &results->vt);
@@ -194,7 +213,17 @@ ContactSolverStatus MpConvexSolver<double>::SolveWithGuess(
   // forces.
   results->fn /= time_step;
   results->ft /= time_step;
-  results->tau_contact = tau_c / time_step;
+  results->tau_contact = tau_c / time_step; 
+
+  const auto global_end_time = clock::now();
+  stats_.total_time =
+      std::chrono::duration<double>(global_end_time - global_start_time)
+          .count(); 
+
+  // Update solution statistics.
+  stats_.num_contacts = nc;
+  stats_.iteration_errors = error_metrics;
+  stats_history_.push_back(stats_);
 
   return ContactSolverStatus::kSuccess;
 }

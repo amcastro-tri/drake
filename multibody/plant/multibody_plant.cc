@@ -1476,16 +1476,6 @@ void MultibodyPlant<double>::CalcContactResultsDiscrete(
     const PenetrationAsPointPair<double> pentration_pair{
         pair.id_A, pair.id_B, p_WCa, p_WCb, pair.nhat_BA_W, -pair.distance};
 
-    PRINT_VAR(p_WCa.transpose());
-    PRINT_VAR(p_WCb.transpose());
-
-    PRINT_VAR(pair.p_ACa.transpose());
-    PRINT_VAR(pair.p_BCb.transpose());
-
-    PRINT_VAR(p_WC.transpose());
-
-    PRINT_VAR(pair.distance);
-
     // Add pair info to the contact results.
     contact_results->AddContactInfo({bodyA_index, bodyB_index, f_Bc_W, p_WC,
                                      separation_velocity, slip,
@@ -2085,7 +2075,6 @@ void MultibodyPlant<T>::CalcTamsiResults(
     damping[i] = contact_pairs[i].damping;
     phi0[i] = contact_pairs[i].phi0;
   }
-  PRINT_VAR(phi0);
 
   if (contact_solver_ != nullptr) {
     CallContactSolver(context0.get_time(), v0, M0, minus_tau, phi0,

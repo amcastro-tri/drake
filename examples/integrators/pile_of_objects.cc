@@ -1,3 +1,4 @@
+#include <fstream>
 #include <memory>
 #include <random>
 #include <string>
@@ -72,8 +73,6 @@ DEFINE_string(jacobian_scheme, "forward",
               "Valid Jacobian computation schemes are: "
               "'forward', 'central', or 'automatic'");
 DEFINE_bool(use_full_newton, true, "Use full Newton, otherwise quasi-Newton.");
-DEFINE_double(h_loose_band, 1.0e-4, "Loose band upper limit.");
-DEFINE_double(a_loose_band, 0.5, "Accuracy within the loose band.");            
 DEFINE_double(viz_period, 1.0 / 60.0, "Viz period.");
 
 DEFINE_double(penetration_allowance, 1.0E-4, "Allowable penetration (meters).");
@@ -95,6 +94,7 @@ using drake::math::RigidTransform;
 using drake::math::RigidTransformd;
 using drake::math::RollPitchYawd;
 using drake::math::RotationMatrixd;
+using drake::multibody::ContactResults;
 using drake::multibody::MultibodyPlant;
 using drake::multibody::contact_solvers::internal::MacklinSolver;
 using drake::multibody::contact_solvers::internal::MacklinSolverParameters;
@@ -534,29 +534,79 @@ int do_main() {
     implicit_integrator->set_use_full_newton(FLAGS_use_full_newton);
   }
   if (integrator.supports_error_estimation())
-    integrator.set_fixed_step_mode(FLAGS_fixed_step);    
+    integrator.set_fixed_step_mode(FLAGS_fixed_step); 
 
-  //integrator.set_loose_accuracy_band(FLAGS_h_loose_band, FLAGS_a_loose_band);  
+  std::ofstream sol_file("sol.dat");  
+  simulator->set_monitor([&](const systems::Context<double>& root_context) {
+    const systems::Context<double>& ctxt =
+        plant.GetMyContextFromRoot(root_context);
+    const ContactResults<double>& contact_results =
+        plant.get_contact_results_output_port().Eval<ContactResults<double>>(
+            ctxt);
+    const int nc = contact_results.num_point_pair_contacts();
+
+    const double ke = plant.CalcKineticEnergy(ctxt);
+
+    double vt_rms = 0;
+    double vn_rms = 0;
+    int num_positive_phi = 0;
+    double mean_positive_phi = 0;
+    int num_negative_phi = 0;
+    double mean_negative_phi = 0;
+    for (int ic = 0; ic < nc; ++ic) {
+      const PointPairContactInfo<double>& info =
+          contact_results.point_pair_contact_info(ic);
+      vt_rms += (info.slip_speed() * info.slip_speed());
+      vn_rms += (info.separation_speed() * info.separation_speed());
+      const drake::geometry::PenetrationAsPointPair<double>& pp =
+          info.point_pair();
+      if (pp.depth > 0) {
+        mean_negative_phi += pp.depth;
+        num_negative_phi++;
+      } else {
+        num_positive_phi++;
+        mean_positive_phi -= pp.depth;
+      }
+    }
+    if (nc > 0) vt_rms = std::sqrt(vt_rms / nc);
+    if (nc > 0) vn_rms = std::sqrt(vn_rms / nc);
+    if (num_positive_phi > 0) mean_positive_phi /= num_positive_phi;
+    if (num_negative_phi > 0) mean_negative_phi /= num_negative_phi;
+
+    // time, ke, vt, vn, phi_plus, phi_minus.
+    sol_file << fmt::format(
+        "{:20.8g} {:d} {:20.8g} {:20.8g} {:20.8g} {:20.8g} {:20.8g}\n",
+        ctxt.get_time(), nc, ke, vt_rms, vn_rms, mean_positive_phi,
+        mean_negative_phi);
+    return systems::EventStatus::Succeeded();
+  });     
 
   Timer timer;
   simulator->AdvanceTo(FLAGS_simulation_time);
   const double sim_time = timer.end();
   PRINT_VAR(sim_time);
-
-  PrintSimulatorStatistics(*simulator);
+  sol_file.close();
 
   // Print contact solver stats.
   const std::vector<MpConvexSolverStats>& stats_hist =
       solver->get_stats_history();
-  std::cout << std::string(80, '-') << std::endl;
-  std::cout << std::string(80, '-') << std::endl;
-  fmt::print("{:>18} {:>18} {:>18}  {:>18}\n", "num_contacts", "id_rel_err",
-             "id_abs_error", "gamma_norm");
+  std::ofstream file("log.dat");
+  //file << std::string(80, '-') << std::endl;
+  //file << std::string(80, '-') << std::endl;
+  file << fmt::format(
+      "{:>18} {:>18} {:>18}  {:>18}  {:>18}  {:>18}  {:>18}  {:>18}\n",
+      "num_contacts", "id_rel_err", "id_abs_error", "gamma_norm", "total_time",
+      "preproc_time", "mp_setup_time", "sover_time");
   for (const auto& s : stats_hist) {
-    fmt::print("{:d} {:18.6g} {:18.6g} {:18.6g}\n", s.num_contacts,
-               s.iteration_errors.id_rel_error, s.iteration_errors.id_abs_error,
-               s.iteration_errors.gamma_norm);
+    file << fmt::format(
+        "{:d} {:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g}\n",
+        s.num_contacts, s.iteration_errors.id_rel_error,
+        s.iteration_errors.id_abs_error, s.iteration_errors.gamma_norm,
+        s.total_time, s.preproc_time, s.mp_setup_time, s.solver_time);
   }
+  file.close();  
+
+  PrintSimulatorStatistics(*simulator);
 
 #if 0  
   const std::vector<ConvexBarrierSolverStats>& stats_hist =

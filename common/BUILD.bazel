@@ -1410,6 +1410,19 @@ drake_cc_googletest(
     ],
 )
 
+drake_cc_googletest(
+    name = "sparse_matrix_operations_test",
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = ["//common:essential",],
+)
+
+drake_cc_googletest(
+    name = "sparse_autodiffxd_test",
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable"],
+    deps = [
+        "//common:essential"],
+)
+
 add_lint_tests(
     python_lint_extra_srcs = [
         ":test/resource_tool_installed_test.py",

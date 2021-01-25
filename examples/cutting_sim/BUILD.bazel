@@ -25,7 +25,7 @@ drake_cc_binary(
     deps = [
         "//common:essential",
         "//common:find_resource",
-        "//geometry:geometry_visualization",
+        "//geometry:drake_visualizer",
         "//lcm",
         "//multibody/parsing",
         "//multibody/plant",

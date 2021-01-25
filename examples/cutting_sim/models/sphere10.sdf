@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<sdf version='1.6'>
+<model name="sphere10">
+  <link name="base_link">
+    <visual name='sphere_visual'>
+      <pose frame=''>0 0 0.025 0 0 0</pose>
+      <geometry>
+        <sphere>
+          <radius>0.04</radius>
+        </sphere>
+      </geometry>
+      <material>
+        <diffuse>0.53 0.01 0.53 1.0</diffuse>
+      </material>
+    </visual>
+    <collision name='sphere_collision'>
+      <pose>0 0 0.025 0 0 0</pose>
+      <geometry>
+        <sphere>
+          <radius>0.04</radius>
+        </sphere>
+      </geometry>
+      <material>
+        <diffuse>0 1 0 1.0</diffuse>
+      </material>
+    </collision>
+   </link>
+</model>
+</sdf>

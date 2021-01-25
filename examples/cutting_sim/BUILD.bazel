@@ -1,0 +1,38 @@
+# -*- python -*-
+# This file contains rules for Bazel; see drake/doc/bazel.rst.
+
+load(
+    "@drake//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
+)
+
+filegroup(
+    name = "models",
+    srcs = glob([
+        "**/*.sdf",
+    ]),
+)
+
+drake_cc_binary(
+    name = "run_cutting_potatoe_exe",
+    srcs = [
+        "cutting_potatoe.cc",    
+    ],
+    data = [
+        ":models",
+        "//tools:drake_visualizer",
+    ],
+    deps = [
+        "//common:essential",
+        "//common:find_resource",
+        "//geometry:geometry_visualization",
+        "//lcm",
+        "//multibody/parsing",
+        "//multibody/plant",
+        "//multibody/tree",
+        "//systems/analysis",
+        "//systems/controllers",
+        "//systems/framework",
+        "@gflags",
+    ],
+)

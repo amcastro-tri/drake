@@ -20,18 +20,24 @@ DEFINE_double(target_realtime_rate, 1.0,
 DEFINE_double(simulation_time, 30, "How long to simulate the pendulum");
 DEFINE_double(max_time_step, 0.001, "Simulation time step used for integrator.");
 
-DEFINE_double(Kp_, 15.0, "Kp");
+DEFINE_double(Kp_, 30.0, "Kp");
 DEFINE_double(Ki_, 0.0, "Ki");
 DEFINE_double(Kd_, 0.0, "Kd");
 
 DEFINE_double(force_scale_, 20.0, "force scale for magnet");
-DEFINE_double(turn_off_force_threshold_, 0.001,
+DEFINE_double(turn_off_force_threshold_, 5e-4,
               "Distance threshold to turn off magnets");
 DEFINE_int32(grid_i, 4, "Number of spheres along x dimension of grid.");
 DEFINE_int32(grid_j, 4, "Number of spheres along y dimension of grid.");
 DEFINE_int32(grid_k, 2, "Number of spheres along z dimension of grid.");
 DEFINE_double(sphere_radius, 0.0125, "Sphere radius.");
 DEFINE_double(sphere_mass, 0.6, "Sphere mass.");
+
+DEFINE_bool(use_cube, false,
+            "If defined, elements are cubes (with measure equal to 2R).");
+DEFINE_double(vis_rate, 100.0,
+              "Frequency at which visualization messages are sent (in Hz");
+DEFINE_bool(simple_table, false, "If defined the 'table' is a half space");
 
 namespace drake {
 namespace examples {
@@ -85,20 +91,33 @@ std::map<std::tuple<int, int, int>, multibody::BodyIndex> make_grid(
                                    multibody::UnitInertia<double>(
                                        sphere_ixyz, sphere_ixyz, sphere_ixyz)));
 
-        plant->RegisterCollisionGeometry(sphere, RigidTransform<double>(),
-                                         geometry::Sphere(FLAGS_sphere_radius),
-                                         fmt::format("{}_collision", name),
-                                         sphere_friction);
+        if (FLAGS_use_cube) {
+          const geometry::Box box =
+              geometry::Box::MakeCube(FLAGS_sphere_radius * 1.95);
+          plant->RegisterVisualGeometry(sphere, RigidTransform<double>(), box,
+                                        fmt::format("{}_visual", name), color);
 
-        plant->RegisterVisualGeometry(sphere, RigidTransform<double>(),
-                                      geometry::Sphere(FLAGS_sphere_radius),
-                                      fmt::format("{}_visual", name), color);
+          plant->RegisterCollisionGeometry(
+              sphere, RigidTransform<double>(), box,
+              fmt::format("{}_collision", name), sphere_friction);
+        } else {
+          plant->RegisterVisualGeometry(sphere, RigidTransform<double>(),
+                                        geometry::Sphere(FLAGS_sphere_radius),
+                                        fmt::format("{}_visual", name), color);
+
+          plant->RegisterCollisionGeometry(
+              sphere, RigidTransform<double>(),
+              geometry::Sphere(FLAGS_sphere_radius),
+              fmt::format("{}_collision", name), sphere_friction);
+        }
         bodies[index] = sphere.index();
       }
     }
   }
 
   // Add force elements between neighboring spheres.
+  // The "origins" of the magnets lie at the center of each element: point
+  // P on element A, and point Q on element B.
   const Vector3<double> p_AP_{0, 0, 0};
   const Vector3<double> p_BQ_{0, 0, 0};
 
@@ -125,6 +144,7 @@ std::map<std::tuple<int, int, int>, multibody::BodyIndex> make_grid(
               const Body<double>& neighbor =
                   plant->get_body(bodies.at(neighbor_index));
 
+              // What if we put the points on the surface?
               double rest_length =
                   std::sqrt(std::abs(di) + std::abs(dj) + std::abs(dk)) * 2 *
                   FLAGS_sphere_radius;
@@ -148,7 +168,7 @@ void set_grid_poses(
     systems::State<double>& plant_state) {
   Vector3d corner(-FLAGS_sphere_radius * FLAGS_grid_i,
                   -FLAGS_sphere_radius * FLAGS_grid_j,
-                  -FLAGS_sphere_radius * FLAGS_grid_k);
+                  0);
   const Vector3d offset(FLAGS_sphere_radius, FLAGS_sphere_radius,
                         FLAGS_sphere_radius);
 
@@ -208,20 +228,28 @@ void DoMain() {
   std::map<std::tuple<int, int, int>, multibody::BodyIndex> bodies =
       make_grid(FLAGS_sphere_mass, Vector4<double>(0.53, 0.01, 0.53, 1.0), dp);
 
-  const double dx_table_center_to_robot_base = 0.3257;
-  const double dz_table_top_robot_base = 0.0127;
-  const std::string table_sdf_path = FindResourceOrThrow(
-      "drake/examples/cutting_sim/models/"
-      "extra_heavy_duty_table_surface_only_collision.sdf");
+  if (FLAGS_simple_table) {
+    const RigidTransform<double> X_WT{Vector3<double>{0, 0, 0.75}};
+    dp->RegisterCollisionGeometry(dp->world_body(), X_WT, geometry::HalfSpace(),
+                                  "ground",
+                                  multibody::CoulombFriction<double>{});
+    dp->RegisterVisualGeometry(dp->world_body(), X_WT, geometry::HalfSpace(),
+                               "ground", geometry::IllustrationProperties());
+  } else {
+    const double dx_table_center_to_robot_base = 0.3257;
+    const double dz_table_top_robot_base = 0.0127;
+    const std::string table_sdf_path = FindResourceOrThrow(
+        "drake/examples/cutting_sim/models/"
+        "extra_heavy_duty_table_surface_only_collision.sdf");
 
-  const auto table_instance_index = parser.AddModelFromFile(table_sdf_path);
-  const auto& child_frame = dp->GetFrameByName("link", table_instance_index);
+    const auto table_instance_index = parser.AddModelFromFile(table_sdf_path);
+    const auto& child_frame = dp->GetFrameByName("link", table_instance_index);
 
-  RigidTransform<double> X_WT(Eigen::Vector3d(dx_table_center_to_robot_base, 0,
-                                              -dz_table_top_robot_base));
+    RigidTransform<double> X_WT(Eigen::Vector3d(dx_table_center_to_robot_base,
+                                                0, -dz_table_top_robot_base));
 
-  dp->WeldFrames(dp->world_frame(), child_frame, X_WT);
-
+    dp->WeldFrames(dp->world_frame(), child_frame, X_WT);
+  }
   dp->set_penetration_allowance(0.002);
 
   dp->Finalize();
@@ -254,7 +282,12 @@ void DoMain() {
   builder.Connect(scene_graph.get_query_output_port(),
                   dp->get_geometry_query_input_port());
 
-  geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph);
+  const geometry::DrakeVisualizerParams params{
+      .publish_period = 1 / FLAGS_vis_rate,
+      .role = geometry::Role::kIllustration,
+      .default_color = geometry::Rgba(0.9, 0.9, 0.9, 1.0)};
+  geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph, nullptr,
+                                           params);
 
   auto diagram = builder.Build();
   std::unique_ptr<systems::Context<double>> diagram_context =
@@ -266,7 +299,8 @@ void DoMain() {
   systems::State<double>& plant_state = diagram->GetMutableSubsystemState(
       *dp, &diagram_context->get_mutable_state());
 
-  const Vector3d grid_origin(0.26, 0.0, 0.81);
+  // We define the grid origin as lying in the center of the bottom face.
+  const Vector3d grid_origin(0.26, 0.0, 0.76);
 
   // set spheres poses
   set_grid_poses(bodies, grid_origin, dp, plant_context, plant_state);
@@ -277,7 +311,6 @@ void DoMain() {
   dp->SetPositions(&plant_context, model_instance_index, positions);
 
   systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
-  simulator.set_publish_every_time_step(true);
   simulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
   simulator.Initialize();
   simulator.AdvanceTo(FLAGS_simulation_time);

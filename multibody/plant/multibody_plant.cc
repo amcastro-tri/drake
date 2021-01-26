@@ -27,6 +27,9 @@
 #include "drake/multibody/tree/prismatic_joint.h"
 #include "drake/multibody/tree/revolute_joint.h"
 
+#include <iostream>
+#include <string>
+
 namespace drake {
 namespace multibody {
 
@@ -1219,16 +1222,36 @@ template <typename T>
 void MultibodyPlant<T>::CalcContactResultsContinuousHydroelastic(
     const systems::Context<T>& context,
     ContactResults<T>* contact_results) const {
-  this->ValidateContext(context);
   const internal::HydroelasticContactInfoAndBodySpatialForces<T>&
       contact_info_and_spatial_body_forces =
           EvalHydroelasticContactForces(context);
+  int patch_number = 0;
+  int num_triangles = 0;
+  std::cout << std::string(80, ' ') << std::endl;
+  std::cout << "CalcContactResultsContinuousHydroelastic()" << std::endl;
   for (const HydroelasticContactInfo<T>& contact_info :
-       contact_info_and_spatial_body_forces.contact_info) {
+       contact_info_and_spatial_body_forces.contact_info) {         
+    ++patch_number;
+
+    const auto& c = contact_info.contact_surface();
+
+    const BodyIndex bodyA_index = geometry_id_to_body_index_.at(c.id_M());
+    const BodyIndex bodyB_index = geometry_id_to_body_index_.at(c.id_N());
+
+    const std::string bodyA_name = this->get_body(bodyA_index).name();
+    const std::string bodyB_name = this->get_body(bodyB_index).name();
+
+    num_triangles += c.mesh_W().num_elements();
+
+    std::cout << patch_number << " "
+              << contact_info.contact_surface().mesh_W().num_elements() << " " << bodyA_name << " " << bodyB_name
+              << std::endl;
+
     // Note: caching dependencies guarantee that the lifetime of contact_info is
     // valid for the lifetime of the contact results.
     contact_results->AddContactInfo(&contact_info);
   }
+  std::cout << "Total triangles: " << num_triangles << std::endl;
 }
 
 namespace {

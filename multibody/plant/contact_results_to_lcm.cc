@@ -154,6 +154,15 @@ void ContactResultsToLcmSystem<T>::CalcLcmContactOutput(
           ExtractDoubleOrThrow(contact_surface.EvaluateE_MN(face.vertex(2)));
     }
   }
+
+  std::cout << "ContactResultsToLcmSystem::CalcLcmContactOutput()\n";
+  for (int i = 0; i < contact_results.num_hydroelastic_contacts(); ++i) {
+    lcmt_hydroelastic_contact_surface_for_viz& surface_msg =
+        msg.hydroelastic_contacts[i];
+    std::cout << i + 1 << " " << surface_msg.num_triangles << " "
+              << surface_msg.body1_name << " " << surface_msg.body1_name
+              << std::endl;
+  }
 }
 
 systems::lcm::LcmPublisherSystem* ConnectContactResultsToDrakeVisualizer(

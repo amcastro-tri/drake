@@ -11,6 +11,7 @@
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
 #include "drake/multibody/tree/cut_magnet.h"
+#include "drake/multibody/tree/particle_joint.h"
 #include "drake/multibody/tree/linear_spring_damper.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
@@ -59,6 +60,7 @@ using drake::multibody::Body;
 using drake::multibody::CutMagnet;
 using drake::multibody::LinearSpringDamper;
 using drake::multibody::SpatialInertia;
+using drake::multibody::ParticleJoint;
 using Eigen::Vector3d;
 using Eigen::Vector4d;
 using geometry::FramePoseVector;
@@ -110,6 +112,9 @@ std::map<std::tuple<int, int, int>, multibody::BodyIndex> make_grid(
             SpatialInertia<double>(mass, Vector3<double>::Zero(),
                                    multibody::UnitInertia<double>(
                                        sphere_ixyz, sphere_ixyz, sphere_ixyz)));
+
+        plant->AddJoint(std::make_unique<ParticleJoint<double>>(
+            "joint_" + name, plant->world_frame(), sphere.body_frame()));
 
         if (FLAGS_use_cube) {
           const geometry::Box box =
@@ -196,8 +201,7 @@ std::map<std::tuple<int, int, int>, multibody::BodyIndex> make_grid(
 void set_grid_poses(
     const std::map<std::tuple<int, int, int>, multibody::BodyIndex>& bodies,
     const Vector3<double> grid_origin, multibody::MultibodyPlant<double>* plant,
-    systems::Context<double>& plant_context,
-    systems::State<double>& plant_state) {
+    systems::Context<double>* plant_context) {
   Vector3d corner(-FLAGS_sphere_radius * FLAGS_grid_i,
                   -FLAGS_sphere_radius * FLAGS_grid_j,
                   0);
@@ -216,10 +220,16 @@ void set_grid_poses(
             Vector3d(2 * i * FLAGS_sphere_radius, 2 * j * FLAGS_sphere_radius,
                      2 * k * FLAGS_sphere_radius);
 
+        const auto& joint =
+            plant->GetJointByName<ParticleJoint>("joint_" + body.name());
+        joint.set_position(plant_context, origin);
+
+#if 0
         plant->SetFreeBodyPose(
             plant_context, &plant_state, body,
             math::RigidTransform<double>(
                 math::RollPitchYaw<double>(0, 0, -1.57), origin));
+#endif                
       }
     }
   }
@@ -290,6 +300,9 @@ void DoMain() {
 
   dp->Finalize();
 
+  PRINT_VAR(dp->num_positions());
+  PRINT_VAR(dp->num_velocities());
+
   // PID for knife-----------------------------------------------
   const Eigen::VectorXd Kp = Eigen::VectorXd::Ones(1) * FLAGS_Kp_;
   const Eigen::VectorXd Ki = Eigen::VectorXd::Ones(1) * FLAGS_Ki_;
@@ -336,14 +349,14 @@ void DoMain() {
   systems::Context<double>& plant_context =
       diagram->GetMutableSubsystemContext(*dp, diagram_context.get());
 
-  systems::State<double>& plant_state = diagram->GetMutableSubsystemState(
-      *dp, &diagram_context->get_mutable_state());
+  //systems::State<double>& plant_state = diagram->GetMutableSubsystemState(
+    //  *dp, &diagram_context->get_mutable_state());
 
   // We define the grid origin as lying in the center of the bottom face.
   const Vector3d grid_origin(0.26, 0.0, 0.76);
 
   // set spheres poses
-  set_grid_poses(bodies, grid_origin, dp, plant_context, plant_state);
+  set_grid_poses(bodies, grid_origin, dp, &plant_context);
 
   // Set init position
   Eigen::VectorXd positions = Eigen::VectorXd::Zero(1);

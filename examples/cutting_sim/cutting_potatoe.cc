@@ -9,16 +9,21 @@
 #include "drake/lcm/drake_lcm.h"
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/multibody_plant.h"
+#include "drake/multibody/plant/contact_results_to_lcm.h"
 #include "drake/multibody/tree/cut_magnet.h"
+#include "drake/multibody/tree/linear_spring_damper.h"
 #include "drake/systems/analysis/simulator.h"
+#include "drake/systems/analysis/simulator_gflags.h"
+#include "drake/systems/analysis/simulator_print_stats.h"
 #include "drake/systems/framework/diagram.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/primitives/constant_vector_source.h"
 
-DEFINE_double(target_realtime_rate, 1.0,
-              "Rate at which to run the simulation, relative to realtime");
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 DEFINE_double(simulation_time, 30, "How long to simulate the pendulum");
-DEFINE_double(max_time_step, 0.001, "Simulation time step used for integrator.");
+DEFINE_double(mbp_dt, 0.001,
+              "Simulation time step used for integrator.");
 
 DEFINE_double(Kp_, 30.0, "Kp");
 DEFINE_double(Ki_, 0.0, "Ki");
@@ -30,14 +35,20 @@ DEFINE_double(turn_off_force_threshold_, 5e-4,
 DEFINE_int32(grid_i, 4, "Number of spheres along x dimension of grid.");
 DEFINE_int32(grid_j, 4, "Number of spheres along y dimension of grid.");
 DEFINE_int32(grid_k, 2, "Number of spheres along z dimension of grid.");
-DEFINE_double(sphere_radius, 0.0125, "Sphere radius.");
-DEFINE_double(sphere_mass, 0.6, "Sphere mass.");
+DEFINE_double(sphere_radius, 0.01, "Sphere radius.");
+DEFINE_double(particle_density, 1000.0, "Soft particles density, [kg/m³].");
+DEFINE_double(linear_stiffness, 40.0, "Linear spring model stiffness, [N/m].");
+DEFINE_double(linear_damping_ratio, 1.0,
+              "Linear spring model damping ratio, [-].");
+DEFINE_double(linear_damping, 0.0, "Linear spring model damping, [Ns/m].");
+DEFINE_double(dynamic_friction, 0.5, "Friction coefficient, [-].");
 
 DEFINE_bool(use_cube, false,
             "If defined, elements are cubes (with measure equal to 2R).");
-DEFINE_double(vis_rate, 100.0,
+DEFINE_double(vis_rate, 30.0,
               "Frequency at which visualization messages are sent (in Hz");
 DEFINE_bool(simple_table, false, "If defined the 'table' is a half space");
+DEFINE_bool(forces_viz, true, "If true, visualize contact forces.");
 
 namespace drake {
 namespace examples {
@@ -46,6 +57,7 @@ namespace {
 
 using drake::multibody::Body;
 using drake::multibody::CutMagnet;
+using drake::multibody::LinearSpringDamper;
 using drake::multibody::SpatialInertia;
 using Eigen::Vector3d;
 using Eigen::Vector4d;
@@ -64,18 +76,26 @@ using math::RigidTransform;
 using math::RigidTransformd;
 using std::make_unique;
 using systems::Context;
+using systems::MakeSimulatorFromGflags;
+using systems::PrintSimulatorStatistics;
+using systems::Simulator;
 
 static const char* const kDoublePendulumSdfPath =
     "drake/examples/cutting_sim/models/guillotine.sdf";
 
 std::map<std::tuple<int, int, int>, multibody::BodyIndex> make_grid(
     double mass, const Vector4<double>& color,
-    multibody::MultibodyPlant<double>* plant) {
-  const multibody::CoulombFriction<double> sphere_friction(0.5, 0.3);
+    multibody::MultibodyPlant<double>* plant,
+    geometry::SceneGraph<double>* scene_graph) {
+  const multibody::CoulombFriction<double> sphere_friction(
+      FLAGS_dynamic_friction, FLAGS_dynamic_friction);
 
   const double sphere_ixyz = .4 * FLAGS_sphere_radius * FLAGS_sphere_radius;
 
   std::map<std::tuple<int, int, int>, multibody::BodyIndex> bodies;
+
+  // For the set of geometries for all particles in the grid.
+  drake::geometry::GeometrySet particles;
 
   // Register a regular grid of
   for (int i = 0; i < FLAGS_grid_i; ++i) {
@@ -110,16 +130,27 @@ std::map<std::tuple<int, int, int>, multibody::BodyIndex> make_grid(
               geometry::Sphere(FLAGS_sphere_radius),
               fmt::format("{}_collision", name), sphere_friction);
         }
+        particles.Add(plant->GetCollisionGeometriesForBody(sphere));
         bodies[index] = sphere.index();
       }
     }
   }
+
+  // Exclude collisions between spheres. Spheres only interact among them
+  // through force elements.  
+  scene_graph->ExcludeCollisionsWithin(particles);
 
   // Add force elements between neighboring spheres.
   // The "origins" of the magnets lie at the center of each element: point
   // P on element A, and point Q on element B.
   const Vector3<double> p_AP_{0, 0, 0};
   const Vector3<double> p_BQ_{0, 0, 0};
+
+  // Estimate dissipation form desired damping ratio.
+  const double critical_dissipation =
+      2.0 * std::sqrt(FLAGS_linear_stiffness * mass);
+  const double linear_dissipation =
+      FLAGS_linear_damping_ratio * critical_dissipation;
 
   for (int i = 0; i < FLAGS_grid_i; ++i) {
     for (int j = 0; j < FLAGS_grid_j; ++j) {
@@ -133,10 +164,12 @@ std::map<std::tuple<int, int, int>, multibody::BodyIndex> make_grid(
             for (int dk = -1; dk <= 1; ++dk) {
               if ((di == 0) && (dj == 0) && (dk == 0)) continue;  // skip this sphere.
 
+              // If the neighbor lies outside the grid, we are at a boundary.
+              // Therefore skip adding force element.
               if (i + di < 0 || i + di >= FLAGS_grid_i || j + dj < 0 ||
                   j + dj >= FLAGS_grid_j || k + dk < 0 ||
                   k + dk >= FLAGS_grid_k)
-                continue;
+                continue;                              
 
               const std::tuple<int, int, int> neighbor_index =
                   std::make_tuple(i + di, j + dj, k + dk);
@@ -149,9 +182,8 @@ std::map<std::tuple<int, int, int>, multibody::BodyIndex> make_grid(
                   std::sqrt(std::abs(di) + std::abs(dj) + std::abs(dk)) * 2 *
                   FLAGS_sphere_radius;
 
-              plant->AddForceElement<drake::multibody::CutMagnet>(
-                  body, p_AP_, neighbor, p_BQ_, FLAGS_force_scale_, 1.0,
-                  rest_length + FLAGS_turn_off_force_threshold_);
+              plant->AddForceElement<LinearSpringDamper>(
+                  body, Vector3d::Zero(), neighbor, Vector3d::Zero(), rest_length, FLAGS_linear_stiffness, linear_dissipation);
             }
           }
         }
@@ -204,7 +236,7 @@ void DoMain() {
 
   // Load and parse double pendulum SDF from file into a tree.
   multibody::MultibodyPlant<double>* dp =
-      builder.AddSystem<multibody::MultibodyPlant<double>>(FLAGS_max_time_step);
+      builder.AddSystem<multibody::MultibodyPlant<double>>(FLAGS_mbp_dt);
   dp->set_name("plant");
   dp->RegisterAsSourceForSceneGraph(&scene_graph);
 
@@ -225,8 +257,12 @@ void DoMain() {
   // Add knife model ------------------------------------------------------
 
   // Add sphere grid
-  std::map<std::tuple<int, int, int>, multibody::BodyIndex> bodies =
-      make_grid(FLAGS_sphere_mass, Vector4<double>(0.53, 0.01, 0.53, 1.0), dp);
+  const double sphere_volume = 4.0 / 3.0 * M_PI * FLAGS_sphere_radius *
+                               FLAGS_sphere_radius * FLAGS_sphere_radius;
+  const double particle_mass = FLAGS_particle_density * sphere_volume;
+  PRINT_VAR(particle_mass);
+  std::map<std::tuple<int, int, int>, multibody::BodyIndex> bodies = make_grid(
+      particle_mass, Vector4<double>(0.53, 0.01, 0.53, 1.0), dp, &scene_graph);
 
   if (FLAGS_simple_table) {
     const RigidTransform<double> X_WT{Vector3<double>{0, 0, 0.75}};
@@ -250,7 +286,7 @@ void DoMain() {
 
     dp->WeldFrames(dp->world_frame(), child_frame, X_WT);
   }
-  dp->set_penetration_allowance(0.002);
+  //dp->set_penetration_allowance(0.002);
 
   dp->Finalize();
 
@@ -288,6 +324,10 @@ void DoMain() {
       .default_color = geometry::Rgba(0.9, 0.9, 0.9, 1.0)};
   geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph, nullptr,
                                            params);
+  // Add contact forces viz.
+  if (FLAGS_forces_viz) {
+    ConnectContactResultsToDrakeVisualizer(&builder, *dp);
+  }
 
   auto diagram = builder.Build();
   std::unique_ptr<systems::Context<double>> diagram_context =
@@ -310,10 +350,12 @@ void DoMain() {
   positions[0] = 1.57;
   dp->SetPositions(&plant_context, model_instance_index, positions);
 
-  systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
-  simulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
-  simulator.Initialize();
-  simulator.AdvanceTo(FLAGS_simulation_time);
+  std::unique_ptr<Simulator<double>> simulator =
+      MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
+  simulator->AdvanceTo(FLAGS_simulation_time);
+
+  // Report some stats to stdout.
+  PrintSimulatorStatistics(*simulator);
 }
 }  // namespace
 }  // namespace cutting_potatoe

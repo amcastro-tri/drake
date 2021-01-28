@@ -11,17 +11,21 @@ namespace drake {
 namespace multibody {
 
 template <typename T>
-LinearSpringDamper<T>::LinearSpringDamper(
-    const Body<T>& bodyA, const Vector3<double>& p_AP,
-    const Body<T>& bodyB, const Vector3<double>& p_BQ,
-    double free_length, double stiffness, double damping) :
-    ForceElement<T>(bodyA.model_instance()),
-    bodyA_(bodyA),
-    p_AP_(p_AP),
-    bodyB_(bodyB),
-    p_BQ_(p_BQ),
-    free_length_(free_length),
-    stiffness_(stiffness), damping_(damping) {
+LinearSpringDamper<T>::LinearSpringDamper(const Body<T>& bodyA,
+                                          const Vector3<double>& p_AP,
+                                          const Body<T>& bodyB,
+                                          const Vector3<double>& p_BQ,
+                                          double free_length, double stiffness,
+                                          double damping, double cutoff_length)
+    : ForceElement<T>(bodyA.model_instance()),
+      bodyA_(bodyA),
+      p_AP_(p_AP),
+      bodyB_(bodyB),
+      p_BQ_(p_BQ),
+      free_length_(free_length),
+      stiffness_(stiffness),
+      damping_(damping),
+      cutoff_length_(cutoff_length) {
   DRAKE_THROW_UNLESS(free_length > 0);
   DRAKE_THROW_UNLESS(stiffness >= 0);
   DRAKE_THROW_UNLESS(damping >= 0);
@@ -47,17 +51,19 @@ void LinearSpringDamper<T>::DoCalcAndAddForceContribution(
   // Using a "soft" norm we define a "soft length" as ℓₛ = ‖p_PQ‖ₛ.
   const T length_soft = SafeSoftNorm(p_PQ_W);
 
-  const Vector3<T> r_PQ_W = p_PQ_W / length_soft;
+  Vector3<T> f_AP_W = Vector3<T>::Zero();
+  if (length_soft - free_length() < cutoff_length()) {
+    const Vector3<T> r_PQ_W = p_PQ_W / length_soft;
 
-  // Force on A, applied at P, expressed in the world frame.
-  Vector3<T> f_AP_W =
-      stiffness() * (length_soft - free_length()) * r_PQ_W;
+    // Force on A, applied at P, expressed in the world frame.
+    f_AP_W = stiffness() * (length_soft - free_length()) * r_PQ_W;
 
-  // The rate at which the length of the spring changes.
-  const T length_dot = CalcLengthTimeDerivative(pc, vc);
+    // The rate at which the length of the spring changes.
+    const T length_dot = CalcLengthTimeDerivative(pc, vc);
 
-  // Add the damping force on A at P.
-  f_AP_W += damping() * length_dot * r_PQ_W;
+    // Add the damping force on A at P.
+    f_AP_W += damping() * length_dot * r_PQ_W;
+  }
 
   // Shift to the corresponding body frame and add spring-damper contribution
   // to the output forces.

@@ -31,7 +31,7 @@ DEFINE_double(Ki_, 0.0, "Ki");
 DEFINE_double(Kd_, 0.0, "Kd");
 
 DEFINE_double(force_scale_, 20.0, "force scale for magnet");
-DEFINE_double(turn_off_force_threshold_, 5e-4,
+DEFINE_double(cutoff_length, 1e-3,
               "Distance threshold to turn off magnets");
 DEFINE_int32(grid_i, 3, "Number of spheres along x dimension of grid.");
 DEFINE_int32(grid_j, 8, "Number of spheres along y dimension of grid.");
@@ -197,7 +197,7 @@ std::map<std::tuple<int, int, int>, multibody::BodyIndex> make_grid(
                   FLAGS_sphere_radius;
 
               plant->AddForceElement<LinearSpringDamper>(
-                  body, Vector3d::Zero(), neighbor, Vector3d::Zero(), rest_length, stiffness, linear_dissipation);
+                  body, Vector3d::Zero(), neighbor, Vector3d::Zero(), rest_length, stiffness, linear_dissipation, FLAGS_cutoff_length);
             }
           }
         }

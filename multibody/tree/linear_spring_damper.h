@@ -61,10 +61,10 @@ class LinearSpringDamper final : public ForceElement<T> {
   /// @throws std::exception if `free_length` is negative or zero.
   /// @throws std::exception if `stiffness` is negative.
   /// @throws std::exception if `damping` is negative.
-  LinearSpringDamper(
-      const Body<T>& bodyA, const Vector3<double>& p_AP,
-      const Body<T>& bodyB, const Vector3<double>& p_BQ,
-      double free_length, double stiffness, double damping);
+  LinearSpringDamper(const Body<T>& bodyA, const Vector3<double>& p_AP,
+                     const Body<T>& bodyB, const Vector3<double>& p_BQ,
+                     double free_length, double stiffness, double damping,
+                     double cutoff_length = 0.0);
 
   const Body<T>& bodyA() const { return bodyA_; }
 
@@ -83,6 +83,8 @@ class LinearSpringDamper final : public ForceElement<T> {
   double stiffness() const { return stiffness_; }
 
   double damping() const { return damping_; }
+
+  double cutoff_length() const { return cutoff_length_; }
 
   T CalcPotentialEnergy(
       const systems::Context<T>& context,
@@ -144,6 +146,7 @@ class LinearSpringDamper final : public ForceElement<T> {
   double free_length_;
   double stiffness_;
   double damping_;
+  double cutoff_length_{std::numeric_limits<double>::infinity()};
 };
 
 }  // namespace multibody

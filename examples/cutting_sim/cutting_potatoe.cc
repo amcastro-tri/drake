@@ -43,7 +43,10 @@ DEFINE_double(elastic_modulus, 4000.0,
 DEFINE_double(linear_damping_ratio, 1.0,
               "Linear spring model damping ratio, [-].");
 DEFINE_double(linear_damping, 0.0, "Linear spring model damping, [Ns/m].");
-DEFINE_double(dynamic_friction, 0.5, "Friction coefficient, [-].");
+DEFINE_double(dynamic_friction, 0.2, "Friction coefficient, [-].");
+DEFINE_double(grid_x, 0.26, "Initial x position of the grid's center.");
+DEFINE_double(grid_y, 0, "Initial y position of the grid's center.");
+DEFINE_double(grid_z, 0.76, "Initial z position of the grid's center.");
 
 DEFINE_bool(use_cube, false,
             "If defined, elements are cubes (with measure equal to 2R).");
@@ -362,7 +365,7 @@ void DoMain() {
     //  *dp, &diagram_context->get_mutable_state());
 
   // We define the grid origin as lying in the center of the bottom face.
-  const Vector3d grid_origin(0.26, 0.0, 0.76);
+  const Vector3d grid_origin(FLAGS_grid_x, FLAGS_grid_y, FLAGS_grid_z);
 
   // set spheres poses
   set_grid_poses(bodies, grid_origin, dp, &plant_context);

@@ -38,7 +38,16 @@ DEFINE_int32(grid_j, 8, "Number of spheres along y dimension of grid.");
 DEFINE_int32(grid_k, 3, "Number of spheres along z dimension of grid.");
 DEFINE_double(sphere_radius, 0.01, "Sphere radius.");
 DEFINE_double(particle_density, 1000.0, "Soft particles density, [kg/m³].");
-DEFINE_double(elastic_modulus, 4000.0,
+
+// I estimated the elastic modulus from measurements in [Cheng et al., 2005].
+// From figured 3 a fit a line between zero and ~2000 Pa at ~20% strain. This
+// leads to a modulus of E = 10000 Pa.
+//
+// Cheng, Yongqiang, Naoto Shimizu, and Toshinori Kimura. "The viscoelastic
+// properties of soybean curd (tofu) as affected by soymilk concentration and
+// type of coagulant." International journal of food science & technology 40, no
+// 4 (2005): 385-390.
+DEFINE_double(elastic_modulus, 10000.0,
               "Linear spring model stiffness, [N/m²].");
 DEFINE_double(linear_damping_ratio, 1.0,
               "Linear spring model damping ratio, [-].");

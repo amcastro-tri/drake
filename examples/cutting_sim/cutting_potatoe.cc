@@ -22,8 +22,8 @@
 
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
 
-DEFINE_double(simulation_time, 30, "How long to simulate the pendulum");
-DEFINE_double(mbp_dt, 0.001,
+DEFINE_double(simulation_time, 0.5, "How long to simulate the pendulum");
+DEFINE_double(mbp_dt, 0.0,
               "Simulation time step used for integrator.");
 
 DEFINE_double(Kp_, 30.0, "Kp");
@@ -33,12 +33,13 @@ DEFINE_double(Kd_, 0.0, "Kd");
 DEFINE_double(force_scale_, 20.0, "force scale for magnet");
 DEFINE_double(turn_off_force_threshold_, 5e-4,
               "Distance threshold to turn off magnets");
-DEFINE_int32(grid_i, 4, "Number of spheres along x dimension of grid.");
-DEFINE_int32(grid_j, 4, "Number of spheres along y dimension of grid.");
-DEFINE_int32(grid_k, 2, "Number of spheres along z dimension of grid.");
+DEFINE_int32(grid_i, 3, "Number of spheres along x dimension of grid.");
+DEFINE_int32(grid_j, 8, "Number of spheres along y dimension of grid.");
+DEFINE_int32(grid_k, 3, "Number of spheres along z dimension of grid.");
 DEFINE_double(sphere_radius, 0.01, "Sphere radius.");
 DEFINE_double(particle_density, 1000.0, "Soft particles density, [kg/m³].");
-DEFINE_double(linear_stiffness, 40.0, "Linear spring model stiffness, [N/m].");
+DEFINE_double(elastic_modulus, 4000.0,
+              "Linear spring model stiffness, [N/m²].");
 DEFINE_double(linear_damping_ratio, 1.0,
               "Linear spring model damping ratio, [-].");
 DEFINE_double(linear_damping, 0.0, "Linear spring model damping, [Ns/m].");
@@ -49,7 +50,7 @@ DEFINE_bool(use_cube, false,
 DEFINE_double(vis_rate, 30.0,
               "Frequency at which visualization messages are sent (in Hz");
 DEFINE_bool(simple_table, false, "If defined the 'table' is a half space");
-DEFINE_bool(forces_viz, true, "If true, visualize contact forces.");
+DEFINE_bool(forces_viz, false, "If true, visualize contact forces.");
 
 namespace drake {
 namespace examples {
@@ -151,11 +152,19 @@ std::map<std::tuple<int, int, int>, multibody::BodyIndex> make_grid(
   const Vector3<double> p_AP_{0, 0, 0};
   const Vector3<double> p_BQ_{0, 0, 0};
 
+  // k = A/L * E, with A the cross sectional area (=4R²) and L the free length
+  // between particles (=2*R).
+  const double stiffness = 2.0 * FLAGS_sphere_radius * FLAGS_elastic_modulus;
+
   // Estimate dissipation form desired damping ratio.
   const double critical_dissipation =
-      2.0 * std::sqrt(FLAGS_linear_stiffness * mass);
+      2.0 * std::sqrt(stiffness * mass);
   const double linear_dissipation =
       FLAGS_linear_damping_ratio * critical_dissipation;
+
+  const double w0 = std::sqrt(stiffness / mass);
+  const double T0 = 2.0 * M_PI / w0;
+  PRINT_VAR(T0);
 
   for (int i = 0; i < FLAGS_grid_i; ++i) {
     for (int j = 0; j < FLAGS_grid_j; ++j) {
@@ -188,7 +197,7 @@ std::map<std::tuple<int, int, int>, multibody::BodyIndex> make_grid(
                   FLAGS_sphere_radius;
 
               plant->AddForceElement<LinearSpringDamper>(
-                  body, Vector3d::Zero(), neighbor, Vector3d::Zero(), rest_length, FLAGS_linear_stiffness, linear_dissipation);
+                  body, Vector3d::Zero(), neighbor, Vector3d::Zero(), rest_length, stiffness, linear_dissipation);
             }
           }
         }
@@ -379,6 +388,11 @@ int main(int argc, char** argv) {
   gflags::SetUsageMessage(
       "Simple sdformat usage example, just"
       "make sure drake-visualizer is running");
+
+  FLAGS_simulator_accuracy = 0.1;
+  FLAGS_simulator_max_time_step = 0.1;
+  FLAGS_simulator_integration_scheme = "runge_kutta3";
+  FLAGS_simulator_publish_every_time_step = true;
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   drake::examples::cutting_potatoe::DoMain();

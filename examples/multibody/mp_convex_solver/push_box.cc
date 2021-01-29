@@ -3,7 +3,7 @@
 #include <gflags/gflags.h>
 
 #include "drake/common/find_resource.h"
-#include "drake/geometry/geometry_visualization.h"
+#include "drake/geometry/drake_visualizer.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/lcm/drake_lcm.h"
 #include "drake/multibody/contact_solvers/mp_convex_solver.h"
@@ -65,7 +65,7 @@ int do_main() {
   // We are done defining the model. Finalize.
   plant.Finalize();
 
-  ConnectDrakeVisualizer(&builder, scene_graph);
+  geometry::DrakeVisualizer::AddToBuilder(&builder, scene_graph);
   ConnectContactResultsToDrakeVisualizer(&builder, plant);
 
   // Create full Diagram for with the model.

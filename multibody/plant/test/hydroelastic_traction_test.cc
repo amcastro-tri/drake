@@ -14,6 +14,8 @@
 #include "drake/systems/framework/context.h"
 #include "drake/systems/framework/diagram_builder.h"
 
+#include <fstream>
+
 namespace drake {
 
 using geometry::ContactSurface;
@@ -582,6 +584,53 @@ class HydroelasticTractionCalculatorTester {
 };
 
 GTEST_TEST(HydroelasticTractionCalculatorTest,
+           GenerateValues) {  
+  std::ofstream file("atan.dat");
+  file << fmt::format("x f_std f_custom df_std df_custom\n");
+
+  auto calc_and_print = [&file](double x_value) {
+    const AutoDiffXd x(x_value, 1.0, 0);
+    const AutoDiffXd x2 = x * x;
+    // Custom f(x).
+    const AutoDiffXd fx =
+        HydroelasticTractionCalculatorTester::CalcAtanXOverXFromXSquared<
+            AutoDiffXd>(x2);
+    const double f_custom = fx.value();
+    const double df_custom = fx.derivatives()[0];
+
+    // "Standard" (using standard atan(x) function) f(x).
+    const AutoDiffXd fx_ref = atan(x) / x;
+    const double f_std = fx_ref.value();
+    const double df_std = fx_ref.derivatives()[0];
+
+    file << fmt::format("{} {} {} {} {}\n", x_value, f_std, f_custom, df_std,
+                        df_custom);
+  };
+
+  // Generate vales from 1e-20 to 1e-1.  
+  double x_value = 1e-20;  
+  for (int e = -20; e <= -1; ++e) {
+    std::cout << x_value << std::endl;
+    calc_and_print(x_value);
+    x_value *= 10.0;
+  }
+
+    
+
+  // Additional values in [0.1, 1.0] and 100.0
+  for (double x :
+       {129.154966501488e-003, 166.810053720006e-003, 215.443469003188e-003,
+        278.255940220712e-003, 359.381366380463e-003, 464.158883361278e-003,
+        599.484250318941e-003, 774.263682681127e-003, 1.00000000000000e+000,
+        1.0e2}) {
+    std::cout << x << std::endl;
+    calc_and_print(x);
+  }
+
+  file.close();
+}
+
+GTEST_TEST(HydroelasticTractionCalculatorTest,
            CalcAtanXOverXFromXSquared_AutoDiffXd) {
   using std::atan;
 
@@ -599,7 +648,27 @@ GTEST_TEST(HydroelasticTractionCalculatorTest,
   // first three show the progression of error after we've crossed the line x =
   // 1.0e-4 and move closer to zero. The last two show where the line is and
   // that the answers exactly match thereafter.
-  std::vector<double> x_samples = {1e-6, 1e-5, 0.99e-4, 1.0e-4, 1.0};
+  std::vector<double> x_samples = {
+      1e-20, 1e-19, 1e-18, 1e-17, 1e-16, 1e-15, 1e-14, 1e-13, 1e-12, 
+      1e-11, 1e-10, 1e-09, 1e-08, 1e-07, 1e-06, 1e-05, 1e-04, 1e-03, 1e-02, 1e-01, 1e-00, 1e+01, 1e+02};
+
+  std::vector<double> df_ref = {
+      -6.66707573717740e-021, -66.6666214687113e-021, -666.666679976207e-021,
+      -6.66666666566834e-018, -66.6666666667808e-018, -666.666666666672e-018,
+      -6.66666666666667e-015, -66.6666666666667e-015, -666.666666666667e-015,
+      -6.66666666666667e-012, -66.6666666666667e-012, -666.666666666667e-012,
+      -6.66666666666667e-009, -66.6666666666659e-009, -666.666666665867e-009,
+      -6.66666666586667e-006, -66.6666658666667e-006, -666.665866667524e-006,
+      -6.66586675237206e-003, 
+      
+      //-65.8751501063017e-003,
+      -0.0658751501063017477456020868119600144,
+     //-285.398163397448e-003,
+      -0.285398163397448309615660845819875721,
+
+      -13.7211777331364e-003, -155.079766000824e-006};
+
+  (void)df_ref;
 
   // We notice that the expected precision in dfdx degrades for small values of
   // x, in this test for 1e-6 and 1e-5. We verified using variable precision
@@ -618,10 +687,11 @@ GTEST_TEST(HydroelasticTractionCalculatorTest,
   // expression still leads to a suboptimal computation that loses precision. We
   // obtained the expected precision below using Matlab variable precision
   // arithmetic.
-  std::vector<double> dfdx_expected_precision(x_samples.size(), 0);
-  dfdx_expected_precision[0] = 1.0e-9;
-  dfdx_expected_precision[1] = 1.0e-11;
-  dfdx_expected_precision[2] = 1.0e-12;
+  std::vector<double> dfdx_expected_precision(
+      x_samples.size(), std::numeric_limits<double>::epsilon());
+  // We verified this is tha maximum round-off error when using AutoDiffXd to
+  // compute the derivatives of CalcAtanXOverXFromXSquared(), @ x = 0.1.        
+  dfdx_expected_precision[19] = 6.0e-16;  // x = 0.1
 
   for (size_t i = 0; i < x_samples.size(); ++i) {
     const double sample = x_samples[i];
@@ -638,8 +708,7 @@ GTEST_TEST(HydroelasticTractionCalculatorTest,
                 std::numeric_limits<double>::epsilon());
 
     // Compare against analytical derivative.
-    EXPECT_NEAR(fx.derivatives()[0], fx_ref.derivatives()[0],
-                dfdx_expected_precision[i]);
+    EXPECT_NEAR(fx.derivatives()[0], df_ref[i], dfdx_expected_precision[i]);
   }
 
   // We separately verify CalcAtanXOverXFromXSquared() at x = 0 since AutoDiffXd

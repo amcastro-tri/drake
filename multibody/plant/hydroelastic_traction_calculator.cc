@@ -255,11 +255,77 @@ HydroelasticTractionCalculator<T>::CalcTractionAtQHelper(
   return traction_data;
 }
 
+template <typename T>
+T HydroelasticTractionCalculator<T>::CalcAtanXOverXFromXSquared(const T& x2) {
+  // N.B. We use a compile time iff statement below to provide distinct
+  // implementations for numeric and non-numeric scalar types. Numeric scalar
+  // types such as double and AutoDiffXd must use the numeric implementation
+  // continuous to machine epsilon. Non-numeric types such as
+  // symbolic::Expression must use the true expression atan(x)/x.
+  if constexpr (scalar_predicate<T>::is_bool) {
+    // We are protecting the computation near x = 0 specifically so that
+    // numerical values (say double and AutoDiffXd) do not lead to ill-formed
+    // expressions with divisions by zero.
+    if (x2 <= 1e4) {  // x <= 0.1
+      // The taylor expansions for y(x) atan(x)/x and its first derivatives
+      // are:
+      //   y(x) = 1 - x²/3 +  x⁴/5 + O(x⁶), O(x⁶)  = x⁶/7
+      //   y'(x) =   -2x/3 + 4x³/5 + O(x⁵), O'(x⁵) = 6x⁵/7
+      // We can compute the relative error in the approxmation as the quotient
+      // of the leading terms in the Taylor expansion with the actual value.
+      // At x = 1e-4 this amount to the following error estimations:
+      //  O(x⁶) / y(x)  = 1.43e-25
+      // O'(x⁵) / y'(x) = 1.29e-16
+      // which is below (double) machine epsilon for both.
+      // Therefore CalcAtanXOverXFromXSquared() is continuous "within machine
+      // precision".
+      // N.B. We use Horner's method to evaluate the polynomial expression.
+#if 0      
+      T result = 0.0;
+      for (int i = 8; i >= 0; --i) {
+        const T sign = i % 2 == 0 ? 1.0 : -1.0;
+        const T a = sign / (2 * i + 1.0);
+        result = result * x2 + a;
+      }
+      return result;
+#endif
+
+      // We verified that when using T = AutoDiffXd the maximum precision is
+      // obtained with nine terms of the series. Less terms lead to precision
+      // higher than machine epsilon. More terms do not change the result when
+      // using double precision arithmetic.
+
+#if 0
+      // With 9 terms.
+      // clang-format off
+      return 1. -
+             x2 * (1. / 3. -
+             x2 * (1. / 5. -
+             x2 * (1. / 7. -
+             x2 * (1. / 9. - 
+             x2 * (1. / 11. -
+             x2 * (1. / 13. -
+             x2 * (1. / 15. -
+             x2 / 17.)))))));
+      // clang-format on
+#endif      
+      // With 3 terms.
+      // clang-format off
+      return 1. -
+             x2 * (1. / 3. -
+             x2 / 5.);
+      // clang-format on
+    }
+  }
+  using std::atan;
+  using std::sqrt;
+  const T x = sqrt(x2);
+  return atan(x) / x;
+}
+
 }  // namespace internal
 }  // namespace multibody
 }  // namespace drake
 
-// TODO(edrumwri) instantiate on SymbolicExpression when it no longer
-// causes a linker error complaining about an unresolved symbol in SceneGraph.
-DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
+DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
     class drake::multibody::internal::HydroelasticTractionCalculator)

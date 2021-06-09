@@ -176,8 +176,6 @@ class BlockSparseMatrixBuilder {
   //   larger than both block_rows and block_cols.
   // @note PushBlock() can only be called up to num_nonzero_blocks times, or an
   // exception will be thrown.
-  // @note num_nonzero_blocks must be smaller or equal to block_rows *
-  // block_cols.
   BlockSparseMatrixBuilder(int block_rows, int block_cols,
                            int num_nonzero_blocks)
       : block_rows_(block_rows), block_cols_(block_cols) {
@@ -186,7 +184,6 @@ class BlockSparseMatrixBuilder {
     DRAKE_DEMAND(num_nonzero_blocks >= 0);
     DRAKE_DEMAND(num_nonzero_blocks >= block_rows);
     DRAKE_DEMAND(num_nonzero_blocks >= block_cols);
-    DRAKE_DEMAND(num_nonzero_blocks <= block_rows * block_cols);
     blocks_.reserve(num_nonzero_blocks);
     // Negative size means "not yet specified".
     block_row_size_.resize(block_rows, -1);

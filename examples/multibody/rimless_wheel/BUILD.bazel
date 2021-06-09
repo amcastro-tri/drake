@@ -12,6 +12,7 @@ drake_cc_binary(
         "//common:add_text_logging_gflags",
         "//geometry:drake_visualizer",
         "//multibody/plant",
+        "//multibody/plant:compliant_contact_computation_manager",
         "//multibody/plant:contact_results_to_lcm",
         "//multibody/contact_solvers:unconstrained_primal_solver",
         "//systems/analysis:simulator",

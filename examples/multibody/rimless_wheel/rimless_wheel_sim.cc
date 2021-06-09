@@ -11,6 +11,7 @@
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
 #include "drake/systems/framework/diagram_builder.h"
+#include "drake/multibody/plant/compliant_contact_computation_manager.h"
 
 namespace drake {
 
@@ -18,6 +19,7 @@ using Eigen::Vector3d;
 using Eigen::Vector4d;
 using Eigen::VectorXd;
 
+using drake::multibody::CompliantContactComputationManager;
 using drake::multibody::contact_solvers::internal::UnconstrainedPrimalSolver;
 using drake::multibody::contact_solvers::internal::
     UnconstrainedPrimalSolverIterationMetrics;
@@ -188,9 +190,13 @@ int do_main() {
 
   // Swap discrete contact solver.
   UnconstrainedPrimalSolver<double>* primal_solver{nullptr};
+  CompliantContactComputationManager<double>* manager{nullptr};
   if (FLAGS_solver == "primal") {
-    primal_solver = &plant.set_contact_solver(
-        std::make_unique<UnconstrainedPrimalSolver<double>>());
+    manager = &plant.set_discrete_update_manager(
+        std::make_unique<CompliantContactComputationManager<double>>(
+            std::make_unique<UnconstrainedPrimalSolver<double>>()));
+    primal_solver =
+        &manager->mutable_contact_solver<UnconstrainedPrimalSolver>();
     UnconstrainedPrimalSolverParameters params;
     params.abs_tolerance = 1.0e-6;
     params.rel_tolerance = 1.0e-5;

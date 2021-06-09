@@ -6,6 +6,9 @@
 #include "drake/multibody/contact_solvers/contact_solver_results.h"
 #include "drake/multibody/tree/multibody_tree.h"
 #include "drake/systems/framework/context.h"
+#include "drake/multibody/plant/contact_jacobians.h"
+#include "drake/multibody/plant/coulomb_friction.h"
+#include "drake/multibody/plant/discrete_contact_pair.h"
 
 namespace drake {
 namespace multibody {
@@ -105,6 +108,22 @@ class DiscreteUpdateManager {
 
   /* Exposed MultibodyPlant private/protected method. */
   const MultibodyTree<T>& internal_tree() const;
+
+  void AddInForcesFromInputPorts(const drake::systems::Context<T>& context,
+                                 MultibodyForces<T>* forces) const;
+
+  const internal::ContactJacobians<T>& EvalContactJacobians(
+      const systems::Context<T>& context) const;
+
+  std::vector<CoulombFriction<double>> CalcCombinedFrictionCoefficients(
+      const drake::systems::Context<T>& context,
+      const std::vector<internal::DiscreteContactPair<T>>& contact_pairs) const;
+
+  std::vector<internal::DiscreteContactPair<T>> CalcDiscreteContactPairs(
+      const systems::Context<T>& context) const;
+
+  const contact_solvers::internal::ContactSolverResults<T>&
+  EvalContactSolverResults(const systems::Context<T>& context) const;
 
   /* Concrete DiscreteUpdateManagers must override these NVI Calc methods to
    provide an implementation. The output parameters are guaranteed to be

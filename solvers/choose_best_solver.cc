@@ -9,6 +9,7 @@
 #include "drake/solvers/linear_system_solver.h"
 #include "drake/solvers/moby_lcp_solver.h"
 #include "drake/solvers/mosek_solver.h"
+#include "drake/solvers/conex_solver.h"
 #include "drake/solvers/nlopt_solver.h"
 #include "drake/solvers/osqp_solver.h"
 #include "drake/solvers/scs_solver.h"
@@ -54,6 +55,8 @@ SolverId ChooseBestSolver(const MathematicalProgram& prog) {
     return NloptSolver::id();
   } else if (IsMatch<CsdpSolver>(prog)) {
     return CsdpSolver::id();
+  } else if (IsMatch<ConexSolver>(prog)) {
+    return ConexSolver::id();
   } else if (IsMatch<ScsSolver>(prog)) {
     // Use SCS as the last resort. SCS uses ADMM method, which converges fast to
     // modest accuracy quite fast, but then slows down significantly if the user
@@ -105,6 +108,8 @@ std::unique_ptr<SolverInterface> MakeSolver(const SolverId& id) {
     return std::make_unique<NloptSolver>();
   } else if (id == CsdpSolver::id()) {
     return std::make_unique<CsdpSolver>();
+  } else if (id == ConexSolver::id()) {
+    return std::make_unique<ConexSolver>();
   } else if (id == ScsSolver::id()) {
     return std::make_unique<ScsSolver>();
   } else {

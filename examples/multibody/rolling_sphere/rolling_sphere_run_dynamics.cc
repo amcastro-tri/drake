@@ -1,5 +1,6 @@
 #include <chrono>
 #include <memory>
+#include <fstream>
 
 #include <gflags/gflags.h>
 
@@ -16,6 +17,7 @@
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
 #include "drake/systems/framework/diagram_builder.h"
+#include "drake/multibody/contact_solvers/unconstrained_primal_solver.h"
 
 // Integration parameters.
 DEFINE_double(simulation_time, 2.0,
@@ -49,6 +51,7 @@ DEFINE_double(
     "The fixed time step period (in seconds) of discrete updates for the "
     "multibody plant modeled as a discrete system. Strictly positive. "
     "Set to zero for a continuous plant model.");
+DEFINE_bool(use_primal_solver, false, "If true, it uses primal solver");
 
 DEFINE_bool(visualize, true,
             "If true, the simulation will publish messages for Drake "
@@ -92,6 +95,14 @@ using drake::multibody::ContactModel;
 using drake::multibody::CoulombFriction;
 using drake::multibody::MultibodyPlant;
 using drake::multibody::SpatialVelocity;
+
+using drake::multibody::contact_solvers::internal::UnconstrainedPrimalSolver;
+using drake::multibody::contact_solvers::internal::
+    UnconstrainedPrimalSolverIterationMetrics;
+using drake::multibody::contact_solvers::internal::
+    UnconstrainedPrimalSolverParameters;
+using drake::multibody::contact_solvers::internal::
+    UnconstrainedPrimalSolverStats;
 
 int do_main() {
   systems::DiagramBuilder<double> builder;
@@ -150,6 +161,18 @@ int do_main() {
   DRAKE_DEMAND(plant.num_velocities() == 6);
   DRAKE_DEMAND(plant.num_positions() == 7);
 
+  UnconstrainedPrimalSolver<double>* primal_solver{nullptr};
+  if (FLAGS_use_primal_solver) {
+    primal_solver = &plant.set_contact_solver(
+        std::make_unique<UnconstrainedPrimalSolver<double>>());
+    UnconstrainedPrimalSolverParameters params;
+    params.abs_tolerance = 1.0e-6;
+    params.rel_tolerance = 1.0e-4;
+    params.max_iterations = 100;
+    params.ls_alpha_max = 1.5;
+    primal_solver->set_parameters(params);    
+  }
+
   // Sanity check on the availability of the optional source id before using it.
   DRAKE_DEMAND(!!plant.get_source_id());
 
@@ -196,8 +219,49 @@ int do_main() {
   fmt::print("Simulator::AdvanceTo() wall clock time: {:.4g} seconds.\n",
              wall_clock_time);
 
-  systems::PrintSimulatorStatistics(*simulator);
+  // Print primal solver stats.
+  if (FLAGS_use_primal_solver) {
+    const std::vector<UnconstrainedPrimalSolverStats>& stats_hist =
+        primal_solver->get_stats_history();
+    std::ofstream file("sphere_log.dat");
+    file << fmt::format(
+        "{:>18} {:>18} {:>18} {:>18} {:>18} {:>18}  {:>18}  {:>18}  {:>18}  "
+        "{:>18} {:>18} {:>18} {:>18} {:>18} {:>18} {:>18} {:>18}\n",
+        "num_contacts", "num_iters", "total_ls_iters", "vc_error_max_norm",
+        "v_error_max_norm", "gamma_error_max_norm", "ls_alpha (last)",
+        "ls_alpha (mean)", "∇ℓ", "H⁻¹∇ℓ(v)", "rcond", "total_time",
+        "preproc_time", "assembly_time", "linear_solve_time", "ls_time",
+        "max_ls_iters");
+    for (const auto& s : stats_hist) {
+      const auto& metrics = s.iteration_metrics.back();
+      const int iters = s.iteration_metrics.size();
+      int total_ls_iters = 0;
+      int max_ls_iters = 0;
+      double ls_alpha_mean = 0.0;
+      // Compute some totals and averages.
+      for (const auto& m : s.iteration_metrics) {
+        total_ls_iters += m.ls_iters;
+        ls_alpha_mean += m.ls_alpha;
+        max_ls_iters = std::max(max_ls_iters, m.ls_iters);
+      }
+      ls_alpha_mean /= iters;
 
+      file << fmt::format(
+          "{:d} {:d} {:d} {:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g} "
+          "{:18.6g} {:18.6g} "
+          "{:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g} {:d}\n",
+          s.num_contacts, iters, total_ls_iters, metrics.vc_error_max_norm,
+          metrics.v_error_max_norm, metrics.gamma_error_max_norm,
+          metrics.ls_alpha, ls_alpha_mean, metrics.grad_ell_max_norm,
+          metrics.search_direction_max_norm, metrics.rcond, s.total_time,
+          s.preproc_time, s.assembly_time, s.linear_solver_time,
+          s.line_search_time, max_ls_iters);
+    }
+    file.close();
+  }
+
+
+  systems::PrintSimulatorStatistics(*simulator);
   return 0;
 }
 

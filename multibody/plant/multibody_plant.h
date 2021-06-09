@@ -807,6 +807,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     FinalizePlantOnly();
   }
 
+  ~MultibodyPlant();
+
   /// Creates a rigid body with the provided name and spatial inertia.  This
   /// method returns a constant reference to the body just added, which will
   /// remain valid for the lifetime of `this` %MultibodyPlant.
@@ -1571,6 +1573,15 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// The default contact model is ContactModel::kPointContactOnly.
   /// @throws std::exception iff called post-finalize.
   void set_contact_model(ContactModel model);
+
+  void set_use_sdf_query(bool use_sdf_query) { use_sdf_query_ = use_sdf_query; }
+
+  void set_sdf_distance_threshold(double distance_threshold) {
+    sdf_distance_threshold_ = distance_threshold;
+  }
+
+  void set_theta_q(double theta) { theta_q_ = theta; }
+  void set_theta_v(double theta) { theta_v_ = theta; }
 
 #ifndef DRAKE_DOXYGEN_CXX
   // (Experimental) set_contact_solver() should only be called by advanced
@@ -2430,6 +2441,26 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
                     context);
         return data.point_pairs;
       }
+      default:
+        throw std::logic_error(
+            "Attempting to evaluate point pair contact for contact model that "
+            "doesn't use it");
+    }
+  }
+
+  const std::vector<geometry::SignedDistancePair<T>>&
+  EvalSignedDistancePairwise(const systems::Context<T>& context) const {
+    DRAKE_MBP_THROW_IF_NOT_FINALIZED();
+    switch (contact_model_) {
+      case ContactModel::kPointContactOnly:
+        return this->get_cache_entry(cache_indexes_.sdf_pairs)
+            .template Eval<std::vector<geometry::SignedDistancePair<T>>>(
+                context);
+      case ContactModel::kHydroelasticWithFallback: {
+        return this->get_cache_entry(cache_indexes_.sdf_pairs)
+            .template Eval<std::vector<geometry::SignedDistancePair<T>>>(
+                context);
+      }          
       default:
         throw std::logic_error(
             "Attempting to evaluate point pair contact for contact model that "
@@ -3965,6 +3996,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     systems::CacheIndex generalized_contact_forces_continuous;
     systems::CacheIndex hydro_fallback;
     systems::CacheIndex point_pairs;
+    systems::CacheIndex sdf_pairs;
     systems::CacheIndex spatial_contact_forces_continuous;
     systems::CacheIndex contact_solver_results;
   };
@@ -4037,14 +4069,28 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     const geometry::ProximityProperties* prop =
         inspector.GetProximityProperties(id);
     DRAKE_DEMAND(prop != nullptr);
+
+    // TODO: clean this.
+    // ContactSolver uses linear model of damping.
+    T dissipation = 0;
+    if (contact_solver_) {
+      const T default_linear_damping =
+          penalty_method_contact_parameters_.linear_damping;
+      dissipation = prop->template GetPropertyOrDefault<T>(
+          geometry::internal::kMaterialGroup,
+          geometry::internal::kLinearDissipation, default_linear_damping);
+    } else {
+      dissipation = prop->template GetPropertyOrDefault<T>(
+          geometry::internal::kMaterialGroup,
+          geometry::internal::kHcDissipation,
+          penalty_method_contact_parameters_.dissipation);
+    }
+
     return std::pair(prop->template GetPropertyOrDefault<T>(
                          geometry::internal::kMaterialGroup,
                          geometry::internal::kPointStiffness,
                          penalty_method_contact_parameters_.geometry_stiffness),
-                     prop->template GetPropertyOrDefault<T>(
-                         geometry::internal::kMaterialGroup,
-                         geometry::internal::kHcDissipation,
-                         penalty_method_contact_parameters_.dissipation));
+                     dissipation);
   }
 
   // Helper to acquire per-geometry Coulomb friction coefficients from
@@ -4411,6 +4457,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   std::vector<geometry::PenetrationAsPointPair<T>>
   CalcPointPairPenetrations(const systems::Context<T>& context) const;
 
+  std::vector<geometry::SignedDistancePair<T>>
+  CalcSignedDistancePairwise(const systems::Context<T>& context) const;
+
   // This helper method combines the friction properties for each pair of
   // contact points in `point_pairs` according to
   // CalcContactFrictionFromSurfaceProperties().
@@ -4547,12 +4596,15 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       contact_solvers::internal::ContactSolverResults<T>* results) const;
 
   // Helper to invoke ContactSolver when one is available.
+#if 0  
   void CallContactSolver(
-      const T& time0, const VectorX<T>& v0, const MatrixX<T>& M0,
-      const VectorX<T>& minus_tau, const VectorX<T>& phi0, const MatrixX<T>& Jc,
-      const VectorX<T>& stiffness, const VectorX<T>& damping,
-      const VectorX<T>& mu,
+      const drake::systems::Context<T>& context0, const T& time0,
+      const VectorX<T>& v0, const MatrixX<T>& M0, const VectorX<T>& minus_tau,
+      const VectorX<T>& phi0, const MatrixX<T>& Jc, const VectorX<T>& stiffness,
+      const VectorX<T>& damping, const VectorX<T>& mu,
+      const std::vector<internal::DiscreteContactPair<T>>& contact_pairs,
       contact_solvers::internal::ContactSolverResults<T>* results) const;
+#endif
 
   // Geometry source identifier for this system to interact with geometry
   // system. It is made optional for plants that do not register geometry
@@ -4571,7 +4623,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   struct ContactByPenaltyMethodParameters {
     // Penalty method coefficients used to compute contact forces.
     double geometry_stiffness{0};
-    double dissipation{0};
+    double dissipation{0};  // Hunt & Crossley model, in [s/m].
+    double linear_damping{0};  // Linear model, in [Ns/m].
     // An estimated time scale in which objects come to a relative stop during
     // contact.
     double time_scale{-1.0};
@@ -4791,6 +4844,14 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Vector (with size num_bodies()) of default poses for each body. This is
   // only used if Body::is_floating() is true.
   std::vector<math::RigidTransform<double>> X_WB_default_list_;
+
+  // (Experimental). If true, we use the SDF query instead of penetration query.
+  bool use_sdf_query_{false};
+  double sdf_distance_threshold_{0.5};
+
+  // Theta method parameter.
+  double theta_q_{1.0};
+  double theta_v_{1.0};
 };
 
 /// @cond
@@ -4919,10 +4980,22 @@ struct AddMultibodyPlantSceneGraphResult final {
 template <>
 typename MultibodyPlant<symbolic::Expression>::SceneGraphStub&
 MultibodyPlant<symbolic::Expression>::member_scene_graph();
+
 template <>
 std::vector<geometry::PenetrationAsPointPair<symbolic::Expression>>
 MultibodyPlant<symbolic::Expression>::CalcPointPairPenetrations(
-    const systems::Context<symbolic::Expression>&) const;
+    const systems::Context<symbolic::Expression>&) const;    
+
+template <>
+std::vector<geometry::SignedDistancePair<double>>
+MultibodyPlant<double>::CalcSignedDistancePairwise(
+    const systems::Context<double>&) const;
+
+template <>
+void MultibodyPlant<symbolic::Expression>::CalcContactResultsDiscretePointPair(
+    const systems::Context<symbolic::Expression>&,
+    ContactResults<symbolic::Expression>*) const;
+
 template <>
 std::vector<CoulombFriction<double>>
 MultibodyPlant<symbolic::Expression>::CalcCombinedFrictionCoefficients(
@@ -4947,15 +5020,19 @@ template <>
 void MultibodyPlant<symbolic::Expression>::CalcHydroelasticWithFallback(
     const systems::Context<symbolic::Expression>&,
     internal::HydroelasticFallbackCacheData<symbolic::Expression>*) const;
+#if 0    
 template <>
 void MultibodyPlant<symbolic::Expression>::CallContactSolver(
+    const drake::systems::Context<symbolic::Expression>&,
     const symbolic::Expression&, const VectorX<symbolic::Expression>&,
     const MatrixX<symbolic::Expression>&, const VectorX<symbolic::Expression>&,
     const VectorX<symbolic::Expression>&, const MatrixX<symbolic::Expression>&,
     const VectorX<symbolic::Expression>&, const VectorX<symbolic::Expression>&,
     const VectorX<symbolic::Expression>&,
+    const std::vector<internal::DiscreteContactPair<symbolic::Expression>>&,
     contact_solvers::internal::ContactSolverResults<symbolic::Expression>*)
     const;
+#endif    
 #endif
 
 }  // namespace multibody

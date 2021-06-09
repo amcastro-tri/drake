@@ -38,6 +38,8 @@ struct DiscreteContactPair {
   T stiffness{0.0};
   /* The effective damping of the contact pair. */
   T damping{0.0};
+  /* Linear model of damping. */
+  T linear_damping{0.0};
 };
 
 }  // namespace internal

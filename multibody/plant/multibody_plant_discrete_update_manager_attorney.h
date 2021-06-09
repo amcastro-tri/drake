@@ -26,6 +26,37 @@ class MultibodyPlantDiscreteUpdateManagerAttorney {
   static const MultibodyTree<T>& internal_tree(const MultibodyPlant<T>& plant) {
     return plant.internal_tree();
   }
+
+  static void AddInForcesFromInputPorts(
+      const MultibodyPlant<T>& plant, const drake::systems::Context<T>& context,
+      MultibodyForces<T>* forces) {
+    plant.AddInForcesFromInputPorts(context, forces);
+  }
+
+  static const internal::ContactJacobians<T>& EvalContactJacobians(
+      const MultibodyPlant<T>& plant, const systems::Context<T>& context) {
+    return plant.EvalContactJacobians(context);
+  }
+
+  static std::vector<CoulombFriction<double>> CalcCombinedFrictionCoefficients(
+    const MultibodyPlant<T>& plant, 
+      const drake::systems::Context<T>& context,
+      const std::vector<internal::DiscreteContactPair<T>>& contact_pairs) {
+    return plant.CalcCombinedFrictionCoefficients(context, contact_pairs);
+  }
+
+  static std::vector<internal::DiscreteContactPair<T>> CalcDiscreteContactPairs(
+    const MultibodyPlant<T>& plant, 
+      const systems::Context<T>& context) {
+    return plant.CalcDiscreteContactPairs(context);
+  }
+
+  static const contact_solvers::internal::ContactSolverResults<T>&
+  EvalContactSolverResults(const MultibodyPlant<T>& plant,
+                           const systems::Context<T>& context) {
+    return plant.EvalContactSolverResults(context);
+  }
+
 };
 }  // namespace internal
 }  // namespace multibody

@@ -114,9 +114,9 @@ class Joint : public MultibodyElement<Joint, T, JointIndex> {
         const VectorX<double>& vel_lower_limits,
         const VectorX<double>& vel_upper_limits,
         const VectorX<double>& acc_lower_limits,
-        const VectorX<double>& acc_upper_limits)
-      : MultibodyElement<Joint, T, JointIndex>(
-        frame_on_child.model_instance()),
+        const VectorX<double>& acc_upper_limits,
+        const VectorX<double>& damping = VectorX<double>())
+      : MultibodyElement<Joint, T, JointIndex>(frame_on_child.model_instance()),
         name_(name),
         frame_on_parent_(frame_on_parent),
         frame_on_child_(frame_on_child),
@@ -125,7 +125,8 @@ class Joint : public MultibodyElement<Joint, T, JointIndex> {
         vel_lower_limits_(vel_lower_limits),
         vel_upper_limits_(vel_upper_limits),
         acc_lower_limits_(acc_lower_limits),
-        acc_upper_limits_(acc_upper_limits) {
+        acc_upper_limits_(acc_upper_limits),
+        damping_(damping) {
     // TODO(Mitiguy) Per discussion in PR# 13961 and issues #12789 and #13040,
     //  consider changing frame F to frame Jp and changing frame M to frame Jc.
     // Notice `this` joint references `frame_on_parent` and `frame_on_child` and
@@ -145,6 +146,13 @@ class Joint : public MultibodyElement<Joint, T, JointIndex> {
 
     // intialize the default positions.
     default_positions_ = VectorX<double>::Zero(num_positions);
+
+    // No damping by default.
+    if (damping_.size()==0) {
+      damping_.resize(vel_lower_limits.size());
+      damping_.setZero();
+//      damping_ = VectorX<double>::Zero(vel_lower_limits.size());
+    }
   }
 
   virtual ~Joint() {}
@@ -274,6 +282,8 @@ class Joint : public MultibodyElement<Joint, T, JointIndex> {
     DRAKE_DEMAND(forces->CheckHasRightSizeForModel(this->get_parent_tree()));
     DoAddInDamping(context, forces);
   }
+
+  const VectorX<double>& damping() const { return damping_; }
 
   /// @name Methods to get and set the limits of `this` joint. For position
   /// limits, the layout is the same as the generalized position's. For
@@ -612,6 +622,8 @@ class Joint : public MultibodyElement<Joint, T, JointIndex> {
 
   // Joint default position. This vector has zero size for joints with no state.
   VectorX<double> default_positions_;
+
+  VectorX<double> damping_;
 
   // The Joint<T> implementation:
   std::unique_ptr<JointImplementation> implementation_;

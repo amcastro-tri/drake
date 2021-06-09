@@ -4,6 +4,7 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <fstream>
 #include <set>
 #include <stdexcept>
 #include <vector>
@@ -27,6 +28,16 @@
 #include "drake/multibody/tree/prismatic_joint.h"
 #include "drake/multibody/tree/revolute_joint.h"
 #include "drake/multibody/triangle_quadrature/gaussian_triangle_quadrature_rule.h"
+#include "drake/multibody/plant/contact_permutation_utils.h"
+#include "drake/multibody/contact_solvers/block_sparse_matrix.h"
+#include "fmt/format.h"
+
+#include <iostream>
+//#define PRINT_VAR(a) (void)a;
+//#define PRINT_VARn(a) (void)a;
+
+#define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
 
 namespace drake {
 namespace multibody {
@@ -46,6 +57,7 @@ using geometry::GeometryFrame;
 using geometry::GeometryId;
 using geometry::GeometryInstance;
 using geometry::PenetrationAsPointPair;
+using geometry::SignedDistancePair;
 using geometry::ProximityProperties;
 using geometry::render::RenderLabel;
 using geometry::SceneGraph;
@@ -70,6 +82,7 @@ using systems::InputPort;
 using systems::InputPortIndex;
 using systems::OutputPortIndex;
 
+using contact_solvers::internal::BlockSparseMatrix;
 namespace internal {
 // This is a helper struct used to estimate the parameters used in the penalty
 // method to enforce joint limits.
@@ -278,6 +291,9 @@ MultibodyPlant<T>::MultibodyPlant(
   multibody_graph_.AddBody(world_body().name(), world_body().model_instance());
   DeclareSceneGraphPorts();
 }
+
+template <typename T>
+MultibodyPlant<T>::~MultibodyPlant() {}
 
 template <typename T>
 std::string MultibodyPlant<T>::GetTopologyGraphvizString() const {
@@ -1096,6 +1112,11 @@ void MultibodyPlant<T>::EstimatePointContactParameters(
   penalty_method_contact_parameters_.dissipation = dissipation;
   // The time scale can be requested to hint the integrator's time step.
   penalty_method_contact_parameters_.time_scale = time_scale;
+
+  // For linear dissipation, we'll use a value for critically damped
+  // oscillations.
+  penalty_method_contact_parameters_.linear_damping =
+      2.0 / omega * penalty_method_contact_parameters_.geometry_stiffness;
 }
 
 template <typename T>
@@ -1117,6 +1138,26 @@ MultibodyPlant<symbolic::Expression>::CalcPointPairPenetrations(
     const systems::Context<symbolic::Expression>&) const {
   throw std::logic_error(
       "This method doesn't support T = symbolic::Expression.");
+}
+
+template <>
+std::vector<SignedDistancePair<double>>
+MultibodyPlant<double>::CalcSignedDistancePairwise(
+    const systems::Context<double>& context) const {
+  if (num_collision_geometries() > 0) {
+    const auto& query_object = EvalGeometryQueryInput(context);
+    return query_object.ComputeSignedDistancePairwiseClosestPoints(
+        sdf_distance_threshold_);
+  }
+  return std::vector<SignedDistancePair<double>>();
+}
+
+template <typename T>
+std::vector<SignedDistancePair<T>>
+MultibodyPlant<T>::CalcSignedDistancePairwise(
+    const systems::Context<T>&) const {
+  throw std::domain_error(fmt::format("This method doesn't support T = {}.",
+                                      NiceTypeName::Get<T>()));
 }
 
 template <>
@@ -1379,6 +1420,14 @@ void MultibodyPlant<T>::CalcContactResultsDiscrete(
   }
 }
 
+template <>
+void MultibodyPlant<symbolic::Expression>::CalcContactResultsDiscretePointPair(
+    const systems::Context<symbolic::Expression>&,
+    ContactResults<symbolic::Expression>*) const {
+  throw std::logic_error(
+      "This method doesn't support T = symbolic::Expression.");
+}
+
 template <typename T>
 void MultibodyPlant<T>::CalcContactResultsDiscretePointPair(
     const systems::Context<T>& context,
@@ -1387,8 +1436,10 @@ void MultibodyPlant<T>::CalcContactResultsDiscretePointPair(
   DRAKE_DEMAND(contact_results != nullptr);
   if (num_collision_geometries() == 0) return;
 
-  const std::vector<PenetrationAsPointPair<T>>& point_pairs =
-      EvalPointPairPenetrations(context);
+  const int num_contacts = use_sdf_query_
+                               ? EvalSignedDistancePairwise(context).size()
+                               : EvalPointPairPenetrations(context).size();
+
   const std::vector<RotationMatrix<T>>& R_WC_set =
       EvalContactJacobians(context).R_WC_list;
   const contact_solvers::internal::ContactSolverResults<T>& solver_results =
@@ -1401,41 +1452,83 @@ void MultibodyPlant<T>::CalcContactResultsDiscretePointPair(
 
   // The strict equality is true only when point contact is used alone.
   // Otherwise there are quadrature points in addition to the point pairs.
-  const int num_contacts = point_pairs.size();
   DRAKE_DEMAND(fn.size() >= num_contacts);
   DRAKE_DEMAND(ft.size() >= 2 * num_contacts);
   DRAKE_DEMAND(vn.size() >= num_contacts);
   DRAKE_DEMAND(vt.size() >= 2 * num_contacts);
 
   contact_results->Clear();
-  for (size_t icontact = 0; icontact < point_pairs.size(); ++icontact) {
-    const auto& pair = point_pairs[icontact];
-    const GeometryId geometryA_id = pair.id_A;
-    const GeometryId geometryB_id = pair.id_B;
 
-    const BodyIndex bodyA_index = geometry_id_to_body_index_.at(geometryA_id);
-    const BodyIndex bodyB_index = geometry_id_to_body_index_.at(geometryB_id);
+  if (use_sdf_query_) {
+    const auto& query_object = EvalGeometryQueryInput(context);
+    const auto& point_pairs = EvalSignedDistancePairwise(context);
+    for (int icontact = 0; icontact < num_contacts; ++icontact) {
+      const auto& pair = point_pairs[icontact];
+      const GeometryId geometryA_id = pair.id_A;
+      const GeometryId geometryB_id = pair.id_B;
 
-    const Vector3<T> p_WC = 0.5 * (pair.p_WCa + pair.p_WCb);
+      const BodyIndex bodyA_index = geometry_id_to_body_index_.at(geometryA_id);
+      const BodyIndex bodyB_index = geometry_id_to_body_index_.at(geometryB_id);
 
-    const RotationMatrix<T>& R_WC = R_WC_set[icontact];
+      // The the poses and spatial velocities of bodies A and B.
+      const RigidTransform<T>& X_WA = query_object.GetPoseInWorld(pair.id_A);
+      const RigidTransform<T>& X_WB = query_object.GetPoseInWorld(pair.id_B);
+      const Vector3<T> p_WCa = X_WA * pair.p_ACa;
+      const Vector3<T> p_WCb = X_WB * pair.p_BCb;
+      const Vector3<T> p_WC = 0.5 * (p_WCa + p_WCb);
 
-    // Contact forces applied on B at contact point C.
-    const Vector3<T> f_Bc_C(ft(2 * icontact), ft(2 * icontact + 1),
-                            -fn(icontact));
-    const Vector3<T> f_Bc_W = R_WC * f_Bc_C;
+      const RotationMatrix<T>& R_WC = R_WC_set[icontact];
 
-    // Slip velocity.
-    const T slip = vt.template segment<2>(2 * icontact).norm();
+      // Contact forces applied on B at contact point C.
+      const Vector3<T> f_Bc_C(ft(2 * icontact), ft(2 * icontact + 1),
+                              -fn(icontact));
+      const Vector3<T> f_Bc_W = R_WC * f_Bc_C;
 
-    // Separation velocity in the normal direction.
-    const T separation_velocity = vn(icontact);
+      // Slip velocity.
+      const T slip = vt.template segment<2>(2 * icontact).norm();
 
-    // Add pair info to the contact results.
-    contact_results->AddContactInfo({bodyA_index, bodyB_index, f_Bc_W, p_WC,
-                                     separation_velocity, slip, pair});
+      // Separation velocity in the normal direction.
+      const T separation_velocity = vn(icontact);
+
+      // Add pair info to the contact results.
+      geometry::PenetrationAsPointPair<T> penetration_pair{
+          pair.id_A, pair.id_B, p_WCa, p_WCb, pair.nhat_BA_W, -pair.distance};
+      contact_results->AddContactInfo({bodyA_index, bodyB_index, f_Bc_W, p_WC,
+                                       separation_velocity, slip,
+                                       penetration_pair});
+    }
+  } else {
+    const auto& point_pairs = EvalPointPairPenetrations(context);
+    for (int icontact = 0; icontact < num_contacts; ++icontact) {
+      const auto& pair = point_pairs[icontact];
+      const GeometryId geometryA_id = pair.id_A;
+      const GeometryId geometryB_id = pair.id_B;
+
+      const BodyIndex bodyA_index = geometry_id_to_body_index_.at(geometryA_id);
+      const BodyIndex bodyB_index = geometry_id_to_body_index_.at(geometryB_id);
+
+      const Vector3<T> p_WC = 0.5 * (pair.p_WCa + pair.p_WCb);
+
+      const RotationMatrix<T>& R_WC = R_WC_set[icontact];
+
+      // Contact forces applied on B at contact point C.
+      const Vector3<T> f_Bc_C(ft(2 * icontact), ft(2 * icontact + 1),
+                              -fn(icontact));
+      const Vector3<T> f_Bc_W = R_WC * f_Bc_C;
+
+      // Slip velocity.
+      const T slip = vt.template segment<2>(2 * icontact).norm();
+
+      // Separation velocity in the normal direction.
+      const T separation_velocity = vn(icontact);
+
+      // Add pair info to the contact results.
+      contact_results->AddContactInfo({bodyA_index, bodyB_index, f_Bc_W, p_WC,
+                                       separation_velocity, slip, pair});
+    }
   }
 }
+
 
 template <typename T>
 void MultibodyPlant<T>::CalcAndAddContactForcesByPenaltyMethod(
@@ -1873,6 +1966,8 @@ MultibodyPlant<T>::CalcDiscreteContactPairs(
     const systems::Context<T>& context) const {
   this->ValidateContext(context);
 
+#define __EXPERIMENTAL__USE_SDF_QUERY__
+
   if (num_collision_geometries() == 0) return {};
 
   // N.B. For discrete hydro we use a first order quadrature rule.
@@ -1900,7 +1995,9 @@ MultibodyPlant<T>::CalcDiscreteContactPairs(
     int num_point_pairs = 0;  // The number of point contact pairs.
     if (contact_model_ == ContactModel::kPointContactOnly ||
         contact_model_ == ContactModel::kHydroelasticWithFallback) {
-      num_point_pairs = EvalPointPairPenetrations(context).size();
+      num_point_pairs = use_sdf_query_
+                            ? EvalSignedDistancePairwise(context).size()
+                            : EvalPointPairPenetrations(context).size();
     }
 
     int num_quadrature_pairs = 0;
@@ -1924,23 +2021,55 @@ MultibodyPlant<T>::CalcDiscreteContactPairs(
 
     // Fill in the point contact pairs.
     if (num_point_pairs > 0) {
-      const std::vector<PenetrationAsPointPair<T>>& point_pairs =
-          EvalPointPairPenetrations(context);
-      for (const PenetrationAsPointPair<T>& pair : point_pairs) {
-        const auto [kA, dA] = GetPointContactParameters(pair.id_A, inspector);
-        const auto [kB, dB] = GetPointContactParameters(pair.id_B, inspector);
-        const auto [k, d] = CombinePointContactParameters(kA, kB, dA, dB);
-        const T phi0 = -pair.depth;
-        const T fn0 = k * pair.depth;
-        DRAKE_DEMAND(fn0 >= 0);  // it should be since depth >= 0.
-        // For now place contact point midway between Ca and Cb.
-        // TODO(amcastro-tri): Consider using stiffness weighted location of
-        // point C between Ca and Cb.
-        const Vector3<T> p_WC = 0.5 * (pair.p_WCa + pair.p_WCb);
-        contact_pairs.push_back(
-            {pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W, phi0, fn0, k, d});
-      }
-    }
+      if (use_sdf_query_) {
+        const std::vector<SignedDistancePair<T>>& point_pairs =
+            EvalSignedDistancePairwise(context);
+        for (const SignedDistancePair<T>& pair : point_pairs) {
+          const auto [kA, dA] = GetPointContactParameters(pair.id_A, inspector);
+          const auto [kB, dB] = GetPointContactParameters(pair.id_B, inspector);
+          const auto [k, d] = CombinePointContactParameters(kA, kB, dA, dB);
+          const T phi0 = pair.distance;
+          const T fn0 = -k * phi0;
+
+          // The the poses and spatial velocities of bodies A and B.
+          const RigidTransform<T>& X_WA =
+              query_object.GetPoseInWorld(pair.id_A);
+          const RigidTransform<T>& X_WB =
+              query_object.GetPoseInWorld(pair.id_B);
+          const Vector3<T> p_WCa = X_WA * pair.p_ACa;
+          const Vector3<T> p_WCb = X_WB * pair.p_BCb;
+          const Vector3<T> p_WC = 0.5 * (p_WCa + p_WCb);
+
+          // linear_damping is retrieved from kLinearDamping by
+          // GetPointContactParameters.
+          const T linear_damping = d;
+          contact_pairs.push_back({pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W,
+                                   phi0, fn0, k, d, linear_damping});
+        }
+      } else {
+        const std::vector<PenetrationAsPointPair<T>>& point_pairs =
+            EvalPointPairPenetrations(context);
+        for (const PenetrationAsPointPair<T>& pair : point_pairs) {
+          const auto [kA, dA] = GetPointContactParameters(pair.id_A, inspector);
+          const auto [kB, dB] = GetPointContactParameters(pair.id_B, inspector);
+          const auto [k, d] = CombinePointContactParameters(kA, kB, dA, dB);
+          const T phi0 = -pair.depth;
+          const T fn0 = k * pair.depth;
+
+          // DRAKE_DEMAND(fn0 >= 0);  // it should be since depth >= 0.
+          // For now place contact point midway between Ca and Cb.
+          // TODO(amcastro-tri): Consider using stiffness weighted location of
+          // point C between Ca and Cb.
+          const Vector3<T> p_WC = 0.5 * (pair.p_WCa + pair.p_WCb);
+
+          // linear_damping is retrieved from kLinearDamping by
+          // GetPointContactParameters.
+          const T linear_damping = d;
+          contact_pairs.push_back({pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W,
+                                   phi0, fn0, k, d, linear_damping});
+        }
+      }  // use_sdf_query_
+    } // num_point_pairs > 0
 
     // Append the Hydroelastics quadrature points.
     if (num_quadrature_pairs > 0) {
@@ -2050,14 +2179,20 @@ MultibodyPlant<T>::CalcDiscreteContactPairs(
               const Vector3<T> p_WQ =
                   mesh_W.CalcCartesianFromBarycentric(face, barycentric);
 
+              // phi < 0 when in penetration.
+              const T phi0 = -sign * p0 / grad_pres_W.dot(nhat_W);
+
               // N.B. Today 01/25/2021, Only TAMSI supports discrete
               // hydroelastics and uses the discrete force fn0 instead of the
               // distance function phi0. phi0 is only used in experimental
               // ContactSolver(s). Therefore we set phi0 to NaN since it is not
               // used by TAMSI.
-              const T nan_phi0 = std::numeric_limits<double>::quiet_NaN();
-              contact_pairs.push_back({s.id_M(), s.id_N(), p_WQ, nhat_W,
-                                       nan_phi0, fn0, k, dissipation});
+              //const T nan_phi0 = std::numeric_limits<double>::quiet_NaN();
+              using std::abs;
+              if (k > 0 && abs(phi0) < 0.1) {
+                contact_pairs.push_back({s.id_M(), s.id_N(), p_WQ, nhat_W, phi0,
+                                         fn0, k, dissipation, dissipation});
+              }
             }
           }
         }
@@ -2153,22 +2288,19 @@ void MultibodyPlant<T>::CalcContactSolverResults(
   VectorX<T> fn0(num_contacts);
   VectorX<T> stiffness(num_contacts);
   VectorX<T> damping(num_contacts);
+  VectorX<T> linear_damping(num_contacts);
   VectorX<T> phi0(num_contacts);
   for (int i = 0; i < num_contacts; ++i) {
     fn0[i] = contact_pairs[i].fn0;
     stiffness[i] = contact_pairs[i].stiffness;
     damping[i] = contact_pairs[i].damping;
+    linear_damping[i] = contact_pairs[i].linear_damping;
     phi0[i] = contact_pairs[i].phi0;
   }
 
-  if (contact_solver_ != nullptr) {
-    CallContactSolver(context0.get_time(), v0, M0, minus_tau, phi0,
-                      contact_jacobians.Jc, stiffness, damping, mu, results);
-  } else {
-    CallTamsiSolver(context0.get_time(), v0, M0, minus_tau, fn0,
-                    contact_jacobians.Jn, contact_jacobians.Jt, stiffness,
-                    damping, mu, results);
-  }
+  CallTamsiSolver(context0.get_time(), v0, M0, minus_tau, fn0,
+                  contact_jacobians.Jn, contact_jacobians.Jt, stiffness,
+                  damping, mu, results);
 }
 
 template <typename T>
@@ -2235,13 +2367,16 @@ void MultibodyPlant<T>::CallTamsiSolver(
   results->tau_contact = tamsi_solver_->get_generalized_contact_forces();
 }
 
+#if 0
 template <>
 void MultibodyPlant<symbolic::Expression>::CallContactSolver(
+    const drake::systems::Context<symbolic::Expression>&,
     const symbolic::Expression&, const VectorX<symbolic::Expression>&,
     const MatrixX<symbolic::Expression>&, const VectorX<symbolic::Expression>&,
     const VectorX<symbolic::Expression>&, const MatrixX<symbolic::Expression>&,
     const VectorX<symbolic::Expression>&, const VectorX<symbolic::Expression>&,
     const VectorX<symbolic::Expression>&,
+    const std::vector<internal::DiscreteContactPair<symbolic::Expression>>&,
     contact_solvers::internal::ContactSolverResults<symbolic::Expression>*)
     const {
   throw std::logic_error(
@@ -2250,20 +2385,194 @@ void MultibodyPlant<symbolic::Expression>::CallContactSolver(
 
 template <typename T>
 void MultibodyPlant<T>::CallContactSolver(
+    const drake::systems::Context<T>& context0,
     const T& time0, const VectorX<T>& v0, const MatrixX<T>& M0,
     const VectorX<T>& minus_tau, const VectorX<T>& phi0, const MatrixX<T>& Jc,
     const VectorX<T>& stiffness, const VectorX<T>& damping,
     const VectorX<T>& mu,
+    const std::vector<internal::DiscreteContactPair<T>>& contact_pairs,
     contact_solvers::internal::ContactSolverResults<T>* results) const {
-  // Tolerance larger than machine epsilon by an arbitrary factor. Just large
-  // enough so that entries close to machine epsilon, due to round-off errors,
-  // still get pruned.
-  const double kPruneTolerance = 20 * std::numeric_limits<double>::epsilon();
-  // TODO(amcastro-tri): Here MultibodyPlant should provide an actual O(n)
-  // operator per #12210.
-  const Eigen::SparseMatrix<T> Jc_sparse = Jc.sparseView(kPruneTolerance);
-  const contact_solvers::internal::SparseLinearOperator<T> Jc_op("Jc",
-                                                                 &Jc_sparse);
+
+  // Extract block diagonal mass matrix.
+  std::vector<std::vector<int>> velocity_permutation;
+  std::vector<int> body_to_tree_map;
+  const internal::MultibodyTreeTopology& topology =
+      internal_tree().get_topology();
+  internal::ComputeBfsToDfsPermutation(topology, &velocity_permutation,
+                                       &body_to_tree_map);
+  const BlockSparseMatrix<T> Mbs =
+      internal::ExtractBlockDiagonalMassMatrix(M0, velocity_permutation);
+
+  // Extract block diagonal Jacobian.
+  std::vector<SortedPair<int>> contacts;
+  const auto& query_object = EvalGeometryQueryInput(context0);
+  const geometry::SceneGraphInspector<T>& inspector = query_object.inspector();
+  for (const auto& pp : contact_pairs) {
+    const geometry::FrameId frameA = inspector.GetFrameId(pp.id_A);
+    const geometry::FrameId frameB = inspector.GetFrameId(pp.id_B);
+    const Body<T>* bodyA = GetBodyFromFrameId(frameA);
+    const Body<T>* bodyB = GetBodyFromFrameId(frameB);
+    DRAKE_DEMAND(bodyA != nullptr);
+    DRAKE_DEMAND(bodyB != nullptr);
+    const BodyIndex bodyA_index = bodyA->index();
+    const BodyIndex bodyB_index = bodyB->index();
+
+    const int treeA = body_to_tree_map[bodyA_index];
+    const int treeB = body_to_tree_map[bodyB_index];
+    // SceneGraph does not report collisions between anchored geometries.
+    // We verify this.
+    DRAKE_DEMAND(!(treeA < 0 && treeB < 0));
+    contacts.push_back({treeA, treeB});
+  }
+  const int num_trees = velocity_permutation.size();
+  std::vector<int> participating_trees;
+  const internal::ContactGraph graph =
+      internal::ComputeContactGraph(num_trees, contacts, &participating_trees);
+  const BlockSparseMatrix<T> Jc_blocks = ExtractBlockJacobian(
+      Jc, graph, velocity_permutation, participating_trees);
+
+  // Probably good for debugging.
+#if 0
+  // We expect the box-box patches to have 11 contact (when grid_size=3) since
+  // we have:
+  //  1. 9 spheres of the upper box vs. face of the bottom box.
+  //  2. sphere of bottom box with face of upper box.
+  //  3. sphere of bottom box with sphere of upper box.
+  PRINT_VAR(graph.patches.size());
+  for (const auto& p : graph.patches) {
+    PRINT_VAR(p.t1);
+    PRINT_VAR(p.t2);
+    PRINT_VEC(p.contacts);
+    for (int k : p.contacts) {
+      const auto& pp = point_pairs[k];
+      const geometry::FrameId frameA = inspector.GetFrameId(pp.id_A);
+      const geometry::FrameId frameB = inspector.GetFrameId(pp.id_B);
+      const auto& bodyA = *plant.GetBodyFromFrameId(frameA);
+      const auto& bodyB = *plant.GetBodyFromFrameId(frameB);
+      PRINT_VAR("(" + bodyA.name() + ", " + bodyB.name() + ")");
+    }
+  }
+#endif    
+
+
+  class JacobianOperator
+      : public contact_solvers::internal::LinearOperator<T> {
+   public:
+    JacobianOperator(
+        const std::string& name,
+        const std::vector<std::vector<int>>& velocity_permutation,
+        const internal::ContactGraph& graph,
+        const MatrixX<T>* Jc,
+        const BlockSparseMatrix<T>* Jc_blocks)
+        : contact_solvers::internal::LinearOperator<T>(name),
+          Jc_blocks_(Jc_blocks) {
+      DRAKE_DEMAND(Jc_blocks_ != nullptr);
+      Jc_sparse_ = Jc->sparseView(kPruneTolerance_);
+
+#if 0
+      // Copies block (p,t) from J int Jpt
+      auto copy_block = [&velocity_permutation, &patches](
+                            const MatrixX<T>& J, int p, int t,
+                            EigenPtr<MatrixX<T>> Jpt) {
+        const int rp = patches[p].contacts.size();
+        const int nt = velocity_permutation[t].size();
+        DRAKE_DEMAND(Jpt.rows() == 3 * rp);
+        DRAKE_DEMAND(Jpt.cols() == 3 * nt);
+        for (int kp = 0; kp < rp; ++kp) {  // local patch index.
+          const int k = patches[p].contacts[kp];
+          for (int vt = 0; vt < nt; ++vt) {  // local velocity index.
+            const int v = velocity_permutation[t][vt];
+            Jpt.block(3 * kp, vt, 3, 1) = Jc.block(3 * k, v, 3, 1);
+          }
+        }
+        return Jpt;
+      };
+
+      const auto& patches = graph.patches;
+      for (int p = 0; p < static_cast<int>(patches.size()); ++p) {
+        // Extract J_pt, unless t is the world.
+        const int t1 = patches[p].t1;
+        const int rp = patches[p].contacts.size();        
+        if (t1 >= 0) {
+          const int nt = velocity_permutation[t1].size();
+          auto Jpt = Jc_.block(3 * rp, nt);
+          J_blocks.PushBlock(p, t1, extract_block(p, t1));
+        }
+        const int t2 = patches[p].t2;
+        if (t2 >= 0) J_blocks.PushBlock(p, t2, extract_block(p, t2));
+      }
+#endif 
+
+      Jc_.resize(Jc->rows(), Jc->cols());
+      Jc_.setZero();
+
+      // We'll permute Jc.
+      int kp = 0;
+      for (const auto& p : graph.patches) {
+        for (int k : p.contacts) {
+
+          int v_start = 0;
+          for (int t = 0; t < static_cast<int>(velocity_permutation.size());
+               ++t) {
+            const auto& tp = velocity_permutation[t];
+            const int nt = tp.size();
+
+            // Copy block for tree tp.
+            // Skip if not part of the patch.
+            if (p.t1 == t || p.t2 == t) {
+              for (int vt = 0; vt < nt; ++vt) {
+                const int v = tp[vt];
+                Jc_.block(3 * kp, v_start + vt, 3, 1) =
+                    Jc->block(3 * k, v, 3, 1);
+              }
+            }
+
+            v_start += nt;
+          }
+
+          ++kp;
+        }
+      }
+
+    }
+
+    ~JacobianOperator() = default;
+
+    int rows() const { return Jc_.rows(); }
+    int cols() const { return Jc_.cols(); }
+
+   private:
+    void DoMultiply(const Eigen::Ref<const Eigen::SparseVector<T>>& x,
+                    Eigen::SparseVector<T>* y) const final {
+      *y = Jc_sparse_ * x;
+    }
+    void DoMultiply(const Eigen::Ref<const VectorX<T>>& x,
+                    VectorX<T>* y) const final {
+      *y = (Jc_) * x;
+    }
+
+    using contact_solvers::internal::LinearOperator<T>::DoAssembleMatrix;
+    void DoAssembleMatrix(MatrixX<T>* A) const final { *A = Jc_; }
+    void DoAssembleMatrix(Eigen::SparseMatrix<T>* A) const final {
+      *A = Jc_sparse_;
+    }
+    void DoAssembleMatrix(BlockSparseMatrix<T>* A) const final {
+      *A = *Jc_blocks_;
+    }
+
+    // Tolerance larger than machine epsilon by an arbitrary factor. Just large
+    // enough so that entries close to machine epsilon, due to round-off errors,
+    // still get pruned.
+    const double kPruneTolerance_{20 * std::numeric_limits<double>::epsilon()};
+    // TODO(amcastro-tri): Here MultibodyPlant should provide an actual O(n)
+    // operator per #12210.
+    Eigen::SparseMatrix<T> Jc_sparse_;
+
+    MatrixX<T> Jc_;
+    const BlockSparseMatrix<T>* Jc_blocks_{nullptr};
+  };
+  const JacobianOperator Jc_op("Jc", velocity_permutation, graph, &Jc,
+                               &Jc_blocks);
 
   class MassMatrixInverseOperator
       : public contact_solvers::internal::LinearOperator<T> {
@@ -2281,7 +2590,7 @@ void MultibodyPlant<T>::CallContactSolver(
     int rows() const { return nv_; }
     int cols() const { return nv_; }
 
-   private:
+   private:    
     void DoMultiply(const Eigen::Ref<const Eigen::SparseVector<T>>& x,
                     Eigen::SparseVector<T>* y) const final {
       tmp_ = VectorX<T>(x);
@@ -2297,6 +2606,67 @@ void MultibodyPlant<T>::CallContactSolver(
   };
   MassMatrixInverseOperator Minv_op("Minv", &M0);
 
+  class MassMatrixOperator
+      : public contact_solvers::internal::LinearOperator<T> {
+   public:
+    MassMatrixOperator(
+        const std::string& name,
+        const std::vector<std::vector<int>>& velocity_permutation,
+        const MatrixX<T>* M,
+        const contact_solvers::internal::BlockSparseMatrix<T>* Mbs)
+        : contact_solvers::internal::LinearOperator<T>(name), Mbs_(Mbs) {
+      DRAKE_DEMAND(Mbs != nullptr);
+      nv_ = M->rows();
+
+      // Permute M into Mt.
+      Mt_.resize(nv_, nv_);
+      Mt_.setZero();
+      int vt_start = 0;
+      for (const auto& tp : velocity_permutation) {
+        for (size_t vt_i = 0; vt_i < tp.size(); ++vt_i) {
+          const int v_i = tp[vt_i];
+          for (size_t vt_j = 0; vt_j < tp.size(); ++vt_j) {
+            const int v_j = tp[vt_j];
+            Mt_(vt_start + vt_i, vt_start + vt_j) = (*M)(v_i, v_j);
+          }
+        }
+        vt_start += tp.size();
+      }
+
+      // TODO(sherm1) Eliminate heap allocation.
+      tmp_.resize(nv_);
+    }
+    ~MassMatrixOperator() = default;
+
+    int rows() const { return nv_; }
+    int cols() const { return nv_; }
+
+   private:
+    void DoMultiply(const Eigen::Ref<const Eigen::SparseVector<T>>& x,
+                    Eigen::SparseVector<T>* y) const final {
+      tmp_ = VectorX<T>(x);
+      *y = ((Mt_) * tmp_).sparseView();
+    }
+    void DoMultiply(const Eigen::Ref<const VectorX<T>>& x,
+                    VectorX<T>* y) const final {
+      *y = (Mt_) * x;
+    }
+
+    using contact_solvers::internal::LinearOperator<T>::DoAssembleMatrix;
+    void DoAssembleMatrix(MatrixX<T>* A) const final { *A = Mt_; }
+
+    // Overload to assemble block sparse matrix.
+    void DoAssembleMatrix(contact_solvers::internal::BlockSparseMatrix<T>* A) const final {
+      *A = *Mbs_;
+    }
+
+    int nv_;
+    MatrixX<T> Mt_;
+    const contact_solvers::internal::BlockSparseMatrix<T>* Mbs_{nullptr};
+    mutable VectorX<T> tmp_;  // temporary workspace.
+  };    
+  MassMatrixOperator M_op("M", velocity_permutation, &M0, &Mbs);
+
   // Perform the "predictor" step, in the absence of contact forces. See
   // ContactSolver's class documentation for details.
   // TODO(amcastro-tri): here the predictor step could be implicit in tau so
@@ -2307,13 +2677,87 @@ void MultibodyPlant<T>::CallContactSolver(
   v_star *= -time_step();                // v_star = dt⋅M⁻¹⋅τ
   v_star += v0;                          // v_star = v₀ + dt⋅M⁻¹⋅τ
 
-  contact_solvers::internal::SystemDynamicsData<T> dynamics_data(&Minv_op,
-                                                                 &v_star);
+  // ==========================================================================
+  // ==========================================================================
+  // TODO: YOU NEED TO PERMUTE VECTOR HERE!!!
+  // - v_star
+  // - phi0
+  // - stiffness
+  // - damping
+  // - mu
+
+  // Permutes vector x in-place. 
+  // tmp will be used as a temporary.
+  auto permute_on_velocities = [&velocity_permutation](const VectorX<T>& x,
+                                                       bool forward = true) {
+    VectorX<T> x_perm = x;    
+    int v = 0;
+    for (const auto& tree_permutation : velocity_permutation) {
+      for (size_t vt = 0; vt < tree_permutation.size(); ++vt) {
+        if (forward) {
+          x_perm[v++] = x[tree_permutation[vt]];
+        } else {
+          x_perm[tree_permutation[vt]] = x[v++];
+        }
+      }
+    }
+
+    // From new to original.
+
+    return x_perm;
+  };
+
+  // Permutes vector x in-place. 
+  // tmp will be used as a temporary.
+  auto permute_on_contacts = [&graph](const VectorX<T>& x, bool forward = true,
+                                      int stride = 1) {
+    VectorX<T> x_perm = x;
+    int k_perm = 0;
+    for (const auto& p : graph.patches) {
+      for (int k : p.contacts) {
+        if (forward) {
+          x_perm.segment(stride * k_perm, stride) =
+              x.segment(stride * k, stride);
+        } else {
+          x_perm.segment(stride * k, stride) =
+              x.segment(stride * k_perm, stride);
+        }
+        ++k_perm;
+      }
+    }
+    return x_perm;
+  };
+
+  // TODO: remove heap allocations.
+  const VectorX<T> v_star_perm = permute_on_velocities(v_star);
+  const VectorX<T> phi0_perm = permute_on_contacts(phi0);
+  const VectorX<T> stiffness_perm = permute_on_contacts(stiffness);
+  const VectorX<T> damping_perm = permute_on_contacts(damping);
+  const VectorX<T> mu_perm = permute_on_contacts(mu);
+
+  // TODO: to test this is working, for now also permute M and Jc so they are
+  // consistent with the permuted vectors.
+
+  // Some solvers might use forward or inverse dynamics. We provide both.
+  contact_solvers::internal::SystemDynamicsData<T> dynamics_data(
+      &M_op, &Minv_op, &v_star_perm);
+
   contact_solvers::internal::PointContactData<T> contact_data(
-      &phi0, &Jc_op, &stiffness, &damping, &mu);
+      &phi0_perm, &Jc_op, &stiffness_perm, &damping_perm, &mu_perm);
   const contact_solvers::internal::ContactSolverStatus info =
       contact_solver_->SolveWithGuess(time_step(), dynamics_data, contact_data,
                                       v0, &*results);
+
+  // ==========================================================================
+  // ==========================================================================
+  // Permute "backwards" to the original ordering.
+  // TODO: avoid heap allocations.  
+  results->v_next = permute_on_velocities(results->v_next, false);
+  results->tau_contact = permute_on_velocities(results->tau_contact, false);
+  results->fn = permute_on_contacts(results->fn, false);
+  results->ft = permute_on_contacts(results->ft, false, 2);
+  results->vn = permute_on_contacts(results->vn, false);
+  results->vt = permute_on_contacts(results->vt, false, 2);
 
   if (info != contact_solvers::internal::ContactSolverStatus::kSuccess) {
     const std::string msg =
@@ -2326,6 +2770,7 @@ void MultibodyPlant<T>::CallContactSolver(
     throw std::runtime_error(msg);
   }
 }
+#endif
 
 template <typename T>
 void MultibodyPlant<T>::CalcGeneralizedContactForcesContinuous(
@@ -2525,9 +2970,10 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
   //   const VectorX<T>& v_next = solver_results.v_next;
   // to avoid additional vector operations.
   const VectorX<T>& v_next = v0 + time_step() * vdot;
+  const VectorX<T> v_theta = (1.0 - theta_v_) * v0 + theta_v_ * v_next;
 
   VectorX<T> qdot_next(this->num_positions());
-  MapVelocityToQDot(context0, v_next, &qdot_next);
+  MapVelocityToQDot(context0, v_theta, &qdot_next);
   VectorX<T> q_next = q0 + time_step() * qdot_next;
 
   VectorX<T> x_next(this->num_multibody_states());
@@ -2777,6 +3223,22 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
       },
       {this->configuration_ticket()});
   cache_indexes_.point_pairs = point_pairs_cache_entry.cache_index();
+
+  auto& sdf_pairs_cache_entry = this->DeclareCacheEntry(
+      std::string("SDF pairs."),
+      []() {
+        return AbstractValue::Make(
+            std::vector<geometry::SignedDistancePair<T>>());
+      },
+      [this](const systems::ContextBase& context_base,
+             AbstractValue* cache_value) {
+        auto& context = dynamic_cast<const Context<T>&>(context_base);
+        auto& sdf_pairs_cache = cache_value->get_mutable_value<
+            std::vector<geometry::SignedDistancePair<T>>>();
+        sdf_pairs_cache = this->CalcSignedDistancePairwise(context);
+      },
+      {this->configuration_ticket()});
+  cache_indexes_.sdf_pairs = sdf_pairs_cache_entry.cache_index();  
 
   // Cache entry for hydroelastic contact surfaces.
   auto& contact_surfaces_cache_entry = this->DeclareCacheEntry(

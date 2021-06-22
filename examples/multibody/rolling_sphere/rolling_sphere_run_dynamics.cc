@@ -1,6 +1,6 @@
 #include <chrono>
-#include <memory>
 #include <fstream>
+#include <memory>
 
 #include <gflags/gflags.h>
 
@@ -11,13 +11,14 @@
 #include "drake/geometry/scene_graph.h"
 #include "drake/lcm/drake_lcm.h"
 #include "drake/math/random_rotation.h"
+#include "drake/multibody/contact_solvers/unconstrained_primal_solver.h"
 #include "drake/multibody/math/spatial_algebra.h"
+#include "drake/multibody/plant/compliant_contact_computation_manager.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
 #include "drake/systems/framework/diagram_builder.h"
-#include "drake/multibody/contact_solvers/unconstrained_primal_solver.h"
 
 // Integration parameters.
 DEFINE_double(simulation_time, 2.0,
@@ -32,6 +33,10 @@ DEFINE_double(dissipation, 5.0,
               "For hydroelastic (and hybrid) contact, Hunt & Crossley "
               "dissipation, [s/m].");
 DEFINE_double(friction_coefficient, 0.3, "friction coefficient.");
+DEFINE_double(point_stiffness, 1.0e5, "Point contact stiffness, [N/n].");
+DEFINE_double(dissipation_rate, 1e-2,
+              "Linear dissipation model rate (for primal solver only), [s].");
+
 DEFINE_bool(rigid_ball, false,
             "If true, the ball is given a rigid hydroelastic representation "
             "(instead of the default soft value). Make sure you have the right "
@@ -83,10 +88,6 @@ namespace multibody {
 namespace bouncing_ball {
 namespace {
 
-using Eigen::AngleAxisd;
-using Eigen::Matrix3d;
-using Eigen::Vector3d;
-using Eigen::Vector4d;
 using drake::geometry::SceneGraph;
 using drake::geometry::SourceId;
 using drake::lcm::DrakeLcm;
@@ -95,14 +96,13 @@ using drake::multibody::ContactModel;
 using drake::multibody::CoulombFriction;
 using drake::multibody::MultibodyPlant;
 using drake::multibody::SpatialVelocity;
+using Eigen::AngleAxisd;
+using Eigen::Matrix3d;
+using Eigen::Vector3d;
+using Eigen::Vector4d;
 
+using drake::multibody::CompliantContactComputationManager;
 using drake::multibody::contact_solvers::internal::UnconstrainedPrimalSolver;
-using drake::multibody::contact_solvers::internal::
-    UnconstrainedPrimalSolverIterationMetrics;
-using drake::multibody::contact_solvers::internal::
-    UnconstrainedPrimalSolverParameters;
-using drake::multibody::contact_solvers::internal::
-    UnconstrainedPrimalSolverStats;
 
 int do_main() {
   systems::DiagramBuilder<double> builder;
@@ -111,10 +111,10 @@ int do_main() {
   scene_graph.set_name("scene_graph");
 
   // Plant's parameters.
-  const double radius = 0.05;   // m
-  const double mass = 0.1;      // kg
-  const double g = 9.81;        // m/s^2
-  const double z0 = FLAGS_z0;        // Initial height.
+  const double radius = 0.05;  // m
+  const double mass = 0.1;     // kg
+  const double g = 9.81;       // m/s^2
+  const double z0 = FLAGS_z0;  // Initial height.
   const CoulombFriction<double> coulomb_friction(
       FLAGS_friction_coefficient /* static friction */,
       FLAGS_friction_coefficient /* dynamic friction */);
@@ -161,16 +161,32 @@ int do_main() {
   DRAKE_DEMAND(plant.num_velocities() == 6);
   DRAKE_DEMAND(plant.num_positions() == 7);
 
-  UnconstrainedPrimalSolver<double>* primal_solver{nullptr};
   if (FLAGS_use_primal_solver) {
-    primal_solver = &plant.set_contact_solver(
-        std::make_unique<UnconstrainedPrimalSolver<double>>());
-    UnconstrainedPrimalSolverParameters params;
-    params.abs_tolerance = 1.0e-6;
-    params.rel_tolerance = 1.0e-4;
-    params.max_iterations = 100;
-    params.ls_alpha_max = 1.5;
-    primal_solver->set_parameters(params);    
+    plant.set_discrete_update_manager(
+        std::make_unique<CompliantContactComputationManager<double>>(
+            std::make_unique<UnconstrainedPrimalSolver<double>>()));
+
+    // Set contact parameters supported by the solver.
+    const auto& inspector = scene_graph.model_inspector();
+    for (drake::multibody::BodyIndex body_index(0);
+         body_index < plant.num_bodies(); ++body_index) {
+      const auto& body = plant.get_body(body_index);
+      for (auto id : plant.GetCollisionGeometriesForBody(body)) {
+        const drake::geometry::ProximityProperties* old_props =
+            inspector.GetProximityProperties(id);
+        DRAKE_DEMAND(old_props);
+        drake::geometry::ProximityProperties new_props(*old_props);
+        new_props.AddProperty("material", "dissipation_rate",
+                              FLAGS_dissipation_rate);
+        // hunt_crossley_dissipation not supported by
+        // CompliantContactComputationManager.
+        new_props.RemoveProperty("material", "hunt_crossley_dissipation");
+        new_props.UpdateProperty("material", "point_contact_stiffness",
+                                 FLAGS_point_stiffness);
+        scene_graph.AssignRole(*plant.get_source_id(), id, new_props,
+                               drake::geometry::RoleAssign::kReplace);
+      }
+    }
   }
 
   // Sanity check on the availability of the optional source id before using it.
@@ -199,13 +215,12 @@ int do_main() {
   math::RotationMatrixd R_WB(math::RollPitchYawd(
       M_PI / 180.0 * Vector3<double>(FLAGS_roll, FLAGS_pitch, FLAGS_yaw)));
   math::RigidTransformd X_WB(R_WB, Vector3d(0.0, 0.0, z0));
-  plant.SetFreeBodyPose(
-      &plant_context, plant.GetBodyByName("Ball"), X_WB);
+  plant.SetFreeBodyPose(&plant_context, plant.GetBodyByName("Ball"), X_WB);
 
   const SpatialVelocity<double> V_WB(Vector3d(FLAGS_wx, FLAGS_wy, FLAGS_wz),
                                      Vector3d(FLAGS_vx, FLAGS_vy, FLAGS_vz));
-  plant.SetFreeBodySpatialVelocity(
-      &plant_context, plant.GetBodyByName("Ball"), V_WB);
+  plant.SetFreeBodySpatialVelocity(&plant_context, plant.GetBodyByName("Ball"),
+                                   V_WB);
 
   auto simulator =
       systems::MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
@@ -218,48 +233,6 @@ int do_main() {
       std::chrono::duration<double>(end - start).count();
   fmt::print("Simulator::AdvanceTo() wall clock time: {:.4g} seconds.\n",
              wall_clock_time);
-
-  // Print primal solver stats.
-  if (FLAGS_use_primal_solver) {
-    const std::vector<UnconstrainedPrimalSolverStats>& stats_hist =
-        primal_solver->get_stats_history();
-    std::ofstream file("sphere_log.dat");
-    file << fmt::format(
-        "{:>18} {:>18} {:>18} {:>18} {:>18} {:>18}  {:>18}  {:>18}  {:>18}  "
-        "{:>18} {:>18} {:>18} {:>18} {:>18} {:>18} {:>18} {:>18}\n",
-        "num_contacts", "num_iters", "total_ls_iters", "vc_error_max_norm",
-        "v_error_max_norm", "gamma_error_max_norm", "ls_alpha (last)",
-        "ls_alpha (mean)", "∇ℓ", "H⁻¹∇ℓ(v)", "rcond", "total_time",
-        "preproc_time", "assembly_time", "linear_solve_time", "ls_time",
-        "max_ls_iters");
-    for (const auto& s : stats_hist) {
-      const auto& metrics = s.iteration_metrics.back();
-      const int iters = s.iteration_metrics.size();
-      int total_ls_iters = 0;
-      int max_ls_iters = 0;
-      double ls_alpha_mean = 0.0;
-      // Compute some totals and averages.
-      for (const auto& m : s.iteration_metrics) {
-        total_ls_iters += m.ls_iters;
-        ls_alpha_mean += m.ls_alpha;
-        max_ls_iters = std::max(max_ls_iters, m.ls_iters);
-      }
-      ls_alpha_mean /= iters;
-
-      file << fmt::format(
-          "{:d} {:d} {:d} {:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g} "
-          "{:18.6g} {:18.6g} "
-          "{:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g} {:18.6g} {:d}\n",
-          s.num_contacts, iters, total_ls_iters, metrics.vc_error_max_norm,
-          metrics.v_error_max_norm, metrics.gamma_error_max_norm,
-          metrics.ls_alpha, ls_alpha_mean, metrics.grad_ell_max_norm,
-          metrics.search_direction_max_norm, metrics.rcond, s.total_time,
-          s.preproc_time, s.assembly_time, s.linear_solver_time,
-          s.line_search_time, max_ls_iters);
-    }
-    file.close();
-  }
-
 
   systems::PrintSimulatorStatistics(*simulator);
   return 0;

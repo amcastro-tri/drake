@@ -2020,9 +2020,8 @@ MultibodyPlant<T>::CalcDiscreteContactPairs(
 
           // linear_damping is retrieved from kLinearDamping by
           // GetPointContactParameters.
-          const T linear_damping = d;
           contact_pairs.push_back({pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W,
-                                   phi0, fn0, k, d, linear_damping});
+                                   phi0, fn0, k, d});
         }
       } else {
         const std::vector<PenetrationAsPointPair<T>>& point_pairs =
@@ -2042,9 +2041,8 @@ MultibodyPlant<T>::CalcDiscreteContactPairs(
 
           // linear_damping is retrieved from kLinearDamping by
           // GetPointContactParameters.
-          const T linear_damping = d;
           contact_pairs.push_back({pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W,
-                                   phi0, fn0, k, d, linear_damping});
+                                   phi0, fn0, k, d});
         }
       }  // use_sdf_query_
     } // num_point_pairs > 0
@@ -2169,7 +2167,7 @@ MultibodyPlant<T>::CalcDiscreteContactPairs(
               using std::abs;
               if (k > 0 && abs(phi0) < 0.1) {
                 contact_pairs.push_back({s.id_M(), s.id_N(), p_WQ, nhat_W, phi0,
-                                         fn0, k, dissipation, dissipation});
+                                         fn0, k, dissipation});
               }
             }
           }

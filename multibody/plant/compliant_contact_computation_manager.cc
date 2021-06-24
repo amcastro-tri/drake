@@ -309,7 +309,7 @@ void CompliantContactComputationManager<T>::CalcContactQuantities(
     for (int k : p.contacts) {
       (*phi0)[k_permuted] = contact_pairs[k].phi0;
       (*stiffness)[k_permuted] = contact_pairs[k].stiffness;
-      (*linear_damping)[k_permuted] = contact_pairs[k].linear_damping;
+      (*linear_damping)[k_permuted] = contact_pairs[k].damping;
       (*mu)[k_permuted] = combined_friction_pairs[k].dynamic_friction();
       ++k_permuted;
     }

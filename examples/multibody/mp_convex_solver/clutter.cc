@@ -112,8 +112,8 @@ DEFINE_double(rt_factor, 1.0e-3, "Rt_factor");
 DEFINE_double(abs_tol, 1.0e-6, "Absolute tolerance [m/s].");
 DEFINE_double(rel_tol, 1.0e-4, "Relative tolerance [-].");
 DEFINE_double(theta_q, 1.0, "Theta method for v in equation for q.");
-DEFINE_double(theta_qv, 1.0, "Theta method for q in equation for v.");
-DEFINE_double(theta_v, 1.0, "Theta method for v in equation for v.");
+DEFINE_double(theta_qv, 0.0, "Theta method for q in equation for v.");
+DEFINE_double(theta_v, 0.0, "Theta method for v in equation for v.");
 
 using drake::math::RigidTransform;
 using drake::math::RigidTransformd;

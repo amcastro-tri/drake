@@ -223,8 +223,8 @@ class CompliantContactComputationManager
   mutable std::vector<ContactManagerStats> stats_;
   mutable double total_time_{0};
   double theta_q_{1.0};   // how v is computed in the equation for q.
-  double theta_v_{1.0};   // how v is computed in the equation for v.
-  double theta_qv_{1.0};  // how q is computed in the equation for v.
+  double theta_v_{0.0};   // how v is computed in the equation for v.
+  double theta_qv_{0.0};  // how q is computed in the equation for v.
 };
 
 }  // namespace multibody

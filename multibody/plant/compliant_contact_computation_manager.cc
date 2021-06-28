@@ -243,8 +243,6 @@ void CompliantContactComputationManager<T>::
   if (k == max_iters) {
     throw std::runtime_error("Computation of x_star did not converge.");
   }
-  PRINT_VAR(k);
-  PRINT_VAR(err);
 
   // At this points xk stores xθ = θx + (1−θ)x₀.
   // xdot stores ẋ(xθ), evaluated at xθ.

@@ -40,7 +40,8 @@ void CompliantContactComputationManager<T>::ExtractModelInfo() {
   // Allocate some needed workspace.
   const int nv = plant().num_velocities();
   workspace_.M.resize(nv, nv);
-  workspace_.aux_plant_context_ = plant().CreateDefaultContext();
+  if (theta_v_ == 0 && theta_qv_ == 0)
+    workspace_.aux_plant_context_ = plant().CreateDefaultContext();
   tau_c_.resize(nv);
   tau_c_.setZero();
 }
@@ -348,10 +349,15 @@ void CompliantContactComputationManager<T>::DoCalcContactSolverResults(
   VectorX<T> participating_vstar(num_participating_velocities_);
   VectorX<T> v_guess(plant().num_velocities());
   VectorX<T> participating_v_guess(num_participating_velocities_);
-  systems::Context<T>& context_star = *workspace_.aux_plant_context_;
-  CalcVelocityUpdateWithoutConstraintsUsingThetaMethod(
-      context, &vstar, &participating_vstar, &v_guess, &participating_v_guess,
-      &context_star);
+  if (theta_v_ == 0 && theta_qv_ == 0) {
+    CalcVelocityUpdateWithoutConstraints(context, &vstar, &participating_vstar,
+                                         &v_guess, &participating_v_guess);
+  } else {
+    systems::Context<T>& context_star = *workspace_.aux_plant_context_;
+    CalcVelocityUpdateWithoutConstraintsUsingThetaMethod(
+        context, &vstar, &participating_vstar, &v_guess, &participating_v_guess,
+        &context_star);
+  }
   stats.vstar_time = timer.Elapsed();
 
   contact_solvers::internal::ContactSolverResults<T>
@@ -360,7 +366,12 @@ void CompliantContactComputationManager<T>::DoCalcContactSolverResults(
     timer.Reset();
     // Computes the lienarized dynamics matrix A in A(v-v*) = Jᵀγ.
     contact_solvers::internal::BlockSparseMatrix<T> A;
-    CalcLinearDynamics(context_star, &A);
+    if (theta_v_ == 0 && theta_qv_ == 0) {
+      CalcLinearDynamics(context, &A);
+    } else {
+      systems::Context<T>& context_star = *workspace_.aux_plant_context_;
+      CalcLinearDynamics(context_star, &A);
+    }
     stats.linear_dynamics_time = timer.Elapsed();
 
     timer.Reset();

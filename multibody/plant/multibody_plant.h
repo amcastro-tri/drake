@@ -4106,8 +4106,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
             inspector.GetProximityProperties(id)) {
       const T elastic_modulus =
           properties->GetPropertyOrDefault("material", "elastic_modulus", kInf);
-      const T dissipation_rate =
-          properties->template GetProperty<T>("material", "dissipation_rate");
+      const T dissipation_rate = properties->template GetPropertyOrDefault<T>(
+          geometry::internal::kMaterialGroup, "dissipation_rate", time_step());
       DRAKE_DEMAND(elastic_modulus > 0);
       DRAKE_DEMAND(dissipation_rate >= 0);
       return std::pair(elastic_modulus, dissipation_rate);

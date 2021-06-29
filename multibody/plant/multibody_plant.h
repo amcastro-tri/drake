@@ -807,8 +807,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     FinalizePlantOnly();
   }
 
-  ~MultibodyPlant();
-
   /// Creates a rigid body with the provided name and spatial inertia.  This
   /// method returns a constant reference to the body just added, which will
   /// remain valid for the lifetime of `this` %MultibodyPlant.
@@ -1579,9 +1577,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   void set_sdf_distance_threshold(double distance_threshold) {
     sdf_distance_threshold_ = distance_threshold;
   }
-
-  void set_theta_q(double theta) { theta_q_ = theta; }
-  void set_theta_v(double theta) { theta_v_ = theta; }
 
 #ifndef DRAKE_DOXYGEN_CXX
   // (Experimental) set_contact_solver() should only be called by advanced
@@ -4070,27 +4065,25 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
         inspector.GetProximityProperties(id);
     DRAKE_DEMAND(prop != nullptr);
 
+    const T stiffness = prop->template GetPropertyOrDefault<T>(
+        geometry::internal::kMaterialGroup, geometry::internal::kPointStiffness,
+        penalty_method_contact_parameters_.geometry_stiffness);
+
     // TODO: clean this.
     // ContactSolver uses linear model of damping.
     T dissipation = 0;
-    if (contact_solver_) {
-      const T default_linear_damping =
-          penalty_method_contact_parameters_.linear_damping;
+    if (discrete_update_manager_) {
+      const T default_linear_damping = time_step() * stiffness;
       dissipation = prop->template GetPropertyOrDefault<T>(
-          geometry::internal::kMaterialGroup,
-          geometry::internal::kLinearDissipation, default_linear_damping);
+          geometry::internal::kMaterialGroup, "linear_dissipation",
+          default_linear_damping);
     } else {
       dissipation = prop->template GetPropertyOrDefault<T>(
           geometry::internal::kMaterialGroup,
           geometry::internal::kHcDissipation,
           penalty_method_contact_parameters_.dissipation);
     }
-
-    return std::pair(prop->template GetPropertyOrDefault<T>(
-                         geometry::internal::kMaterialGroup,
-                         geometry::internal::kPointStiffness,
-                         penalty_method_contact_parameters_.geometry_stiffness),
-                     dissipation);
+    return std::pair(stiffness, dissipation);
   }
 
   // Helper to acquire per-geometry Coulomb friction coefficients from
@@ -4595,16 +4588,16 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const VectorX<T>& damping, const VectorX<T>& mu,
       contact_solvers::internal::ContactSolverResults<T>* results) const;
 
-  // Helper to invoke ContactSolver when one is available.
-#if 0  
+  // Helper to invoke ContactSolver when one is available. This method and
+  // `CallTamsiSolver()` are disjoint methods. One should only use one or the
+  // other, but not both.
   void CallContactSolver(
-      const drake::systems::Context<T>& context0, const T& time0,
-      const VectorX<T>& v0, const MatrixX<T>& M0, const VectorX<T>& minus_tau,
-      const VectorX<T>& phi0, const MatrixX<T>& Jc, const VectorX<T>& stiffness,
-      const VectorX<T>& damping, const VectorX<T>& mu,
-      const std::vector<internal::DiscreteContactPair<T>>& contact_pairs,
+      contact_solvers::internal::ContactSolver<T>* contact_solver,
+      const T& time0, const VectorX<T>& v0, const MatrixX<T>& M0,
+      const VectorX<T>& minus_tau, const VectorX<T>& phi0, const MatrixX<T>& Jc,
+      const VectorX<T>& stiffness, const VectorX<T>& damping,
+      const VectorX<T>& mu,
       contact_solvers::internal::ContactSolverResults<T>* results) const;
-#endif
 
   // Geometry source identifier for this system to interact with geometry
   // system. It is made optional for plants that do not register geometry
@@ -4623,8 +4616,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   struct ContactByPenaltyMethodParameters {
     // Penalty method coefficients used to compute contact forces.
     double geometry_stiffness{0};
-    double dissipation{0};  // Hunt & Crossley model, in [s/m].
-    double linear_damping{0};  // Linear model, in [Ns/m].
+    double dissipation{0};
     // An estimated time scale in which objects come to a relative stop during
     // contact.
     double time_scale{-1.0};
@@ -4848,10 +4840,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // (Experimental). If true, we use the SDF query instead of penetration query.
   bool use_sdf_query_{false};
   double sdf_distance_threshold_{0.5};
-
-  // Theta method parameter.
-  double theta_q_{1.0};
-  double theta_v_{1.0};
 };
 
 /// @cond
@@ -5020,19 +5008,16 @@ template <>
 void MultibodyPlant<symbolic::Expression>::CalcHydroelasticWithFallback(
     const systems::Context<symbolic::Expression>&,
     internal::HydroelasticFallbackCacheData<symbolic::Expression>*) const;
-#if 0    
 template <>
 void MultibodyPlant<symbolic::Expression>::CallContactSolver(
-    const drake::systems::Context<symbolic::Expression>&,
+    contact_solvers::internal::ContactSolver<symbolic::Expression>*,
     const symbolic::Expression&, const VectorX<symbolic::Expression>&,
     const MatrixX<symbolic::Expression>&, const VectorX<symbolic::Expression>&,
     const VectorX<symbolic::Expression>&, const MatrixX<symbolic::Expression>&,
     const VectorX<symbolic::Expression>&, const VectorX<symbolic::Expression>&,
     const VectorX<symbolic::Expression>&,
-    const std::vector<internal::DiscreteContactPair<symbolic::Expression>>&,
     contact_solvers::internal::ContactSolverResults<symbolic::Expression>*)
     const;
-#endif    
 #endif
 
 }  // namespace multibody

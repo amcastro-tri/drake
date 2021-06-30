@@ -20,15 +20,11 @@
 #include "drake/multibody/contact_solvers/mp_convex_solver.h"
 #include "drake/multibody/contact_solvers/mp_primal_solver.h"
 #include "drake/multibody/contact_solvers/unconstrained_primal_solver.h"
-#include "drake/multibody/plant/contact_results_to_lcm.h"
 #include "drake/multibody/plant/compliant_contact_computation_manager.h"
-#include "drake/solvers/conex_solver.h"
 #include "drake/solvers/gurobi_solver.h"
-#include "drake/solvers/ipopt_solver.h"
 #include "drake/solvers/mosek_solver.h"
-#include "drake/solvers/nlopt_solver.h"
 #include "drake/solvers/scs_solver.h"
-#include "drake/solvers/snopt_solver.h"
+#include "drake/multibody/plant/contact_results_to_lcm.h"
 #include "drake/systems/analysis/implicit_integrator.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
@@ -45,6 +41,7 @@ namespace examples {
 namespace mp_convex_solver {
 namespace {
 
+// Simulation parameters.
 DEFINE_double(simulation_time, 5.0, "Simulation duration in seconds");
 DEFINE_double(
     mbp_time_step, 1.0E-2,
@@ -52,34 +49,36 @@ DEFINE_double(
     "updates for the plant (modeled as a discrete system). "
     "If mbp_time_step = 0, the plant is modeled as a continuous system "
     "and no contact forces are displayed.  mbp_time_step must be >= 0.");
-
-// The following set of flags are only used in "continuous mode", i.e. when
-// mbp_time_step = 0.
-DEFINE_string(jacobian_scheme, "forward",
-              "Valid Jacobian computation schemes are: "
-              "'forward', 'central', or 'automatic'");
-DEFINE_bool(use_full_newton, true, "Use full Newton, otherwise quasi-Newton.");
+// For this demo, penetration_allowance and stiction_tolerance are only used
+// when either continuous integration or TAMSI are used.
 DEFINE_double(penetration_allowance, 1.0E-4, "Allowable penetration (meters).");
 DEFINE_double(stiction_tolerance, 1.0E-4,
               "Allowable drift speed during stiction (m/s).");
-DEFINE_bool(fixed_step, true, "Use fixed step integration. No error control.");
 
-// Problem parameters.
+// Physical parameters.
 DEFINE_double(density, 1000.0, "The density of all objects, in kg/m³.");
 DEFINE_double(friction_coefficient, 1.0,
               "All friction coefficients have this value.");
-DEFINE_bool(emulate_box_multicontact, true,
-            "Emulate multicontact by adding spheres to box geometries.");
-DEFINE_bool(enable_box_box_collision, false, "Enable box vs. box contact.");
-DEFINE_int32(objects_per_pile, 5, "Number of objects per pile.");
+DEFINE_double(stiffness, 1.0e5, "Point contact stiffness in N/m.");
+DEFINE_double(dissipation_rate, 0.01, "Linear dissipation rate in seconds.");
+
+// Contact geometry parameters.
+DEFINE_bool(
+    emulate_box_multicontact, true,
+    "Emulate multicontact by adding spheres to the faces of box geometries.");
 DEFINE_int32(
-    num_spheres, 3,
-    "Multi-contact emulation. We place num_sphere x num_spheres per face.");
+    num_spheres_per_face, 3,
+    "Multi-contact emulation. We place num_sphere x num_spheres_per_face on "
+    "each box face, when emulate_box_multicontact = true.");
+DEFINE_bool(enable_box_box_collision, false, "Enable box vs. box contact.");
+DEFINE_bool(add_box_corners, false,
+            "Adds collision points at the corners of each box.");
+
+// Scenario parameters.
+DEFINE_int32(objects_per_pile, 5, "Number of objects per pile.");
 DEFINE_double(dz, 0.15, "Initial distance between objects in the pile.");
 DEFINE_double(scale_factor, 1.0, "Multiplicative factor to generate the pile.");
 DEFINE_bool(add_sink_walls, true, "Adds wall of a sink model.");
-DEFINE_bool(add_corners, false,
-            "Adds collision points at the corners of each box.");
 
 // Visualization.
 DEFINE_bool(visualize, true, "Whether to visualize (true) or not (false).");
@@ -100,10 +99,11 @@ DEFINE_string(solver, "primal",
 DEFINE_bool(mp_primal_formulation, true,
             "For MpConvexSolver. Use primal formulation if true, otherwise use "
             "dual formulation.");
-DEFINE_bool(use_supernodal, true, "Use supernodal solver or dense solver.");
 DEFINE_bool(use_geodesic_solver, false, "Use supernodal solver or dense solver.");
+DEFINE_bool(use_supernodal, true,
+            "Use supernodal algebra (true) or dense algebra (false).");
 DEFINE_int32(verbosity_level, 0,
-             "Verbosity level of the primal solver. See "
+             "Verbosity level of the new primal solver. See "
              "UnconstrainedPrimalSolverParameters.");
 DEFINE_string(line_search, "exact",
               "Primal solver line-search. 'exact', 'inexact'");
@@ -111,9 +111,6 @@ DEFINE_double(ls_alpha_max, 1.5, "Maximum line search step.");
 DEFINE_double(rt_factor, 1.0e-3, "Rt_factor");
 DEFINE_double(abs_tol, 1.0e-6, "Absolute tolerance [m/s].");
 DEFINE_double(rel_tol, 1.0e-4, "Relative tolerance [-].");
-DEFINE_double(theta_q, 1.0, "Theta method for v in equation for q.");
-DEFINE_double(theta_qv, 0.0, "Theta method for q in equation for v.");
-DEFINE_double(theta_v, 0.0, "Theta method for v in equation for v.");
 
 using drake::math::RigidTransform;
 using drake::math::RigidTransformd;
@@ -148,7 +145,7 @@ const RigidBody<double>& AddBox(const std::string& name,
                                 const Vector3<double>& block_dimensions,
                                 double mass, double friction,
                                 const Vector4<double>& color,
-                                bool add_sphere_collision,
+                                bool emulate_box_multicontact,
                                 bool add_box_collision,
                                 MultibodyPlant<double>* plant) {
   // Ensure the block's dimensions are mass are positive.
@@ -171,17 +168,30 @@ const RigidBody<double>& AddBox(const std::string& name,
   plant->RegisterVisualGeometry(box, X_BG, geometry::Box(LBx, LBy, LBz),
                                 name + "_visual", color);
 
+  // When the TAMSI solver is used, we simply let MultibodyPlant estimate
+  // contact parameters based on penetration_allowance and stiction_tolerance.
+  geometry::ProximityProperties props;
+  if (!FLAGS_tamsi || FLAGS_mbp_time_step == 0) {
+    props.AddProperty(geometry::internal::kMaterialGroup,
+                      geometry::internal::kPointStiffness, FLAGS_stiffness);
+    props.AddProperty(geometry::internal::kMaterialGroup, "dissipation_rate",
+                      FLAGS_dissipation_rate);
+  }
+  props.AddProperty(geometry::internal::kMaterialGroup,
+                    geometry::internal::kFriction,
+                    CoulombFriction<double>(friction, friction));
+
   // Box's collision geometry is a solid box.
-  if (add_sphere_collision) {
+  if (emulate_box_multicontact) {
     const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
     const Vector4<double> red_50(1.0, 0.0, 0.0, 0.5);
-    const double radius_x = LBx / FLAGS_num_spheres / 2.0;
-    const double radius_y = LBy / FLAGS_num_spheres / 2.0;
-    const double radius_z = LBz / FLAGS_num_spheres / 2.0;
+    const double radius_x = LBx / FLAGS_num_spheres_per_face / 2.0;
+    const double radius_y = LBy / FLAGS_num_spheres_per_face / 2.0;
+    const double radius_z = LBz / FLAGS_num_spheres_per_face / 2.0;
     double dx = 2 * radius_x;
     double dy = 2 * radius_y;
     double dz = 2 * radius_z;
-    const int ns = FLAGS_num_spheres;
+    const int ns = FLAGS_num_spheres_per_face;
 
     auto add_sphere = [&](const std::string& sphere_name, double x, double y,
                           double z, double radius) {
@@ -193,9 +203,8 @@ const RigidBody<double>& AddBox(const std::string& name,
       // hydroelastic contact model. The accuracy of other collision
       // queries and signed distance queries are not guaranteed."
       // geometry::Ellipsoid shape(radius_x, radius_y, radius_z);
-      plant->RegisterCollisionGeometry(
-          box, X_BSpherei, shape, sphere_name,
-          CoulombFriction<double>(friction, friction));
+      plant->RegisterCollisionGeometry(box, X_BSpherei, shape, sphere_name,
+                                       props);
       if (FLAGS_visualize_multicontact) {
         plant->RegisterVisualGeometry(box, X_BSpherei, shape, sphere_name, red);
       }
@@ -203,7 +212,7 @@ const RigidBody<double>& AddBox(const std::string& name,
 
     // Add points (zero size spheres) at the corners to avoid spurious
     // interpentrations between boxes and the sink.
-    if (FLAGS_add_corners) {
+    if (FLAGS_add_box_corners) {
       add_sphere("c1", -LBx / 2, -LBy / 2, -LBz / 2, 0);
       add_sphere("c2", +LBx / 2, -LBy / 2, -LBz / 2, 0);
       add_sphere("c3", -LBx / 2, +LBy / 2, -LBz / 2, 0);
@@ -234,8 +243,7 @@ const RigidBody<double>& AddBox(const std::string& name,
 
   if (add_box_collision) {
     auto id = plant->RegisterCollisionGeometry(
-        box, X_BG, geometry::Box(LBx, LBy, LBz), name + "_collision",
-        CoulombFriction<double>(friction, friction));
+        box, X_BG, geometry::Box(LBx, LBy, LBz), name + "_collision", props);
     box_geometry_ids.push_back(id);
   }
   return box;
@@ -254,8 +262,10 @@ void AddSink(MultibodyPlant<double>* plant) {
   const Vector4<double> light_blue(0.5, 0.8, 1.0, 0.3);
   const Vector4<double> light_green(0., 0.7, 0.0, 1.0);
 
-  auto add_wall = [&](const std::string& name, const Vector3d& dimensions,
-                      const RigidTransformd& X_WB, const Vector4<double>& color) -> const RigidBody<double>& {
+  auto add_wall =
+      [&](const std::string& name, const Vector3d& dimensions,
+          const RigidTransformd& X_WB,
+          const Vector4<double>& color) -> const RigidBody<double>& {
     const auto& wall = AddBox(name, dimensions, wall_mass, friction_coefficient,
                               color, false, true, plant);
     plant->WeldFrames(plant->world_frame(), wall.body_frame(), X_WB);
@@ -294,11 +304,21 @@ const RigidBody<double>& AddSphere(const std::string& name, const double radius,
 
   const RigidBody<double>& ball = plant->AddRigidBody(name, M_Bcm);
 
+  geometry::ProximityProperties props;
+  if (!FLAGS_tamsi || FLAGS_mbp_time_step == 0) {
+    props.AddProperty(geometry::internal::kMaterialGroup,
+                      geometry::internal::kPointStiffness, FLAGS_stiffness);
+    props.AddProperty(geometry::internal::kMaterialGroup, "dissipation_rate",
+                      FLAGS_dissipation_rate);
+  }
+  props.AddProperty(geometry::internal::kMaterialGroup,
+                    geometry::internal::kFriction,
+                    CoulombFriction<double>(friction, friction));
+
   // Add collision geometry.
   const RigidTransformd X_BS = RigidTransformd::Identity();
   plant->RegisterCollisionGeometry(ball, X_BS, geometry::Sphere(radius),
-                                   name + "_collision",
-                                   CoulombFriction<double>(friction, friction));
+                                   name + "_collision", props);
 
   // Add visual geometry.
   plant->RegisterVisualGeometry(ball, X_BS, geometry::Sphere(radius),
@@ -451,68 +471,53 @@ int do_main() {
   }
 
   plant.Finalize();
-  plant.set_penetration_allowance(FLAGS_penetration_allowance);
 
-  // Set the speed tolerance (m/s) for the underlying Stribeck friction model
-  // (the allowable drift speed during stiction).  For two points in contact,
-  // this is the maximum sliding speed for the points to be regarded as
-  // stationary relative to each other (so that static friction is used).
-  plant.set_stiction_tolerance(FLAGS_stiction_tolerance);
-
-  // ConvexBarrierSolver<double>* solver{nullptr};
-  MpPrimalSolver<double>* solver{nullptr};
-
-  CompliantContactComputationManager<double>* manager{nullptr};
-  if (!FLAGS_tamsi && FLAGS_solver != "primal") {
-    manager = &plant.set_discrete_update_manager(
-        std::make_unique<CompliantContactComputationManager<double>>(
-          std::make_unique<MpPrimalSolver<double>>()));
-    // Defaults are theta = 1.0, but I set them here as a demonstration.
-    manager->set_theta_q(FLAGS_theta_q);
-    manager->set_theta_qv(FLAGS_theta_qv);
-    manager->set_theta_v(FLAGS_theta_v);
-    solver = &manager->mutable_contact_solver<MpPrimalSolver>();
-
-    MpPrimalSolverParameters params;
-    params.Rt_factor = FLAGS_rt_factor;
-    params.verbosity_level = FLAGS_verbosity_level;
-    params.log_file = "/home/amcastro/Drake/Drake1/drake/solver_log.dat";
-    //temp_directory() + "/solver_log.dat";
-    params.log_stats = true;
-    // Opopt: It fails very often.
-    // params.solver_id = solvers::IpoptSolver::id();
-    // Nlopt: "converges", but analytical ID errors are large.
-    // params.solver_id = solvers::NloptSolver::id();
-    if (FLAGS_solver == "conex") {
-      params.solver_id = solvers::ConexSolver::id();
-    } else if (FLAGS_solver == "scs") {
-      // ScsSolver: Shows good performance/convergence.
-      params.solver_id = solvers::ScsSolver::id();
-    } else if (FLAGS_solver == "gurobi") {
-      // GurobiSolver.
-      // Compile with: bazel run --config gurobi ....
-      params.solver_id = solvers::GurobiSolver::id();
-    } else if (FLAGS_solver == "mosek") {
-      // Compile with: bazel run --config mosek ....
-      params.solver_id = solvers::MosekSolver::id();
-    } else {
-      throw std::runtime_error("Solver not supported.");
-    }
-    solver->set_parameters(params);
+  if (FLAGS_tamsi || FLAGS_mbp_time_step == 0) {
+    plant.set_penetration_allowance(FLAGS_penetration_allowance);
+    plant.set_stiction_tolerance(FLAGS_stiction_tolerance);
   }
 
   UnconstrainedPrimalSolver<double>* primal_solver{nullptr};
-  if (!FLAGS_tamsi && FLAGS_solver == "primal") {
+  CompliantContactComputationManager<double>* manager{nullptr};
+  if (!FLAGS_tamsi) {
     manager = &plant.set_discrete_update_manager(
         std::make_unique<CompliantContactComputationManager<double>>(
             std::make_unique<UnconstrainedPrimalSolver<double>>()));
-    // Defaults are theta = 1.0, but I set them here as a demonstration.
-    manager->set_theta_q(FLAGS_theta_q);
-    manager->set_theta_qv(FLAGS_theta_qv);
-    manager->set_theta_v(FLAGS_theta_v);
     primal_solver =
         &manager->mutable_contact_solver<UnconstrainedPrimalSolver>();
 
+#if 0
+MpPrimalSolverParameters params;
+params.Rt_factor = FLAGS_rt_factor;
+params.verbosity_level = FLAGS_verbosity_level;
+params.log_file = "/home/amcastro/Drake/Drake1/drake/solver_log.dat";
+//temp_directory() + "/solver_log.dat";
+params.log_stats = true;
+// Opopt: It fails very often.
+// params.solver_id = solvers::IpoptSolver::id();
+// Nlopt: "converges", but analytical ID errors are large.
+// params.solver_id = solvers::NloptSolver::id();
+if (FLAGS_solver == "conex") {
+  params.solver_id = solvers::ConexSolver::id();
+} else if (FLAGS_solver == "scs") {
+  // ScsSolver: Shows good performance/convergence.
+  params.solver_id = solvers::ScsSolver::id();
+} else if (FLAGS_solver == "gurobi") {
+  // GurobiSolver.
+  // Compile with: bazel run --config gurobi ....
+  params.solver_id = solvers::GurobiSolver::id();
+} else if (FLAGS_solver == "mosek") {
+  // Compile with: bazel run --config mosek ....
+  params.solver_id = solvers::MosekSolver::id();
+} else {
+  throw std::runtime_error("Solver not supported.");
+}
+solver->set_parameters(params);
+#endif        
+
+    // N.B. These lines to set solver parameters are only needed if you want to
+    // experiment with these values. Default values should work ok for most
+    // applications. Thus, for your general case you can omit these lines.
     UnconstrainedPrimalSolverParameters params;
     params.abs_tolerance = FLAGS_abs_tol;
     params.rel_tolerance = FLAGS_rel_tol;
@@ -576,78 +581,6 @@ int do_main() {
   auto simulator =
       MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
 
-  systems::IntegratorBase<double>& integrator =
-      simulator->get_mutable_integrator();
-  auto* implicit_integrator =
-      dynamic_cast<systems::ImplicitIntegrator<double>*>(&integrator);
-  if (implicit_integrator) {
-    if (FLAGS_jacobian_scheme == "forward") {
-      implicit_integrator->set_jacobian_computation_scheme(
-          systems::ImplicitIntegrator<
-              double>::JacobianComputationScheme::kForwardDifference);
-    } else if (FLAGS_jacobian_scheme == "central") {
-      implicit_integrator->set_jacobian_computation_scheme(
-          systems::ImplicitIntegrator<
-              double>::JacobianComputationScheme::kCentralDifference);
-    } else if (FLAGS_jacobian_scheme == "automatic") {
-      implicit_integrator->set_jacobian_computation_scheme(
-          systems::ImplicitIntegrator<
-              double>::JacobianComputationScheme::kAutomatic);
-    } else {
-      throw std::runtime_error("Invalid Jacobian computation scheme");
-    }
-    implicit_integrator->set_use_full_newton(FLAGS_use_full_newton);
-  }
-  if (integrator.supports_error_estimation())
-    integrator.set_fixed_step_mode(FLAGS_fixed_step);
-
-  std::ofstream sol_file("sol.dat");
-#if 0  
-  simulator->set_monitor([&](const systems::Context<double>& root_context) {
-    const systems::Context<double>& ctxt =
-        plant.GetMyContextFromRoot(root_context);
-    const ContactResults<double>& contact_results =
-        plant.get_contact_results_output_port().Eval<ContactResults<double>>(
-            ctxt);
-    const int nc = contact_results.num_point_pair_contacts();
-
-    const double ke = plant.CalcKineticEnergy(ctxt);
-
-    double vt_rms = 0;
-    double vn_rms = 0;
-    int num_positive_phi = 0;
-    double mean_positive_phi = 0;
-    int num_negative_phi = 0;
-    double mean_negative_phi = 0;
-    for (int ic = 0; ic < nc; ++ic) {
-      const PointPairContactInfo<double>& info =
-          contact_results.point_pair_contact_info(ic);
-      vt_rms += (info.slip_speed() * info.slip_speed());
-      vn_rms += (info.separation_speed() * info.separation_speed());
-      const drake::geometry::PenetrationAsPointPair<double>& pp =
-          info.point_pair();
-      if (pp.depth > 0) {
-        mean_negative_phi += pp.depth;
-        num_negative_phi++;
-      } else {
-        num_positive_phi++;
-        mean_positive_phi -= pp.depth;
-      }
-    }
-    if (nc > 0) vt_rms = std::sqrt(vt_rms / nc);
-    if (nc > 0) vn_rms = std::sqrt(vn_rms / nc);
-    if (num_positive_phi > 0) mean_positive_phi /= num_positive_phi;
-    if (num_negative_phi > 0) mean_negative_phi /= num_negative_phi;
-
-    // time, ke, vt, vn, phi_plus, phi_minus.
-    sol_file << fmt::format(
-        "{:20.8g} {:d} {:20.8g} {:20.8g} {:20.8g} {:20.8g} {:20.8g}\n",
-        ctxt.get_time(), nc, ke, vt_rms, vn_rms, mean_positive_phi,
-        mean_negative_phi);
-    return systems::EventStatus::Succeeded();
-  });
-#endif
-
   clock::time_point sim_start_time = clock::now();
   CALLGRIND_START_INSTRUMENTATION;
   simulator->AdvanceTo(FLAGS_simulation_time);
@@ -660,19 +593,12 @@ int do_main() {
     std::cout << "ContactSolver total time [sec]: "
               << primal_solver->get_total_time() << std::endl;
   }
-  sol_file.close();
 
-  // Print contact solver stats.
-  if (solver) {
-    solver->LogIterationsHistory("log.dat");
-  }
-
-  if (primal_solver) {
+  if (manager) {
+    manager->LogStats("manager_log.dat");
     primal_solver->LogIterationsHistory("log.dat");
-    primal_solver->LogSolutionHistory("sol_hist.dat");
+    // primal_solver->LogSolutionHistory("sol_hist.dat");
   }
-
-  if (manager) manager->LogStats("manager_log.dat");
 
   PrintSimulatorStatistics(*simulator);
 

@@ -200,12 +200,9 @@ class UnconstrainedPrimalSolver final : public ConvexSolverBase<T> {
 
   const std::vector<SolutionData<T>>& solution_history() const {
     return solution_history_;
-  }
+  }  
 
-  // Returns the total time spent on calls to SolveWithGuess().
-  double get_total_time() const { return total_time_; }
-
-  void LogIterationsHistory(const std::string& file_name) const;
+  void LogIterationsHistory(const std::string& file_name) const final;
 
   void LogSolutionHistory(const std::string& file_name) const;
 

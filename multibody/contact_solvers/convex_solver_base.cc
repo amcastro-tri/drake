@@ -34,7 +34,9 @@ ContactSolverStatus ConvexSolverBase<T>::SolveWithGuess(
   PreProcessData(time_step, dynamics_data, contact_data, parameters_.theta,
                  parameters_.Rt_factor);
   pre_process_time_ = timer.Elapsed();
-  return DoSolveWithGuess(data_, v_guess, results);
+  const auto status = DoSolveWithGuess(data_, v_guess, results);
+  total_time_ += timer.Elapsed();
+  return status;
 }
 
 template <typename T>

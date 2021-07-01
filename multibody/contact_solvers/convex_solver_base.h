@@ -57,6 +57,13 @@ class ConvexSolverBase : public ContactSolver<T> {
   // SolveWithGuess(), in seconds.
   double pre_process_time() const { return pre_process_time_; }
 
+  // Returns the total time spent on calls to SolveWithGuess().
+  double get_total_time() const { return total_time_; }
+
+  virtual void LogIterationsHistory(const std::string&) const {
+    throw std::runtime_error("Implement this capability.");
+  }
+
  protected:
   // TODO: make into a proper class.
   struct PreProcessedData {
@@ -182,6 +189,7 @@ class ConvexSolverBase : public ContactSolver<T> {
 
   ConvexSolverBaseParameters parameters_;
   double pre_process_time_{0};
+  double total_time_{0};
 };
 
 }  // namespace internal

@@ -118,6 +118,7 @@ using drake::math::RollPitchYawd;
 using drake::math::RotationMatrixd;
 using drake::multibody::ContactResults;
 using drake::multibody::MultibodyPlant;
+using drake::multibody::contact_solvers::internal::ConvexSolverBase;
 using drake::multibody::contact_solvers::internal::MpConvexSolver;
 using drake::multibody::contact_solvers::internal::MpConvexSolverParameters;
 using drake::multibody::contact_solvers::internal::MpConvexSolverStats;
@@ -450,6 +451,71 @@ void SetObjectsIntoAPile(const MultibodyPlant<double>& plant,
   }
 }
 
+const ConvexSolverBase<double>* SetSolver(
+    CompliantContactComputationManager<double>* manager) {
+  if (FLAGS_solver == "primal") {
+    auto* primal_solver = &manager->set_contact_solver(
+        std::make_unique<UnconstrainedPrimalSolver<double>>());    
+    DRAKE_DEMAND(primal_solver != nullptr);
+    // N.B. These lines to set solver parameters are only needed if you want
+    // to
+    // experiment with these values. Default values should work ok for most
+    // applications. Thus, for your general case you can omit these lines.
+    UnconstrainedPrimalSolverParameters params;
+    params.abs_tolerance = FLAGS_abs_tol;
+    params.rel_tolerance = FLAGS_rel_tol;
+    params.Rt_factor = FLAGS_rt_factor;
+    params.max_iterations = 300;
+    params.ls_alpha_max = FLAGS_ls_alpha_max;
+    // params.ls_tolerance = 1.0e-2;
+    params.use_supernodal_solver = FLAGS_use_supernodal;
+    params.use_geodesic_solver = FLAGS_use_geodesic_solver;
+    params.compare_with_dense = false;
+    params.verbosity_level = FLAGS_verbosity_level;
+    params.log_stats = true;
+    if (FLAGS_line_search == "exact") {
+      params.ls_method =
+          UnconstrainedPrimalSolverParameters::LineSearchMethod::kExact;
+    } else {
+      params.ls_max_iterations = 100;
+      params.ls_method =
+          UnconstrainedPrimalSolverParameters::LineSearchMethod::kArmijo;
+    }
+    primal_solver->set_parameters(params);
+    return primal_solver;
+  } else {
+    auto* mp_solver = &manager->set_contact_solver(
+        std::make_unique<MpPrimalSolver<double>>());
+    DRAKE_DEMAND(mp_solver != nullptr);
+
+    MpPrimalSolverParameters params;
+    params.Rt_factor = FLAGS_rt_factor;
+    params.verbosity_level = FLAGS_verbosity_level;
+    params.log_file = "/home/amcastro/Drake/Drake1/drake/solver_log.dat";
+    // temp_directory() + "/solver_log.dat";
+    params.log_stats = true;
+    // Opopt: It fails very often.
+    // params.solver_id = solvers::IpoptSolver::id();
+    // Nlopt: "converges", but analytical ID errors are large.
+    // params.solver_id = solvers::NloptSolver::id();
+    if (FLAGS_solver == "scs") {
+      // ScsSolver: Shows good performance/convergence.
+      params.solver_id = solvers::ScsSolver::id();
+    } else if (FLAGS_solver == "gurobi") {
+      // GurobiSolver.
+      // Compile with: bazel run --config gurobi ....
+      params.solver_id = solvers::GurobiSolver::id();
+    } else if (FLAGS_solver == "mosek") {
+      // Compile with: bazel run --config mosek ....
+      params.solver_id = solvers::MosekSolver::id();
+    } else {
+      throw std::runtime_error("Solver not supported.");
+    }
+    mp_solver->set_parameters(params);
+    return mp_solver;
+  }
+}
+
 int do_main() {
   // Build a generic multibody plant.
   systems::DiagramBuilder<double> builder;
@@ -477,68 +543,13 @@ int do_main() {
     plant.set_stiction_tolerance(FLAGS_stiction_tolerance);
   }
 
-  UnconstrainedPrimalSolver<double>* primal_solver{nullptr};
+  const ConvexSolverBase<double>* solver{nullptr};
   CompliantContactComputationManager<double>* manager{nullptr};
   if (!FLAGS_tamsi) {
     manager = &plant.set_discrete_update_manager(
         std::make_unique<CompliantContactComputationManager<double>>(
             std::make_unique<UnconstrainedPrimalSolver<double>>()));
-    primal_solver =
-        &manager->mutable_contact_solver<UnconstrainedPrimalSolver>();
-
-#if 0
-MpPrimalSolverParameters params;
-params.Rt_factor = FLAGS_rt_factor;
-params.verbosity_level = FLAGS_verbosity_level;
-params.log_file = "/home/amcastro/Drake/Drake1/drake/solver_log.dat";
-//temp_directory() + "/solver_log.dat";
-params.log_stats = true;
-// Opopt: It fails very often.
-// params.solver_id = solvers::IpoptSolver::id();
-// Nlopt: "converges", but analytical ID errors are large.
-// params.solver_id = solvers::NloptSolver::id();
-if (FLAGS_solver == "conex") {
-  params.solver_id = solvers::ConexSolver::id();
-} else if (FLAGS_solver == "scs") {
-  // ScsSolver: Shows good performance/convergence.
-  params.solver_id = solvers::ScsSolver::id();
-} else if (FLAGS_solver == "gurobi") {
-  // GurobiSolver.
-  // Compile with: bazel run --config gurobi ....
-  params.solver_id = solvers::GurobiSolver::id();
-} else if (FLAGS_solver == "mosek") {
-  // Compile with: bazel run --config mosek ....
-  params.solver_id = solvers::MosekSolver::id();
-} else {
-  throw std::runtime_error("Solver not supported.");
-}
-solver->set_parameters(params);
-#endif        
-
-    // N.B. These lines to set solver parameters are only needed if you want to
-    // experiment with these values. Default values should work ok for most
-    // applications. Thus, for your general case you can omit these lines.
-    UnconstrainedPrimalSolverParameters params;
-    params.abs_tolerance = FLAGS_abs_tol;
-    params.rel_tolerance = FLAGS_rel_tol;
-    params.Rt_factor = FLAGS_rt_factor;
-    params.max_iterations = 300;
-    params.ls_alpha_max = FLAGS_ls_alpha_max;
-    // params.ls_tolerance = 1.0e-2;
-    params.use_supernodal_solver = FLAGS_use_supernodal;
-    params.use_geodesic_solver = FLAGS_use_geodesic_solver;
-    params.compare_with_dense = false;
-    params.verbosity_level = FLAGS_verbosity_level;
-    params.log_stats = true;
-    if (FLAGS_line_search == "exact") {
-      params.ls_method =
-          UnconstrainedPrimalSolverParameters::LineSearchMethod::kExact;
-    } else {
-      params.ls_max_iterations = 100;
-      params.ls_method =
-          UnconstrainedPrimalSolverParameters::LineSearchMethod::kArmijo;
-    }
-    primal_solver->set_parameters(params);
+    solver = SetSolver(manager);
   }
 
   fmt::print("Num positions: {:d}\n", plant.num_positions());
@@ -589,14 +600,14 @@ solver->set_parameters(params);
   const double sim_time =
       std::chrono::duration<double>(sim_end_time - sim_start_time).count();
   std::cout << "AdvanceTo() time [sec]: " << sim_time << std::endl;
-  if (primal_solver) {
-    std::cout << "ContactSolver total time [sec]: "
-              << primal_solver->get_total_time() << std::endl;
+  if (solver) {
+    std::cout << "ContactSolver total time [sec]: " << solver->get_total_time()
+              << std::endl;
   }
 
   if (manager) {
     manager->LogStats("manager_log.dat");
-    primal_solver->LogIterationsHistory("log.dat");
+    solver->LogIterationsHistory("log.dat");
     // primal_solver->LogSolutionHistory("sol_hist.dat");
   }
 

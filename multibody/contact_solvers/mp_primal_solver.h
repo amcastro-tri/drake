@@ -100,7 +100,7 @@ class MpPrimalSolver final : public ConvexSolverBase<T> {
   virtual ~MpPrimalSolver() = default;
 
   void set_parameters(MpPrimalSolverParameters& parameters) {
-    ConvexSolverBaseParameters base_parameters{parameters.Rt_factor};
+    ConvexSolverBaseParameters base_parameters{1.0, parameters.Rt_factor};
     ConvexSolverBase<T>::set_parameters(base_parameters);
     parameters_ = parameters;
   }

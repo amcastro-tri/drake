@@ -285,10 +285,11 @@ void MpPrimalSolver<T>::SetUpProgram(
   // Acquiring the license is an time consumming process. We do it once on the
   // first solve and keep a shared pointer to the license alive.
   if (parameters_.solver_id) {
-    if (*parameters_.solver_id == GurobiSolver::id())
+    if (*parameters_.solver_id == GurobiSolver::id() && !gurobi_license_) {
       gurobi_license_ = GurobiSolver::AcquireLicense();
-    else if (*parameters_.solver_id == MosekSolver::id())
+    } else if (*parameters_.solver_id == MosekSolver::id() && !mosek_license_) {
       mosek_license_ = MosekSolver::AcquireLicense();
+    }
   }
 }
 

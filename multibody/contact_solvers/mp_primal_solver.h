@@ -117,7 +117,7 @@ class MpPrimalSolver final : public ConvexSolverBase<T> {
   // Returns the total time spent on calls to SolveWithGuess().
   double get_total_time() const { return total_time_; }
 
-  void LogIterationsHistory(const std::string& file_name) const;
+  void LogIterationsHistory(const std::string& file_name) const final;
 
  private:
   class State {

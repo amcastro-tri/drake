@@ -179,7 +179,12 @@ ContactSolverStatus MpPrimalSolver<double>::DoSolveWithGuess(
   std::tie(error_metrics.mom_l2, error_metrics.mom_max) =
       this->CalcScaledMomentumError(data, state.v(), state.sigma());
   std::tie(error_metrics.mom_rel_l2, error_metrics.mom_rel_max) =
-      this->CalcRelativeMomentumError(data, state.v(), state.sigma());      
+      this->CalcRelativeMomentumError(data, state.v(), state.sigma());
+  this->CalcEnergyMetrics(data, state.v(), state.sigma(), &error_metrics.Ek,
+                          &error_metrics.costM, &error_metrics.costR,
+                          &error_metrics.cost);
+  error_metrics.opt_cond =
+      this->CalcOptimalityCondition(data_, state.v(), state.sigma());
 
   PackContactResults(data, state.v(), state.cache().vc, state.sigma(), results);
 
@@ -299,7 +304,8 @@ void MpPrimalSolver<T>::LogIterationsHistory(
   std::ofstream file(file_name);
   const std::vector<MpPrimalSolverStats>& stats_hist = get_stats_history();
   file << fmt::format(
-      "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n", "num_contacts",
+      "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n",
+      "num_contacts",
       // ID errors.
       "id_rel_err", "id_rel_max", "id_abs_error", "gamma_norm",
       // Momentum errors.
@@ -307,10 +313,13 @@ void MpPrimalSolver<T>::LogIterationsHistory(
       // Wall-clock timings.
       "total_time", "preproc_time", "mp_setup_time", "solver_time",
       // Gurobi specifics.
-      "grb_time", "grb_barrier_iterations");
+      "grb_time", "grb_barrier_iterations",
+      // Energy metrics.
+      "Ek", "ellM", "ellR", "ell", "opt_cond");
   for (const auto& s : stats_hist) {
     file << fmt::format(
-        "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n", s.num_contacts,
+        "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n",
+        s.num_contacts,
         // ID errors.
         s.error_metrics.id_rel_error, s.error_metrics.id_rel_max,
         s.error_metrics.id_abs_error, s.error_metrics.gamma_norm,
@@ -320,7 +329,10 @@ void MpPrimalSolver<T>::LogIterationsHistory(
         // Wall-clock timings.
         s.total_time, s.preproc_time, s.mp_setup_time, s.solver_time,
         // Gurobi specifics.
-        s.gurobi_time, s.gurobi_barrier_iterations);
+        s.gurobi_time, s.gurobi_barrier_iterations,
+        // Energy metrics.
+        s.error_metrics.Ek, s.error_metrics.costM, s.error_metrics.costR,
+        s.error_metrics.cost, s.error_metrics.opt_cond);
   }
   file.close();
 }

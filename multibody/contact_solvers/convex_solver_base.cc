@@ -284,6 +284,34 @@ std::pair<T, T> ConvexSolverBase<T>::CalcScaledMomentumError(
 }
 
 template <typename T>
+void ConvexSolverBase<T>::CalcEnergyMetrics(const PreProcessedData& data,
+                                            const VectorX<T>& v,
+                                            const VectorX<T>& gamma, T* Ek,
+                                            T* ellM, T* ellR, T* ell) const {
+  const int nv = data.nv;
+  const auto& M = data.Mblock;
+  const auto& J = data.Jblock;
+  const auto& v_star = data.dynamics_data->get_v_star();
+  const auto& R = data.R;
+
+  // Kinetic energy.
+  VectorX<T> v_aux(nv);
+  M.Multiply(v, &v_aux);
+  *Ek = 0.5 * v.dot(v_aux);
+
+  // Velocity cost.
+  VectorX<T> dv = v - v_star;
+  M.Multiply(dv, &v_aux);
+  *ellM = 0.5 * dv.dot(v_aux);
+
+  // Impulses cost.
+  *ellR = gamma.dot(R.asDiagonal() * gamma);
+
+  // Total cost.
+  *ell = *ellM + *ellR;
+}
+
+template <typename T>
 std::pair<T, T> ConvexSolverBase<T>::CalcRelativeMomentumError(
     const PreProcessedData& data, const VectorX<T>& v,
     const VectorX<T>& gamma) const {

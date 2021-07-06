@@ -123,6 +123,9 @@ struct UnconstrainedPrimalSolverIterationMetrics {
   double ls_alpha;
 
   int ls_iters{0};
+
+  // Energy metrics.
+  double Ek{0}, costM{0}, costR{0}, cost{0};
 };
 
 // Intended for debugging only. Remove.

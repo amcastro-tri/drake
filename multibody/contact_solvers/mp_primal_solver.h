@@ -60,6 +60,10 @@ struct MpPrimalSolverErrorMetrics {
 
   double mom_rel_l2{0};
   double mom_rel_max{0};
+
+  // Energy metrics.
+  double Ek{0}, cost{0}, costM{0}, costR{0};
+  double opt_cond{0};
 };
 
 struct MpPrimalSolverStats {

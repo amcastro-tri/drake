@@ -155,6 +155,16 @@ class ConvexSolverBase : public ContactSolver<T> {
                                             const VectorX<T>& v,
                                             const VectorX<T>& gamma) const;
 
+  // Computes energy metrics that can be used for logging or as reference scales
+  // in dimensionless quantities.
+  //   Ek: Kinetic energy. M norm of v.
+  //   ellM: Kinetic energy. M norm of (v - v*).
+  //   ellR: R norm of gamma.
+  //   ell: Total cost, ellM + ellR.
+  void CalcEnergyMetrics(const PreProcessedData& data, const VectorX<T>& v,
+                         const VectorX<T>& gamma, T* Ek, T* ellM, T* ellR,
+                         T* ell) const;
+
   // Computes the optimality condition m = 1/nc∑|gᵢ⋅γᵢ|
   // where g = J⋅v − v̂ + R⋅γ.
   // For this problem the optimality conditions read

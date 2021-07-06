@@ -150,6 +150,8 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
     UnconstrainedPrimalSolverIterationMetrics metrics;
     std::tie(metrics.mom_rel_l2, metrics.mom_rel_max) =
         this->CalcRelativeMomentumError(data, state.v(), cache.gamma);
+    this->CalcEnergyMetrics(data, state.v(), cache.gamma, &metrics.Ek,
+                            &metrics.costM, &metrics.costR, &metrics.cost);
     metrics.opt_cond =
         this->CalcOptimalityCondition(data_, state.v(), cache.gamma);
 
@@ -286,6 +288,10 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
         this->CalcScaledMomentumError(data, state.v(), cache.gamma);
     std::tie(last_metrics.mom_rel_l2, last_metrics.mom_rel_max) =
         this->CalcRelativeMomentumError(data, state.v(), cache.gamma);
+    this->CalcEnergyMetrics(data, state.v(), cache.gamma, &last_metrics.Ek,
+                      &last_metrics.costM, &last_metrics.costR,
+                      &last_metrics.cost);
+
     if (!parameters_.log_stats) stats_.iteration_metrics.push_back(metrics);
     stats_.num_iters = stats_.iteration_metrics.size();
 
@@ -923,7 +929,7 @@ void UnconstrainedPrimalSolver<T>::LogIterationsHistory(
   std::ofstream file(file_name);
   file << fmt::format(
       "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} "
-      "{} {} {} {}\n",
+      "{} {} {} {} {} {} {} {}\n",
       // Problem size.
       "num_contacts",
       // Number of iterations.
@@ -940,7 +946,9 @@ void UnconstrainedPrimalSolver<T>::LogIterationsHistory(
       "grad_ell_max_norm", "dv_max_norm", "rcond",
       // Timing metrics.
       "total_time", "preproc_time", "assembly_time", "linear_solve_time",
-      "ls_time", "supernodal_construction");
+      "ls_time", "supernodal_construction",
+      // Energy metrics.
+      "Ek", "ellM", "ellR", "ell");
 
   for (const auto& s : stats_hist) {
     const auto& metrics = s.iteration_metrics.back();
@@ -963,7 +971,7 @@ void UnconstrainedPrimalSolver<T>::LogIterationsHistory(
 
     file << fmt::format(
         "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} "
-        "{} {} {} {}\n",
+        "{} {} {} {} {} {} {} {}\n",
         // Problem size.
         s.num_contacts,
         // Number of iterations.
@@ -982,7 +990,9 @@ void UnconstrainedPrimalSolver<T>::LogIterationsHistory(
         metrics.rcond,
         // Timing metrics.
         s.total_time, s.preproc_time, s.assembly_time, s.linear_solver_time,
-        s.line_search_time, s.supernodal_construction_time);
+        s.line_search_time, s.supernodal_construction_time,
+        // Energy metrics.
+        metrics.Ek, metrics.costM, metrics.costR, metrics.cost);
   }
   file.close();
 }

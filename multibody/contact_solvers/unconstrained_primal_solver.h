@@ -126,6 +126,9 @@ struct UnconstrainedPrimalSolverIterationMetrics {
 
   // Energy metrics.
   double Ek{0}, costM{0}, costR{0}, cost{0};
+
+  // Inverse dynamics realtive error.
+  double id_rel_error{0};
 };
 
 // Intended for debugging only. Remove.

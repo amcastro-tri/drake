@@ -101,6 +101,7 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
   State state(nv, nc, parameters_.compare_with_dense);
   aux_state_.Resize(nv, nc, parameters_.compare_with_dense);
   workspace_.Resize(nv, nc);
+  VectorX<double> gamma_id(3 * nc);
 
   state.mutable_v() = v_guess;
   // Compute velocity and impulses here to use in the computation of convergence
@@ -154,6 +155,10 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
                             &metrics.costM, &metrics.costR, &metrics.cost);
     metrics.opt_cond =
         this->CalcOptimalityCondition(data_, state.v(), cache.gamma);
+    this->CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache.vc,
+                                        &gamma_id);
+    metrics.id_rel_error = (cache.gamma - gamma_id).norm() /
+                           max(cache.gamma.norm(), gamma_id.norm());
 
     stats_.num_iters = solution_geo.info.iterations;
     stats_.iteration_metrics.push_back(metrics);
@@ -214,13 +219,12 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
       // sqrt(diag(M)).
       // TODO: consider updating vc and gamma here for convergece criterias.
       // Cheap if no dgamma_dy is computed.
-      const bool converged = CheckConvergenceCriteria(
+      bool converged = CheckConvergenceCriteria(
           cache.vc, cache.dvc, parameters_.abs_tolerance,
           parameters_.rel_tolerance);
-      // Note: this check makes pretty much no measurable difference.
-      // const auto [mom_rel_l2, mom_rel_max] =
-      //    this->CalcRelativeMomentumError(data, state.v(), cache.gamma);
-      // if (mom_rel_l2 < parameters_.rel_tolerance) converged = true;
+      const auto [mom_rel_l2, mom_rel_max] =
+          this->CalcRelativeMomentumError(data, state.v(), cache.gamma);
+      if (mom_rel_l2 > parameters_.rel_tolerance) converged = false;      
 
       // Perform line-search.
       // N.B. If converged, we allow one last update with alpha = 1.0.
@@ -290,7 +294,7 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
         this->CalcRelativeMomentumError(data, state.v(), cache.gamma);
     this->CalcEnergyMetrics(data, state.v(), cache.gamma, &last_metrics.Ek,
                       &last_metrics.costM, &last_metrics.costR,
-                      &last_metrics.cost);
+                      &last_metrics.cost);    
 
     if (!parameters_.log_stats) stats_.iteration_metrics.push_back(metrics);
     stats_.num_iters = stats_.iteration_metrics.size();
@@ -814,6 +818,8 @@ UnconstrainedPrimalSolver<T>::CalcIterationMetrics(const State& s,
                                                    const State& s0,
                                                    int num_ls_iterations,
                                                    double alpha) const {
+  using std::max;
+
   // Update velocity and impulses for reporting.
   auto& cache = s.mutable_cache();
   CalcVelocityAndImpulses(s, &cache.vc, &cache.gamma);
@@ -825,6 +831,10 @@ UnconstrainedPrimalSolver<T>::CalcIterationMetrics(const State& s,
       (s.v() - s0.v()).template lpNorm<Eigen::Infinity>();
   metrics.gamma_error_max_norm =
       (s.cache().gamma - s0.cache().gamma).template lpNorm<Eigen::Infinity>();
+  // For this primal solver, the inverse dynamics relative error reduces to the
+  // computation of the relative error between successive iterations.
+  metrics.id_rel_error = (s.cache().gamma - s0.cache().gamma).norm() /
+                         max(s.cache().gamma.norm(), s0.cache().gamma.norm());
   metrics.ellR = s.cache().ellR;
   metrics.ell = s.cache().ell;
   metrics.grad_ell_max_norm =
@@ -929,14 +939,14 @@ void UnconstrainedPrimalSolver<T>::LogIterationsHistory(
   std::ofstream file(file_name);
   file << fmt::format(
       "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} "
-      "{} {} {} {} {} {} {} {}\n",
+      "{} {} {} {} {} {} {} {} {}\n",
       // Problem size.
       "num_contacts",
       // Number of iterations.
       "num_iters",
       // Error metrics.
       "vc_error_max_norm", "v_error_max_norm", "gamma_error_max_norm", "mom_l2",
-      "mom_max", "mom_rel_l2", "mom_rel_max","opt_cond",
+      "mom_max", "mom_rel_l2", "mom_rel_max","opt_cond", "id_rel_err",
       // Some norms. We can use them as reference scales.
       "vc_norm", "gamma_norm",
       // Line search metrics.
@@ -971,7 +981,7 @@ void UnconstrainedPrimalSolver<T>::LogIterationsHistory(
 
     file << fmt::format(
         "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} "
-        "{} {} {} {} {} {} {} {}\n",
+        "{} {} {} {} {} {} {} {} {}\n",
         // Problem size.
         s.num_contacts,
         // Number of iterations.
@@ -980,6 +990,7 @@ void UnconstrainedPrimalSolver<T>::LogIterationsHistory(
         metrics.vc_error_max_norm, metrics.v_error_max_norm,
         metrics.gamma_error_max_norm, metrics.mom_l2, metrics.mom_max,
         metrics.mom_rel_l2, metrics.mom_rel_max, metrics.opt_cond,
+        metrics.id_rel_error,
         // Some norms.
         metrics.vc_norm, metrics.gamma_norm,
         // Line search metrics.

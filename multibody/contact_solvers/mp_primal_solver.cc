@@ -174,8 +174,8 @@ ContactSolverStatus MpPrimalSolver<double>::DoSolveWithGuess(
       ((gamma_id - gamma).cwiseAbs().array() / gamma.cwiseAbs().array())
           .maxCoeff();
   error_metrics.gamma_norm = gamma.norm();
-  error_metrics.id_rel_error =
-      error_metrics.id_abs_error / error_metrics.gamma_norm;
+  error_metrics.id_rel_error = error_metrics.id_abs_error /
+                               max(error_metrics.gamma_norm, gamma_id.norm());
   std::tie(error_metrics.mom_l2, error_metrics.mom_max) =
       this->CalcScaledMomentumError(data, state.v(), state.sigma());
   std::tie(error_metrics.mom_rel_l2, error_metrics.mom_rel_max) =

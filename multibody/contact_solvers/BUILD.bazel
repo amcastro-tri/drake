@@ -186,4 +186,19 @@ drake_cc_googletest(
     ],
 )
 
+drake_cc_googletest(
+    name = "sparse_matrix_operations_test",
+    deps = [
+        "//common:essential",
+    ],
+)
+
+drake_cc_googletest(
+    name = "eigen_matrix_free_test",
+    deps = [
+        "//common:essential",
+        "//common:nice_type_name",
+    ],
+)
+
 add_lint_tests()

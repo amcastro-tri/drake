@@ -75,6 +75,7 @@ class ConvexSolverBase : public ContactSolver<T> {
       Rinv.resize(nc3);
       vc_stab.resize(nc3);
       Djac.resize(nv);
+      p_star.resize(nv);
     }
     T time_step;
     const SystemDynamicsData<T>* dynamics_data{nullptr};
@@ -90,6 +91,7 @@ class ConvexSolverBase : public ContactSolver<T> {
     // Jacobi pre-conditioner for the mass matrix.
     // Djac = diag(M)^(-0.5)
     VectorX<T> Djac;
+    VectorX<T> p_star;
   };
 
   // Derived classes must implement this method to
@@ -141,6 +143,13 @@ class ConvexSolverBase : public ContactSolver<T> {
   std::pair<T, T> CalcScaledMomentumError(const PreProcessedData& data,
                                const VectorX<T>& v,
                                const VectorX<T>& gamma) const;
+
+  void CalcScaledMomentumAndScales(const PreProcessedData& data,
+                                   const VectorX<T>& v, const VectorX<T>& gamma,
+                                   T* scaled_momentum_error, T* momentum_scale,
+                                   T* Ek, T* ellM, T* ellR, T* ell,
+                                   VectorX<T>* v_work1, VectorX<T>* v_work2,
+                                   VectorX<T>* v_work3) const;
 
   // We define the momentum error (optimality condition) as r(v) = M⋅(v−v*)−Jᵀγ.
   // We define the momentum p = M⋅v and generalized impulse j = Jᵀγ.

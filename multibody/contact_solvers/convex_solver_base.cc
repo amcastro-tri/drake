@@ -110,6 +110,9 @@ void ConvexSolverBase<T>::PreProcessData(
         Vector3<T>(0, 0, vn_hat);
   }
   data_.Rinv = R.cwiseInverse();
+
+  const auto& v_star = data_.dynamics_data->get_v_star();
+  data_.Mblock.Multiply(v_star, &data_.p_star);
 }
 
 template <typename T>
@@ -255,6 +258,50 @@ void ConvexSolverBase<T>::PackContactResults(
   const auto& Jop = data.contact_data->get_Jc();
   Jop.MultiplyByTranspose(gamma, &results->tau_contact);
   results->tau_contact /= data.time_step;
+}
+
+template <typename T>
+void ConvexSolverBase<T>::CalcScaledMomentumAndScales(
+    const PreProcessedData& data, const VectorX<T>& v, const VectorX<T>& gamma,
+    T* scaled_momentum_error, T* momentum_scale, T* Ek, T* ellM, T* ellR,
+    T* ell, VectorX<T>* v_work1, VectorX<T>* v_work2,
+    VectorX<T>* v_work3) const {
+  using std::max;
+
+  const int nv = data.nv;
+  const auto& v_star = data.dynamics_data->get_v_star();
+  const auto& p_star = data.p_star;
+  const auto& Djac = data.Djac;
+  const auto& R = data.R;
+  const auto& M = data.Mblock;
+  const auto& J = data.Jblock;
+
+  VectorX<T>& p = *v_work1;
+  M.Multiply(v, &p);
+
+  VectorX<T>& j = *v_work2;
+  J.MultiplyByTranspose(gamma, &j);
+
+  VectorX<T>& grad_ell = *v_work3;
+  grad_ell = p - p_star - j;
+
+  // Scale momentum balance using the mass matrix's Jacobi preconditioner so
+  // that all entries have the same units and we can compute a fair error
+  // metric.
+  grad_ell = Djac.asDiagonal() * grad_ell;
+  p = Djac.asDiagonal() * p;  
+  j = Djac.asDiagonal() * j;
+
+  *scaled_momentum_error = grad_ell.norm();
+  *momentum_scale = max(p.norm(), j.norm());
+
+  // Energy metrics.
+  *Ek = 0.5 * v.dot(p);
+  const T Ek_star = 0.5 * v_star.dot(p_star); // TODO: move to pre-proc data.
+  *ellM = *Ek + Ek_star - v.dot(p_star);
+  DRAKE_DEMAND(*ellM >= 0);
+  *ellR = gamma.dot(R.asDiagonal() * gamma);
+  *ell = *ellM + *ellR;
 }
 
 template <typename T>

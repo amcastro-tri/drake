@@ -102,6 +102,9 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
   aux_state_.Resize(nv, nc, parameters_.compare_with_dense);
   workspace_.Resize(nv, nc);
   VectorX<double> gamma_id(3 * nc);
+  VectorX<double> v_work1(nv);
+  VectorX<double> v_work2(nv);
+  VectorX<double> v_work3(nv);
 
   state.mutable_v() = v_guess;
   // Compute velocity and impulses here to use in the computation of convergence
@@ -186,6 +189,9 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
       stats_.supernodal_construction_time = timer.Elapsed();
     }
 
+    double alpha = 1.0;
+    int num_ls_iters = 0;  // Count line-search iterations.
+
     // Start Newton iterations.
     int k = 0;
     for (; k < parameters_.max_iterations; ++k) {
@@ -194,6 +200,30 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
         std::cout << std::string(80, '=') << std::endl;
         std::cout << "Iteration: " << k << std::endl;
       }
+
+      metrics = CalcIterationMetrics(state, state_kp, num_ls_iters, alpha);
+      double scaled_momentum_error, momentum_scale;
+      CalcScaledMomentumAndScales(data, state.v(), cache.gamma,
+                                  &scaled_momentum_error, &momentum_scale,
+                                  &metrics.Ek, &metrics.costM, &metrics.costR,
+                                  &metrics.cost, &v_work1, &v_work2, &v_work3);
+      // Note: only update the useful stats. Remove things like mom_rel_max.
+      metrics.mom_rel_l2 = scaled_momentum_error / momentum_scale;
+      if (parameters_.log_stats) {
+        stats_.iteration_metrics.push_back(metrics);
+      }
+      if (scaled_momentum_error <= parameters_.rel_tolerance * momentum_scale) {
+        // TODO: refactor into PrintConvergedIterationStats().
+        if (parameters_.verbosity_level >= 1) {
+          std::cout << "Iteration converged at: " << k << std::endl;
+          std::cout << "ell: " << cache.ell << std::endl;
+          PRINT_VAR(metrics.vc_error_max_norm);
+          PRINT_VAR(cache.vc.norm());
+          std::cout << std::string(80, '=') << std::endl;
+        }
+        break;
+      }
+      state_kp = state;
 
       // Assembly happens withing these calls to CallSupernodalSolver() and
       // CallDenseSolver() so that we can factor the assembly effort of the
@@ -218,18 +248,15 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
       // moementum balance, i.e. r = D * (M(v-v*)-Jᵀγ), with D = 1/
       // sqrt(diag(M)).
       // TODO: consider updating vc and gamma here for convergece criterias.
-      // Cheap if no dgamma_dy is computed.
-      bool converged = CheckConvergenceCriteria(
-          cache.vc, cache.dvc, parameters_.abs_tolerance,
-          parameters_.rel_tolerance);
-      const auto [mom_rel_l2, mom_rel_max] =
-          this->CalcRelativeMomentumError(data, state.v(), cache.gamma);
-      if (mom_rel_l2 > parameters_.rel_tolerance) converged = false;      
+      // Cheap if no dgamma_dy is computed.      
 
       // Perform line-search.
       // N.B. If converged, we allow one last update with alpha = 1.0.
-      double alpha = 1.0;
-      int num_ls_iters = 0;  // Count line-search iterations.
+      alpha = 1.0;
+      num_ls_iters = 0;  // Count line-search iterations.
+      // remove this when you fully swap to the optimality condition for
+      // convergence criteria.
+      bool converged = false;
       if (!converged) {
         // If not converged, we know dvc !=0 and therefore we have a valid
         // search direction for line search.
@@ -249,12 +276,6 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
       // Update state.
       state.mutable_v() += alpha * cache.dv;
 
-      // Update iteration statistics.
-      metrics = CalcIterationMetrics(state, state_kp, num_ls_iters, alpha);
-      if (parameters_.log_stats) {
-        stats_.iteration_metrics.push_back(metrics);
-      }
-
       // TODO: refactor into PrintNewtonStats().
       if (parameters_.verbosity_level >= 3) {
         PRINT_VAR(cache.ellM);
@@ -265,21 +286,7 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
         PRINT_VAR(alpha);
         PRINT_VAR(metrics.v_error_max_norm);
         PRINT_VAR(metrics.vc_error_max_norm);
-      }
-
-      if (converged) {
-        // TODO: refactor into PrintConvergedIterationStats().
-        if (parameters_.verbosity_level >= 1) {
-          std::cout << "Iteration converged at: " << k << std::endl;
-          std::cout << "ell: " << cache.ell << std::endl;
-          PRINT_VAR(metrics.vc_error_max_norm);
-          PRINT_VAR(cache.vc.norm());
-          std::cout << std::string(80, '=') << std::endl;
-        }
-        break;
-      }
-
-      state_kp = state;
+      }       
     }
 
     if (k == parameters_.max_iterations) return ContactSolverStatus::kFailure;

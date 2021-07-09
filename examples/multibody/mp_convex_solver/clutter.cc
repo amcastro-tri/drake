@@ -473,7 +473,7 @@ const ConvexSolverBase<double>* SetSolver(
     params.use_geodesic_solver = FLAGS_use_geodesic_solver;
     params.compare_with_dense = false;
     params.verbosity_level = FLAGS_verbosity_level;
-    params.log_stats = false;
+    params.log_stats = FLAGS_log_stats;
     if (FLAGS_line_search == "exact") {
       params.ls_method =
           UnconstrainedPrimalSolverParameters::LineSearchMethod::kExact;

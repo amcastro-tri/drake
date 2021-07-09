@@ -35,9 +35,6 @@ using Eigen::VectorXd;
 using Eigen::SparseMatrix;
 using Eigen::SparseVector;
 
-int total_solver_iterations = -1;
-int instance = 0;
-double error = 0;
 template <typename T>
 UnconstrainedPrimalSolver<T>::UnconstrainedPrimalSolver()
     : ConvexSolverBase<T>({UnconstrainedPrimalSolverParameters().theta,

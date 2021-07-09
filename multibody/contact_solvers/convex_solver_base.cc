@@ -402,16 +402,18 @@ std::pair<T, T> ConvexSolverBase<T>::CalcRelativeMomentumError(
 template <typename T>
 T ConvexSolverBase<T>::CalcOptimalityCondition(const PreProcessedData& data,
                                                const VectorX<T>& v,
-                                               const VectorX<T>& gamma) const {
+                                               const VectorX<T>& gamma, VectorX<T>* xc_work) const {
   using std::abs;
-  const int nc = data.contact_data->num_contacts();
+  const int nc = data.contact_data->num_contacts();  
+  VectorX<T>& g = *xc_work;
+  DRAKE_DEMAND(g.size() == 3 * nc);
 
-  VectorX<T> vc(3 * nc);
-  data.contact_data->get_Jc().Multiply(v, &vc);
+  data.contact_data->get_Jc().Multiply(v, &g);  // g = vc
   const VectorX<T>& vc_hat = data.vc_stab;
   const VectorX<T>& R = data.R;
 
-  const VectorX<T> g = vc - vc_hat + R.asDiagonal() * gamma;
+  g -= vc_hat;
+  g += R.asDiagonal() * gamma;
 
   T m = 0;
   for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {

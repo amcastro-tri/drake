@@ -135,7 +135,10 @@ drake_cc_library(
     name = "convex_solver_base",
     srcs = ["convex_solver_base.cc"],
     hdrs = ["convex_solver_base.h"],
-    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable", "-w"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable", "-w",
+    "-O3",
+    "-ffast-math",
+    "-g"],
     deps = [
         ":block_sparse_matrix",
         ":contact_solver",

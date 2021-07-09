@@ -105,6 +105,7 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
   VectorX<double> v_work1(nv);
   VectorX<double> v_work2(nv);
   VectorX<double> v_work3(nv);
+  VectorX<double> xc_work1(3 * nc);
 
   state.mutable_v() = v_guess;
   // Compute velocity and impulses here to use in the computation of convergence
@@ -157,7 +158,7 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
     this->CalcEnergyMetrics(data, state.v(), cache.gamma, &metrics.Ek,
                             &metrics.costM, &metrics.costR, &metrics.cost);
     metrics.opt_cond =
-        this->CalcOptimalityCondition(data_, state.v(), cache.gamma);
+        this->CalcOptimalityCondition(data_, state.v(), cache.gamma, &xc_work1);
     this->CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache.vc,
                                         &gamma_id);
     metrics.id_rel_error = (cache.gamma - gamma_id).norm() /
@@ -201,7 +202,8 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
         std::cout << "Iteration: " << k << std::endl;
       }
 
-      metrics = CalcIterationMetrics(state, state_kp, num_ls_iters, alpha);
+      metrics =
+          CalcIterationMetrics(state, state_kp, num_ls_iters, alpha, &xc_work1);
       double scaled_momentum_error, momentum_scale;
       CalcScaledMomentumAndScales(data, state.v(), cache.gamma,
                                   &scaled_momentum_error, &momentum_scale,
@@ -824,7 +826,8 @@ UnconstrainedPrimalSolverIterationMetrics
 UnconstrainedPrimalSolver<T>::CalcIterationMetrics(const State& s,
                                                    const State& s0,
                                                    int num_ls_iterations,
-                                                   double alpha) const {
+                                                   double alpha,
+                                                   VectorX<T>* xc_work1) const {
   using std::max;
 
   // Update velocity and impulses for reporting.
@@ -851,7 +854,8 @@ UnconstrainedPrimalSolver<T>::CalcIterationMetrics(const State& s,
   metrics.ls_iters = num_ls_iterations;
   metrics.ls_alpha = alpha;
   metrics.rcond = s.cache().condition_number;
-  metrics.opt_cond = this->CalcOptimalityCondition(data_, s.v(), cache.gamma);
+  metrics.opt_cond =
+      this->CalcOptimalityCondition(data_, s.v(), cache.gamma, xc_work1);
   metrics.gamma_norm = cache.gamma.norm();
   metrics.vc_norm = cache.vc.norm();
 
@@ -862,9 +866,6 @@ template <typename T>
 void UnconstrainedPrimalSolver<T>::CallSupernodalSolver(
     const State& s, VectorX<T>* dv, conex::SuperNodalSolver* solver) {
   Timer local_timer;
-
-  // TODO: SetWeightMatrix() triggers the LimitMalloc guard.
-  // test::LimitMalloc guard({.max_num_allocations = 0});
 
   auto& cache = s.mutable_cache();
 
@@ -892,7 +893,8 @@ void UnconstrainedPrimalSolver<T>::CallSupernodalSolver(
   // Factor() overwrites the assembled matrix with its LLT decomposition.
   // We'll count it as part of the linear solver time.
   solver->Factor();
-  *dv = solver->Solve(-cache.ell_grad_v);
+  *dv = -cache.ell_grad_v;  // we solve dv in place.
+  solver->SolveInPlace(dv);
   stats_.linear_solver_time += local_timer.Elapsed();
 }
 

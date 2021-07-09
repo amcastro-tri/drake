@@ -381,7 +381,7 @@ class UnconstrainedPrimalSolver final : public ConvexSolverBase<T> {
   // s_kp respectively.
   UnconstrainedPrimalSolverIterationMetrics CalcIterationMetrics(
       const State& s_k, const State& s_kp, int num_ls_iterations,
-      double alpha) const;
+      double alpha, VectorX<T>* xc_work1) const;
 
   // Solves for dv using supernodal algebra.
   void CallSupernodalSolver(const State& s, VectorX<T>* dv,

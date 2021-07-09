@@ -181,7 +181,7 @@ class ConvexSolverBase : public ContactSolver<T> {
   // This metric then takes the average over all contact points of the absolute
   // value of gᵢ⋅γᵢ.
   T CalcOptimalityCondition(const PreProcessedData& data, const VectorX<T>& v,
-                            const VectorX<T>& gamma) const;
+                            const VectorX<T>& gamma, VectorX<T>* xc_work) const;
 
   PreProcessedData data_;
 

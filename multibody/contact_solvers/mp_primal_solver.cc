@@ -72,6 +72,9 @@ ContactSolverStatus MpPrimalSolver<double>::DoSolveWithGuess(
   // solution is trivially v = v*.
   DRAKE_DEMAND(nc != 0);
 
+  // Workspace variables.
+  VectorX<double> xc_work1(nc3);
+
   // Reset stats.
   stats_ = {};
   stats_.num_contacts = nc;
@@ -184,7 +187,7 @@ ContactSolverStatus MpPrimalSolver<double>::DoSolveWithGuess(
                           &error_metrics.costM, &error_metrics.costR,
                           &error_metrics.cost);
   error_metrics.opt_cond =
-      this->CalcOptimalityCondition(data_, state.v(), state.sigma());
+      this->CalcOptimalityCondition(data_, state.v(), state.sigma(), &xc_work1);
 
   PackContactResults(data, state.v(), state.cache().vc, state.sigma(), results);
 

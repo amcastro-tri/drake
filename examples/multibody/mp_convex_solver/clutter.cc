@@ -111,6 +111,7 @@ DEFINE_double(ls_alpha_max, 1.5, "Maximum line search step.");
 DEFINE_double(rt_factor, 1.0e-3, "Rt_factor");
 DEFINE_double(abs_tol, 1.0e-6, "Absolute tolerance [m/s].");
 DEFINE_double(rel_tol, 1.0e-4, "Relative tolerance [-].");
+DEFINE_bool(log_stats, true, "Log all iterations stats.");
 
 using drake::math::RigidTransform;
 using drake::math::RigidTransformd;
@@ -472,7 +473,7 @@ const ConvexSolverBase<double>* SetSolver(
     params.use_geodesic_solver = FLAGS_use_geodesic_solver;
     params.compare_with_dense = false;
     params.verbosity_level = FLAGS_verbosity_level;
-    params.log_stats = true;
+    params.log_stats = false;
     if (FLAGS_line_search == "exact") {
       params.ls_method =
           UnconstrainedPrimalSolverParameters::LineSearchMethod::kExact;
@@ -493,7 +494,7 @@ const ConvexSolverBase<double>* SetSolver(
     params.verbosity_level = FLAGS_verbosity_level;
     params.log_file = "/home/amcastro/Drake/Drake1/drake/solver_log.dat";
     // temp_directory() + "/solver_log.dat";
-    params.log_stats = true;
+    params.log_stats = FLAGS_log_stats;
     // Opopt: It fails very often.
     // params.solver_id = solvers::IpoptSolver::id();
     // Nlopt: "converges", but analytical ID errors are large.

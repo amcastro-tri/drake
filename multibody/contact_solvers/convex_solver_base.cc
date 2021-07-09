@@ -285,6 +285,17 @@ void ConvexSolverBase<T>::CalcScaledMomentumAndScales(
   VectorX<T>& grad_ell = *v_work3;
   grad_ell = p - p_star - j;
 
+  // Energy metrics.
+  *Ek = 0.5 * v.dot(p);
+  const T Ek_star = 0.5 * v_star.dot(p_star);  // TODO: move to pre-proc data.
+  *ellM = *Ek + Ek_star - v.dot(p_star);
+  if (*ellM < 0) {
+    PRINT_VAR(*ellM);
+  }
+  DRAKE_DEMAND(*ellM >= 0);
+  *ellR = gamma.dot(R.asDiagonal() * gamma);
+  *ell = *ellM + *ellR;
+
   // Scale momentum balance using the mass matrix's Jacobi preconditioner so
   // that all entries have the same units and we can compute a fair error
   // metric.
@@ -294,14 +305,6 @@ void ConvexSolverBase<T>::CalcScaledMomentumAndScales(
 
   *scaled_momentum_error = grad_ell.norm();
   *momentum_scale = max(p.norm(), j.norm());
-
-  // Energy metrics.
-  *Ek = 0.5 * v.dot(p);
-  const T Ek_star = 0.5 * v_star.dot(p_star); // TODO: move to pre-proc data.
-  *ellM = *Ek + Ek_star - v.dot(p_star);
-  DRAKE_DEMAND(*ellM >= 0);
-  *ellR = gamma.dot(R.asDiagonal() * gamma);
-  *ell = *ellM + *ellR;
 }
 
 template <typename T>

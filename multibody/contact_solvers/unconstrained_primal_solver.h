@@ -57,9 +57,6 @@ struct UnconstrainedPrimalSolverParameters {
   // Use supernodal algebra for the linear solver.
   bool use_supernodal_solver{true};
 
-  // Uses matrix free solver. It ignores use_supernodal_solver.
-  bool use_matrixfree_solver{false};
-
   // (Temporary hack). Use the Geodesic solver.
   bool use_geodesic_solver{false};
 

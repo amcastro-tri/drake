@@ -11,9 +11,6 @@
 
 #include "fmt/format.h"
 
-#include <Eigen/IterativeLinearSolvers>
-#include <unsupported/Eigen/IterativeSolvers>
-
 #include "drake/common/test_utilities/limit_malloc.h"
 #include "drake/multibody/contact_solvers/cone_ray_intersect.h"
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
@@ -24,136 +21,6 @@
 
 #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
 #define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
-
-// Operator form of the Hessian to use with Eigen's matrix free solvers.
-class HessianMatrixFreeOperator;
-template <typename> class DiagonalPreconditioner;
-using drake::MatrixX;
-using drake::VectorX;
-using drake::multibody::contact_solvers::internal::BlockSparseMatrix;
-using Eigen::SparseMatrix;
-
-namespace Eigen {
-namespace internal {
-// HessianMatrixFreeOperator looks-like a SparseMatrix, so let's inherits its
-// traits:
-template <>
-struct traits<HessianMatrixFreeOperator>
-    : public Eigen::internal::traits<Eigen::SparseMatrix<double>> {};
-}  // namespace internal
-}  // namespace Eigen
-
-// Example of a matrix-free wrapper from a user type to Eigen's compatible type
-// For the sake of simplicity, this example simply wrap a Eigen::SparseMatrix.
-class HessianMatrixFreeOperator
-    : public Eigen::EigenBase<HessianMatrixFreeOperator> {
- public:
-  // Required typedefs, constants, and method:
-  typedef double Scalar;
-  typedef double RealScalar;
-  typedef int StorageIndex;
-  enum {
-    ColsAtCompileTime = Eigen::Dynamic,
-    MaxColsAtCompileTime = Eigen::Dynamic,
-    IsRowMajor = false
-  };
-
-  // Implements Hessian H = M + Jᵀ⋅G⋅J.
-  // Used to solve with preconditioning P.
-  // Therefore we solve (P⋅H)x = P⋅b and this operator implements y = (P⋅H)x.
-  HessianMatrixFreeOperator(const BlockSparseMatrix<double>* M,
-                            const BlockSparseMatrix<double>* J,
-                            const std::vector<MatrixX<double>>* G,
-                            const VectorX<double>* P)
-      : M_(M), J_(J), G_(G), P_(P) {
-    const int nc = G->size();
-    const int nv = M->rows();
-    v_.resize(nv);
-    xc_.resize(3 * nc);
-  }
-
-  const BlockSparseMatrix<double>& get_M() const { return *M_; }
-  const BlockSparseMatrix<double>& get_J() const { return *J_; }
-  const std::vector<MatrixX<double>>& get_G() const { return *G_; }
-  const VectorX<double>& get_P() const { return *P_; }
-
-  VectorX<double>& get_xc_workspace() const { return xc_;  }
-  VectorX<double>& get_v_workspace() const { return v_;  }
-
-  Index rows() const { return M_->rows(); }
-  Index cols() const { return M_->cols(); }
-
-  template <typename Rhs>
-  Eigen::Product<HessianMatrixFreeOperator, Rhs, Eigen::AliasFreeProduct>
-  operator*(const Eigen::MatrixBase<Rhs>& x) const {
-    return Eigen::Product<HessianMatrixFreeOperator, Rhs,
-                          Eigen::AliasFreeProduct>(*this, x.derived());
-  }
-
- private:
-  const BlockSparseMatrix<double>* M_{nullptr};
-  const BlockSparseMatrix<double>* J_{nullptr};
-  const std::vector<MatrixX<double>>* G_{nullptr};
-  const VectorX<double>* P_{nullptr};
-  mutable VectorX<double> xc_;
-  mutable VectorX<double> v_;
-};
-
-// Implementation of HessianMatrixFreeOperator * Eigen::DenseVector though a
-// specialization of internal::generic_product_impl:
-namespace Eigen {
-namespace internal {
-
-template <typename Rhs>
-struct generic_product_impl<HessianMatrixFreeOperator, Rhs, SparseShape,
-                            DenseShape,
-                            GemvProduct>  // GEMV stands for matrix-vector
-    : generic_product_impl_base<
-          HessianMatrixFreeOperator, Rhs,
-          generic_product_impl<HessianMatrixFreeOperator, Rhs>> {
-  typedef typename Product<HessianMatrixFreeOperator, Rhs>::Scalar Scalar;
-
-  template <typename Dest>
-  static void scaleAndAddTo(Dest& r, const HessianMatrixFreeOperator& H,
-                            const Rhs& v, const Scalar& alpha) {
-    // This method should implement "r += alpha * H * v" inplace,
-    // however, for iterative solvers, alpha is always equal to 1, so let's not
-    // bother about it.
-    assert(alpha == Scalar(1) && "scaling is not implemented");
-    EIGEN_ONLY_USED_FOR_DEBUG(alpha);
-
-    // Hessian H = M + Jᵀ⋅G⋅J.
-    const auto& M = H.get_M();
-    const auto& J = H.get_J();
-    const auto& G = H.get_G();
-    auto& xc = H.get_xc_workspace();
-    auto& p = H.get_v_workspace();
-
-    J.Multiply(v, &xc);  // xc = J⋅v
-
-    // xc = G⋅J⋅v
-    const int nc = G.size();
-    for (int ic = 0; ic < nc; ++ic) {
-      const int ic3 = 3 * ic;
-      xc.template segment<3>(ic3) = G[ic] * xc.template segment<3>(ic3);
-    }
-
-    // r = Jᵀ⋅G⋅J⋅v
-    J.MultiplyByTranspose(xc, &r);
-
-    // p = M⋅v
-    M.Multiply(v, &p);
-
-    // r = M⋅v + Jᵀ⋅G⋅J⋅v = (M + Jᵀ⋅G⋅J)⋅v = H⋅v
-    r += p;
-
-    // Apply preconditioning.
-    r.array() *= H.get_P().array();
-  }
-};
-
-}  // namespace internal
-}  // namespace Eigen
 
 namespace drake {
 namespace multibody {
@@ -313,16 +180,12 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
     // Super nodal solver is constructed once per time-step to reuse structure
     // of M and J.
     std::unique_ptr<conex::SuperNodalSolver> solver;
-    if (parameters_.use_supernodal_solver &&
-        !parameters_.use_matrixfree_solver) {
+    if (parameters_.use_supernodal_solver) {
       Timer timer;
       solver = std::make_unique<conex::SuperNodalSolver>(
           data_.Jblock.block_rows(), data_.Jblock.get_blocks(), data_.Mt);
       stats_.supernodal_construction_time = timer.Elapsed();
     }
-
-    HessianMatrixFreeOperator hessian_operator(&data.Mblock, &data.Jblock,
-                                               &cache.G, &data.Djac);
 
     double alpha = 1.0;
     int num_ls_iters = 0;  // Count line-search iterations.
@@ -365,62 +228,11 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
       // CallDenseSolver() so that we can factor the assembly effort of the
       // supernodal solver in the same timer.
       // TODO: get rid of CallDenseSolver(). Only here for debbuging.
-      if (!parameters_.use_matrixfree_solver) {
       if (parameters_.use_supernodal_solver) {
         CallSupernodalSolver(state, &cache.dv, solver.get());
       } else {
         CallDenseSolver(state, &cache.dv);
       }
-      }
-
-      if (parameters_.use_matrixfree_solver) {      
-        auto& cache = state.mutable_cache();
-
-        // Compute G.
-        Timer local_timer;
-        local_timer.Reset();
-        cache.ell = CalcCostAndGradients(state, &cache.ell_grad_v, &cache.G,
-                                         &cache.ellM, &cache.ellR,
-                                         &cache.ell_hessian_v);
-        stats_.assembly_time += local_timer.Elapsed();
-
-        // Solve.
-        local_timer.Reset();
-        {
-          // BiCGSTAB does not converge.  
-          //Eigen::BiCGSTAB<HessianMatrixFreeOperator, Eigen::IdentityPreconditioner> bicg;  
-
-          // CG does not converge.
-          //Eigen::ConjugateGradient<HessianMatrixFreeOperator,
-          //                         Eigen::Lower | Eigen::Upper,
-          //                         Eigen::IdentityPreconditioner>
-
-          // GMRES converges.
-          //Eigen::GMRES<HessianMatrixFreeOperator, Eigen::IdentityPreconditioner>
-
-          // DGMRES does converge
-          //Eigen::DGMRES<HessianMatrixFreeOperator,
-          //              Eigen::IdentityPreconditioner>
-          //    iter_solver;
-
-          // MINRES does not converge.
-          //Eigen::MINRES<HessianMatrixFreeOperator, Eigen::Lower | Eigen::Upper,
-          //              Eigen::IdentityPreconditioner>
-
-          Eigen::GMRES<HessianMatrixFreeOperator, Eigen::IdentityPreconditioner>
-              iter_solver;
-          iter_solver.setTolerance(parameters_.rel_tolerance / 10.0);
-          iter_solver.compute(hessian_operator);
-          cache.dv = -iter_solver.solve(hessian_operator.get_P().asDiagonal() *
-                                 cache.ell_grad_v);
-          std::cout << "Iterative solver: #iterations: "
-                    << iter_solver.iterations()
-                    << ", estimated error: " << iter_solver.error()
-                    << std::endl;
-        }
-        stats_.linear_solver_time += local_timer.Elapsed();
-      }
-
       // The cost must always go down.
       if (k > 0) {
         DRAKE_DEMAND(cache.ell < state_kp.cache().ell);

@@ -112,6 +112,7 @@ DEFINE_double(rt_factor, 1.0e-3, "Rt_factor");
 DEFINE_double(abs_tol, 1.0e-6, "Absolute tolerance [m/s].");
 DEFINE_double(rel_tol, 1.0e-4, "Relative tolerance [-].");
 DEFINE_bool(log_stats, true, "Log all iterations stats.");
+DEFINE_bool(use_matrixfree_solver, false, "Uses a matrix free solver.");
 
 using drake::math::RigidTransform;
 using drake::math::RigidTransformd;
@@ -474,6 +475,7 @@ const ConvexSolverBase<double>* SetSolver(
     params.compare_with_dense = false;
     params.verbosity_level = FLAGS_verbosity_level;
     params.log_stats = false;
+    params.use_matrixfree_solver = FLAGS_use_matrixfree_solver;
     if (FLAGS_line_search == "exact") {
       params.ls_method =
           UnconstrainedPrimalSolverParameters::LineSearchMethod::kExact;

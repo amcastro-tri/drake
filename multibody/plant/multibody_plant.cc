@@ -897,31 +897,33 @@ void MultibodyPlant<T>::ExcludeCollisionGeometriesWithCollisionFilterGroupPair(
   }
 }
 
-template<typename T>
+template <typename T>
 void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
     const systems::Context<T>& context,
     const std::vector<internal::DiscreteContactPair<T>>& contact_pairs,
-    MatrixX<T>* Jn_ptr, MatrixX<T>* Jt_ptr,
-    std::vector<RotationMatrix<T>>* R_WC_set) const {
+    MatrixX<T>* Jc_ptr, std::vector<RotationMatrix<T>>* R_WC_set) const {
   this->ValidateContext(context);
-  DRAKE_DEMAND(Jn_ptr != nullptr);
-  DRAKE_DEMAND(Jt_ptr != nullptr);
+  DRAKE_DEMAND(Jc_ptr != nullptr);
 
   const int num_contacts = contact_pairs.size();
 
   // Jn is defined such that vn = Jn * v, with vn of size nc.
-  auto& Jn = *Jn_ptr;
-  Jn.resize(num_contacts, num_velocities());
+  auto& Jc = *Jc_ptr;
+  Jc.resize(3 * num_contacts, num_velocities());
 
-  // Jt is defined such that vt = Jt * v, with vt of size 2nc.
-  auto& Jt = *Jt_ptr;
-  Jt.resize(2 * num_contacts, num_velocities());
-
-  if (R_WC_set != nullptr) R_WC_set->clear();
+  if (R_WC_set != nullptr) {    
+    R_WC_set->clear();
+    R_WC_set->reserve(num_contacts);
+  }
 
   // Quick no-op exit. Notice we did resize Jn, Jt and R_WC_set to be zero
   // sized.
   if (num_contacts == 0) return;
+
+  const int nv = this->num_velocities();
+  Matrix3X<T> Jv_WAc(3, this->num_velocities());
+  Matrix3X<T> Jv_WBc(3, this->num_velocities());
+
 
   const Frame<T>& frame_W = world_frame();
   for (int icontact = 0; icontact < num_contacts; ++icontact) {
@@ -943,7 +945,6 @@ void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
     // translational velocity Jacobian in the world frame W with respect to
     // generalized velocities v).  Note: Ac's translational velocity in W can
     // be written in terms of this Jacobian as v_WAc = Jv_v_WAc * v.
-    Matrix3X<T> Jv_WAc(3, this->num_velocities());
     internal_tree().CalcJacobianTranslationalVelocity(context,
                                                       JacobianWrtVariable::kV,
                                                       bodyA.body_frame(),
@@ -955,7 +956,6 @@ void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
 
     // Similarly, for point Bc (origin of frame B shifted to C), calculate
     // Jv_v_WBc (Bc's translational velocity Jacobian in W with respect to v).
-    Matrix3X<T> Jv_WBc(3, this->num_velocities());
     internal_tree().CalcJacobianTranslationalVelocity(context,
                                                       JacobianWrtVariable::kV,
                                                       bodyB.body_frame(),
@@ -964,17 +964,6 @@ void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
                                                       frame_W,
                                                       frame_W,
                                                       &Jv_WBc);
-
-    // Computation of the normal separation velocities Jacobian Jn:
-    //
-    // The velocity of Bc relative to Ac is
-    //   v_AcBc_W = v_WBc - v_WAc.
-    // From where the separation velocity is computed as
-    //   vn = -v_AcBc_W.dot(nhat_BA_W) = -nhat_BA_Wᵀ⋅v_AcBc_W
-    // where the negative sign stems from the sign convention for vn and xdot.
-    // This can be written in terms of the Jacobians as
-    //   vn = -nhat_BA_Wᵀ⋅(Jv_WBc - Jv_WAc)⋅v
-    Jn.row(icontact) = nhat_BA_W.transpose() * (Jv_WAc - Jv_WBc);
 
     // Computation of the tangential velocities Jacobian Jt:
     //
@@ -987,17 +976,12 @@ void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
       R_WC_set->push_back(R_WC);
     }
 
-    const Vector3<T> that1_W = R_WC.matrix().col(0);  // that1 = Cx.
-    const Vector3<T> that2_W = R_WC.matrix().col(1);  // that2 = Cy.
+    Jc.block(3 * icontact, 0, 3, nv) = R_WC.transpose() * (Jv_WBc - Jv_WAc);
 
-    // The velocity of Bc relative to Ac is
-    //   v_AcBc_W = v_WBc - v_WAc.
-    // The first two components of this velocity in C corresponds to the
-    // tangential velocities in a plane normal to nhat_BA.
-    //   vx_AcBc_C = that1⋅v_AcBc = that1ᵀ⋅(Jv_WBc - Jv_WAc)⋅v
-    //   vy_AcBc_C = that2⋅v_AcBc = that2ᵀ⋅(Jv_WBc - Jv_WAc)⋅v
-    Jt.row(2 * icontact)     = that1_W.transpose() * (Jv_WBc - Jv_WAc);
-    Jt.row(2 * icontact + 1) = that2_W.transpose() * (Jv_WBc - Jv_WAc);
+    // TODO: fix this to have all consistent signs.
+    // Negate the normal direction so that this component corresponds to the
+    // "separation" velocity.
+    Jc.row(3 * icontact + 2) = -Jc.row(3 * icontact + 2);
   }
 }
 
@@ -2325,9 +2309,18 @@ void MultibodyPlant<T>::CalcContactSolverResults(
                       minus_tau, phi0, contact_jacobians.Jc, stiffness, damping,
                       mu, results);
   } else {
-    CallTamsiSolver(context0.get_time(), v0, M0, minus_tau, fn0,
-                    contact_jacobians.Jn, contact_jacobians.Jt, stiffness,
-                    damping, mu, results);
+    // I patched CalcNormalAndTangentContactJacobians() to compute Jc instead to
+    // avoid the expensive copy from {Jn,Jt} into Jc (lots of cache misses).
+    const auto& Jc = contact_jacobians.Jc;
+    MatrixX<T> Jn(num_contacts, nv);
+    MatrixX<T> Jt(2 * num_contacts, nv);
+    for (int i = 0; i < num_contacts; ++i) {
+      Jt.row(2 * i) = Jc.row(3 * i);
+      Jt.row(2 * i + 1) = Jc.row(3 * i + 1);
+      Jn.row(i) = Jc.row(3 * i + 2);
+    }
+    CallTamsiSolver(context0.get_time(), v0, M0, minus_tau, fn0, Jn, Jt,
+                    stiffness, damping, mu, results);
   }
 }
 
@@ -2988,18 +2981,8 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
         const std::vector<internal::DiscreteContactPair<T>> contact_pairs =
             CalcDiscreteContactPairs(context);
         this->CalcNormalAndTangentContactJacobians(
-            context, contact_pairs,
-            &contact_jacobians_cache.Jn, &contact_jacobians_cache.Jt,
-            &contact_jacobians_cache.R_WC_list);
-        auto& Jc = contact_jacobians_cache.Jc;
-        const auto& Jn = contact_jacobians_cache.Jn;
-        const auto& Jt = contact_jacobians_cache.Jt;
-        Jc.resize(3 * Jn.rows(), num_velocities());
-        for (int i = 0; i < Jn.rows(); ++i) {
-          Jc.row(3 * i) = Jt.row(2 * i);
-          Jc.row(3 * i + 1) = Jt.row(2 * i + 1);
-          Jc.row(3 * i + 2) = Jn.row(i);
-        }
+            context, contact_pairs, &contact_jacobians_cache.Jc,
+            &contact_jacobians_cache.R_WC_list);        
       },
       // We explicitly declare the configuration dependence even though the
       // Eval() above implicitly evaluates configuration dependent cache

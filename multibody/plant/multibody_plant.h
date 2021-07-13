@@ -4559,7 +4559,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   void CalcNormalAndTangentContactJacobians(
       const systems::Context<T>& context,
       const std::vector<internal::DiscreteContactPair<T>>& contact_pairs,
-      MatrixX<T>* Jn, MatrixX<T>* Jt,
+      MatrixX<T>* Jc,
       std::vector<math::RotationMatrix<T>>* R_WC_set = nullptr) const;
 
   // Evaluates the contact Jacobians for the given state of the plant stored in

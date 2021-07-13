@@ -668,17 +668,20 @@ void CompliantContactComputationManager<T>::LogStats(
   std::cout << fmt::format(
       "CompliantContactComputationManager total wall-clock: {:12.4g}\n",
       total_time());
-
   const std::vector<ContactManagerStats>& hist = get_stats_history();
   std::ofstream file(log_file_name);
+
+  file << fmt::format("{} {} {} {} {} {} {} {} {} {}\n", "sim_time",
+                      "num_contacts", "total_time", "geometry_time",
+                      "vstar_time", "graph_time", "linear_dynamics_time",
+                      "contact_jacobian_time", "contact_solver_time",
+                      "pack_results_time");
+
   for (const auto& s : hist) {
     file << fmt::format(
-        "{:18.6g} {:d}  {:18.6g}  {:18.6g} {:18.6g} {:18.6g} {:18.6g} "
-        "{:18.6g} "
-        "{:18.6g}  {:18.6g}\n",
-        s.time, s.num_contacts, s.total_time, s.geometry_time, s.vstar_time,
-        s.graph_time, s.linear_dynamics_time, s.contact_jacobian_time,
-        s.contact_solver_time, s.pack_results_time);
+        "{} {} {} {} {} {} {} {} {} {}\n", s.time, s.num_contacts, s.total_time,
+        s.geometry_time, s.vstar_time, s.graph_time, s.linear_dynamics_time,
+        s.contact_jacobian_time, s.contact_solver_time, s.pack_results_time);
   }
   file.close();
 }

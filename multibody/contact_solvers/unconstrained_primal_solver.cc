@@ -179,19 +179,14 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
   } else {
     // Super nodal solver is constructed once per time-step to reuse structure
     // of M and J.
-    std::unique_ptr<conex::SuperNodalSolver> solver;
-    if (parameters_.use_supernodal_solver) {
-      Timer timer;
-      solver = std::make_unique<conex::SuperNodalSolver>(
-          data_.Jblock.block_rows(), data_.Jblock.get_blocks(), data_.Mt);
-      stats_.supernodal_construction_time = timer.Elapsed();
-    }
+    std::unique_ptr<conex::SuperNodalSolver> solver;    
 
     double alpha = 1.0;
     int num_ls_iters = 0;  // Count line-search iterations.
 
     // Start Newton iterations.
     int k = 0;
+    int num_iterations = 0;
     for (; k < parameters_.max_iterations; ++k) {
       if (parameters_.verbosity_level >= 3) {
         std::cout << std::string(80, '=') << std::endl;
@@ -221,6 +216,18 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
           std::cout << std::string(80, '=') << std::endl;
         }
         break;
+      } else {
+        ++num_iterations;  // For statistics, we only count those iterations
+                           // that actually do work, i.e. solve a system of
+                           // linear equations.
+        // Prepare supernodal solver on first iteration only when needed.
+        // That is, if converged, avoid this work.
+        if (parameters_.use_supernodal_solver && k == 0) {
+          Timer timer;
+          solver = std::make_unique<conex::SuperNodalSolver>(
+              data_.Jblock.block_rows(), data_.Jblock.get_blocks(), data_.Mt);
+          stats_.supernodal_construction_time = timer.Elapsed();
+        }
       }
       state_kp = state;
 
@@ -285,7 +292,7 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
         PRINT_VAR(alpha);
         PRINT_VAR(metrics.v_error_max_norm);
         PRINT_VAR(metrics.vc_error_max_norm);
-      }       
+      }
     }
 
     if (k == parameters_.max_iterations) return ContactSolverStatus::kFailure;
@@ -303,7 +310,7 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
                       &last_metrics.cost);    
 
     if (!parameters_.log_stats) stats_.iteration_metrics.push_back(metrics);
-    stats_.num_iters = stats_.iteration_metrics.size();
+    stats_.num_iters = num_iterations;
 
     PackContactResults(data_, state.v(), cache.vc, cache.gamma, results);
     stats_.total_time = global_timer.Elapsed();

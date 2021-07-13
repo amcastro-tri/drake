@@ -315,8 +315,8 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
     PackContactResults(data_, state.v(), cache.vc, cache.gamma, results);
     stats_.total_time = global_timer.Elapsed();
 
-    solution_history_.emplace_back(SolutionData<double>{
-        nc, cache.vc, cache.gamma, data_.contact_data->get_mu(), data_.R});
+    //solution_history_.emplace_back(SolutionData<double>{
+    //    nc, cache.vc, cache.gamma, data_.contact_data->get_mu(), data_.R});
 
     // Update stats history.
     stats_history_.push_back(stats_);

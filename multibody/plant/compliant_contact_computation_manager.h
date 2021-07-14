@@ -121,6 +121,12 @@ class CompliantContactComputationManager
       const drake::systems::Context<T>& context0,
       drake::systems::DiscreteValues<T>* updates) const final;
 
+  void DoCalcContactResults(const systems::Context<T>& context,
+                            ContactResults<T>* contact_results) const final {
+    (void)context;
+    contact_results->Clear();
+  }
+
   // TODO: change signature so that it returns a new contact graph instead.
   void CalcContactGraph(
       const geometry::QueryObject<T>& query_object,

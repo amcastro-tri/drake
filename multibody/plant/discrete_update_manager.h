@@ -7,6 +7,7 @@
 #include "drake/multibody/tree/multibody_tree.h"
 #include "drake/systems/framework/context.h"
 #include "drake/multibody/plant/contact_jacobians.h"
+#include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/coulomb_friction.h"
 #include "drake/multibody/plant/discrete_contact_pair.h"
 
@@ -91,6 +92,12 @@ class DiscreteUpdateManager {
     DoCalcDiscreteValues(context, updates);
   }
 
+  void CalcContactResults(const systems::Context<T>& context,
+                          ContactResults<T>* contact_results) const {
+    DRAKE_DEMAND(contact_results != nullptr);
+    DoCalcContactResults(context, contact_results);
+  }
+
  protected:
   /* Derived DiscreteUpdateManager should override this method to extract
    information from the owning MultibodyPlant. */
@@ -139,6 +146,10 @@ class DiscreteUpdateManager {
   virtual void DoCalcDiscreteValues(
       const systems::Context<T>& context,
       systems::DiscreteValues<T>* updates) const = 0;
+
+  virtual void DoCalcContactResults(
+      const systems::Context<T>& context,
+      ContactResults<T>* contact_results) const = 0;
 
  private:
   const MultibodyPlant<T>* plant_{nullptr};

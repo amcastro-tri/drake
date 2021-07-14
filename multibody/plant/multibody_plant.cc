@@ -1358,6 +1358,11 @@ template <typename T>
 void MultibodyPlant<T>::CalcContactResultsDiscrete(
     const systems::Context<T>& context,
     ContactResults<T>* contact_results) const {
+  if (discrete_update_manager_) {
+    discrete_update_manager_->CalcContactResults(context, contact_results);
+    return;
+  }
+
   DRAKE_DEMAND(contact_results != nullptr);
   contact_results->Clear();
   if (num_collision_geometries() == 0) return;

@@ -7,6 +7,7 @@
 #include "drake/common/default_scalars.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
+#include "drake/math/rotation_matrix.h"
 #include "drake/multibody/contact_solvers/block_sparse_matrix.h"
 #include "drake/multibody/plant/discrete_update_manager.h"
 #include "drake/multibody/plant/contact_permutation_utils.h"
@@ -28,6 +29,14 @@ struct ContactManagerStats {
   double contact_solver_time{0};
   double pack_results_time{0};
 };
+
+namespace internal {
+template <typename T>
+struct ContactJacobianCache {
+  MatrixX<T> Jc;
+  std::vector<drake::math::RotationMatrix<T>> R_WC_list;
+};
+}  // namespace internal
 
 // Forward declare MultibodyPlant.
 // template <typename T>
@@ -105,6 +114,10 @@ class CompliantContactComputationManager
   void LogStats(const std::string& log_file_name) const;
 
  private:
+  struct CacheIndexes {
+    systems::CacheIndex contact_jacobian;
+  };
+
   using internal::DiscreteUpdateManager<T>::plant;
 
   void ExtractModelInfo() final;
@@ -126,6 +139,8 @@ class CompliantContactComputationManager
     (void)context;
     contact_results->Clear();
   }
+
+  void DeclareCacheEntries(MultibodyPlant<T>*) final;
 
   // TODO: change signature so that it returns a new contact graph instead.
   void CalcContactGraph(
@@ -169,6 +184,17 @@ class CompliantContactComputationManager
       contact_solvers::internal::BlockSparseMatrix<T>* Jc, VectorX<T>* phi0,
       VectorX<T>* vc0, VectorX<T>* mu, VectorX<T>* stiffness,
       VectorX<T>* linear_damping) const;
+
+  void CalcContactJacobian(
+      const systems::Context<T>& context,
+      const std::vector<internal::DiscreteContactPair<T>>& contact_pairs,
+      MatrixX<T>* Jc_ptr, std::vector<math::RotationMatrix<T>>* R_WC_set) const;
+
+  const internal::ContactJacobianCache<T>& EvalContactJacobianCache(
+      const systems::Context<T>& context) const {
+    return plant().get_cache_entry(cache_indexes_.contact_jacobian)
+        .template Eval<internal::ContactJacobianCache<T>>(context);
+  }
 
   // forward = true --> vp(ip) = v(i).
   // forward = false --> v(i) = vp(ip).
@@ -225,6 +251,8 @@ class CompliantContactComputationManager
   // Hack. We save here the previous value of the generalized contact forces.
   // We'd need to place it in its own cache entry.
   mutable VectorX<T> tau_c_;
+
+  CacheIndexes cache_indexes_;
 
   mutable std::vector<ContactManagerStats> stats_;
   mutable double total_time_{0};

@@ -9,6 +9,8 @@
 #include "drake/common/default_scalars.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
+#include "drake/math/rotation_matrix.h"
+#include "drake/math/orthonormal_basis.h"
 #include "drake/multibody/contact_solvers/block_sparse_linear_operator.h"
 #include "drake/multibody/contact_solvers/contact_solver.h"
 #include "drake/multibody/contact_solvers/timer.h"
@@ -18,6 +20,10 @@
 
 #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
 #define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
+
+using drake::geometry::GeometryId;
+using drake::math::RotationMatrix;
+using drake::systems::Context;
 
 namespace drake {
 namespace multibody {
@@ -44,6 +50,29 @@ void CompliantContactComputationManager<T>::ExtractModelInfo() {
     workspace_.aux_plant_context_ = plant().CreateDefaultContext();
   tau_c_.resize(nv);
   tau_c_.setZero();
+}
+
+template <typename T>
+void CompliantContactComputationManager<T>::DeclareCacheEntries(
+    MultibodyPlant<T>* mutable_plant) {
+  auto& contact_jacobian_cache_entry = mutable_plant->DeclareCacheEntry(
+      std::string("Contact Jacobians Jc(q)."),
+      []() { return AbstractValue::Make(internal::ContactJacobianCache<T>()); },
+      [this](const systems::ContextBase& context_base,
+             AbstractValue* cache_value) {
+        auto& context = dynamic_cast<const Context<T>&>(context_base);
+        auto& contact_jacobian_cache =
+            cache_value->get_mutable_value<internal::ContactJacobianCache<T>>();
+        const std::vector<internal::DiscreteContactPair<T>>& contact_pairs =
+            plant().EvalDiscreteContactPairs(context);
+        CalcContactJacobian(context, contact_pairs, &contact_jacobian_cache.Jc,
+                            &contact_jacobian_cache.R_WC_list);
+      },
+      // We explicitly declare the configuration dependence even though the
+      // Eval() above implicitly evaluates configuration dependent cache
+      // entries.
+      {mutable_plant->configuration_ticket(), mutable_plant->all_parameters_ticket()});
+  cache_indexes_.contact_jacobian = contact_jacobian_cache_entry.cache_index();
 }
 
 template <typename T>
@@ -281,9 +310,9 @@ void CompliantContactComputationManager<T>::CalcContactQuantities(
     VectorX<T>* vc0, VectorX<T>* mu, VectorX<T>* stiffness,
     VectorX<T>* linear_damping) const {
   DRAKE_DEMAND(Jc != nullptr);
-  const internal::ContactJacobians<T>& contact_jacobians =
-      this->EvalContactJacobians(context);
-  *Jc = internal::ExtractBlockJacobian(contact_jacobians.Jc, graph_,
+  const internal::ContactJacobianCache<T>& contact_jacobian =
+      this->EvalContactJacobianCache(context);
+  *Jc = internal::ExtractBlockJacobian(contact_jacobian.Jc, graph_,
                                        velocities_permutation_,
                                        participating_trees_);
 
@@ -331,8 +360,8 @@ void CompliantContactComputationManager<T>::DoCalcContactSolverResults(
       plant()
           .get_geometry_query_input_port()
           .template Eval<geometry::QueryObject<T>>(context);
-  const std::vector<internal::DiscreteContactPair<T>> contact_pairs =
-      this->CalcDiscreteContactPairs(context);
+  const std::vector<internal::DiscreteContactPair<T>>& contact_pairs =
+      plant().EvalDiscreteContactPairs(context);
   stats.geometry_time = timer.Elapsed();
 
   timer.Reset();
@@ -684,6 +713,82 @@ void CompliantContactComputationManager<T>::LogStats(
         s.contact_jacobian_time, s.contact_solver_time, s.pack_results_time);
   }
   file.close();
+}
+
+template <typename T>
+void CompliantContactComputationManager<T>::CalcContactJacobian(
+    const systems::Context<T>& context,
+    const std::vector<internal::DiscreteContactPair<T>>& contact_pairs,
+    MatrixX<T>* Jc_ptr, std::vector<RotationMatrix<T>>* R_WC_set) const {
+  DRAKE_DEMAND(Jc_ptr != nullptr);
+
+  const int num_contacts = contact_pairs.size();
+
+  // Jn is defined such that vn = Jn * v, with vn of size nc.
+  auto& Jc = *Jc_ptr;
+  Jc.resize(3 * num_contacts, plant().num_velocities());
+
+  if (R_WC_set != nullptr) {
+    R_WC_set->clear();
+    R_WC_set->reserve(num_contacts);
+  }
+
+  // Quick no-op exit. Notice we did resize Jn, Jt and R_WC_set to be zero
+  // sized.
+  if (num_contacts == 0) return;
+
+  const int nv = plant().num_velocities();
+  Matrix3X<T> Jv_WAc(3, nv);
+  Matrix3X<T> Jv_WBc(3, nv);
+
+  const Frame<T>& frame_W = plant().world_frame();
+  for (int icontact = 0; icontact < num_contacts; ++icontact) {
+    const auto& point_pair = contact_pairs[icontact];
+
+    const GeometryId geometryA_id = point_pair.id_A;
+    const GeometryId geometryB_id = point_pair.id_B;
+
+    BodyIndex bodyA_index = plant().geometry_id_to_body_index_.at(geometryA_id);
+    const Body<T>& bodyA = plant().get_body(bodyA_index);
+    BodyIndex bodyB_index = plant().geometry_id_to_body_index_.at(geometryB_id);
+    const Body<T>& bodyB = plant().get_body(bodyB_index);
+
+    // Penetration depth > 0 if bodies interpenetrate.
+    const Vector3<T>& nhat_BA_W = point_pair.nhat_BA_W;
+    const Vector3<T>& p_WC = point_pair.p_WC;
+
+    // For point Ac (origin of frame A shifted to C), calculate Jv_v_WAc (Ac's
+    // translational velocity Jacobian in the world frame W with respect to
+    // generalized velocities v).  Note: Ac's translational velocity in W can
+    // be written in terms of this Jacobian as v_WAc = Jv_v_WAc * v.
+    plant().internal_tree().CalcJacobianTranslationalVelocity(
+        context, JacobianWrtVariable::kV, bodyA.body_frame(), frame_W, p_WC,
+        frame_W, frame_W, &Jv_WAc);
+
+    // Similarly, for point Bc (origin of frame B shifted to C), calculate
+    // Jv_v_WBc (Bc's translational velocity Jacobian in W with respect to v).
+    plant().internal_tree().CalcJacobianTranslationalVelocity(
+        context, JacobianWrtVariable::kV, bodyB.body_frame(), frame_W, p_WC,
+        frame_W, frame_W, &Jv_WBc);
+
+    // Computation of the tangential velocities Jacobian Jt:
+    //
+    // Compute the orientation of a contact frame C at the contact point such
+    // that the z-axis Cz equals to nhat_BA_W. The tangent vectors are
+    // arbitrary, with the only requirement being that they form a valid right
+    // handed basis with nhat_BA.
+    const RotationMatrix<T> R_WC(math::ComputeBasisFromAxis(2, nhat_BA_W));
+    if (R_WC_set != nullptr) {
+      R_WC_set->push_back(R_WC);
+    }
+
+    Jc.block(3 * icontact, 0, 3, nv) = R_WC.transpose() * (Jv_WBc - Jv_WAc);
+
+    // TODO: fix this to have all consistent signs.
+    // Negate the normal direction so that this component corresponds to the
+    // "separation" velocity.
+    Jc.row(3 * icontact + 2) = -Jc.row(3 * icontact + 2);
+  }
 }
 
 }  // namespace multibody

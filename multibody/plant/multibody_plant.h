@@ -72,6 +72,8 @@ class MultibodyPlantModelAttorney;
 template <typename>
 class MultibodyPlantDiscreteUpdateManagerAttorney;
 }  // namespace internal
+template <typename>
+class CompliantContactComputationManager;
 
 // TODO(amcastro-tri): Add a section on contact models in
 // contact_model_doxygen.h.
@@ -3979,6 +3981,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // implementations that need it.
   friend class internal::MultibodyPlantModelAttorney<T>;
   friend class internal::MultibodyPlantDiscreteUpdateManagerAttorney<T>;
+  friend class CompliantContactComputationManager<T>;
 
   // This struct stores in one single place all indexes related to
   // MultibodyPlant specific cache entries. These are initialized at Finalize()
@@ -3988,6 +3991,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     systems::CacheIndex contact_jacobians;
     systems::CacheIndex contact_results;
     systems::CacheIndex contact_surfaces;
+    systems::CacheIndex discrete_pairs;
     systems::CacheIndex generalized_contact_forces_continuous;
     systems::CacheIndex hydro_fallback;
     systems::CacheIndex point_pairs;
@@ -4597,6 +4601,14 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     this->ValidateContext(context);
     return this->get_cache_entry(cache_indexes_.contact_jacobians)
         .template Eval<internal::ContactJacobians<T>>(context);
+  }
+
+  const std::vector<internal::DiscreteContactPair<T>>& EvalDiscreteContactPairs(
+      const systems::Context<T>& context) const {
+    DRAKE_MBP_THROW_IF_NOT_FINALIZED();
+    this->ValidateContext(context);
+    return this->get_cache_entry(cache_indexes_.discrete_pairs)
+        .template Eval<std::vector<internal::DiscreteContactPair<T>>>(context);
   }
 
   // Registers a joint in the graph.

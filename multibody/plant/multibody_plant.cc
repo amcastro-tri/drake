@@ -2274,7 +2274,7 @@ void MultibodyPlant<T>::CalcContactSolverResults(
   // Compute all contact pairs, including both penetration pairs and quadrature
   // pairs for discrete hydroelastic.
   const std::vector<internal::DiscreteContactPair<T>> contact_pairs =
-      CalcDiscreteContactPairs(context0);
+      EvalDiscreteContactPairs(context0);
   const int num_contacts = contact_pairs.size();
 
   // Compute normal and tangential velocity Jacobians at t0.
@@ -2968,6 +2968,26 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
       {this->configuration_ticket()});
   cache_indexes_.contact_surfaces = contact_surfaces_cache_entry.cache_index();
 
+  // Cache discrete pairs.
+  auto& discrete_pairs_cache_entry = this->DeclareCacheEntry(
+      std::string("Discrete contact pairs."),
+      []() {
+        return AbstractValue::Make(
+            std::vector<internal::DiscreteContactPair<T>>());
+      },
+      [this](const systems::ContextBase& context_base,
+             AbstractValue* cache_value) {
+        auto& context = dynamic_cast<const Context<T>&>(context_base);
+        auto& discrete_pairs_cache = cache_value->get_mutable_value<
+            std::vector<internal::DiscreteContactPair<T>>>();
+        discrete_pairs_cache = CalcDiscreteContactPairs(context);
+      },
+      // We explicitly declare the configuration dependence even though the
+      // Eval() above implicitly evaluates configuration dependent cache
+      // entries.
+      {this->configuration_ticket(), this->all_parameters_ticket()});
+  cache_indexes_.discrete_pairs = discrete_pairs_cache_entry.cache_index();
+
   // Cache contact Jacobians.
   auto& contact_jacobians_cache_entry = this->DeclareCacheEntry(
       std::string("Contact Jacobians Jn(q) and Jt(q)."),
@@ -2977,9 +2997,8 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
         auto& context = dynamic_cast<const Context<T>&>(context_base);
         auto& contact_jacobians_cache =
             cache_value->get_mutable_value<internal::ContactJacobians<T>>();
-        // TODO(amcastro-tri): consider caching contact_pairs.
-        const std::vector<internal::DiscreteContactPair<T>> contact_pairs =
-            CalcDiscreteContactPairs(context);
+        const std::vector<internal::DiscreteContactPair<T>>& contact_pairs =
+            EvalDiscreteContactPairs(context);
         this->CalcNormalAndTangentContactJacobians(
             context, contact_pairs, &contact_jacobians_cache.Jc,
             &contact_jacobians_cache.R_WC_list);        

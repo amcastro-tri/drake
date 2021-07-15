@@ -19,6 +19,7 @@
 #include "drake/multibody/plant/contact_permutation_utils.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/systems/framework/context.h"
+#include "drake/common/test_utilities/limit_malloc.h"
 
 #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
 #define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
@@ -740,8 +741,10 @@ void CompliantContactComputationManager<T>::CalcContactJacobian(
   if (num_contacts == 0) return;
 
   const int nv = plant().num_velocities();
-  Matrix3X<T> Jv_WAc(3, nv);
-  Matrix3X<T> Jv_WBc(3, nv);
+  //Matrix3X<T> Jv_WAc(3, nv);
+  //Matrix3X<T> Jv_WBc(3, nv);
+  Matrix3X<T> Jtmp(3, nv);
+  Matrix3X<T> Jv_AcBc(3, nv);
 
 #if 0
   std::vector<int> num_body_points(plant().num_bodies(), 0);
@@ -854,55 +857,63 @@ void CompliantContactComputationManager<T>::CalcContactJacobian(
     // "separation" velocity.
     Jc.row(3 * icontact + 2) = -Jc.row(3 * icontact + 2);        
   }
-#endif
+#endif 
 
-  const Frame<T>& frame_W = plant().world_frame();
-  for (int icontact = 0; icontact < num_contacts; ++icontact) {
-    const auto& point_pair = contact_pairs[icontact];
+ // Alloc workspace once for successive calls. 
+ internal::CalcJacobianWorkspace<T> jacobian_workspace(
+     plant().num_bodies(), plant().num_velocities(), num_contacts);
 
-    const GeometryId geometryA_id = point_pair.id_A;
-    const GeometryId geometryB_id = point_pair.id_B;
+  test::LimitMalloc guard({.max_num_allocations = 0});     
 
-    BodyIndex bodyA_index = plant().geometry_id_to_body_index_.at(geometryA_id);
-    const Body<T>& bodyA = plant().get_body(bodyA_index);
-    BodyIndex bodyB_index = plant().geometry_id_to_body_index_.at(geometryB_id);
-    const Body<T>& bodyB = plant().get_body(bodyB_index);
+ const Frame<T>& frame_W = plant().world_frame();
+ for (int icontact = 0; icontact < num_contacts; ++icontact) {
+   const auto& point_pair = contact_pairs[icontact];
 
-    // Penetration depth > 0 if bodies interpenetrate.
-    const Vector3<T>& nhat_BA_W = point_pair.nhat_BA_W;
-    const Vector3<T>& p_WC = point_pair.p_WC;
+   const GeometryId geometryA_id = point_pair.id_A;
+   const GeometryId geometryB_id = point_pair.id_B;
 
-    // For point Ac (origin of frame A shifted to C), calculate Jv_v_WAc (Ac's
-    // translational velocity Jacobian in the world frame W with respect to
-    // generalized velocities v).  Note: Ac's translational velocity in W can
-    // be written in terms of this Jacobian as v_WAc = Jv_v_WAc * v.
-    plant().internal_tree().CalcJacobianTranslationalVelocity(
-        context, JacobianWrtVariable::kV, bodyA.body_frame(), frame_W, p_WC,
-        frame_W, frame_W, &Jv_WAc);
+   BodyIndex bodyA_index = plant().geometry_id_to_body_index_.at(geometryA_id);
+   const Body<T>& bodyA = plant().get_body(bodyA_index);
+   BodyIndex bodyB_index = plant().geometry_id_to_body_index_.at(geometryB_id);
+   const Body<T>& bodyB = plant().get_body(bodyB_index);
 
-    // Similarly, for point Bc (origin of frame B shifted to C), calculate
-    // Jv_v_WBc (Bc's translational velocity Jacobian in W with respect to v).
-    plant().internal_tree().CalcJacobianTranslationalVelocity(
-        context, JacobianWrtVariable::kV, bodyB.body_frame(), frame_W, p_WC,
-        frame_W, frame_W, &Jv_WBc);
+   // Penetration depth > 0 if bodies interpenetrate.
+   const Vector3<T>& nhat_BA_W = point_pair.nhat_BA_W;
+   const Vector3<T>& p_WC = point_pair.p_WC;
 
-    // Computation of the tangential velocities Jacobian Jt:
-    //
-    // Compute the orientation of a contact frame C at the contact point such
-    // that the z-axis Cz equals to nhat_BA_W. The tangent vectors are
-    // arbitrary, with the only requirement being that they form a valid right
-    // handed basis with nhat_BA.
-    const RotationMatrix<T> R_WC(math::ComputeBasisFromAxis(2, nhat_BA_W));
-    if (R_WC_set != nullptr) {
-      R_WC_set->push_back(R_WC);
-    }
+   // For point Ac (origin of frame A shifted to C), calculate Jv_v_WAc (Ac's
+   // translational velocity Jacobian in the world frame W with respect to
+   // generalized velocities v).  Note: Ac's translational velocity in W can
+   // be written in terms of this Jacobian as v_WAc = Jv_v_WAc * v.
+   plant().internal_tree().CalcJacobianTranslationalVelocity(
+       context, JacobianWrtVariable::kV, bodyA.body_frame(), frame_W, p_WC,
+       frame_W, frame_W, &Jtmp, &jacobian_workspace);
+   Jv_AcBc = -Jtmp;  // Jv_AcBc = -J_WAc.
 
-    Jc.block(3 * icontact, 0, 3, nv) = R_WC.transpose() * (Jv_WBc - Jv_WAc);
+   // Similarly, for point Bc (origin of frame B shifted to C), calculate
+   // Jv_v_WBc (Bc's translational velocity Jacobian in W with respect to v).
+   plant().internal_tree().CalcJacobianTranslationalVelocity(
+       context, JacobianWrtVariable::kV, bodyB.body_frame(), frame_W, p_WC,
+       frame_W, frame_W, &Jtmp, &jacobian_workspace);
+   Jv_AcBc += Jtmp;  // Jv_AcBc = J_WBc - J_WAc.
 
-    // TODO: fix this to have all consistent signs.
-    // Negate the normal direction so that this component corresponds to the
-    // "separation" velocity.
-    Jc.row(3 * icontact + 2) = -Jc.row(3 * icontact + 2);
+   // Computation of the tangential velocities Jacobian Jt:
+   //
+   // Compute the orientation of a contact frame C at the contact point such
+   // that the z-axis Cz equals to nhat_BA_W. The tangent vectors are
+   // arbitrary, with the only requirement being that they form a valid right
+   // handed basis with nhat_BA.
+   const RotationMatrix<T> R_WC(math::ComputeBasisFromAxis(2, nhat_BA_W));
+   if (R_WC_set != nullptr) {
+     R_WC_set->push_back(R_WC);
+   }
+
+   Jc.block(3 * icontact, 0, 3, nv) = R_WC.transpose() * Jv_AcBc;
+
+   // TODO: fix this to have all consistent signs.
+   // Negate the normal direction so that this component corresponds to the
+   // "separation" velocity.
+   Jc.row(3 * icontact + 2) = -Jc.row(3 * icontact + 2);
   }
 }
 

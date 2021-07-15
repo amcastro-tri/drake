@@ -98,6 +98,7 @@ drake_cc_library(
 
 drake_cc_library(
     name = "multibody_tree_core",
+    copts = ["-O2", "-g"],
     srcs = [
         "ball_rpy_joint.cc",
         "body.cc",
@@ -184,6 +185,7 @@ drake_cc_library(
         "//common:unused",
         "//math:geometric_transform",
         "//systems/framework:leaf_system",
+        "//common/test_utilities:limit_malloc",
     ],
 )
 

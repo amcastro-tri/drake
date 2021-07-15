@@ -1,8 +1,10 @@
 #include "drake/multibody/plant/compliant_contact_computation_manager.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <numeric>
 #include <utility>
 #include <vector>
 
@@ -740,6 +742,119 @@ void CompliantContactComputationManager<T>::CalcContactJacobian(
   const int nv = plant().num_velocities();
   Matrix3X<T> Jv_WAc(3, nv);
   Matrix3X<T> Jv_WBc(3, nv);
+
+#if 0
+  std::vector<int> num_body_points(plant().num_bodies(), 0);
+  for (int icontact = 0; icontact < num_contacts; ++icontact) {
+    const auto& point_pair = contact_pairs[icontact];
+    const GeometryId geometryA_id = point_pair.id_A;
+    const GeometryId geometryB_id = point_pair.id_B;
+    BodyIndex bodyA_index = plant().geometry_id_to_body_index_.at(geometryA_id);
+    BodyIndex bodyB_index = plant().geometry_id_to_body_index_.at(geometryB_id);
+    if (bodyA_index != world_index()) ++num_body_points[bodyA_index];
+    if (bodyB_index != world_index()) ++num_body_points[bodyB_index];
+  }
+
+  std::vector<int> body_offset(plant().num_bodies(), 0);
+  for (BodyIndex b(1); b < plant().num_bodies(); ++b) {
+    body_offset[b] = body_offset[b - 1] + num_body_points[b - 1];
+  }
+
+  std::vector<BodyIndex> participating_bodies;
+  participating_bodies.reserve(plant().num_bodies());  // simply reserve max.
+  for (BodyIndex b(0); b < plant().num_bodies(); ++b) {
+    if (num_body_points[b] > 0) participating_bodies.push_back(b);
+  }  
+
+  std::fill(num_body_points.begin(), num_body_points.end(), 0);  // reset to 0.
+  // Collect contact point offsets p_WC.
+  // At most 2nc poits (since we ignore the world)
+  Matrix3X<T> p_WC(3, 2 * num_contacts);
+  //std::vector<int> contact_map(2 * num_contacts);
+  int num_entries = 0;
+  std::vector<std::pair<int, int>> contact_map(num_contacts);
+  for (int icontact = 0; icontact < num_contacts; ++icontact) {
+    const auto& point_pair = contact_pairs[icontact];
+    const GeometryId geometryA_id = point_pair.id_A;
+    const GeometryId geometryB_id = point_pair.id_B;
+    BodyIndex bodyA_index = plant().geometry_id_to_body_index_.at(geometryA_id);
+    BodyIndex bodyB_index = plant().geometry_id_to_body_index_.at(geometryB_id);
+    const Vector3<T>& p_WCi = point_pair.p_WC;
+    contact_map[icontact] = {0, 0};
+    if (bodyA_index != world_index()) {
+      const int k = body_offset[bodyA_index] + num_body_points[bodyA_index];
+      p_WC.col(k) = p_WCi;
+      contact_map[icontact].first = k;
+      ++num_body_points[bodyA_index];
+      ++num_entries;
+    }
+    if (bodyB_index != world_index()) {
+      const int k = body_offset[bodyB_index] + num_body_points[bodyB_index];
+      p_WC.col(k) = p_WCi;
+      contact_map[icontact].second = k;
+      ++num_body_points[bodyB_index];
+      ++num_entries;
+    }
+  }
+
+  DRAKE_DEMAND(std::accumulate(num_body_points.begin(), num_body_points.end(),
+                               0) == num_entries);
+
+  const int num_contacting_bodies = participating_bodies.size();
+  MatrixX<T> Jv_v_WBc(3 * num_entries, nv);
+  //MatrixX<T> Jv_w_WB(3 * num_contacting_bodies, nv);
+  Jv_v_WBc.setZero();
+  //Jv_w_WB.setZero();
+  const Frame<T>& frame_W = plant().world_frame();
+  //int participating_body = 0;
+  for (BodyIndex b(1); b < plant().num_bodies(); ++b) {
+    if (num_body_points[b] > 0) {
+      const Body<T>& body = plant().get_body(b);
+      const int row_offset = 3 * body_offset[b];
+      const int num_rows = 3 * num_body_points[b];
+      auto Jv_v_WBi = Jv_v_WBc.block(row_offset, 0, num_rows, nv);
+      const auto p_WBiC = p_WC.block(0, body_offset[b], 3, num_body_points[b]);
+      plant().internal_tree().CalcJacobianTranslationalVelocity(
+        context, JacobianWrtVariable::kV, body.body_frame(), frame_W, p_WBiC,
+        frame_W, frame_W, &Jv_v_WBi);
+
+#if 0
+      auto Jv_w_WBi = Jv_w_WB.block(3 * participating_body, 0, 3, nv);
+      plant().CalcJacobianAngularVelocity(context, JacobianWrtVariable::kV,
+                                          body.body_frame(), frame_W, frame_W,
+                                          &Jv_w_WBi);
+      ++participating_body;
+#endif      
+    }
+  }
+
+  // From Jc = Jv_WBc - Jv_WAc
+  for (int icontact = 0; icontact < num_contacts; ++icontact) {
+    const auto& point_pair = contact_pairs[icontact];
+    const GeometryId geometryA_id = point_pair.id_A;
+    const GeometryId geometryB_id = point_pair.id_B;
+    BodyIndex bodyA_index = plant().geometry_id_to_body_index_.at(geometryA_id);
+    BodyIndex bodyB_index = plant().geometry_id_to_body_index_.at(geometryB_id);
+    const int kA = contact_map[icontact].first;
+    const int kB = contact_map[icontact].first;
+
+    // TODO. set to zero first.
+    // TODO: set to bodyB jacobian
+
+    if (bodyA_index != world_index()) {
+      const auto J_WAc = Jv_v_WBc.block(3 * kA, 0, 3, nv);
+      Jc.block(3 * icontact, 0, 3, nv) -= J_WAc;
+    }
+
+    Jc.block(3 * icontact, 0, 3, nv) =
+        R_WC.transpose() * Jc.block(3 * icontact, 0, 3, nv);
+
+    // TODO: fix this to have all consistent signs.
+    // Negate the normal direction so that this component corresponds to the
+    // "separation" velocity.
+    Jc.row(3 * icontact + 2) = -Jc.row(3 * icontact + 2);        
+  }
+#endif
 
   const Frame<T>& frame_W = plant().world_frame();
   for (int icontact = 0; icontact < num_contacts; ++icontact) {

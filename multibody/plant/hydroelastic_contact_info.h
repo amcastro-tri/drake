@@ -150,6 +150,9 @@ class HydroelasticContactInfo {
   /// `contact_surface().mesh_W().centroid()`.
   const SpatialForce<T>& F_Ac_W() const { return F_Ac_W_; }
 
+  // Mutable version of F_Ac_W().
+  SpatialForce<T>& mutable_F_Ac_W() { return F_Ac_W_; }
+
  private:
   // Note that the mesh of the contact surface is defined in the world frame.
   std::variant<const geometry::ContactSurface<T>*,

@@ -38,6 +38,9 @@ struct DiscreteContactPair {
   T stiffness{0.0};
   /* The effective damping of the contact pair. */
   T damping{0.0};
+  /* For mesh contact, the index of the surface this discrete pair corresponds
+   * to. Negative if the pair does not correspond to mesh contact. */
+  int surface_index{-1};
 };
 
 }  // namespace internal

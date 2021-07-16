@@ -741,10 +741,13 @@ void CompliantContactComputationManager<T>::CalcContactJacobian(
   if (num_contacts == 0) return;
 
   const int nv = plant().num_velocities();
-  //Matrix3X<T> Jv_WAc(3, nv);
-  //Matrix3X<T> Jv_WBc(3, nv);
+
+  // Scratch workspace variables.
   Matrix3X<T> Jtmp(3, nv);
   Matrix3X<T> Jv_AcBc(3, nv);
+  // Alloc workspace once for successive calls.
+  internal::CalcJacobianWorkspace<T> jacobian_workspace(
+      plant().num_bodies(), plant().num_velocities(), num_contacts);
 
 #if 0
   std::vector<int> num_body_points(plant().num_bodies(), 0);
@@ -857,13 +860,9 @@ void CompliantContactComputationManager<T>::CalcContactJacobian(
     // "separation" velocity.
     Jc.row(3 * icontact + 2) = -Jc.row(3 * icontact + 2);        
   }
-#endif 
+#endif  
 
- // Alloc workspace once for successive calls. 
- internal::CalcJacobianWorkspace<T> jacobian_workspace(
-     plant().num_bodies(), plant().num_velocities(), num_contacts);
-
-  test::LimitMalloc guard({.max_num_allocations = 0});     
+  //test::LimitMalloc guard({.max_num_allocations = 0});     
 
  const Frame<T>& frame_W = plant().world_frame();
  for (int icontact = 0; icontact < num_contacts; ++icontact) {
@@ -908,7 +907,8 @@ void CompliantContactComputationManager<T>::CalcContactJacobian(
      R_WC_set->push_back(R_WC);
    }
 
-   Jc.block(3 * icontact, 0, 3, nv) = R_WC.transpose() * Jv_AcBc;
+   Jc.block(3 * icontact, 0, 3, nv).noalias() =
+       R_WC.matrix().transpose() * Jv_AcBc;
 
    // TODO: fix this to have all consistent signs.
    // Negate the normal direction so that this component corresponds to the

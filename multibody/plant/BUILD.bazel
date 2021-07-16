@@ -38,7 +38,7 @@ drake_cc_library(
     name = "compliant_contact_computation_manager",
     srcs = ["compliant_contact_computation_manager.cc"],
     hdrs = ["compliant_contact_computation_manager.h"],
-    copts = ["-O0","-g"],
+#    copts = ["-O2","-g"],
     deps = [
         ":plant",
         "//common/test_utilities:limit_malloc",

@@ -98,7 +98,7 @@ drake_cc_library(
 
 drake_cc_library(
     name = "multibody_tree_core",
-    copts = ["-O2", "-g"],
+#    copts = ["-O2", "-g"],
     srcs = [
         "ball_rpy_joint.cc",
         "body.cc",

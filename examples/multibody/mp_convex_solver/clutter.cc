@@ -32,7 +32,7 @@
 #include "drake/systems/framework/diagram_builder.h"
 
 // To profile with Valgrind run with (the defaults are good):
-// valgrind --tool=callgrind --instr-atstart=no
+// valgrind --tool=callgrind --separate-callers=10 --instr-atstart=no
 // bazel-bin/examples/multibody/mp_convex_solver/clutter
 #include <valgrind/callgrind.h>
 namespace drake {

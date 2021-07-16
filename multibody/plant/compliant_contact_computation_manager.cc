@@ -917,6 +917,65 @@ void CompliantContactComputationManager<T>::CalcContactJacobian(
   }
 }
 
+template <typename T>
+void CompliantContactComputationManager<T>::DoCalcContactResults(
+    const systems::Context<T>& context,
+    ContactResults<T>* contact_results) const {
+  contact_results->Clear();
+  if (plant().num_collision_geometries() == 0) return;
+
+  const auto& point_pairs = plant().EvalPointPairPenetrations(context);
+  const int num_contacts = point_pairs.size();
+
+  const std::vector<RotationMatrix<T>>& R_WC_set =
+      EvalContactJacobianCache(context).R_WC_list;
+  const contact_solvers::internal::ContactSolverResults<T>& solver_results =
+      plant().EvalContactSolverResults(context);
+
+  const VectorX<T>& fn = solver_results.fn;
+  const VectorX<T>& ft = solver_results.ft;
+  const VectorX<T>& vt = solver_results.vt;
+  const VectorX<T>& vn = solver_results.vn;
+
+  // The strict equality is true only when point contact is used alone.
+  // Otherwise there are quadrature points in addition to the point pairs.
+  DRAKE_DEMAND(fn.size() >= num_contacts);
+  DRAKE_DEMAND(ft.size() >= 2 * num_contacts);
+  DRAKE_DEMAND(vn.size() >= num_contacts);
+  DRAKE_DEMAND(vt.size() >= 2 * num_contacts);
+
+  contact_results->Clear();
+
+  for (int icontact = 0; icontact < num_contacts; ++icontact) {
+    const auto& pair = point_pairs[icontact];
+    const GeometryId geometryA_id = pair.id_A;
+    const GeometryId geometryB_id = pair.id_B;
+    const BodyIndex bodyA_index =
+        plant().geometry_id_to_body_index_.at(geometryA_id);
+    const BodyIndex bodyB_index =
+        plant().geometry_id_to_body_index_.at(geometryB_id);
+
+    const Vector3<T> p_WC = 0.5 * (pair.p_WCa + pair.p_WCb);
+
+    const RotationMatrix<T>& R_WC = R_WC_set[icontact];
+
+    // Contact forces applied on B at contact point C.
+    const Vector3<T> f_Bc_C(ft(2 * icontact), ft(2 * icontact + 1),
+                            -fn(icontact));
+    const Vector3<T> f_Bc_W = R_WC * f_Bc_C;
+
+    // Slip velocity.
+    const T slip = vt.template segment<2>(2 * icontact).norm();
+
+    // Separation velocity in the normal direction.
+    const T separation_velocity = vn(icontact);
+
+    // Add pair info to the contact results.
+    contact_results->AddContactInfo({bodyA_index, bodyB_index, f_Bc_W, p_WC,
+                                     separation_velocity, slip, pair});
+  }
+}
+
 }  // namespace multibody
 }  // namespace drake
 

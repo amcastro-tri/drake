@@ -135,10 +135,7 @@ class CompliantContactComputationManager
       drake::systems::DiscreteValues<T>* updates) const final;
 
   void DoCalcContactResults(const systems::Context<T>& context,
-                            ContactResults<T>* contact_results) const final {
-    (void)context;
-    contact_results->Clear();
-  }
+                            ContactResults<T>* contact_results) const final;
 
   void DeclareCacheEntries(MultibodyPlant<T>*) final;
 

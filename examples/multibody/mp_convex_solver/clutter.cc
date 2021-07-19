@@ -42,9 +42,9 @@ namespace mp_convex_solver {
 namespace {
 
 // Simulation parameters.
-DEFINE_double(simulation_time, 5.0, "Simulation duration in seconds");
+DEFINE_double(simulation_time, 10.0, "Simulation duration in seconds");
 DEFINE_double(
-    mbp_time_step, 1.0E-2,
+    mbp_time_step, 5.0E-3,
     "If mbp_time_step > 0, the fixed-time step period (in seconds) of discrete "
     "updates for the plant (modeled as a discrete system). "
     "If mbp_time_step = 0, the plant is modeled as a continuous system "
@@ -59,8 +59,8 @@ DEFINE_double(stiction_tolerance, 1.0E-4,
 DEFINE_double(density, 1000.0, "The density of all objects, in kg/m³.");
 DEFINE_double(friction_coefficient, 1.0,
               "All friction coefficients have this value.");
-DEFINE_double(stiffness, 1.0e5, "Point contact stiffness in N/m.");
-DEFINE_double(dissipation_rate, 0.01, "Linear dissipation rate in seconds.");
+DEFINE_double(stiffness, 5.0e4, "Point contact stiffness in N/m.");
+DEFINE_double(dissipation_rate, 5.0E-3, "Linear dissipation rate in seconds.");
 
 // Contact geometry parameters.
 DEFINE_bool(
@@ -110,7 +110,7 @@ DEFINE_string(line_search, "exact",
 DEFINE_double(ls_alpha_max, 1.5, "Maximum line search step.");
 DEFINE_double(rt_factor, 1.0e-3, "Rt_factor");
 DEFINE_double(abs_tol, 1.0e-6, "Absolute tolerance [m/s].");
-DEFINE_double(rel_tol, 1.0e-4, "Relative tolerance [-].");
+DEFINE_double(rel_tol, 1.0e-5, "Relative tolerance [-].");
 DEFINE_bool(log_stats, true, "Log all iterations stats.");
 
 using drake::math::RigidTransform;

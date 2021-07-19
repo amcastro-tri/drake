@@ -153,12 +153,22 @@ class ConvexSolverBase : public ContactSolver<T> {
 
   // We define the momentum error (optimality condition) as r(v) = M⋅(v−v*)−Jᵀγ.
   // We define the momentum p = M⋅v and generalized impulse j = Jᵀγ.
-  // We define the relative momentum error in 2-norm as:
-  //   ε₂ = ‖r‖/max(‖p‖,‖j‖).
+  // Variables are scaled so that they all have the same units, in order to
+  // account for the presence of different units and scales. This leads to an
+  // error metric that fairly weighs each of the components in the momentum
+  // equation.
+  // We define the Jacobi preconditioner as the diagonal matrix Dj =
+  // diag(M)^{-1/2}, where M is the mass matrix.
+  //
+  // With these quantities introduced, we define the relative momentum error in
+  // 2-norm as:
+  //   ε₂ = ‖Dj⋅r‖/max(‖Dj⋅p‖,‖Dj⋅j‖).
   // We define the "max-norm" relative error as:
-  //   εₘₐₓ = max({εᵢ}), with εᵢ = |rᵢ|/max(|pᵢ|,|jᵢ|),
-  // where i spans the dofs of the system.
-  // 
+  //   εₘₐₓ = max({εᵢ}), with εᵢ = |Djᵢ⋅rᵢ|/max(|Djᵢ⋅pᵢ|,|Djᵢ⋅jᵢ|),
+  // where i spans the dofs of the system (it turns out that this is not a
+  // useful quantity in the end since it is possibly to have components for
+  // which the momentum balance is zero and we have no well defined sacales.)
+  //
   // This method returns the pair (ε₂, εₘₐₓ).
   std::pair<T, T> CalcRelativeMomentumError(const PreProcessedData& data,
                                             const VectorX<T>& v,

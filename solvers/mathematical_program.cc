@@ -445,8 +445,9 @@ Binding<QuadraticCost> MathematicalProgram::AddQuadraticCost(
 Binding<QuadraticCost> MathematicalProgram::AddQuadraticErrorCost(
     const Eigen::Ref<const Eigen::MatrixXd>& Q,
     const Eigen::Ref<const Eigen::VectorXd>& x_desired,
-    const Eigen::Ref<const VectorXDecisionVariable>& vars) {
-  return AddCost(MakeQuadraticErrorCost(Q, x_desired), vars);
+    const Eigen::Ref<const VectorXDecisionVariable>& vars,
+    std::optional<bool> is_convex) {
+  return AddCost(MakeQuadraticErrorCost(Q, x_desired, is_convex), vars);
 }
 
 Binding<QuadraticCost> MathematicalProgram::AddQuadraticCost(

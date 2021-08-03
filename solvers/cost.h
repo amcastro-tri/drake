@@ -215,7 +215,8 @@ class QuadraticCost : public Cost {
  */
 std::shared_ptr<QuadraticCost> MakeQuadraticErrorCost(
     const Eigen::Ref<const Eigen::MatrixXd>& Q,
-    const Eigen::Ref<const Eigen::VectorXd>& x_desired);
+    const Eigen::Ref<const Eigen::VectorXd>& x_desired,
+    std::optional<bool> is_convex = std::nullopt);
 
 /**
  * Creates a cost term of the form | Ax - b |^2.

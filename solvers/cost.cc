@@ -109,9 +109,10 @@ bool QuadraticCost::CheckHessianPsd() {
 
 shared_ptr<QuadraticCost> MakeQuadraticErrorCost(
     const Eigen::Ref<const MatrixXd>& Q,
-    const Eigen::Ref<const VectorXd>& x_desired) {
+    const Eigen::Ref<const VectorXd>& x_desired,
+    std::optional<bool> is_convex) {
   const double c = x_desired.dot(Q * x_desired);
-  return make_shared<QuadraticCost>(2 * Q, -2 * Q * x_desired, c);
+  return make_shared<QuadraticCost>(2 * Q, -2 * Q * x_desired, c, is_convex);
 }
 
 shared_ptr<QuadraticCost> MakeL2NormCost(

@@ -1020,9 +1020,9 @@ class MathematicalProgram {
   Binding<QuadraticCost> AddQuadraticErrorCost(
       const Eigen::Ref<const Eigen::MatrixXd>& Q,
       const Eigen::Ref<const Eigen::VectorXd>& x_desired,
-      const VariableRefList& vars) {
+      const VariableRefList& vars, std::optional<bool> is_convex = std::nullopt) {
     return AddQuadraticErrorCost(Q, x_desired,
-                                 ConcatenateVariableRefList(vars));
+                                 ConcatenateVariableRefList(vars), is_convex);
   }
 
   /**
@@ -1031,7 +1031,8 @@ class MathematicalProgram {
   Binding<QuadraticCost> AddQuadraticErrorCost(
       const Eigen::Ref<const Eigen::MatrixXd>& Q,
       const Eigen::Ref<const Eigen::VectorXd>& x_desired,
-      const Eigen::Ref<const VectorXDecisionVariable>& vars);
+      const Eigen::Ref<const VectorXDecisionVariable>& vars,
+      std::optional<bool> is_convex = std::nullopt);
 
   /**
    * Adds a cost term of the form | Ax - b |^2.

@@ -226,15 +226,19 @@ void MpPrimalSolver<T>::SetUpProgram(
   // TODO: add one block at a time if this turns out to be way too expensive.
   const MatrixX<T> M = data.Mblock.MakeDenseMatrix();
 
+  // We know for a sure that our quadratic terms are convex.
+  // This will avoid MP from performing an expensive check for convexity.
+  const bool is_convex = true;
+
   // Add 0.5 (v-v_star)'*M*(v-v_star)
   // N.B. Notice we must include the 1/2 factor in Q.
   const MatrixX<T> Qv = 0.5 * M;
-  prog->AddQuadraticErrorCost(Qv, v_star, v);
+  prog->AddQuadraticErrorCost(Qv, v_star, v, is_convex);
 
   // Add regularizer.
   const MatrixX<T> Qs = R.asDiagonal();
   const VectorX<T> bs = VectorX<T>::Zero(3 * nc);
-  prog->AddQuadraticCost(Qs, bs, sigma);
+  prog->AddQuadraticCost(Qs, bs, sigma, is_convex);
 
   // TODO: use individual blocks if this is measured to cost too much.
   const MatrixX<T> Jc = data.Jblock.MakeDenseMatrix();

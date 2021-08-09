@@ -87,6 +87,7 @@ struct AdmmSolverIterationMetrics {
   //s_norm_max is max norm and .._l2 the l2 norm 
   double s_norm_max{0.0};
   double s_norm_l2{0.0};
+  double bound{0.0};  // error bound in m/s.
 
 };
 

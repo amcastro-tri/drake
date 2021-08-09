@@ -302,6 +302,7 @@ ContactSolverStatus AdmmSolver<double>::DoSolveWithGuess(
       //PRINT_VAR(state.u_tilde());
       PRINT_VAR(state.u_tilde().norm());
     }
+
     DRAKE_DEMAND(mom_l2 < parameters_.abs_tolerance);
     DRAKE_DEMAND(mom_max < parameters_.abs_tolerance);
     
@@ -389,9 +390,9 @@ ContactSolverStatus AdmmSolver<double>::DoSolveWithGuess(
    
     //rhis function also does dynamic rho
     //TODO: make dynamic_rho a flag in the future and rename this function
-    const bool converged =
-        this -> CheckConvergenceCriteria(cache.g, cache.z, parameters_.rho*cache.u,
-                                 state.sigma(), cache.vc, &state.mutable_u_tilde());
+    const bool converged = this->CheckConvergenceCriteria(
+        cache.g, cache.z, parameters_.rho * cache.u, state.sigma(), cache.vc,
+        &state.mutable_u_tilde());
 
     if (converged) {
       // TODO: refactor into PrintConvergedIterationStats().
@@ -405,17 +406,12 @@ ContactSolverStatus AdmmSolver<double>::DoSolveWithGuess(
     }
   }
 
-  if (k == parameters_.max_iterations) {
-    stats_history_.push_back(stats_);
-    this -> LogFailureData("failure_log.dat");
-  }
-  
+  //if (k == parameters_.max_iterations) {
+  //  stats_history_.push_back(stats_);
+  //  this -> LogFailureData("failure_log.dat");
+ // }
 
-  if (k == parameters_.max_iterations) return ContactSolverStatus::kFailure;
-  //TODO: Work on all the functions here. Keep some output...... 
-  // if (parameters_.verbosity_level >= 1) {
-  //   PRINT_VAR(state.sigma());
-  // }
+  //if (k == parameters_.max_iterations) return ContactSolverStatus::kFailure;  
 
   //auto& last_metrics =
       //parameters_.log_stats ? stats_.iteration_metrics.back() : metrics;
@@ -477,6 +473,7 @@ bool AdmmSolver<T>::CheckConvergenceCriteria( const VectorX<T>& g,
   if (parameters_.log_stats) {
     stats_.iteration_metrics.back().r_norm_l2 = r_norm;
     stats_.iteration_metrics.back().s_norm_l2 = s_norm;
+    stats_.iteration_metrics.back().bound = bound;
     stats_.iteration_metrics.back().rho = rho;
   }
 
@@ -738,46 +735,32 @@ void AdmmSolver<T>::LogIterationsHistory(
   }
   std::ofstream file(file_name);
   file << fmt::format(
-      "{} {} {} {} {} {} {} {} {} {} {}\n",
+      "{} {} {} {} {} {} {}\n",
+      "step",
       // Problem size.
       "num_contacts",
       // Number of iterations.
       "num_iters",
-      //force output related:
-      "sigma_x_sum", "sigma_y_sum", "sigma_z_sum",
       //parameters
       "rho",
       //error metrics
-      "r_norm", "s_norm",
-      //time metric
-      "solve_for_x_time", "solve_for_z_u_time", "total_time", "preproc_time"
-      );
+      "r_norm", "s_norm", "bound");
 
-  for (const auto& s : stats_hist) {
-    const auto& metrics = s.iteration_metrics.back();
-    // const int iters = s.iteration_metrics.size();
+  for (size_t step = 0; step < stats_hist.size(); ++step) {
+    const auto& s = stats_hist[step];
     const int iters = s.num_iters;
-    // Compute some totals and averages.
-
-    file << fmt::format(
-        "{} {} {} {} {} {} {} {} {} {} {}\n",
-        // Problem size.
-        s.num_contacts,
-        // Number of iterations.
-        iters,
-        //force output related: 
-        metrics.sigma_x_sum, metrics.sigma_y_sum, metrics.sigma_z_sum,
-        //parameters
-        metrics.rho,
-        // Error metrics.
-        metrics.r_norm_l2,
-        metrics.s_norm_l2,
-        //time metrics:
-        s.solve_for_x_time,
-        s.solve_for_z_u_time,
-        s.total_time, 
-        s.preproc_time
-        );
+    for (const auto& metrics : s.iteration_metrics) {
+      file << fmt::format("{} {} {} {} {} {} {}\n",
+                          step,
+                          // Problem size.
+                          s.num_contacts,
+                          // Number of iterations.
+                          iters,
+                          // parameters
+                          metrics.rho,
+                          // Error metrics.
+                          metrics.r_norm_l2, metrics.s_norm_l2, metrics.bound);
+    }
   }
   file.close();
 }

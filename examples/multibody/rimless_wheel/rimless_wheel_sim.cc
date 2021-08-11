@@ -57,7 +57,8 @@ DEFINE_double(spoke_length, 1.0, "Spoke length in m.");
 DEFINE_double(spoke_radius, 0.02, "Spoke radius in m.");
 DEFINE_int32(num_legs, 6, "Number of legs.");
 DEFINE_double(stiffness, 1.0e5, "Point contact stiffness in N/m.");
-DEFINE_double(tau_dissipation, 0.1, "Linear dissipation rate in seconds.");
+DEFINE_double(tau_dissipation, 0.02,
+              "Linear dissipation time scale in seconds.");
 DEFINE_double(friction, 1.0, "Friction coefficient.");
 DEFINE_double(slope, 5.0, "Slope in degrees.");
 DEFINE_double(vy0, 5.0, "Initial x velocity in m/s.");
@@ -67,8 +68,9 @@ DEFINE_double(z0, -1.0, "Initial z position. If negative not used.");
 DEFINE_string(solver, "primal",
               "Underlying solver. 'tamsi', 'primal', 'geodesic'");
 DEFINE_bool(use_sdf_query, false, "Use SDF instead of penetration query.");
-DEFINE_double(theta_q, 1.0, "Theta method parameter for q.");
-DEFINE_double(theta_v, 1.0, "Theta method parameter for v.");
+DEFINE_int32(time_method, 2,
+             "1: Explicit Euler, 2: Symplectic Euler, 3: Implicit Euler, 4: "
+             "Midpoint rule.");
 DEFINE_double(contact_theta, 1.0, "Theta method parameter for contact.");
 
 const Vector4<double> red(1.0, 0.0, 0.0, 1.0);
@@ -109,9 +111,8 @@ void BuildRimlessWheelModel(MultibodyPlant<double>* plant) {
   geometry::ProximityProperties props;
   props.AddProperty(geometry::internal::kMaterialGroup,
                     geometry::internal::kPointStiffness, FLAGS_stiffness);
-  const double dissipation = FLAGS_tau_dissipation * FLAGS_stiffness;
-  props.AddProperty(geometry::internal::kMaterialGroup,
-                    geometry::internal::kLinearDissipation, dissipation);
+  props.AddProperty(geometry::internal::kMaterialGroup, "dissipation_rate",
+                    FLAGS_tau_dissipation);
   props.AddProperty(geometry::internal::kMaterialGroup,
                     geometry::internal::kFriction,
                     CoulombFriction<double>(FLAGS_friction, FLAGS_friction));
@@ -164,8 +165,8 @@ void AddGround(MultibodyPlant<double>* plant) {
   geometry::ProximityProperties props;
   props.AddProperty(geometry::internal::kMaterialGroup,
                     geometry::internal::kPointStiffness, ground_stiffness);
-  props.AddProperty(geometry::internal::kMaterialGroup,
-                    geometry::internal::kLinearDissipation, ground_dissipation);
+  props.AddProperty(geometry::internal::kMaterialGroup, "dissipation_rate",
+                    ground_dissipation);
   props.AddProperty(geometry::internal::kMaterialGroup,
                     geometry::internal::kFriction,
                     CoulombFriction<double>(FLAGS_friction, FLAGS_friction));
@@ -208,9 +209,37 @@ int do_main() {
     params.log_stats = true;
     primal_solver->set_parameters(params);
   }
+
+  double theta_q{1.0}, theta_qv{0.0}, theta_v{1.0};
+  switch (FLAGS_time_method) {
+    case 1:  // Explicit Euler
+      theta_q = 0;
+      theta_qv = 0;
+      theta_v = 0;
+      break;
+    case 2:  // Symplectic Euler
+      theta_q = 1;
+      theta_qv = 0;
+      theta_v = 1;
+      break;
+    case 3:  // Implicit Euler
+      theta_q = 1;
+      theta_qv = 1;
+      theta_v = 1;
+      break;
+    case 4:  // Midpoint rule
+      theta_q = 0.5;
+      theta_qv = 0.5;
+      theta_v = 0.5;
+      break;
+    default:
+      throw std::runtime_error("Invalide time_method option");
+  }
+
+  manager->set_theta_q(theta_q);    // how v is computed in equation of q.
+  manager->set_theta_qv(theta_qv);  // how q is computed in equation of v.
+  manager->set_theta_v(theta_v);    // how v is computed in equation of v.
   plant.set_use_sdf_query(FLAGS_use_sdf_query);
-  plant.set_theta_q(FLAGS_theta_q);
-  plant.set_theta_v(FLAGS_theta_v);
 
   // Add visualization.
   if (FLAGS_visualize) {

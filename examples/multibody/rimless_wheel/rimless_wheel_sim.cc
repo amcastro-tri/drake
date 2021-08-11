@@ -6,6 +6,7 @@
 #include "drake/geometry/drake_visualizer.h"
 #include "drake/multibody/contact_solvers/unconstrained_primal_solver.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
+#include "drake/multibody/tree/planar_joint.h"
 #include "drake/multibody/tree/rigid_body.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
@@ -15,6 +16,7 @@
 
 namespace drake {
 
+using Eigen::Vector2d;
 using Eigen::Vector3d;
 using Eigen::Vector4d;
 using Eigen::VectorXd;
@@ -33,6 +35,7 @@ using multibody::AddMultibodyPlantSceneGraph;
 using multibody::ContactResults;
 using multibody::CoulombFriction;
 using multibody::MultibodyPlant;
+using multibody::PlanarJoint;
 using multibody::RigidBody;
 using multibody::SpatialInertia;
 using multibody::SpatialVelocity;
@@ -139,23 +142,34 @@ void BuildRimlessWheelModel(MultibodyPlant<double>* plant) {
     plant->RegisterVisualGeometry(body, X_BS, geometry::Sphere(spoke_radius),
                                   leg_tip_name, red);
   }
+
+  // Make 2D.
+  const auto Ry = math::RotationMatrixd::MakeYRotation(-M_PI / 2.0);
+  const auto Xy = math::RigidTransformd(Ry, Vector3d::Zero());
+  const Vector3d damping = Vector3d::Zero();
+  plant->AddJoint<PlanarJoint>("planar", plant->world_body(), Xy, body, Xy,
+                               damping);
 }
 
 void SetRimlessWheelInitialConditions(const MultibodyPlant<double>& plant,
                                       Context<double>* context) {
   const double length = FLAGS_spoke_length;
   const double spoke_radius = FLAGS_spoke_radius;
-  const auto& body = plant.GetRigidBodyByName("body");
+  //const auto& body = plant.GetRigidBodyByName("body");
   const double z0 = FLAGS_z0 > 0 ? FLAGS_z0 : length + spoke_radius;
   const RigidTransformd X_WB(Vector3d(0, 0, z0));
-  plant.SetFreeBodyPose(context, body, X_WB);
+  //plant.SetFreeBodyPose(context, body, X_WB);
+  const auto& planar = plant.GetJointByName<PlanarJoint>("planar");
+  planar.set_pose(context, Vector2d(z0, 0.0), 0.0);
 
   // Initial angular velocity to enforce rolling.
-  const double w0 = -FLAGS_vy0 / (length + spoke_radius);
+  const double w0 = FLAGS_vy0 / (length + spoke_radius);
 
-  const SpatialVelocity<double> V_WB(Vector3d(w0, 0, 0),
-                                     Vector3d(0, FLAGS_vy0, 0));
-  plant.SetFreeBodySpatialVelocity(context, body, V_WB);
+  //const SpatialVelocity<double> V_WB(Vector3d(w0, 0, 0),
+  //                                   Vector3d(0, FLAGS_vy0, 0));
+  //plant.SetFreeBodySpatialVelocity(context, body, V_WB);
+  planar.set_translational_velocity(context, Vector2d(0.0, FLAGS_vy0));
+  planar.set_angular_velocity(context, w0);
 }
 
 void AddGround(MultibodyPlant<double>* plant) {  
@@ -262,7 +276,8 @@ int do_main() {
       MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
 
   std::ofstream sol_file("sol.dat");
-  sol_file << fmt::format("time nc pe ke E slip1 slip2\n");
+  const auto& planar = plant.GetJointByName<PlanarJoint>("planar");
+  sol_file << fmt::format("time x y th vx vy thdot nc pe ke E slip1 slip2\n");
   simulator->set_monitor([&](const systems::Context<double>& root_context) {
     const systems::Context<double>& ctxt =
         plant.GetMyContextFromRoot(root_context);
@@ -286,9 +301,16 @@ int do_main() {
     const double ke = plant.CalcKineticEnergy(ctxt);
     const double pe = plant.CalcPotentialEnergy(ctxt);
 
+    const Vector2d p_WB = planar.get_translation(ctxt);
+    const double theta = planar.get_rotation(ctxt);
+    const Vector2d v_WB = planar.get_translational_velocity(ctxt);
+    const double theta_dot = planar.get_angular_velocity(ctxt);
+
     // time, ke, vt, vn, phi_plus, phi_minus.
-    sol_file << fmt::format("{} {} {} {} {} {} {}\n", ctxt.get_time(), nc, ke,
-                            pe, ke + pe, slip1, slip2);
+    sol_file << fmt::format("{} {} {} {} {} {} {} {} {} {} {} {} {}\n",
+                            ctxt.get_time(), p_WB.x(), p_WB.y(), theta,
+                            v_WB.x(), v_WB.y(), theta_dot, nc, ke, pe, ke + pe,
+                            slip1, slip2);
     return systems::EventStatus::Succeeded();
   });
 

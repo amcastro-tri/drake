@@ -13,6 +13,7 @@
 #include "drake/systems/analysis/simulator_print_stats.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/multibody/plant/compliant_contact_computation_manager.h"
+#include "drake/math/wrap_to.h"
 
 namespace drake {
 
@@ -95,8 +96,10 @@ void BuildRimlessWheelModel(MultibodyPlant<double>* plant) {
 
   const Vector3d p_BoBcm_B = Vector3d::Zero();
   // Center mass.
-  const UnitInertia<double> G_BBcm_B = UnitInertia<double>::SolidCylinder(
-      center_mass_radius, center_mass_radius, Vector3d::UnitX());
+  //const UnitInertia<double> G_BBcm_B = UnitInertia<double>::SolidCylinder(
+    //  center_mass_radius, center_mass_radius, Vector3d::UnitX());
+
+  const UnitInertia<double> G_BBcm_B = UnitInertia<double>::SolidSphere(1e-3);
   const SpatialInertia<double> M_BBcm_B(mass, p_BoBcm_B, G_BBcm_B);
 
   // Create a rigid body B with the mass properties of a uniform solid block.
@@ -160,7 +163,9 @@ void SetRimlessWheelInitialConditions(const MultibodyPlant<double>& plant,
   const RigidTransformd X_WB(Vector3d(0, 0, z0));
   //plant.SetFreeBodyPose(context, body, X_WB);
   const auto& planar = plant.GetJointByName<PlanarJoint>("planar");
-  planar.set_pose(context, Vector2d(z0, 0.0), 0.0);
+  //const double gamma = FLAGS_slope * M_PI / 180.0;
+  //const double alpha = M_PI / FLAGS_num_legs;
+  planar.set_pose(context, Vector2d(z0, 0.0), 0);
 
   // Initial angular velocity to enforce rolling.
   const double w0 = FLAGS_vy0 / (length + spoke_radius);
@@ -277,7 +282,7 @@ int do_main() {
 
   std::ofstream sol_file("sol.dat");
   const auto& planar = plant.GetJointByName<PlanarJoint>("planar");
-  sol_file << fmt::format("time x y th vx vy thdot nc pe ke E slip1 slip2\n");
+  sol_file << fmt::format("time x y th th_wrap vx vy thdot nc pe ke E slip1 slip2\n");
   simulator->set_monitor([&](const systems::Context<double>& root_context) {
     const systems::Context<double>& ctxt =
         plant.GetMyContextFromRoot(root_context);
@@ -306,11 +311,15 @@ int do_main() {
     const Vector2d v_WB = planar.get_translational_velocity(ctxt);
     const double theta_dot = planar.get_angular_velocity(ctxt);
 
+    const double gamma = FLAGS_slope * M_PI / 180.0;
+    const double alpha = M_PI / FLAGS_num_legs;
+    const double theta_wrap = math::wrap_to(theta, -(alpha-gamma), alpha+gamma);
+
     // time, ke, vt, vn, phi_plus, phi_minus.
-    sol_file << fmt::format("{} {} {} {} {} {} {} {} {} {} {} {} {}\n",
+    sol_file << fmt::format("{} {} {} {} {} {} {} {} {} {} {} {} {} {}\n",
                             ctxt.get_time(), p_WB.x(), p_WB.y(), theta,
-                            v_WB.x(), v_WB.y(), theta_dot, nc, ke, pe, ke + pe,
-                            slip1, slip2);
+                            theta_wrap, v_WB.x(), v_WB.y(), theta_dot, nc, ke,
+                            pe, ke + pe, slip1, slip2);
     return systems::EventStatus::Succeeded();
   });
 

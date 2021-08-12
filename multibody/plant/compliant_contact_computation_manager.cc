@@ -270,7 +270,11 @@ void CompliantContactComputationManager<T>::
     // this invalidates caching as desired.
     plant().SetPositionsAndVelocities(&context, x_theta);
     err = (x_theta - xkm).norm();
-    if (err < abs_tol + rel_tol * x_theta.norm()) break;
+    if (err < abs_tol + rel_tol * x_theta.norm()) {
+      PRINT_VAR(k);
+      PRINT_VAR(err);
+      break;
+    }
     xkm = x_theta;
   }
   if (k == max_iters) {

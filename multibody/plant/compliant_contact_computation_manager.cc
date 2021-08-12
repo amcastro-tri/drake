@@ -68,8 +68,10 @@ void CompliantContactComputationManager<T>::DeclareCacheEntries(
             cache_value->get_mutable_value<internal::ContactJacobianCache<T>>();
         const std::vector<internal::DiscreteContactPair<T>>& contact_pairs =
             plant().EvalDiscreteContactPairs(context);
+        PRINT_VAR(contact_pairs.size());
         CalcContactJacobian(context, contact_pairs, &contact_jacobian_cache.Jc,
                             &contact_jacobian_cache.R_WC_list);
+        PRINT_VAR(contact_jacobian_cache.Jc.rows());
       },
       // We explicitly declare the configuration dependence even though the
       // Eval() above implicitly evaluates configuration dependent cache
@@ -425,6 +427,8 @@ void CompliantContactComputationManager<T>::DoCalcContactSolverResults(
         &Aop, nullptr, &participating_vstar);
     contact_solvers::internal::PointContactData<T> contact_data(
         &phi0, &vc0, &Jop, &stiffness, &linear_damping, &mu);
+
+    PRINT_VAR(phi0.size());
 
     // Initial guess.
     // const auto x0 = context.get_discrete_state(0).get_value();
@@ -928,8 +932,11 @@ void CompliantContactComputationManager<T>::DoCalcContactResults(
   contact_results->Clear();
   if (plant().num_collision_geometries() == 0) return;
 
-  const auto& point_pairs = plant().EvalPointPairPenetrations(context);
-  const int num_contacts = point_pairs.size();
+  //const auto& point_pairs = plant().EvalPointPairPenetrations(context);
+  const std::vector<internal::DiscreteContactPair<T>>& contact_pairs =
+      plant().EvalDiscreteContactPairs(context);
+  const int num_contacts = contact_pairs.size();
+  PRINT_VAR(contact_pairs.size());
 
   const std::vector<RotationMatrix<T>>& R_WC_set =
       EvalContactJacobianCache(context).R_WC_list;
@@ -951,7 +958,7 @@ void CompliantContactComputationManager<T>::DoCalcContactResults(
   contact_results->Clear();
 
   for (int icontact = 0; icontact < num_contacts; ++icontact) {
-    const auto& pair = point_pairs[icontact];
+    const auto& pair = contact_pairs[icontact];
     const GeometryId geometryA_id = pair.id_A;
     const GeometryId geometryB_id = pair.id_B;
     const BodyIndex bodyA_index =
@@ -959,7 +966,11 @@ void CompliantContactComputationManager<T>::DoCalcContactResults(
     const BodyIndex bodyB_index =
         plant().geometry_id_to_body_index_.at(geometryB_id);
 
-    const Vector3<T> p_WC = 0.5 * (pair.p_WCa + pair.p_WCb);
+    const Vector3<T>& p_WC = pair.p_WC;
+    const Vector3<T>& nhat_BA_W = pair.nhat_BA_W;
+    const T phi0 = pair.phi0;
+    const Vector3<T> p_WCa = p_WC + phi0 * nhat_BA_W;
+    const Vector3<T> p_WCb = p_WC - phi0 * nhat_BA_W;
 
     const RotationMatrix<T>& R_WC = R_WC_set[icontact];
 
@@ -974,9 +985,13 @@ void CompliantContactComputationManager<T>::DoCalcContactResults(
     // Separation velocity in the normal direction.
     const T separation_velocity = vn(icontact);
 
+    drake::geometry::PenetrationAsPointPair<T> penetration_pair{
+        geometryA_id, geometryB_id, p_WCa, p_WCb, nhat_BA_W, -phi0};
+
     // Add pair info to the contact results.
     contact_results->AddContactInfo({bodyA_index, bodyB_index, f_Bc_W, p_WC,
-                                     separation_velocity, slip, pair});
+                                     separation_velocity, slip,
+                                     penetration_pair});
   }
 }
 

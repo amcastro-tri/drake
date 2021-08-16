@@ -22,6 +22,7 @@ using Eigen::Vector3d;
 using Eigen::Vector4d;
 using Eigen::VectorXd;
 
+using drake::multibody::world_index;
 using drake::multibody::CompliantContactComputationManager;
 using drake::multibody::contact_solvers::internal::UnconstrainedPrimalSolver;
 using drake::multibody::contact_solvers::internal::
@@ -54,6 +55,7 @@ DEFINE_double(simulation_time, 5.0, "Duration of the simulation in seconds.");
 DEFINE_double(mbt_dt, 0.02,
               "Discrete time step. Defaults to 0.0 for a continuous system.");
 DEFINE_bool(visualize, true, "Whether to visualize or not.");
+DEFINE_bool(visualize_forces, true, "Whether to visualize forces or not.");
 
 // Model parameters.
 // From Wikipedia: According to World Pool-Billiard Association equipment
@@ -63,7 +65,7 @@ DEFINE_double(mass1, 0.160, "Mass ball 1 in kg.");
 DEFINE_double(mass2, 0.160, "Mass ball 2 in kg.");
 DEFINE_double(radius, 0.03, "Billard ball radius in m.");
 DEFINE_double(stiffness, 1.0e4, "Point contact stiffness in N/m.");
-DEFINE_double(tau_dissipation, 0.02,
+DEFINE_double(tau_dissipation, 0.01,
               "Linear dissipation time scale in seconds.");
 DEFINE_double(friction, 0.1, "Billiard balls friction coefficient.");
 DEFINE_double(ground_friction, 10.0, "Friction coefficient.");
@@ -203,7 +205,7 @@ int do_main() {
         &manager->mutable_contact_solver<UnconstrainedPrimalSolver>();
     UnconstrainedPrimalSolverParameters params;
     params.abs_tolerance = 1.0e-6;
-    params.rel_tolerance = 1.0e-5;
+    params.rel_tolerance = 1.0e-8;
     params.Rt_factor = 1.0e-3;
     params.max_iterations = 300;
     params.ls_alpha_max = 1.0;
@@ -247,7 +249,9 @@ int do_main() {
   // Add visualization.
   if (FLAGS_visualize) {
     geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph);
-    ConnectContactResultsToDrakeVisualizer(&builder, plant);
+    if (FLAGS_visualize_forces) {
+      ConnectContactResultsToDrakeVisualizer(&builder, plant);
+    }
   }
 
   // Done creating the full model diagram.
@@ -267,8 +271,11 @@ int do_main() {
   std::ofstream sol_file("sol.dat");
   const auto& planar = plant.GetJointByName<PlanarJoint>("planar");
   const auto& planar2 = plant.GetJointByName<PlanarJoint>("planar2");
+  const auto& body1 = plant.GetBodyByName("body");
+  const auto& body2 = plant.GetBodyByName("body2");
   sol_file << fmt::format(
-      "time x1 y1 th1 vx1 vy1 thdot1 x2 y2 th2 vx2 vy2 thdot2 pe ke E nc\n");
+      "time x1 y1 th1 vx1 vy1 thdot1 x2 y2 th2 vx2 vy2 thdot2 pe ke E nc "
+      "f1w_y f1w_z f2w_y f2w_z f12w_y f12w_z slip1 slip2 slip12 d1 d2 d12\n");
   simulator->set_monitor([&](const systems::Context<double>& root_context) {
     const systems::Context<double>& ctxt =
         plant.GetMyContextFromRoot(root_context);
@@ -276,15 +283,45 @@ int do_main() {
         plant.get_contact_results_output_port().Eval<ContactResults<double>>(
             ctxt);
     const int nc = contact_results.num_point_pair_contacts();
+    // Since we use an sdf_threshold = 0.5, we always have three contacts (even
+    // if some forces are zero)
     DRAKE_DEMAND(nc <= 3);
 
-#if 0
-    double slip = -1;  // invalid value.
-    if (contact_results.num_point_pair_contacts() >= 1) {
-      const auto& info = contact_results.point_pair_contact_info(0);
-      slip = info.slip_speed();
+    std::vector<Vector3d> fBi_W(3, Vector3d::Zero());
+    std::vector<double> slip(3, 0.0);
+    std::vector<double> depth(3, 0.0);
+    for (int i = 0; i < nc; ++i)    {
+      const auto& info = contact_results.point_pair_contact_info(i);
+      // Body 1 with world contact.
+      if ((info.bodyA_index() == body1.index() &&
+           info.bodyB_index() == world_index()) ||
+          (info.bodyB_index() == body1.index() &&
+           info.bodyA_index() == world_index())) {        
+        fBi_W[0] = info.contact_force();
+        slip[0] = info.slip_speed();
+        depth[0] = info.point_pair().depth;
+      }
+
+      // Body 2 with world contact.
+      if ((info.bodyA_index() == body2.index() &&
+           info.bodyB_index() == world_index()) ||
+          (info.bodyB_index() == body2.index() &&
+           info.bodyA_index() == world_index())) {        
+        fBi_W[1] = info.contact_force();
+        slip[1] = info.slip_speed();
+        depth[1] = info.point_pair().depth;
+      }
+
+      // Body 1 with Body 2 contact.
+      if ((info.bodyA_index() == body1.index() &&
+           info.bodyB_index() == body2.index()) ||
+          (info.bodyB_index() == body1.index() &&
+           info.bodyA_index() == body2.index())) {        
+        fBi_W[2] = info.contact_force();
+        slip[2] = info.slip_speed();
+        depth[2] = info.point_pair().depth;
+      }
     }
-#endif    
 
     const double ke = plant.CalcKineticEnergy(ctxt);
     const double pe = plant.CalcPotentialEnergy(ctxt);
@@ -301,10 +338,19 @@ int do_main() {
 
     // time x y th vx vy thdot pe ke E nc slip
     sol_file << fmt::format(
-        "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n",
+        "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} "
+        "{} {} {} {} {} {}\n",
         ctxt.get_time(), p_WB.x(), p_WB.y(), theta, v_WB.x(), v_WB.y(),
         theta_dot, p_WB2.x(), p_WB2.y(), theta2, v_WB2.x(), v_WB2.y(),
-        theta_dot2, pe, ke, ke + pe, nc);
+        theta_dot2, pe, ke, ke + pe, nc,
+        // Contact forces.
+        fBi_W[0].y(), fBi_W[0].z(),
+        fBi_W[1].y(), fBi_W[1].z(),
+        fBi_W[2].y(), fBi_W[2].z(),
+        // Slip velocities.
+        slip[0], slip[1], slip[2],
+        // Penetration depths.
+        depth[0], depth[1], depth[2]);
     return systems::EventStatus::Succeeded();
   });
 

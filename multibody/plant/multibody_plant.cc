@@ -26,7 +26,9 @@
 #include "drake/multibody/tree/prismatic_joint.h"
 #include "drake/multibody/tree/revolute_joint.h"
 #include "drake/multibody/triangle_quadrature/gaussian_triangle_quadrature_rule.h"
+#include "drake/multibody/contact_solvers/timer.h"
 
+using drake::multibody::contact_solvers::internal::Timer;
 namespace drake {
 namespace multibody {
 
@@ -1993,11 +1995,13 @@ void MultibodyPlant<T>::CalcContactSurfaces(
 
   const auto& query_object = EvalGeometryQueryInput(context);
 
+  Timer timer;  
   if (is_discrete() && use_low_resolution_contact_surface_) {
     *contact_surfaces = query_object.ComputePolygonalContactSurfaces();
   } else {
     *contact_surfaces = query_object.ComputeContactSurfaces();
   }
+  contact_solver_stats_.calc_surfaces_time += timer.Elapsed();
 }
 
 template <>
@@ -2015,6 +2019,7 @@ void MultibodyPlant<T>::CalcHydroelasticWithFallback(
   this->ValidateContext(context);
   DRAKE_DEMAND(data != nullptr);
 
+  Timer timer;
   if (num_collision_geometries() > 0) {
     const auto &query_object = EvalGeometryQueryInput(context);
     data->contact_surfaces.clear();
@@ -2028,6 +2033,7 @@ void MultibodyPlant<T>::CalcHydroelasticWithFallback(
                                                       &data->point_pairs);
     }
   }
+  contact_solver_stats_.calc_surfaces_time += timer.Elapsed();
 }
 
 template <>
@@ -2255,6 +2261,8 @@ void MultibodyPlant<T>::CalcContactSolverResults(
   this->ValidateContext(context0);
   DRAKE_ASSERT(context0.num_continuous_states() == 0);
 
+  Timer timer;
+
   // We use the custom manager if provided.
   // TODO(amcastro-tri): remove the entirety of the code we are bypassing here.
   // This requires one of our custom managers to become the default
@@ -2388,6 +2396,8 @@ void MultibodyPlant<T>::CalcContactSolverResults(
   results->ft = results_unlocked.ft;
   results->vn = results_unlocked.vn;
   results->vt = results_unlocked.vt;
+
+  contact_solver_stats_.total_update_time += timer.Elapsed();
 }
 
 template <typename T>
@@ -2458,6 +2468,7 @@ void MultibodyPlant<T>::CallTamsiSolver(
   // update time step dt or evaluate the validity of the model.
   const int kNumMaxSubTimeSteps = 20;
   int num_substeps = 0;
+  Timer timer;
   do {
     ++num_substeps;
     info = SolveUsingSubStepping(num_substeps, M0, Jn, Jt, minus_tau, stiffness,
@@ -2484,6 +2495,7 @@ void MultibodyPlant<T>::CallTamsiSolver(
         time0, this->time_step());
     throw std::runtime_error(msg);
   }
+  contact_solver_stats_.solver_time += timer.Elapsed();
 
   // TODO(amcastro-tri): implement capability to dump solver statistics to a
   // file for analysis.
@@ -2796,7 +2808,7 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
 
   VectorX<T> x_next(this->num_multibody_states());
   x_next << q_next, v_next;
-  updates->set_value(0, x_next);
+  updates->set_value(0, x_next);  
 }
 
 template<typename T>

@@ -155,6 +155,14 @@ drake_cc_library(
     ],
 )
 
+drake_cc_library(
+    name = "timer",
+    hdrs = ["timer.h"],
+    deps = [
+        "//common:essential",
+    ],
+)
+
 drake_cc_googletest(
     name = "block_sparse_linear_operator_test",
     deps = [

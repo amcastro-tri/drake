@@ -3994,6 +3994,30 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   }
   /// @} <!-- Introspection -->
 
+  /// ContactSolverStats will accumulate stats during the span of an entire
+  /// simulation. E.g. solver_time will accumulate the total wall-clock time
+  /// spent on by the contact solver on successive discrete updates.
+  /// All times are "accumulated" wall-clock time in seconds.
+  struct ContactSolverStats {
+    /// Total accumulated wall-clock time used by the contact solver, in
+    /// seconds.
+    double solver_time{0.0};
+
+    /// Total accumulated wall-clock time used to compute hydroelastic contact
+    /// surfaces, either continuous or discrete, in seconds.
+    double calc_surfaces_time{0.0};
+
+    /// Total accumulated wall-clock time used in the entire discrete update.
+    /// All computational work performed by MultibodyPlant is consider in this
+    /// time. In the absence of any other overhead, this should match very
+    /// closely the time spent by Simulator::AdvanceTo().
+    double total_update_time{0.0};
+  };
+
+  const ContactSolverStats& contact_solver_stats() const {
+    return contact_solver_stats_;
+  }
+
   using internal::MultibodyTreeSystem<T>::is_discrete;
   using internal::MultibodyTreeSystem<T>::EvalPositionKinematics;
   using internal::MultibodyTreeSystem<T>::EvalVelocityKinematics;
@@ -4896,6 +4920,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Vector (with size num_bodies()) of default poses for each body. This is
   // only used if Body::is_floating() is true.
   std::vector<math::RigidTransform<double>> X_WB_default_list_;
+  
+  // Not thread safe!.
+  mutable ContactSolverStats contact_solver_stats_;
 };
 
 /// @cond

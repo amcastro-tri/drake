@@ -38,7 +38,9 @@ using Eigen::SparseVector;
 template <typename T>
 UnconstrainedPrimalSolver<T>::UnconstrainedPrimalSolver()
     : ConvexSolverBase<T>({UnconstrainedPrimalSolverParameters().theta,
-                           UnconstrainedPrimalSolverParameters().Rt_factor}) {}
+                           UnconstrainedPrimalSolverParameters().Rt_factor,
+                           UnconstrainedPrimalSolverParameters().alpha,
+                           UnconstrainedPrimalSolverParameters().tau_slip}) {}
 
 template <typename T>
 ContactSolverStatus UnconstrainedPrimalSolver<T>::DoSolveWithGuess(

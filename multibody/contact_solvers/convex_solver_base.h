@@ -16,7 +16,14 @@ struct ConvexSolverBaseParameters {
 
   // TODO(amcastro-tri): consider other ways of estimating Rg. Maybe a factor of
   // the Delassus operator?
-  double Rt_factor{1.0e-3};
+  double Rt_factor{1.0e-3};  
+
+  // Rigid approximation contant: Rₙ = α⋅Wᵢ when the contact frequency ωₙ is
+  // below the limit ωₙ⋅dt ≤ 2π. That is, the period is Tₙ = α⋅dt.
+  double alpha{1.0};
+
+  // Slip time constant, in seconds. Think vₛ = τₛ⋅g.
+  double tau_slip{1.0e-5};
 };
 
 // This solver uses the regularized convex formulation from [Todorov 2014]. This
@@ -106,7 +113,7 @@ class ConvexSolverBase : public ContactSolver<T> {
                       const SystemDynamicsData<T>& dynamics_data,
                       const PointContactData<T>& contact_data,
                       double theta,
-                      double Rt_factor);
+                      double Rt_factor, double alpha, double tau_slip);
 
   // Utility to compute the "soft norm" ‖x‖ₛ defined by ‖x‖ₛ² = ‖x‖² + ε², where
   // ε = soft_tolerance.

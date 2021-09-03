@@ -59,7 +59,9 @@ DEFINE_double(stiction_tolerance, 1.0E-4,
 DEFINE_double(density, 1000.0, "The density of all objects, in kg/m³.");
 DEFINE_double(friction_coefficient, 1.0,
               "All friction coefficients have this value.");
-DEFINE_double(stiffness, 1.0e5, "Point contact stiffness in N/m.");
+DEFINE_double(box_stiffness, 1.0e8, "Box point contact stiffness in N/m.");
+DEFINE_double(sphere_stiffness, 1.0e8,
+              "Sphere point contact stiffness in N/m.");
 DEFINE_double(dissipation_rate, 0.01, "Linear dissipation rate in seconds.");
 
 // Contact geometry parameters.
@@ -109,6 +111,8 @@ DEFINE_string(line_search, "exact",
               "Primal solver line-search. 'exact', 'inexact'");
 DEFINE_double(ls_alpha_max, 1.5, "Maximum line search step.");
 DEFINE_double(rt_factor, 1.0e-3, "Rt_factor");
+DEFINE_double(alpha, 1.0, "Rigid time scale factor.");
+DEFINE_double(tau_slip, 1.0e-5, "Slip time scale.");
 DEFINE_double(abs_tol, 1.0e-6, "Absolute tolerance [m/s].");
 DEFINE_double(rel_tol, 1.0e-4, "Relative tolerance [-].");
 DEFINE_bool(log_stats, true, "Log all iterations stats.");
@@ -145,7 +149,7 @@ std::vector<geometry::GeometryId> box_geometry_ids;
 
 const RigidBody<double>& AddBox(const std::string& name,
                                 const Vector3<double>& block_dimensions,
-                                double mass, double friction,
+                                double mass, double stiffness, double friction,
                                 const Vector4<double>& color,
                                 bool emulate_box_multicontact,
                                 bool add_box_collision,
@@ -175,7 +179,7 @@ const RigidBody<double>& AddBox(const std::string& name,
   geometry::ProximityProperties props;
   if (!FLAGS_tamsi || FLAGS_mbp_time_step == 0) {
     props.AddProperty(geometry::internal::kMaterialGroup,
-                      geometry::internal::kPointStiffness, FLAGS_stiffness);
+                      geometry::internal::kPointStiffness, stiffness);
     props.AddProperty(geometry::internal::kMaterialGroup, "dissipation_rate",
                       FLAGS_dissipation_rate);
   }
@@ -268,8 +272,9 @@ void AddSink(MultibodyPlant<double>* plant) {
       [&](const std::string& name, const Vector3d& dimensions,
           const RigidTransformd& X_WB,
           const Vector4<double>& color) -> const RigidBody<double>& {
-    const auto& wall = AddBox(name, dimensions, wall_mass, friction_coefficient,
-                              color, false, true, plant);
+    const double kSinkStiffness = 1.0e10;
+    const auto& wall = AddBox(name, dimensions, wall_mass, kSinkStiffness,
+                              friction_coefficient, color, false, true, plant);
     plant->WeldFrames(plant->world_frame(), wall.body_frame(), X_WB);
     return wall;
   };
@@ -309,7 +314,7 @@ const RigidBody<double>& AddSphere(const std::string& name, const double radius,
   geometry::ProximityProperties props;
   if (!FLAGS_tamsi || FLAGS_mbp_time_step == 0) {
     props.AddProperty(geometry::internal::kMaterialGroup,
-                      geometry::internal::kPointStiffness, FLAGS_stiffness);
+                      geometry::internal::kPointStiffness, FLAGS_sphere_stiffness);
     props.AddProperty(geometry::internal::kMaterialGroup, "dissipation_rate",
                       FLAGS_dissipation_rate);
   }
@@ -410,7 +415,8 @@ std::vector<BodyIndex> AddObjects(double scale_factor,
         const double mass = density * volume;
         Vector4<double> color50(color);
         color50.z() = 0.5;
-        bodies.push_back(AddBox(name, box_size, mass, friction, color50,
+        bodies.push_back(AddBox(name, box_size, mass, FLAGS_box_stiffness,
+                                friction, color50,
                                 FLAGS_emulate_box_multicontact, true, plant)
                              .index());
         break;
@@ -466,6 +472,8 @@ const ConvexSolverBase<double>* SetSolver(
     params.abs_tolerance = FLAGS_abs_tol;
     params.rel_tolerance = FLAGS_rel_tol;
     params.Rt_factor = FLAGS_rt_factor;
+    params.alpha = FLAGS_alpha;
+    params.tau_slip = FLAGS_tau_slip;
     params.max_iterations = 300;
     params.ls_alpha_max = FLAGS_ls_alpha_max;
     // params.ls_tolerance = 1.0e-2;

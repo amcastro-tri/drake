@@ -4,6 +4,7 @@
 #include <fstream>
 #include <numeric>
 
+#include "drake/common/unused.h"
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
 #include "drake/multibody/contact_solvers/timer.h"
 
@@ -32,7 +33,8 @@ ContactSolverStatus ConvexSolverBase<T>::SolveWithGuess(
   //   ProcessedData data = MakePreProcessedData(...);
   Timer timer;
   PreProcessData(time_step, dynamics_data, contact_data, parameters_.theta,
-                 parameters_.Rt_factor);
+                 parameters_.Rt_factor, parameters_.alpha,
+                 parameters_.tau_slip);
   pre_process_time_ = timer.Elapsed();
   const auto status = DoSolveWithGuess(data_, v_guess, results);
   total_time_ += timer.Elapsed();
@@ -42,9 +44,12 @@ ContactSolverStatus ConvexSolverBase<T>::SolveWithGuess(
 template <typename T>
 void ConvexSolverBase<T>::PreProcessData(
     const T& time_step, const SystemDynamicsData<T>& dynamics_data,
-    const PointContactData<T>& contact_data, double theta, double Rt_factor) {
+    const PointContactData<T>& contact_data, double theta, 
+    double Rt_factor, double alpha, double tau_slip) {
   using std::max;
   using std::sqrt;
+
+  unused(Rt_factor);
 
   // Keep references to data.
   data_.time_step = time_step;
@@ -88,18 +93,30 @@ void ConvexSolverBase<T>::PreProcessData(
         Mij.diagonal().cwiseInverse().cwiseSqrt();
   }
 
+  // We need Wdiag first to compute R below.
   const int nc = phi0.size();
+  CalcDelassusDiagonalApproximation(nc, data_.Mt, data_.Jblock, &data_.Wdiag);
+
+  const auto& Wdiag = data_.Wdiag;
+  const T alpha_factor = alpha * alpha / (4.0 * M_PI * M_PI);  
   for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
     // Regularization.
     auto Ric = R.template segment<3>(ic3);
     const T& k = stiffness(ic);
     DRAKE_DEMAND(k > 0);
     const T& c = dissipation(ic);
+    const T& Wi = Wdiag(ic);
     const T taud = c / k;  // Damping rate.
-    const T Rn =
-        1.0 / (theta * time_step * k * (time_step + taud));
+    const T Rn = max(alpha_factor * Wi,
+                     1.0 / (theta * time_step * k * (time_step + taud)));
     DRAKE_DEMAND(Rn > 0);
-    const T Rt = Rt_factor * Rn;
+    const T Rt = parameters_.tau_slip / time_step * Wi;
+    //PRINT_VAR(Wi);
+    //PRINT_VAR(Rt);
+    //PRINT_VAR(Rn);    
+    //PRINT_VAR(Rt / Rn);
+    //PRINT_VAR(Rt / Wi);
+    //PRINT_VAR(Rn / Wi);    
     Ric = Vector3<T>(Rt, Rt, Rn);
 
     // Stabilization velocity.
@@ -112,9 +129,7 @@ void ConvexSolverBase<T>::PreProcessData(
   data_.Rinv = R.cwiseInverse();
 
   const auto& v_star = data_.dynamics_data->get_v_star();
-  data_.Mblock.Multiply(v_star, &data_.p_star);
-
-  CalcDelassusDiagonalApproximation(nc, data_.Mt, data_.Jblock, &data_.Wdiag);
+  data_.Mblock.Multiply(v_star, &data_.p_star);  
 }
 
 template <typename T>

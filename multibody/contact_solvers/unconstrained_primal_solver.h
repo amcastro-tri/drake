@@ -52,7 +52,14 @@ struct UnconstrainedPrimalSolverParameters {
   double soft_tolerance{1.0e-7};
 
   // Tangential regularization factor. We make Rt = Rt_factor * Rn.
-  double Rt_factor{1.0e-3};
+  double Rt_factor{1.0e-3};  
+
+  // Rigid approximation contant: Rₙ = α⋅Wᵢ when the contact frequency ωₙ is
+  // below the limit ωₙ⋅dt ≤ 2π. That is, the period is Tₙ = α⋅dt.
+  double alpha{1.0};
+
+  // Slip time constant, in seconds. Think vₛ = τₛ⋅g.
+  double tau_slip{1.0e-5};
 
   // Use supernodal algebra for the linear solver.
   bool use_supernodal_solver{true};
@@ -188,7 +195,9 @@ class UnconstrainedPrimalSolver final : public ConvexSolverBase<T> {
 
   void set_parameters(UnconstrainedPrimalSolverParameters& parameters) {
     ConvexSolverBaseParameters base_parameters{parameters.theta,
-                                               parameters.Rt_factor};
+                                               parameters.Rt_factor,
+                                               parameters.alpha,
+                                               parameters.tau_slip};
     ConvexSolverBase<T>::set_parameters(base_parameters);
     parameters_ = parameters;
   }

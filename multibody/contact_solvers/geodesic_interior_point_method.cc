@@ -556,7 +556,7 @@ GeodesicSolverSolution GeodesicSolver(
   SpinFactorProduct w = w0;
 
   double identity_scale = 100;
-  double min_mu = 3e-7;
+  double min_mu = 1e-6;
 
   NewtonDirection dir(J, M, num_block_rows_of_J, R, num_contacts);
 
@@ -581,7 +581,7 @@ GeodesicSolverSolution GeodesicSolver(
 
   double dinf_max = .99;
   int i = 0;
-  int max_iterations = 50;
+  int max_iterations = 200;
   for (; i < max_iterations; i++) {
     dir.SetW(w);
     dir.CalculateNewtonDirection(0, vstar, v_hat, &d0, &v0);

@@ -114,8 +114,10 @@ DEFINE_double(rt_factor, 1.0e-3, "Rt_factor");
 DEFINE_double(alpha, 1.0, "Rigid time scale factor.");
 DEFINE_double(tau_slip, 1.0e-5, "Slip time scale.");
 DEFINE_double(abs_tol, 1.0e-6, "Absolute tolerance [m/s].");
-DEFINE_double(rel_tol, 1.0e-4, "Relative tolerance [-].");
+DEFINE_double(rel_tol, 1.0e-5, "Relative tolerance [-].");
 DEFINE_bool(log_stats, true, "Log all iterations stats.");
+DEFINE_bool(log_cond_number, false,
+            "Estimate and log condition number (expensive).");
 
 using drake::math::RigidTransform;
 using drake::math::RigidTransformd;
@@ -482,6 +484,7 @@ const ConvexSolverBase<double>* SetSolver(
     params.compare_with_dense = false;
     params.verbosity_level = FLAGS_verbosity_level;
     params.log_stats = FLAGS_log_stats;
+    params.log_condition_number = FLAGS_log_cond_number;
     if (FLAGS_line_search == "exact") {
       params.ls_method =
           UnconstrainedPrimalSolverParameters::LineSearchMethod::kExact;

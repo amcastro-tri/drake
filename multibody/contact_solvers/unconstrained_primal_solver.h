@@ -80,6 +80,8 @@ struct UnconstrainedPrimalSolverParameters {
   int verbosity_level{1};
 
   bool log_stats{true};
+
+  bool log_condition_number{false};
 };
 
 struct UnconstrainedPrimalSolverIterationMetrics {
@@ -136,6 +138,14 @@ struct UnconstrainedPrimalSolverIterationMetrics {
 
   // Inverse dynamics realtive error.
   double id_rel_error{0};
+
+  // Mean and rms value of the tangential velocities.
+  double vt_mean{0.0};
+  double vt_rms{0.0};
+
+  // An estimate of the condition number. Zero if not logged, see
+  // log_condition_number in the parameters.
+  double cond_number{0.0};
 };
 
 // Intended for debugging only. Remove.

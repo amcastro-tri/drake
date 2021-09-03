@@ -156,6 +156,7 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
         this->CalcRelativeMomentumError(data, state.v(), cache.gamma);
     this->CalcEnergyMetrics(data, state.v(), cache.gamma, &metrics.Ek,
                             &metrics.costM, &metrics.costR, &metrics.cost);
+    this->CalcSlipMetrics(data, cache.vc, &metrics.vt_mean, &metrics.vt_rms);
     metrics.opt_cond =
         this->CalcOptimalityCondition(data_, state.v(), cache.gamma, &xc_work1);
     this->CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache.vc,
@@ -308,8 +309,22 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
     std::tie(last_metrics.mom_rel_l2, last_metrics.mom_rel_max) =
         this->CalcRelativeMomentumError(data, state.v(), cache.gamma);
     this->CalcEnergyMetrics(data, state.v(), cache.gamma, &last_metrics.Ek,
-                      &last_metrics.costM, &last_metrics.costR,
-                      &last_metrics.cost);    
+                            &last_metrics.costM, &last_metrics.costR,
+                            &last_metrics.cost);
+    this->CalcSlipMetrics(data, cache.vc, &last_metrics.vt_mean,
+                          &last_metrics.vt_rms);
+    if (num_iterations != 0 && parameters_.log_condition_number) {
+      // We need to set G again because the solver cannot return the full matrix
+      // after a factorization was done.
+      solver->SetWeightMatrix(cache.G);
+      //Eigen::JacobiSVD<MatrixX<double>> svd(solver->FullMatrix());
+      //last_metrics.cond_number =
+      //    svd.singularValues().maxCoeff() / svd.singularValues().minCoeff();
+
+      // Significantly faster than the SVD method, and verified it is accurate
+      // enough.
+      last_metrics.cond_number = 1.0 / solver->FullMatrix().ldlt().rcond();
+    }
 
     if (!parameters_.log_stats) stats_.iteration_metrics.push_back(metrics);
     stats_.num_iters = num_iterations;
@@ -954,7 +969,7 @@ void UnconstrainedPrimalSolver<T>::LogIterationsHistory(
   std::ofstream file(file_name);
   file << fmt::format(
       "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} "
-      "{} {} {} {} {} {} {} {} {}\n",
+      "{} {} {} {} {} {} {} {} {} {} {}\n",
       // Problem size.
       "num_contacts",
       // Number of iterations.
@@ -968,12 +983,15 @@ void UnconstrainedPrimalSolver<T>::LogIterationsHistory(
       "total_ls_iters", "max_ls_iters", "last_alpha", "mean_alpha", "alpha_min",
       "alpha_max",
       // Gradient and Hessian metrics.
-      "grad_ell_max_norm", "dv_max_norm", "rcond",
+      "grad_ell_max_norm", "dv_max_norm", "cond_number",
       // Timing metrics.
       "total_time", "preproc_time", "assembly_time", "linear_solve_time",
       "ls_time", "supernodal_construction",
       // Energy metrics.
-      "Ek", "ellM", "ellR", "ell");
+      "Ek", "ellM", "ellR", "ell",
+      // Slip velocity metrics.
+      "vt_mean", "vt_rms");
+
 
   for (const auto& s : stats_hist) {
     const auto& metrics = s.iteration_metrics.back();
@@ -996,7 +1014,7 @@ void UnconstrainedPrimalSolver<T>::LogIterationsHistory(
 
     file << fmt::format(
         "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} "
-        "{} {} {} {} {} {} {} {} {}\n",
+        "{} {} {} {} {} {} {} {} {} {} {}\n",
         // Problem size.
         s.num_contacts,
         // Number of iterations.
@@ -1013,12 +1031,14 @@ void UnconstrainedPrimalSolver<T>::LogIterationsHistory(
         ls_alpha_min, ls_alpha_max,
         // Gradient and Hessian metrics.
         metrics.grad_ell_max_norm, metrics.search_direction_max_norm,
-        metrics.rcond,
+        metrics.cond_number,
         // Timing metrics.
         s.total_time, s.preproc_time, s.assembly_time, s.linear_solver_time,
         s.line_search_time, s.supernodal_construction_time,
         // Energy metrics.
-        metrics.Ek, metrics.costM, metrics.costR, metrics.cost);
+        metrics.Ek, metrics.costM, metrics.costR, metrics.cost,
+        // Slip velocity metrics.
+        metrics.vt_mean, metrics.vt_rms);
   }
   file.close();
 }

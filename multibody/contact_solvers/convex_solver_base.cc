@@ -379,6 +379,26 @@ void ConvexSolverBase<T>::CalcEnergyMetrics(const PreProcessedData& data,
 }
 
 template <typename T>
+void ConvexSolverBase<T>::CalcSlipMetrics(const PreProcessedData& data,
+                                          const VectorX<T>& vc, T* vt_mean,
+                                          T* vt_rms) const {
+  using std::sqrt;
+  unused(data);
+
+  const int nc = vc.size() / 3;
+  *vt_mean = 0.0;
+  *vt_rms = 0.0;
+  for (int ic = 0; ic < nc; ++ic) {
+    const auto vt_ic = vc.template segment<2>(3 * ic);
+    const T vt_quared = vt_ic.squaredNorm();
+    *vt_mean += sqrt(vt_quared);
+    *vt_rms += vt_quared;
+  }
+  *vt_mean /= nc;
+  *vt_rms = sqrt(*vt_rms / nc);
+}
+
+template <typename T>
 std::pair<T, T> ConvexSolverBase<T>::CalcRelativeMomentumError(
     const PreProcessedData& data, const VectorX<T>& v,
     const VectorX<T>& gamma) const {

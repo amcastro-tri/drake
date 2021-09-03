@@ -183,6 +183,9 @@ class ConvexSolverBase : public ContactSolver<T> {
                          const VectorX<T>& gamma, T* Ek, T* ellM, T* ellR,
                          T* ell) const;
 
+  void CalcSlipMetrics(const PreProcessedData& data, const VectorX<T>& vc,
+                       T* vt_mean, T* vt_rms) const;
+
   // Computes the optimality condition m = 1/nc∑|gᵢ⋅γᵢ|
   // where g = J⋅v − v̂ + R⋅γ.
   // For this problem the optimality conditions read

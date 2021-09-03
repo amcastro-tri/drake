@@ -29,6 +29,13 @@ struct MpPrimalSolverParameters {
   // Tangential regularization factor. We make Rt = Rt_factor * Rn.
   double Rt_factor{1.0e-3};
 
+  // Rigid approximation contant: Rₙ = α⋅Wᵢ when the contact frequency ωₙ is
+  // below the limit ωₙ⋅dt ≤ 2π. That is, the period is Tₙ = α⋅dt.
+  double alpha{1.0};
+
+  // Slip time constant, in seconds. Think vₛ = τₛ⋅g.
+  double tau_slip{1.0e-5};
+
   bool log_stats{false};
 
   // The verbosity level determines how much information to print into stdout.
@@ -104,7 +111,8 @@ class MpPrimalSolver final : public ConvexSolverBase<T> {
   virtual ~MpPrimalSolver() = default;
 
   void set_parameters(MpPrimalSolverParameters& parameters) {
-    ConvexSolverBaseParameters base_parameters{1.0, parameters.Rt_factor};
+    ConvexSolverBaseParameters base_parameters{
+        1.0, parameters.Rt_factor, parameters.alpha, parameters.tau_slip};
     ConvexSolverBase<T>::set_parameters(base_parameters);
     parameters_ = parameters;
   }

@@ -502,6 +502,8 @@ const ConvexSolverBase<double>* SetSolver(
 
     MpPrimalSolverParameters params;
     params.Rt_factor = FLAGS_rt_factor;
+    params.alpha = FLAGS_alpha;
+    params.tau_slip = FLAGS_tau_slip;
     params.verbosity_level = FLAGS_verbosity_level;
     params.log_file = "/home/amcastro/Drake/Drake1/drake/solver_log.dat";
     // temp_directory() + "/solver_log.dat";

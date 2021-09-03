@@ -42,7 +42,7 @@ namespace mp_convex_solver {
 namespace {
 
 // Simulation parameters.
-DEFINE_double(simulation_time, 5.0, "Simulation duration in seconds");
+DEFINE_double(simulation_time, 10.0, "Simulation duration in seconds");
 DEFINE_double(
     mbp_time_step, 1.0E-2,
     "If mbp_time_step > 0, the fixed-time step period (in seconds) of discrete "

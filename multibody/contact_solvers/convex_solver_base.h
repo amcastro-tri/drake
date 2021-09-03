@@ -76,6 +76,7 @@ class ConvexSolverBase : public ContactSolver<T> {
       vc_stab.resize(nc3);
       Djac.resize(nv);
       p_star.resize(nv);
+      Wdiag.resize(nc);
     }
     T time_step;
     const SystemDynamicsData<T>* dynamics_data{nullptr};
@@ -92,6 +93,7 @@ class ConvexSolverBase : public ContactSolver<T> {
     // Djac = diag(M)^(-0.5)
     VectorX<T> Djac;
     VectorX<T> p_star;
+    VectorX<T> Wdiag;  // Delassus operator diagonal approximation.
   };
 
   // Derived classes must implement this method to
@@ -205,6 +207,11 @@ class ConvexSolverBase : public ContactSolver<T> {
                             const T& yn,
                             const Eigen::Ref<const Vector2<T>>& that,
                             int* region, Matrix3<T>* dPdy = nullptr) const;
+
+  void CalcDelassusDiagonalApproximation(int nc,
+                                         const std::vector<MatrixX<T>>& Mt,
+                                         const BlockSparseMatrix<T>& Jblock,
+                                         VectorX<T>* Wdiag) const;
 
   ConvexSolverBaseParameters parameters_;
   double pre_process_time_{0};

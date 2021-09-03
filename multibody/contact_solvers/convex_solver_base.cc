@@ -113,6 +113,8 @@ void ConvexSolverBase<T>::PreProcessData(
 
   const auto& v_star = data_.dynamics_data->get_v_star();
   data_.Mblock.Multiply(v_star, &data_.p_star);
+
+  CalcDelassusDiagonalApproximation(nc, data_.Mt, data_.Jblock, &data_.Wdiag);
 }
 
 template <typename T>
@@ -427,6 +429,39 @@ T ConvexSolverBase<T>::CalcOptimalityCondition(const PreProcessedData& data,
   m /= nc;
 
   return m;
+}
+
+template <typename T>
+void ConvexSolverBase<T>::CalcDelassusDiagonalApproximation(
+    int nc, const std::vector<MatrixX<T>>& Mt,
+    const BlockSparseMatrix<T>& Jblock, VectorX<T>* Wdiag) const {
+  DRAKE_DEMAND(Wdiag != nullptr);
+  DRAKE_DEMAND(Wdiag->size() == nc);
+  const int nt = Mt.size();
+  std::vector<Eigen::LLT<MatrixX<T>>> M_ldlt;
+  M_ldlt.resize(nt);
+  std::vector<Matrix3<T>> W(nc, Matrix3<T>::Zero());
+
+  for (int t = 0; t < nt; ++t) {
+    const auto& Mt_local = Mt[t];
+    M_ldlt[t] = Mt_local.llt();
+  }
+
+  for (auto [p, t, Jpt] : Jblock.get_blocks()) {
+    // ic_start is the first contact point of patch p.
+    const int ic_start = Jblock.row_start(p) / 3;
+    // k-th contact within patch p.
+    for (int k = 0; k < Jpt.rows() / 3; k++) {
+      const int ic = ic_start + k;
+      const auto& Jkt = Jpt.block(3 * k, 0, 3, Jpt.cols());
+      W[ic] += Jkt * M_ldlt[t].solve(Jkt.transpose());     
+    }
+  }
+
+  // Compute Wdiag as the rms norm of k-th diagonal block.
+  for (int ic = 0; ic < nc; ++ic) {
+    (*Wdiag)[ic] = W[ic].norm() / 3;
+  }
 }
 
 }  // namespace internal

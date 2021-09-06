@@ -556,7 +556,7 @@ GeodesicSolverSolution GeodesicSolver(
   SpinFactorProduct w = w0;
 
   double identity_scale = 100;
-  double min_mu = 1e-6;
+  double min_mu = 1e-5;
 
   NewtonDirection dir(J, M, num_block_rows_of_J, R, num_contacts);
 

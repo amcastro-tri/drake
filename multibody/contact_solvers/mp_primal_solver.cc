@@ -291,6 +291,10 @@ void MpPrimalSolver<T>::SetUpProgram(
   // Maximum value:	1e-2
   prog->SetSolverOption(GurobiSolver::id(), "OptimalityTol", 1.0e-6);
 
+  // Default value: 0; It will generally use all of the cores in the machine,
+  // but it may choose to use fewer.
+  prog->SetSolverOption(GurobiSolver::id(), "Threads", 1);
+
   // Acquiring the license is an time consumming process. We do it once on the
   // first solve and keep a shared pointer to the license alive.
   if (parameters_.solver_id) {

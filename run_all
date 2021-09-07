@@ -6,16 +6,16 @@ stiffness=1e8
 # Soft
 #stiffness=1e4
 
-sink_walls=0
+sink_walls=1
 
 #for nbodies_per_pile in 2 5 10
-for nbodies_per_pile in 2 5 10 15 20 30 40
+for nbodies_per_pile in 2 5 10 15 20 30 40 50
 do
 
 nb=$((4*$nbodies_per_pile))
 echo $nb
 
-dir="/home/amcastro/Documents/Research/UnconstrainedConvexFormulation/PaperComparisons_09-03-2021/clutter_no_walls/nb$nb"
+dir="/home/amcastro/Documents/Research/UnconstrainedConvexFormulation/PaperComparisons_09-03-2021/clutter_w_walls/rigid_single_thread/nb$nb"
 echo $dir
 
 mkdir -p "$dir/pri_stats"

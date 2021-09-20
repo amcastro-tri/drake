@@ -126,6 +126,8 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
   const bool use_geodesic_solver = parameters_.use_geodesic_solver;
   if (use_geodesic_solver) {
     GeodesicSolverSolution sol;
+    GeodesicSolverOptions options;
+    options.verbosity = parameters_.verbosity_level;
 
     sol.v = state.mutable_v();
     sol.lambda = cache.gamma;
@@ -138,8 +140,9 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
     // TODO(amcastro-tri): expose solver parameters controlling the accuracy of
     // the solution.
     auto solution_geo =
-        GeodesicSolver(sol, data_.Jblock.get_blocks(), data_.Mt, data_.R,
-                       data_.Jblock.block_rows(), data_.nc, v_star, vc_stab);
+        GeodesicSolver(sol, contact_data.get_mu(),
+                       data_.Jblock.get_blocks(), data_.Mt, data_.R,
+                       data_.Jblock.block_rows(), data_.nc, v_star, vc_stab, options);
 
     if (solution_geo.info.failed) return ContactSolverStatus::kFailure;
 

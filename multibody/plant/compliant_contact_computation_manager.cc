@@ -206,8 +206,8 @@ void CompliantContactComputationManager<T>::
         systems::Context<T>* context_star) const {
   // NR parameters. Expose if needed.
   const int max_iters = 30;
-  const double rel_tol = 1.0e-8;
-  const double abs_tol = 1.0e-8;
+  const double rel_tol = 1.0e-12;
+  const double abs_tol = 1.0e-16;
 
   // Context used to compute x*.
   systems::Context<T>& context = *context_star;
@@ -262,24 +262,29 @@ void CompliantContactComputationManager<T>::
   // Initial guess to x = x0.
   context.SetTimeStateAndParametersFrom(context0);
   xkm = x0;  // previous iteration.
+  auto q_theta_km = xkm.head(nq);
+  auto v_theta_km = xkm.tail(nv);
   int k = 1;
   T err = 0;
+  double relaxation = 1.0;
   for (; k <= max_iters; ++k) {
     xdot = CalcXdot(context);
     // Update state at θv.
-    v_theta = v0 + dt * theta_v_ * xdot.tail(nv);
-    q_theta = q0 + dt * theta_qv_ * xdot.head(nq);
+    v_theta = (1.0 - relaxation) * v_theta_km +
+              relaxation * (v0 + dt * theta_v_ * xdot.tail(nv));
+    q_theta = (1.0 - relaxation) * q_theta_km +
+              relaxation * (q0 + dt * theta_qv_ * xdot.head(nq));
     // this invalidates caching as desired.
-    plant().SetPositionsAndVelocities(&context, x_theta);
+    plant().SetPositionsAndVelocities(&context, x_theta);    
     err = (x_theta - xkm).norm();
     if (err < abs_tol + rel_tol * x_theta.norm()) {
-      PRINT_VAR(k);
-      PRINT_VAR(err);
       break;
     }
     xkm = x_theta;
   }
-  if (k == max_iters) {
+  PRINT_VAR(k);
+  PRINT_VAR(err);
+  if (k >= max_iters-1) {
     throw std::runtime_error("Computation of x_star did not converge.");
   }
 

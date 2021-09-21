@@ -14,6 +14,8 @@
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
 #include "drake/systems/framework/diagram_builder.h"
+#include "drake/multibody/tree/linear_spring_damper.h"
+#include "drake/multibody/tree/one_dimensional_spring_damper.h"
 
 namespace drake {
 
@@ -37,6 +39,8 @@ using multibody::AddMultibodyPlantSceneGraph;
 using multibody::ContactResults;
 using multibody::CoulombFriction;
 using multibody::MultibodyPlant;
+using multibody::LinearSpringDamper;
+using multibody::OneDimensionalSpringDamper;
 using multibody::PlanarJoint;
 using multibody::RigidBody;
 using multibody::SpatialInertia;
@@ -61,22 +65,24 @@ DEFINE_bool(visualize_forces, true, "Whether to visualize forces or not.");
 // From Wikipedia: According to World Pool-Billiard Association equipment
 // specifications, the weight may be from 51⁄2 to 6.0 oz (160–170 g) with a
 // diameter of 21⁄4 in (57 mm), plus or minus 0.005 in (0.127 mm).
-DEFINE_double(mass1, 0.160, "Mass ball 1 in kg.");
-DEFINE_double(mass2, 0.160, "Mass ball 2 in kg.");
-DEFINE_double(radius, 0.03, "Billard ball radius in m.");
+DEFINE_double(mass1, 0.5, "Mass ball 1 in kg.");
+DEFINE_double(radius, 0.05, "Billard ball radius in m.");
 DEFINE_double(stiffness, 1.0e4, "Point contact stiffness in N/m.");
-DEFINE_double(tau_dissipation, 0.01,
+DEFINE_double(tau_dissipation, 0.02,
               "Linear dissipation time scale in seconds.");
-DEFINE_double(friction, 0.1, "Billiard balls friction coefficient.");
-DEFINE_double(ground_friction, 10.0, "Friction coefficient.");
-DEFINE_double(slope, 5.0, "Slope in degrees.");
-DEFINE_double(vy0, 0.2, "Initial x velocity in m/s.");
-DEFINE_double(ball2_yoffset, 0.3, "Ball 2 y-offset in m.");
+DEFINE_double(friction, 1.0, "Billiard balls friction coefficient.");
+DEFINE_double(ground_friction, 1.0, "Friction coefficient.");
+DEFINE_double(slope, 0.0, "Slope in degrees.");
+DEFINE_double(y0, 0.1, "Initial x in m.");
+DEFINE_double(vy0, 0.0, "Initial x velocity in m/s.");
+DEFINE_double(spring_stiffness, 100.0,
+              "Attach a spring to ball 1 with this stiffness. If zero, no "
+              "spring is attached.");
 
 // Solver.
 DEFINE_string(solver, "primal",
               "Underlying solver. 'tamsi', 'primal', 'geodesic'");
-DEFINE_bool(use_sdf_query, true, "Use SDF instead of penetration query.");
+DEFINE_bool(use_sdf_query, false, "Use SDF instead of penetration query.");
 DEFINE_int32(time_method, 2,
              "1: Explicit Euler, 2: Symplectic Euler, 3: Implicit Euler, 4: "
              "Midpoint rule.");
@@ -95,10 +101,19 @@ void BuildModel(MultibodyPlant<double>* plant) {
   const Vector3d p_BoBcm_B = Vector3d::Zero();
   const UnitInertia<double> G_BBcm_B = UnitInertia<double>::SolidSphere(radius);
   const SpatialInertia<double> M1_BBcm_B(FLAGS_mass1, p_BoBcm_B, G_BBcm_B);
-  const SpatialInertia<double> M2_BBcm_B(FLAGS_mass2, p_BoBcm_B, G_BBcm_B);
 
   // Create a rigid body B with the mass properties of a uniform solid block.
   const RigidBody<double>& body = plant->AddRigidBody("body", M1_BBcm_B);
+
+  // Add linear srping.
+  if (FLAGS_spring_stiffness != 0) {
+    plant->AddForceElement<OneDimensionalSpringDamper>(
+        plant->world_body(), body, FLAGS_spring_stiffness, 0.0);
+
+    // LinearSpringDamper(const Body<T>& bodyA, const Vector3<double>& p_AP,
+    //                 const Body<T>& bodyB, const Vector3<double>& p_BQ,
+    //               double free_length, double stiffness, double damping);
+  }
 
   // Visual
   const RigidTransformd X_BC = RigidTransformd::Identity();
@@ -124,15 +139,6 @@ void BuildModel(MultibodyPlant<double>* plant) {
   const Vector3d damping = Vector3d::Zero();
   plant->AddJoint<PlanarJoint>("planar", plant->world_body(), Xy, body, Xy,
                                damping);
-
-  // Second ball.
-  const RigidBody<double>& body2 = plant->AddRigidBody("body2", M2_BBcm_B);
-  plant->RegisterVisualGeometry(body2, X_BC, geometry::Sphere(radius),
-                                "body2_visual", pink);
-  plant->RegisterCollisionGeometry(body2, X_BC, geometry::Sphere(radius),
-                                   "body2_collision", props);
-  plant->AddJoint<PlanarJoint>("planar2", plant->world_body(), Xy, body2, Xy,
-                               damping);
 }
 
 void SetInitialConditions(const MultibodyPlant<double>& plant,
@@ -142,25 +148,15 @@ void SetInitialConditions(const MultibodyPlant<double>& plant,
   const double g_vert = 9.81 * cos(th);
   const double phi1 = FLAGS_mass1 * g_vert / FLAGS_stiffness;
   const double z1 = FLAGS_radius - phi1;  
-  const Vector2d nhat(cos(th), sin(th));
-  const Vector2d that(-sin(th), cos(th));
-  const Vector2d p_WB1 = z1 * nhat;
+  const Vector2d p_WB1(z1, FLAGS_y0);
   const auto& planar = plant.GetJointByName<PlanarJoint>("planar");
   planar.set_pose(context, p_WB1, 0);
 
   // Initial angular velocity to enforce rolling.
   const double w1 = FLAGS_vy0 / z1;
-  const Vector2d v_WB1 = that * FLAGS_vy0;
+  const Vector2d v_WB1(0.0, FLAGS_vy0);
   planar.set_translational_velocity(context, v_WB1);
-  planar.set_angular_velocity(context, w1);
-
-  const auto& planar2 = plant.GetJointByName<PlanarJoint>("planar2");
-  const double phi2 = FLAGS_mass2 * g_vert / FLAGS_stiffness;
-  const double z2 = FLAGS_radius - phi2;
-  const Vector2d p_WB2 = z2 * nhat + FLAGS_ball2_yoffset * that;
-  planar2.set_pose(context, p_WB2, 0);
-  planar2.set_translational_velocity(context, Vector2d::Zero());
-  planar2.set_angular_velocity(context, 0.0);
+  planar.set_angular_velocity(context, w1);  
 }
 
 void AddGround(MultibodyPlant<double>* plant) {
@@ -205,8 +201,9 @@ int do_main() {
         &manager->mutable_contact_solver<UnconstrainedPrimalSolver>();
     UnconstrainedPrimalSolverParameters params;
     params.abs_tolerance = 1.0e-6;
-    params.rel_tolerance = 1.0e-8;
+    params.rel_tolerance = 1.0e-5;
     params.Rt_factor = 1.0e-3;
+    //params.tau_slip = 1.0e-7;
     params.max_iterations = 300;
     params.ls_alpha_max = 1.0;
     params.verbosity_level = 1;
@@ -270,12 +267,10 @@ int do_main() {
 
   std::ofstream sol_file("sol.dat");
   const auto& planar = plant.GetJointByName<PlanarJoint>("planar");
-  const auto& planar2 = plant.GetJointByName<PlanarJoint>("planar2");
-  const auto& body1 = plant.GetBodyByName("body");
-  const auto& body2 = plant.GetBodyByName("body2");
+  const auto& body = plant.GetBodyByName("body");
   sol_file << fmt::format(
-      "time x1 y1 th1 vx1 vy1 thdot1 x2 y2 th2 vx2 vy2 thdot2 pe ke E nc "
-      "f1w_y f1w_z f2w_y f2w_z f12w_y f12w_z slip1 slip2 slip12 d1 d2 d12\n");
+      "time x1 y1 th1 vx1 vy1 thdot1 pe ke E nc "
+      "f1w_y f1w_z slip1 d1\n");
   simulator->set_monitor([&](const systems::Context<double>& root_context) {
     const systems::Context<double>& ctxt =
         plant.GetMyContextFromRoot(root_context);
@@ -285,42 +280,20 @@ int do_main() {
     const int nc = contact_results.num_point_pair_contacts();
     // Since we use an sdf_threshold = 0.5, we always have three contacts (even
     // if some forces are zero)
-    DRAKE_DEMAND(nc <= 3);
+    DRAKE_DEMAND(nc <= 1);
 
     std::vector<Vector3d> fBi_W(3, Vector3d::Zero());
     std::vector<double> slip(3, 0.0);
     std::vector<double> depth(3, 0.0);
     for (int i = 0; i < nc; ++i)    {
       const auto& info = contact_results.point_pair_contact_info(i);
-      // Body 1 with world contact.
-      if ((info.bodyA_index() == body1.index() &&
-           info.bodyB_index() == world_index()) ||
-          (info.bodyB_index() == body1.index() &&
-           info.bodyA_index() == world_index())) {        
-        fBi_W[0] = info.contact_force();
-        slip[0] = info.slip_speed();
-        depth[0] = info.point_pair().depth;
-      }
 
-      // Body 2 with world contact.
-      if ((info.bodyA_index() == body2.index() &&
-           info.bodyB_index() == world_index()) ||
-          (info.bodyB_index() == body2.index() &&
-           info.bodyA_index() == world_index())) {        
-        fBi_W[1] = info.contact_force();
-        slip[1] = info.slip_speed();
-        depth[1] = info.point_pair().depth;
-      }
+      DRAKE_DEMAND(info.bodyA_index() == body.index() ||
+                   info.bodyB_index() == body.index());
 
-      // Body 1 with Body 2 contact.
-      if ((info.bodyA_index() == body1.index() &&
-           info.bodyB_index() == body2.index()) ||
-          (info.bodyB_index() == body1.index() &&
-           info.bodyA_index() == body2.index())) {        
-        fBi_W[2] = info.contact_force();
-        slip[2] = info.slip_speed();
-        depth[2] = info.point_pair().depth;
-      }
+      fBi_W[0] = info.contact_force();
+      slip[0] = info.slip_speed();
+      depth[0] = info.point_pair().depth;
     }
 
     const double ke = plant.CalcKineticEnergy(ctxt);
@@ -331,26 +304,17 @@ int do_main() {
     const Vector2d v_WB = planar.get_translational_velocity(ctxt);
     const double theta_dot = planar.get_angular_velocity(ctxt);
 
-    const Vector2d p_WB2 = planar2.get_translation(ctxt);
-    const double theta2 = planar2.get_rotation(ctxt);
-    const Vector2d v_WB2 = planar2.get_translational_velocity(ctxt);
-    const double theta_dot2 = planar2.get_angular_velocity(ctxt);
-
     // time x y th vx vy thdot pe ke E nc slip
     sol_file << fmt::format(
-        "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} "
-        "{} {} {} {} {} {}\n",
+        "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n",
         ctxt.get_time(), p_WB.x(), p_WB.y(), theta, v_WB.x(), v_WB.y(),
-        theta_dot, p_WB2.x(), p_WB2.y(), theta2, v_WB2.x(), v_WB2.y(),
-        theta_dot2, pe, ke, ke + pe, nc,
+        theta_dot, pe, ke, ke + pe, nc,
         // Contact forces.
         fBi_W[0].y(), fBi_W[0].z(),
-        fBi_W[1].y(), fBi_W[1].z(),
-        fBi_W[2].y(), fBi_W[2].z(),
         // Slip velocities.
-        slip[0], slip[1], slip[2],
+        slip[0],
         // Penetration depths.
-        depth[0], depth[1], depth[2]);
+        depth[0]);
     return systems::EventStatus::Succeeded();
   });
 

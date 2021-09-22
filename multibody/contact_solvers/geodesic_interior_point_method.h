@@ -36,6 +36,9 @@ class SparseJacobian {
   Eigen::VectorXd Multiply(const Eigen::VectorXd& x) const;
   Eigen::VectorXd MultiplyByTranspose(const Eigen::VectorXd& x) const;
 
+  void RescaleByFrictionCoefficient(const Eigen::VectorXd& x);
+
+  std::vector<conex::BlockMatrixTriplet> blocks() { return blocks_; }
  private:
   std::vector<conex::BlockMatrixTriplet> blocks_;
   std::vector<int> row_offset_;
@@ -58,7 +61,7 @@ class BlockDiagonalMatrix {
 };
 
 bool TakeStep(const SpinFactorProduct& wa, const SpinFactorProduct& da,
-              SpinFactorProduct* ya);
+              SpinFactorProduct* ya, bool affine_step = false);
 
 double NormInf(const SpinFactorProduct& x);
 
@@ -96,8 +99,8 @@ class NewtonDirection {
   const std::vector<Eigen::MatrixXd>& QWQ() { return QWQ_; }
 
   void SetW(const SpinFactorProduct& w);
-  VectorXd SolveNewtonSystem(double k, const VectorXd& vstar,
-                             const VectorXd& v_hat);
+  void SolveNewtonSystem(double k, const VectorXd& vstar,
+                         const VectorXd& v_hat, VectorXd* v);
   void FactorNewtonSystem();
   void CalculateNewtonDirection(double k, const VectorXd& vstar,
                                 const VectorXd& v_hat, Eigen::VectorXd* d,
@@ -133,16 +136,36 @@ struct GeodesicSolverSolution {
   GeodesicSolverInfo info;
 };
 
+struct GeodesicSolverOptions {
+  int verbosity = 0;
+  int maximum_iterations = 50;
+  double target_mu = 3e-7;
+};
+
 GeodesicSolverSolution GeodesicSolver(
     const GeodesicSolverSolution& w0,
     const std::vector<conex::BlockMatrixTriplet>& J,
     const std::vector<Eigen::MatrixXd>& M, const Eigen::VectorXd& R,
     int num_block_rows_of_J, int num_contacts, const Eigen::VectorXd& vstar,
-    const Eigen::VectorXd& v_hat);
+    const Eigen::VectorXd& v_hat, 
+    const GeodesicSolverOptions& options = GeodesicSolverOptions());
 
 GeodesicSolverSolution GeodesicSolver(
     const SpinFactorProduct& w0,
     const std::vector<conex::BlockMatrixTriplet>& J,
     const std::vector<Eigen::MatrixXd>& M, const Eigen::VectorXd& R,
     int num_block_rows_of_J, int num_contacts, const Eigen::VectorXd& vstar,
-    const Eigen::VectorXd& v_hat);
+    const Eigen::VectorXd& v_hat,
+    const GeodesicSolverOptions& options = GeodesicSolverOptions());
+
+
+GeodesicSolverSolution GeodesicSolver(
+    const GeodesicSolverSolution& sol,
+    const Eigen::VectorXd& friction_coefficient,
+    const std::vector<conex::BlockMatrixTriplet>& J,
+    const std::vector<Eigen::MatrixXd>& M, const Eigen::VectorXd& R,
+    int num_block_rows_of_J, int num_contacts, const Eigen::VectorXd& vstar,
+    const Eigen::VectorXd& v_hat,
+    const GeodesicSolverOptions& options);
+
+

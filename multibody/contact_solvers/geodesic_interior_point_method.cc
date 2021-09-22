@@ -163,6 +163,17 @@ SparseJacobian::SparseJacobian(const std::vector<BlockMatrixTriplet>& blocks)
   row_offset_ = CumulativeSum(row_block_sizes_, num_row_blocks_);
 }
 
+void SparseJacobian::RescaleByFrictionCoefficient(const VectorXd& mu) {
+  for (auto& Ji : blocks_) {
+    int row_block = std::get<0>(Ji);
+    int contact_number = row_offset_.at(row_block) / 3;
+    int num_contacts = row_block_sizes_.at(row_block) / 3;
+    for (int j = 0; j < num_contacts; j++) {
+      std::get<2>(Ji).row(2  + j * 3) *= 1.0/mu(contact_number + j);
+    }
+  }
+}
+
 VectorXd SparseJacobian::Multiply(const VectorXd& x) const {
   VectorXd y(row_offset_.at(num_row_blocks_));
   y.setZero();
@@ -205,9 +216,10 @@ void NewtonDirection::FactorNewtonSystem() {
   newton_system_factored_ = true;
 }
 
-VectorXd NewtonDirection::SolveNewtonSystem(double sqrt_inv_mu,
-                                            const VectorXd& vstar,
-                                            const VectorXd& v_hat) {
+void NewtonDirection::SolveNewtonSystem(double sqrt_inv_mu,
+                                  const VectorXd& vstar,
+                                  const VectorXd& v_hat,
+                                  VectorXd* v) {
   // MatrixXd S = J_.transpose() * BlockDiagonal(3 * num_constraints_,
   // 3*num_constraints_, QWQ()) * J_;
   // //MatrixXd b = M_ * vstar + J_.transpose() * Q_ * (k*e_ + W_* (k*e_ - Q_ *
@@ -237,21 +249,21 @@ VectorXd NewtonDirection::SolveNewtonSystem(double sqrt_inv_mu,
     r += 3;
   }
 
-  VectorXd b = M_.Multiply(sqrt_inv_mu * vstar);
+  *v = M_.Multiply(sqrt_inv_mu * vstar);
 
-  b += J_.MultiplyByTranspose(t1 - t2);
+  *v += J_.MultiplyByTranspose(t1 - t2);
 
   if (newton_system_factored_ == false) {
     FactorNewtonSystem();
   }
-  return kkt_solver_.Solve(b);
+  kkt_solver_.SolveInPlace(v);
 }
 
 void NewtonDirection::CalculateNewtonDirection(double sqrt_inv_mu,
                                                const VectorXd& vstar,
                                                const VectorXd& v_hat,
                                                VectorXd* d, VectorXd* v) {
-  *v = SolveNewtonSystem(sqrt_inv_mu, vstar, v_hat);
+  SolveNewtonSystem(sqrt_inv_mu, vstar, v_hat, v);
 
   auto Q = Qwsqrt();
   VectorXd Jv_times_sqrt_inv_mu = J_.Multiply(*v);
@@ -519,7 +531,8 @@ GeodesicSolverSolution GeodesicSolver(
     const std::vector<conex::BlockMatrixTriplet>& J,
     const std::vector<Eigen::MatrixXd>& M, const Eigen::VectorXd& R,
     int num_block_rows_of_J, int num_contacts, const Eigen::VectorXd& vstar,
-    const Eigen::VectorXd& v_hat) {
+    const Eigen::VectorXd& v_hat,
+    const GeodesicSolverOptions& options) {
   const NewtonDirection dir(J, M, num_block_rows_of_J, R, num_contacts);
 
   const VectorXd slack =
@@ -541,22 +554,70 @@ GeodesicSolverSolution GeodesicSolver(
   w0_vect = w0_vect * 1.0 / std::sqrt(mu);
   SpinFactorProduct w0(w0_vect, num_contacts);
 
-  // w0.w0.setConstant(1);
-  // w0.w1.setConstant(0);
   return GeodesicSolver(w0, J, M, R, num_block_rows_of_J, num_contacts, vstar,
-                        v_hat);
+                        v_hat, options);
 }
+
+
+GeodesicSolverSolution GeodesicSolver(
+    const GeodesicSolverSolution& sol,
+    const VectorXd& friction_coefficient,
+    const std::vector<conex::BlockMatrixTriplet>& J,
+    const std::vector<Eigen::MatrixXd>& M, const Eigen::VectorXd& R,
+    int num_block_rows_of_J, int num_contacts, const Eigen::VectorXd& vstar,
+    const Eigen::VectorXd& v_hat,
+    const GeodesicSolverOptions& options) {
+
+  SparseJacobian Jscale(J);
+  Jscale.RescaleByFrictionCoefficient(friction_coefficient);
+  auto sol_scale = sol;
+
+  auto Rscaled = R;
+  auto vc_stab_scaled = v_hat;
+
+  int offset = 0;
+  for (int i = 0; i < num_contacts; i++) {
+    Rscaled(offset + 2) *=  1.0/(friction_coefficient(i)  * friction_coefficient(i));
+    vc_stab_scaled(offset + 2) *=  1.0/(friction_coefficient(i));
+    sol_scale.lambda(offset + 2) *= friction_coefficient(i) ;
+    offset += 3;
+  }
+
+
+  auto solution = GeodesicSolver(sol_scale,
+  Jscale.blocks(),
+  M, 
+  Rscaled,
+  num_block_rows_of_J, num_contacts, 
+  vstar,
+  vc_stab_scaled,
+  options);
+
+  offset = 0;
+  for (int i = 0; i < num_contacts; i++) {
+    solution.lambda(offset + 2) /= friction_coefficient(i);
+    offset += 3;
+  }
+  return solution;
+}
+
+
+
+
+
 
 GeodesicSolverSolution GeodesicSolver(
     const SpinFactorProduct& w0,
     const std::vector<conex::BlockMatrixTriplet>& J,
     const std::vector<Eigen::MatrixXd>& M, const Eigen::VectorXd& R,
     int num_block_rows_of_J, int num_contacts, const Eigen::VectorXd& vstar,
-    const Eigen::VectorXd& v_hat) {
+    const Eigen::VectorXd& v_hat,
+    const GeodesicSolverOptions& options) {
+
   SpinFactorProduct w = w0;
 
   double identity_scale = 100;
-  double min_mu = 1e-5;
+  double min_mu = options.target_mu * num_block_rows_of_J * 1.0 / 10;
 
   NewtonDirection dir(J, M, num_block_rows_of_J, R, num_contacts);
 
@@ -567,6 +628,7 @@ GeodesicSolverSolution GeodesicSolver(
 
   Eigen::VectorXd d0;
   Eigen::VectorXd du;
+  Eigen::VectorXd dt; 
 
   double inv_sqrt_mu = (-(du - d0).dot(d0) / (d0 - du).squaredNorm());
   if (inv_sqrt_mu < 0) {
@@ -579,27 +641,29 @@ GeodesicSolverSolution GeodesicSolver(
   GeodesicSolverSolution sol;
   bool decrease_mu_on_fail = false;
 
-  double dinf_max = .99;
+  double dinf_max = 1.01;
+  double inv_sqrt_mu_hat;
   int i = 0;
-  int max_iterations = 200;
+  int max_iterations = options.maximum_iterations;
+
   for (; i < max_iterations; i++) {
     dir.SetW(w);
     dir.CalculateNewtonDirection(0, vstar, v_hat, &d0, &v0);
     dir.CalculateNewtonDirection(1, vstar, v_hat, &du, &vu);
-    for (int k = 0; k < 3; k++) {
+
+    dt = du - d0;
+    inv_sqrt_mu_hat = std::fabs(d0.dot(dt) / (dt).squaredNorm());
+    if (i == 0) {
+      inv_sqrt_mu = inv_sqrt_mu_hat;
+    } else {
       inv_sqrt_mu = GetMinSqrtMu(dinf_max, SpinFactorProduct(d0, num_contacts),
-                                 SpinFactorProduct(du - d0, num_contacts));
-      //if (inv_sqrt_mu > 0 || inv_sqrt_mu < 0.0001) {
-      if (inv_sqrt_mu > 0) {
-        break;
-      } else {
-        dinf_max *= 1.4;
-      }
+                                 SpinFactorProduct(dt, num_contacts));
     }
+    
 
     if (inv_sqrt_mu < 0) {
       if (!decrease_mu_on_fail || dinf > 2) {
-        inv_sqrt_mu = std::fabs(d0.dot(du - d0) / (du - d0).squaredNorm());
+        inv_sqrt_mu = inv_sqrt_mu_hat;
       } else {
         inv_sqrt_mu = 2.5 * sqrt(1.0 / mu);
       }
@@ -615,13 +679,6 @@ GeodesicSolverSolution GeodesicSolver(
     double dnorm = d.norm();
     double scale = 2.0 / (dinf * dinf);
 
-    if (i == 0 && dnorm > 100) {
-      // DUMP("ABORTING");
-      w.w0.setConstant(identity_scale);
-      w.w1.setConstant(0);
-      continue;
-    }
-
     if (scale < 1) {
       d.array() *= scale;
     } else {
@@ -629,15 +686,21 @@ GeodesicSolverSolution GeodesicSolver(
     }
 
     mu = 1.0 / (inv_sqrt_mu * inv_sqrt_mu);
-    // std::cout << std::setprecision(2);
-    // std::cout << std::scientific;
-    // std::cout << "iter: " << i << "  mu: " << mu << " |d|_inf " << dinf
-    //           << "  |d| " << dnorm << "  stepsize: " << scale << "\n";
-    //<<  "  gap:" << gap << " gradx "
-    //  << dfeas << "  min(s) " << (data.A*v.x + data.b).minCoeff() << "\n";
+    double abort_warmstart = i == 0 && (dinf > 1.05 || mu > 100);
+    if (options.verbosity) {
+      std::cout << std::setprecision(2);
+      std::cout << std::scientific;
+      if (abort_warmstart) {
+        std::cout << "*";
+      } else {
+        std::cout << " ";
+      }
+      std::cout << "iter: " << i << "  mu: " << mu << " |d|_inf " << dinf 
+                << " mu_hat " << 1.0/(inv_sqrt_mu_hat*inv_sqrt_mu_hat)
+                << "  |d| " << dnorm << "  stepsize: " << scale << "\n";
+    }
 
-    if (i == 0 && (dinf > 1.05 || mu > 100)) {
-//      DUMP("ABORT");
+    if (abort_warmstart) {
       w.w0.setConstant(identity_scale);
       w.w1.setConstant(0);
       continue;
@@ -652,7 +715,7 @@ GeodesicSolverSolution GeodesicSolver(
     }
 
     sol.info.iterations = i + 1;
-    if (dinf <= 1.01) {
+    if (dinf <= 1.02) {
       if (mu <= min_mu + 1e-9) {
         TakeStep(w, newton_dir, &w, true);
         break;

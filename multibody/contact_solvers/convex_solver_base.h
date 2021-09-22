@@ -22,8 +22,9 @@ struct ConvexSolverBaseParameters {
   // below the limit ωₙ⋅dt ≤ 2π. That is, the period is Tₙ = α⋅dt.
   double alpha{1.0};
 
-  // Slip time constant, in seconds. Think vₛ = τₛ⋅g.
-  double tau_slip{1.0e-5};
+  // Dimensionless parameterization of the regularization of friction.
+  // An approximation for the bound on the slip velocity is vₛ ≈ ε⋅δt⋅g.
+  double sigma{1.0e-3};
 };
 
 // This solver uses the regularized convex formulation from [Todorov 2014]. This
@@ -113,7 +114,7 @@ class ConvexSolverBase : public ContactSolver<T> {
                       const SystemDynamicsData<T>& dynamics_data,
                       const PointContactData<T>& contact_data,
                       double theta,
-                      double Rt_factor, double alpha, double tau_slip);
+                      double Rt_factor, double alpha, double sigma);
 
   // Utility to compute the "soft norm" ‖x‖ₛ defined by ‖x‖ₛ² = ‖x‖² + ε², where
   // ε = soft_tolerance.

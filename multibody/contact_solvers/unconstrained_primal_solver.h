@@ -58,8 +58,9 @@ struct UnconstrainedPrimalSolverParameters {
   // below the limit ωₙ⋅dt ≤ 2π. That is, the period is Tₙ = α⋅dt.
   double alpha{1.0};
 
-  // Slip time constant, in seconds. Think vₛ = τₛ⋅g.
-  double tau_slip{1.0e-5};
+  // Dimensionless parameterization of the regularization of friction.
+  // An approximation for the bound on the slip velocity is vₛ ≈ ε⋅δt⋅g.
+  double sigma{1.0e-3};
 
   // Use supernodal algebra for the linear solver.
   bool use_supernodal_solver{true};
@@ -207,7 +208,7 @@ class UnconstrainedPrimalSolver final : public ConvexSolverBase<T> {
     ConvexSolverBaseParameters base_parameters{parameters.theta,
                                                parameters.Rt_factor,
                                                parameters.alpha,
-                                               parameters.tau_slip};
+                                               parameters.sigma};
     ConvexSolverBase<T>::set_parameters(base_parameters);
     parameters_ = parameters;
   }

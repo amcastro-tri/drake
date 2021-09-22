@@ -40,7 +40,7 @@ UnconstrainedPrimalSolver<T>::UnconstrainedPrimalSolver()
     : ConvexSolverBase<T>({UnconstrainedPrimalSolverParameters().theta,
                            UnconstrainedPrimalSolverParameters().Rt_factor,
                            UnconstrainedPrimalSolverParameters().alpha,
-                           UnconstrainedPrimalSolverParameters().tau_slip}) {}
+                           UnconstrainedPrimalSolverParameters().sigma}) {}
 
 template <typename T>
 ContactSolverStatus UnconstrainedPrimalSolver<T>::DoSolveWithGuess(

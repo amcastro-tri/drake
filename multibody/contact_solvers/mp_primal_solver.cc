@@ -40,7 +40,7 @@ using Eigen::VectorXd;
 template <typename T>
 MpPrimalSolver<T>::MpPrimalSolver()
     : ConvexSolverBase<T>(
-          {parameters_.Rt_factor, parameters_.alpha, parameters_.tau_slip}) {}
+          {parameters_.Rt_factor, parameters_.alpha, parameters_.sigma}) {}
 
 template <typename T>
 ContactSolverStatus MpPrimalSolver<T>::DoSolveWithGuess(

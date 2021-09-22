@@ -34,7 +34,7 @@ ContactSolverStatus ConvexSolverBase<T>::SolveWithGuess(
   Timer timer;
   PreProcessData(time_step, dynamics_data, contact_data, parameters_.theta,
                  parameters_.Rt_factor, parameters_.alpha,
-                 parameters_.tau_slip);
+                 parameters_.sigma);
   pre_process_time_ = timer.Elapsed();
   const auto status = DoSolveWithGuess(data_, v_guess, results);
   total_time_ += timer.Elapsed();
@@ -45,7 +45,7 @@ template <typename T>
 void ConvexSolverBase<T>::PreProcessData(
     const T& time_step, const SystemDynamicsData<T>& dynamics_data,
     const PointContactData<T>& contact_data, double theta, 
-    double Rt_factor, double alpha, double tau_slip) {
+    double Rt_factor, double alpha, double sigma) {
   using std::max;
   using std::sqrt;
 
@@ -110,7 +110,7 @@ void ConvexSolverBase<T>::PreProcessData(
     const T Rn = max(alpha_factor * Wi,
                      1.0 / (theta * time_step * k * (time_step + taud)));
     DRAKE_DEMAND(Rn > 0);
-    const T Rt = parameters_.tau_slip / time_step * Wi;
+    const T Rt = parameters_.sigma * Wi;
     //PRINT_VAR(Wi);
     //PRINT_VAR(Rt);
     //PRINT_VAR(Rn);    

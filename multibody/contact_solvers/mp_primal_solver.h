@@ -33,8 +33,9 @@ struct MpPrimalSolverParameters {
   // below the limit ωₙ⋅dt ≤ 2π. That is, the period is Tₙ = α⋅dt.
   double alpha{1.0};
 
-  // Slip time constant, in seconds. Think vₛ = τₛ⋅g.
-  double tau_slip{1.0e-5};
+  // Dimensionless parameterization of the regularization of friction.
+  // An approximation for the bound on the slip velocity is vₛ ≈ ε⋅δt⋅g.
+  double sigma{1.0e-3};
 
   bool log_stats{false};
 
@@ -112,7 +113,7 @@ class MpPrimalSolver final : public ConvexSolverBase<T> {
 
   void set_parameters(MpPrimalSolverParameters& parameters) {
     ConvexSolverBaseParameters base_parameters{
-        1.0, parameters.Rt_factor, parameters.alpha, parameters.tau_slip};
+        1.0, parameters.Rt_factor, parameters.alpha, parameters.sigma};
     ConvexSolverBase<T>::set_parameters(base_parameters);
     parameters_ = parameters;
   }

@@ -112,7 +112,7 @@ DEFINE_string(line_search, "exact",
 DEFINE_double(ls_alpha_max, 1.5, "Maximum line search step.");
 DEFINE_double(rt_factor, 1.0e-3, "Rt_factor");
 DEFINE_double(alpha, 1.0, "Rigid time scale factor.");
-DEFINE_double(tau_slip, 1.0e-5, "Slip time scale.");
+DEFINE_double(sigma, 1.0e-3, "Friction dimensionless parameterization.");
 DEFINE_double(abs_tol, 1.0e-6, "Absolute tolerance [m/s].");
 DEFINE_double(rel_tol, 1.0e-5, "Relative tolerance [-].");
 DEFINE_bool(log_stats, true, "Log all iterations stats.");
@@ -475,7 +475,7 @@ const ConvexSolverBase<double>* SetSolver(
     params.rel_tolerance = FLAGS_rel_tol;
     params.Rt_factor = FLAGS_rt_factor;
     params.alpha = FLAGS_alpha;
-    params.tau_slip = FLAGS_tau_slip;
+    params.sigma = FLAGS_sigma;
     params.max_iterations = 300;
     params.ls_alpha_max = FLAGS_ls_alpha_max;
     // params.ls_tolerance = 1.0e-2;
@@ -503,7 +503,7 @@ const ConvexSolverBase<double>* SetSolver(
     MpPrimalSolverParameters params;
     params.Rt_factor = FLAGS_rt_factor;
     params.alpha = FLAGS_alpha;
-    params.tau_slip = FLAGS_tau_slip;
+    params.sigma = FLAGS_sigma;
     params.verbosity_level = FLAGS_verbosity_level;
     params.log_file = "/home/amcastro/Drake/Drake1/drake/solver_log.dat";
     // temp_directory() + "/solver_log.dat";

@@ -68,10 +68,8 @@ void CompliantContactComputationManager<T>::DeclareCacheEntries(
             cache_value->get_mutable_value<internal::ContactJacobianCache<T>>();
         const std::vector<internal::DiscreteContactPair<T>>& contact_pairs =
             plant().EvalDiscreteContactPairs(context);
-        PRINT_VAR(contact_pairs.size());
         CalcContactJacobian(context, contact_pairs, &contact_jacobian_cache.Jc,
                             &contact_jacobian_cache.R_WC_list);
-        PRINT_VAR(contact_jacobian_cache.Jc.rows());
       },
       // We explicitly declare the configuration dependence even though the
       // Eval() above implicitly evaluates configuration dependent cache
@@ -432,8 +430,6 @@ void CompliantContactComputationManager<T>::DoCalcContactSolverResults(
         &Aop, nullptr, &participating_vstar);
     contact_solvers::internal::PointContactData<T> contact_data(
         &phi0, &vc0, &Jop, &stiffness, &linear_damping, &mu);
-
-    PRINT_VAR(phi0.size());
 
     // Initial guess.
     // const auto x0 = context.get_discrete_state(0).get_value();
@@ -941,7 +937,6 @@ void CompliantContactComputationManager<T>::DoCalcContactResults(
   const std::vector<internal::DiscreteContactPair<T>>& contact_pairs =
       plant().EvalDiscreteContactPairs(context);
   const int num_contacts = contact_pairs.size();
-  PRINT_VAR(contact_pairs.size());
 
   const std::vector<RotationMatrix<T>>& R_WC_set =
       EvalContactJacobianCache(context).R_WC_list;

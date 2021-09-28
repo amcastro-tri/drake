@@ -1,10 +1,24 @@
 #include "drake/multibody/contact_solvers/geodesic_interior_point_method.h"
-
 using conex::BlockMatrixTriplet;
 using Eigen::VectorXd;
 using std::vector;
 
+#define USE_SCALED_JORDAN_MULT 1
+// When defined, we use the Jordan multiplication
+//  x * y = 1/sqrt(2) * ( x'y, x0 y1 + y0 x1 ).
+//
+//  The idempotents have form
+//
+//  1/sqrt(2) (1, y) *  1/sqrt(2) (1, y).
+//
+//  So spectral functions have form
+//
+//   1/sqrt(2) * (  exp(lambda_1/sqrt 2)  + exp(lambda_2/sqrt 2) )
+
+
 namespace {
+
+const double line_search_tolerance = 0.02;
 
 vector<int> CumulativeSum(const vector<int>& x, int N) {
   vector<int> y(N + 1);
@@ -26,32 +40,46 @@ inline Eigen::VectorXd Vect(const SpinFactorProduct& x) {
   return y;
 }
 
+
 inline double square_root(const double& x) { return std::sqrt(std::fabs(x)); }
+
+
 template <typename T>
 void Exp(double norm_x1, double* x0, T* x1) {
   double k = norm_x1;
-  if (k > 0) {
-    (*x1) *= .5 * (exp(*x0 + k) - exp(*x0 - k)) / k;
-  }
-  (*x0) = (.5 * (exp(*x0 + k) + exp(*x0 - k)));
-}
+#if USE_SCALED_JORDAN_MULT
+  double lam1 = 1.0/std::sqrt(2.0) * (*x0 + k);
+  double lam2 = 1.0/std::sqrt(2.0) * (*x0 - k);
+  double scale = 1.0/std::sqrt(2.0);
+#else
+  double lam1 = *x0 + k;
+  double lam2 = *x0 - k;
+  double scale = .5;
+#endif
 
-template <typename T>
-void Inverse(double norm_x1, double* x0, T* x1) {
-  double k = norm_x1;
   if (k > 0) {
-    (*x1) *= .5 * (1.0 / (*x0 + k) - 1.0 / (*x0 - k)) / k;
+    (*x1) *= scale * (exp(lam1) - exp(lam2)) / k;
   }
-  (*x0) = (.5 * (1.0 / (*x0 + k) + 1.0 / (*x0 - k)));
+  (*x0) = (scale * (exp(lam1) + exp(lam2)));
 }
 
 template <typename T>
 void Sqrt(double norm_x1, double* x0, T* x1) {
   double k = norm_x1;
+#if USE_SCALED_JORDAN_MULT
+  double lam1 = 1.0/std::sqrt(2.0) * (*x0 + k);
+  double lam2 = 1.0/std::sqrt(2.0) * (*x0 - k);
+  double scale = 1.0/std::sqrt(2.0);
+#else
+  double lam1 = *x0 + k;
+  double lam2 = *x0 - k;
+  double scale = 0.5;
+#endif
+
   if (k > 0) {
-    (*x1) *= .5 * (square_root(*x0 + k) - square_root(*x0 - k)) / k;
+    (*x1) *= scale * (square_root(lam1) - square_root(lam2)) / k;
   }
-  (*x0) = .5 * (square_root(*x0 + k) + square_root(*x0 - k));
+  (*x0) = (scale * (square_root(lam1) + square_root(lam2)));
 
 #ifndef NDEBUG
   if (*x0 - x1->norm() < 0) {
@@ -59,6 +87,8 @@ void Sqrt(double norm_x1, double* x0, T* x1) {
   }
 #endif
 }
+
+
 
 template <typename T1, typename T2, typename T3>
 void QuadraticRepresentation(double x1_norm_squared,
@@ -75,6 +105,12 @@ void QuadraticRepresentation(double x1_norm_squared,
   double scale = 2 * (x0 * y0 + inner_product_of_x1_and_y1);
   *z_q0 = scale * x0 - det_x * y0;
   z_q1->noalias() = scale * x1 + det_x * y1;
+
+#if USE_SCALED_JORDAN_MULT
+  *z_q0 *= 0.5;
+  *z_q1 *= 0.5;
+#endif
+
 }
 
 }  // namespace
@@ -86,6 +122,11 @@ double NormInf(const SpinFactorProduct& x) {
 
   double y1 = lambda1.array().abs().maxCoeff();
   double y2 = lambda2.array().abs().maxCoeff();
+#if USE_SCALED_JORDAN_MULT
+  y1 *= 1.0/std::sqrt(2.0);
+  y2 *= 1.0/std::sqrt(2.0);
+#endif
+
   if (y1 > y2) {
     return y1;
   } else {
@@ -95,27 +136,41 @@ double NormInf(const SpinFactorProduct& x) {
 
 bool TakeStep(const SpinFactorProduct& wa, const SpinFactorProduct& da,
               SpinFactorProduct* ya, bool affine_step) {
+
+  SpinFactorElement expd;
+  SpinFactorElement d;
+  SpinFactorElement wsqrt;
   for (int i = 0; i < wa.w0.size(); i++) {
     SpinFactorElement w(wa, i);
-    SpinFactorElement d(da, i);
+    SpinFactorElement dt(da, i); d = dt;
     SpinFactorElement y;
 
-    SpinFactorElement wsqrt = w;
+    wsqrt = w;
     Sqrt(w.w1.norm(), &wsqrt.w0, &wsqrt.w1);
 
     double wsqrt_q1_norm_sqr = wsqrt.w1.squaredNorm();
 
 
     if (affine_step) {
+      // Affine step: Q(w^1/2)(e + d)
       SpinFactorElement d_plus_e;
       d_plus_e.w0 = d.w0;
       d_plus_e.w1 = d.w1;
+#if USE_SCALED_JORDAN_MULT
+      d_plus_e.w0 += std::sqrt(2.0);
+#else
       d_plus_e.w0 += 1;
+#endif
       QuadraticRepresentation(wsqrt_q1_norm_sqr, wsqrt.w1.dot(d_plus_e.w1), wsqrt.w0,
                             wsqrt.w1, d_plus_e.w0, d_plus_e.w1, &y.w0, &y.w1);
+#ifndef NDEBUG
+      //if (d_plus_e.w0 - d_plus_e.w1.norm() < -line_search_tolerance) {
+      if (d_plus_e.w0 - d_plus_e.w1.norm() < -0.03) {
+        throw std::runtime_error("Affine update not inside cone");
+      }
+#endif
    } else {
 
-      SpinFactorElement expd;
       expd.w0 = d.w0;
       expd.w1 = d.w1;
       Exp(d.w1.norm(), &expd.w0, &expd.w1);
@@ -127,16 +182,18 @@ bool TakeStep(const SpinFactorProduct& wa, const SpinFactorProduct& da,
 
       QuadraticRepresentation(wsqrt_q1_norm_sqr, wsqrt.w1.dot(expd.w1), wsqrt.w0,
                               wsqrt.w1, expd.w0, expd.w1, &y.w0, &y.w1);
+
+#ifndef NDEBUG
+      if (y.w0 - y.w1.norm() < 0) {
+        DUMP(y.w0 - y.w1.norm());
+        throw std::runtime_error("Geodesic update not inside cone");
+      }
+#endif
    }
 
     ya->w0(i) = y.w0;
     ya->w1.col(i) = y.w1;
 
-#ifndef NDEBUG
-    if (y.w0 - y.w1.norm() < 0) {
-      throw std::runtime_error("Geodesic update not inside cone");
-    }
-#endif
   }
   return true;
 }
@@ -220,14 +277,13 @@ void NewtonDirection::SolveNewtonSystem(double sqrt_inv_mu,
                                   const VectorXd& vstar,
                                   const VectorXd& v_hat,
                                   VectorXd* v) {
-  // MatrixXd S = J_.transpose() * BlockDiagonal(3 * num_constraints_,
-  // 3*num_constraints_, QWQ()) * J_;
-  // //MatrixXd b = M_ * vstar + J_.transpose() * Q_ * (k*e_ + W_* (k*e_ - Q_ *
-  // (- v_hat + k*R_ * Q_ * (e_))));
-
   int r = 0;
   Vector3d e_i = Vector3d::Zero();
+#if USE_SCALED_JORDAN_MULT
+  e_i(2) = std::sqrt(2.0);
+#else
   e_i(2) = 1;
+#endif
   VectorXd t1(num_constraints_ * 3);
   VectorXd t2(num_constraints_ * 3);
 
@@ -268,7 +324,11 @@ void NewtonDirection::CalculateNewtonDirection(double sqrt_inv_mu,
   auto Q = Qwsqrt();
   VectorXd Jv_times_sqrt_inv_mu = J_.Multiply(*v);
   Vector3d e_i = Vector3d::Zero();
+#if USE_SCALED_JORDAN_MULT
+  e_i(2) = std::sqrt(2.0);
+#else
   e_i(2) = 1;
+#endif
 
   d->resize(3 * num_constraints_);
 
@@ -290,23 +350,6 @@ void NewtonDirection::CalculateNewtonDirection(double sqrt_inv_mu,
   }
 }
 
-SpinFactorProduct Sqrt(const SpinFactorProduct& w) {
-  VectorXd k = w.w1.array().square().colwise().sum().sqrt();
-  VectorXd lam0 = w.w0 + k;
-  VectorXd lam1 = w.w0 - k;
-  lam0 = lam0.array().sqrt();
-  lam1 = lam1.array().sqrt();
-
-  SpinFactorProduct y(lam0.size());
-
-  y.w0 = .5 * (lam0 + lam1);
-
-  VectorXd scale = .5 * (lam0 - lam1);
-  scale = scale.cwiseQuotient(k);
-
-  y.w1 = w.w1 * scale.asDiagonal();
-  return y;
-}
 
 void NewtonDirection::SetW(const SpinFactorProduct& w) {
   w_ = w;
@@ -321,14 +364,7 @@ void NewtonDirection::SetW(const SpinFactorProduct& w) {
 
   Qsqrt_.resize(num_constraints_);
 
-  // VectorXd w1_norm_squared = w.w1.array().square().colwise().sum();
-  // VectorXd detw2 = w.w0.array().square();
-  // detw2 -= w1_norm_squared;
-
-  // auto w_sqrt_ = Sqrt(w_);
   for (int i = 0; i < num_constraints_; i++) {
-    // VectorXd w1 = w_sqrt_.w1.col(i);
-    // double w0 = w_sqrt_.w0(i);
 
     VectorXd w1 = w_.w1.col(i);
     double w0 = w_.w0(i);
@@ -345,6 +381,9 @@ void NewtonDirection::SetW(const SpinFactorProduct& w) {
     wtemp(2) = w0;
     wtemp.head(2) = w1;
     W += 2 * wtemp * wtemp.transpose();
+#if USE_SCALED_JORDAN_MULT
+    W *= 0.5;
+#endif
     Qsqrt_.at(i) = W;
   }
 
@@ -361,7 +400,19 @@ void NewtonDirection::SetW(const SpinFactorProduct& w) {
     Matrix3d temp;
     temp = Qsqrt_.at(i) * R_.at(i).asDiagonal() * Qsqrt_.at(i);
     temp.diagonal().array() += 1;
-    QWQ_.at(i) = Qsqrt_.at(i) * temp.inverse() * Qsqrt_.at(i);
+    Eigen::LDLT<Eigen::MatrixXd> llt(temp);
+
+#ifndef NDEBUG
+    if (llt.info() != Eigen::Success) {
+      DUMP(QWQ_.at(i));
+      DUMP(temp);
+      DUMP(R_.at(i));
+      DUMP(Qsqrt_.at(i));
+      throw std::runtime_error("NOT PSD!");
+    } 
+#endif
+
+    QWQ_.at(i) = Qsqrt_.at(i) * llt.solve(Qsqrt_.at(i));
   }
 
   newton_system_factored_ = false;
@@ -450,8 +501,16 @@ Eigen::VectorXd GetCandidateK(double dinfmax, double x0, double x1, double y0,
   return Eigen::Map<const VectorXd>(val.data(), static_cast<int>(val.size()));
 }
 
-double GetMinSqrtMu(double dinfmax, const SpinFactorProduct& x,
+double GetMinSqrtMu(double dinfmax_unscaled, const SpinFactorProduct& x,
                     const SpinFactorProduct& y) {
+
+#if USE_SCALED_JORDAN_MULT
+  // We find 1/sqrt(2) * (x_0 \pm x_1) = dinf_max_unscaled
+  double dinfmax = dinfmax_unscaled * std::sqrt(2.0);
+#else
+  double dinfmax = dinfmax_unscaled;
+#endif
+
   double upper_bound = 1e45;
   double lower_bound = -1e45;
   for (int i = 0; i < x.w0.size(); i++) {
@@ -481,9 +540,9 @@ double GetMinSqrtMu(double dinfmax, const SpinFactorProduct& x,
       if (fabs(v0 - v1.norm()) > val) {
         val = fabs(v0 - v1.norm());
       }
-      if (fabs(val - dinfmax) > 0.02) {
+      if (fabs(val - dinfmax) > line_search_tolerance) {
         return -1;
-        throw std::runtime_error("Bad calculation.");
+        throw std::runtime_error("Bad calculation 1.");
       }
     }
 #endif
@@ -503,11 +562,11 @@ double GetMinSqrtMu(double dinfmax, const SpinFactorProduct& x,
 
   d = Vect(x) + upper_bound * Vect(y);
   double test1 = NormInf(SpinFactorProduct{d, num_contact});
-  if (fabs(test0 - dinfmax) > 0.02) {
-    throw std::runtime_error("Bad calculation.");
+  if (fabs(test0 - dinfmax_unscaled) > line_search_tolerance) {
+    //throw std::runtime_error("Bad calculation 2.");
   }
-  if (fabs(test1 - dinfmax) > 0.02) {
-    throw std::runtime_error("Bad calculation.");
+  if (fabs(test1 - dinfmax_unscaled) > line_search_tolerance) {
+    //throw std::runtime_error("Bad calculation 3.");
   }
 #endif
 
@@ -617,7 +676,7 @@ GeodesicSolverSolution GeodesicSolver(
   SpinFactorProduct w = w0;
 
   double identity_scale = 100;
-  double min_mu = options.target_mu * num_block_rows_of_J * 1.0 / 10;
+  double min_mu = options.target_mu;
 
   NewtonDirection dir(J, M, num_block_rows_of_J, R, num_contacts);
 
@@ -715,7 +774,7 @@ GeodesicSolverSolution GeodesicSolver(
     }
 
     sol.info.iterations = i + 1;
-    if (dinf <= 1.02) {
+    if (dinf <= 1 + line_search_tolerance) {
       if (mu <= min_mu + 1e-9) {
         TakeStep(w, newton_dir, &w, true);
         break;

@@ -127,6 +127,7 @@ ContactSolverStatus UnconstrainedPrimalSolver<double>::DoSolveWithGuess(
   if (use_geodesic_solver) {
     GeodesicSolverSolution sol;
     GeodesicSolverOptions options;
+    options.target_mu = 1e-4;
     options.verbosity = parameters_.verbosity_level;
 
     sol.v = state.mutable_v();

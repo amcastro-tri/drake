@@ -47,6 +47,7 @@ void ConvexSolverBase<T>::PreProcessData(
     const PointContactData<T>& contact_data, double theta, 
     double Rt_factor, double alpha, double sigma) {
   using std::max;
+  using std::min;
   using std::sqrt;
 
   unused(Rt_factor);
@@ -107,8 +108,15 @@ void ConvexSolverBase<T>::PreProcessData(
     const T& c = dissipation(ic);
     const T& Wi = Wdiag(ic);
     const T taud = c / k;  // Damping rate.
-    const T Rn = max(alpha_factor * Wi,
+    T Rn = max(alpha_factor * Wi,
                      1.0 / (theta * time_step * k * (time_step + taud)));
+    // We'll also bound the maximum value of Rn. Geodesic IMP seems to dislike
+    // large values of Rn. We are not sure about SAP...
+    const double phi_max = 1.0;  // We estimate a maximum penetration of 1 m.
+    const double g = 10.0;  // An estimate of acceleration in m/s², gravity.
+    // Beta is the dimensionless factor β = αₘₐₓ²/(4π²) = (ϕₘₐₓ/g)/δt².
+    const double beta = phi_max / g / (time_step * time_step);
+    Rn = min(Rn, beta * Wi);
     DRAKE_DEMAND(Rn > 0);
     const T Rt = parameters_.sigma * Wi;
     //PRINT_VAR(Wi);

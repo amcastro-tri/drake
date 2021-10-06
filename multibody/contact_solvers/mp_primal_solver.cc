@@ -276,6 +276,12 @@ void MpPrimalSolver<T>::SetUpProgram(
   prog->SetSolverOption(GurobiSolver::id(), "BarConvTol", 1.0e-8);
 
   // Default value:	1e-6
+  // Minimum value:	0.0
+  // Maximum value:	1.0
+  // N.B: with value 1.0 clutter demo gives real bad results.
+  prog->SetSolverOption(GurobiSolver::id(), "BarQCPConvTol", 1.0e-6);
+
+  // Default value:	1e-6
   // Minimum value:	1e-9
   // Maximum value:	1e-2
   prog->SetSolverOption(GurobiSolver::id(), "FeasibilityTol", 1.0e-6);

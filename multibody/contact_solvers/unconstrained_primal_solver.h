@@ -230,6 +230,8 @@ class UnconstrainedPrimalSolver final : public ConvexSolverBase<T> {
 
   void LogIterationsHistory(const std::string& file_name) const final;
 
+  void LogPerStepIterationsHistory(const std::string& file_name) const;
+
   void LogSolutionHistory(const std::string& file_name) const;
 
  private:

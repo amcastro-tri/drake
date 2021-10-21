@@ -622,7 +622,11 @@ int do_main() {
   if (manager) {
     manager->LogStats("manager_log.dat");
     solver->LogIterationsHistory("log.dat");
-    // primal_solver->LogSolutionHistory("sol_hist.dat");
+    if (FLAGS_solver == "primal") {
+      const auto& primal_solver =
+          manager->mutable_contact_solver<UnconstrainedPrimalSolver>();
+      primal_solver.LogPerStepIterationsHistory("log_per_step.dat");
+    }
   }
 
   PrintSimulatorStatistics(*simulator);

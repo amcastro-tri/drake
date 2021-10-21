@@ -1049,6 +1049,44 @@ void UnconstrainedPrimalSolver<T>::LogIterationsHistory(
 }
 
 template <typename T>
+void UnconstrainedPrimalSolver<T>::LogPerStepIterationsHistory(
+    const std::string& file_name) const {
+  const std::vector<UnconstrainedPrimalSolverStats>& stats_hist =
+      this->get_stats_history();
+  std::ofstream file(file_name);
+  file << fmt::format(
+      "{} {} {} {} {} {}\n",
+      // Problem size.
+      "num_contacts",
+      // Number of iterations.
+      "num_iters",
+      // Error metrics.
+      "mom_rel_l2",
+      // Line search metrics.
+      "ls_iters", "alpha",
+      // Energy metrics.
+      "ell");
+
+  for (const auto& s : stats_hist) {
+    const int num_iters = s.iteration_metrics.size();
+    for (const auto& m : s.iteration_metrics) {
+      file << fmt::format("{} {} {} {} {} {}\n",
+                          // Problem size.
+                          s.num_contacts,
+                          // Number of iterations.
+                          num_iters,
+                          // Error metrics.
+                          m.mom_rel_l2,
+                          // Line search metrics.
+                          m.ls_iters, m.ls_alpha,
+                          // Energy metrics.
+                          m.cost);
+    }
+  }
+  file.close();
+}
+
+template <typename T>
 void UnconstrainedPrimalSolver<T>::LogSolutionHistory(
     const std::string& file_name) const {
   const std::vector<SolutionData<T>>& sol = this->solution_history();

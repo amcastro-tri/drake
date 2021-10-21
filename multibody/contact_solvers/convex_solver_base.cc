@@ -318,7 +318,7 @@ void ConvexSolverBase<T>::CalcScaledMomentumAndScales(
     PRINT_VAR(*ellM);
   }
   DRAKE_DEMAND(*ellM >= 0);
-  *ellR = gamma.dot(R.asDiagonal() * gamma);
+  *ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
   *ell = *ellM + *ellR;
 
   // Scale momentum balance using the mass matrix's Jacobi preconditioner so
@@ -380,7 +380,7 @@ void ConvexSolverBase<T>::CalcEnergyMetrics(const PreProcessedData& data,
   *ellM = 0.5 * dv.dot(v_aux);
 
   // Impulses cost.
-  *ellR = gamma.dot(R.asDiagonal() * gamma);
+  *ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
 
   // Total cost.
   *ell = *ellM + *ellR;

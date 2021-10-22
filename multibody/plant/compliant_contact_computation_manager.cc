@@ -12,7 +12,6 @@
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
 #include "drake/math/rotation_matrix.h"
-#include "drake/math/orthonormal_basis.h"
 #include "drake/multibody/contact_solvers/block_sparse_linear_operator.h"
 #include "drake/multibody/contact_solvers/contact_solver.h"
 #include "drake/multibody/contact_solvers/timer.h"
@@ -56,26 +55,29 @@ void CompliantContactComputationManager<T>::ExtractModelInfo() {
 }
 
 template <typename T>
-void CompliantContactComputationManager<T>::DeclareCacheEntries(
-    MultibodyPlant<T>* mutable_plant) {
-  auto& contact_jacobian_cache_entry = mutable_plant->DeclareCacheEntry(
-      std::string("Contact Jacobians Jc(q)."),
-      []() { return AbstractValue::Make(internal::ContactJacobianCache<T>()); },
-      [this](const systems::ContextBase& context_base,
-             AbstractValue* cache_value) {
-        auto& context = dynamic_cast<const Context<T>&>(context_base);
-        auto& contact_jacobian_cache =
-            cache_value->get_mutable_value<internal::ContactJacobianCache<T>>();
-        const std::vector<internal::DiscreteContactPair<T>>& contact_pairs =
-            plant().EvalDiscreteContactPairs(context);
-        CalcContactJacobian(context, contact_pairs, &contact_jacobian_cache.Jc,
-                            &contact_jacobian_cache.R_WC_list);
-      },
-      // We explicitly declare the configuration dependence even though the
-      // Eval() above implicitly evaluates configuration dependent cache
-      // entries.
-      {mutable_plant->configuration_ticket(), mutable_plant->all_parameters_ticket()});
-  cache_indexes_.contact_jacobian = contact_jacobian_cache_entry.cache_index();
+void CompliantContactComputationManager<T>::DeclareCacheEntries() {
+    auto& contact_jacobian_cache_entry = this->DeclareCacheEntry(
+        std::string("Contact Jacobians Jc(q)."),
+        systems::ValueProducer(
+            internal::ContactJacobianCache<T>(),
+            std::function<void(const systems::Context<T>&,
+                               internal::ContactJacobianCache<T>*)>{
+                [this](
+                    const systems::Context<T>& context,
+                    internal::ContactJacobianCache<T>* contact_jacobian_cache) {
+                  const std::vector<internal::DiscreteContactPair<T>>&
+                      contact_pairs = plant().EvalDiscreteContactPairs(context);
+                  CalcContactJacobian(context, contact_pairs,
+                                      &contact_jacobian_cache->Jc,
+                                      &contact_jacobian_cache->R_WC_list);
+                }}),        
+        // We explicitly declare the configuration dependence even though the
+        // Eval() above implicitly evaluates configuration dependent cache
+        // entries.
+        {systems::System<T>::q_ticket(),
+         systems::System<T>::all_parameters_ticket()});
+    cache_indexes_.contact_jacobian =
+        contact_jacobian_cache_entry.cache_index();
 }
 
 template <typename T>
@@ -911,7 +913,8 @@ void CompliantContactComputationManager<T>::CalcContactJacobian(
    // that the z-axis Cz equals to nhat_BA_W. The tangent vectors are
    // arbitrary, with the only requirement being that they form a valid right
    // handed basis with nhat_BA.
-   const RotationMatrix<T> R_WC(math::ComputeBasisFromAxis(2, nhat_BA_W));
+   const math::RotationMatrix<T> R_WC =
+        math::RotationMatrix<T>::MakeFromOneVector(nhat_BA_W, 2);
    if (R_WC_set != nullptr) {
      R_WC_set->push_back(R_WC);
    }

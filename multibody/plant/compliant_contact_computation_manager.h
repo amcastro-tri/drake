@@ -137,7 +137,7 @@ class CompliantContactComputationManager
   void DoCalcContactResults(const systems::Context<T>& context,
                             ContactResults<T>* contact_results) const final;
 
-  void DeclareCacheEntries(MultibodyPlant<T>*) final;
+  void DeclareCacheEntries() final;
 
   // TODO: change signature so that it returns a new contact graph instead.
   void CalcContactGraph(

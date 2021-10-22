@@ -62,7 +62,7 @@ from pydrake.systems.framework import DiagramBuilder
 from pydrake.systems.meshcat_visualizer import (
     ConnectMeshcatVisualizer, MeshcatVisualizer)
 from pydrake.systems.planar_scenegraph_visualizer import (
-    PlanarSceneGraphVisualizer,
+    ConnectPlanarSceneGraphVisualizer,
 )
 
 
@@ -97,11 +97,12 @@ def parse_filename_and_parser(args_parser, args):
         if args.package_path:
             # Verify that package.xml is found in the designated path.
             package_path = os.path.abspath(args.package_path)
-            if not os.path.isfile(os.path.join(package_path, "package.xml")):
+            package_xml = os.path.join(package_path, "package.xml")
+            if not os.path.isfile(package_xml):
                 args_parser.error(f"package.xml not found at: {package_path}")
 
             # Get the package map and populate it using the package path.
-            parser.package_map().PopulateFromFolder(package_path)
+            parser.package_map().AddPackageXml(package_xml)
         return parser
 
     if args.find_resource:
@@ -136,7 +137,7 @@ def add_visualizers_argparse_arguments(args_parser):
 
 def parse_visualizers(args_parser, args):
     """
-    Parses argparse arguments for visualizers, returning update_visulization
+    Parses argparse arguments for visualizers, returning update_visualization
     and connect_visualizers.
     """
 
@@ -162,13 +163,13 @@ def parse_visualizers(args_parser, args):
         # Connect to Meshcat.
         if args.meshcat is not None:
             meshcat_viz = ConnectMeshcatVisualizer(
-                builder, scene_graph, zmq_url=args.meshcat)
+                builder, scene_graph, zmq_url=args.meshcat,
+                role=args.meshcat_role,
+                prefer_hydro=args.meshcat_hydroelastic)
 
         # Connect to PyPlot.
         if args.pyplot:
-            pyplot = builder.AddSystem(PlanarSceneGraphVisualizer(scene_graph))
-            builder.Connect(scene_graph.get_pose_bundle_output_port(),
-                            pyplot.get_input_port(0))
+            pyplot = ConnectPlanarSceneGraphVisualizer(builder, scene_graph)
 
     return update_visualization, connect_visualizers
 

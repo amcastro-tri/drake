@@ -11,7 +11,7 @@
 
 namespace drake {
 namespace multibody {
-namespace fixed_fem {
+namespace fem {
 /** %DirichletBoundaryCondition provides functionalities related to Dirichlet
  boundary conditions (BC) to the FEM solver. In particular, it provides the
  following functionalities:
@@ -24,7 +24,7 @@ namespace fixed_fem {
 template <class T>
 class DirichletBoundaryCondition {
  public:
-  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(DirichletBoundaryCondition);
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(DirichletBoundaryCondition);
 
   /* Constructs a new %DirichletBoundaryCondition that applies to an FEM model
    that has the given `ode_order`. */
@@ -108,7 +108,7 @@ class DirichletBoundaryCondition {
      */
     for (const auto& it : bcs_) {
       const DofIndex dof_index = it.first;
-      (*residual)(dof_index) = 0;
+      (*residual)(int{dof_index}) = 0;
     }
   }
 
@@ -133,6 +133,6 @@ class DirichletBoundaryCondition {
    applies to. */
   const int ode_order_;
 };
-}  // namespace fixed_fem
+}  // namespace fem
 }  // namespace multibody
 }  // namespace drake

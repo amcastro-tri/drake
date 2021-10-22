@@ -134,14 +134,6 @@ class EventCollection {
    * does not permit adding new events. Derived classes must implement this
    * method to add the specified event to the homogeneous event collection.
    */
-  DRAKE_DEPRECATED("2021-09-01", "Use AddEvent instead.")
-  virtual void add_event(std::unique_ptr<EventType> event) = 0;
-
-  /**
-   * Adds an event to this collection, or throws if the concrete collection
-   * does not permit adding new events. Derived classes must implement this
-   * method to add the specified event to the homogeneous event collection.
-   */
   virtual void AddEvent(EventType event) = 0;
 
  protected:
@@ -186,13 +178,6 @@ class DiagramEventCollection final : public EventCollection<EventType> {
       : EventCollection<EventType>(),
         subevent_collection_(num_subsystems),
         owned_subevent_collection_(num_subsystems) {}
-
-  /**
-   * Throws if called, because no events should be added at the Diagram level.
-   */
-  void add_event(std::unique_ptr<EventType>) final {
-    throw std::logic_error("DiagramEventCollection::add_event is not allowed");
-  }
 
   /**
    * Throws if called, because no events should be added at the Diagram level.
@@ -285,7 +270,7 @@ class DiagramEventCollection final : public EventCollection<EventType> {
    * `other_collection`. In addition, this method assumes that `this` and
    * `other_collection` have the exact same topology (i.e. both are created for
    * the same Diagram.)
-   * @throws std::bad_cast if `other_collection` is not an instance of
+   * @throws std::exception if `other_collection` is not an instance of
    * DiagramEventCollection.
    */
   void DoAddToEnd(
@@ -364,15 +349,6 @@ class LeafEventCollection final : public EventCollection<EventType> {
   }
 
   /**
-   * Add `event` to the existing collection. Ownership of `event` is
-   * transferred. Aborts if event is null.
-   */
-  void add_event(std::unique_ptr<EventType> event) final {
-    DRAKE_DEMAND(event != nullptr);
-    AddEvent(std::move(*event));
-  }
-
-  /**
    * Add `event` to the existing collection.
    */
   void AddEvent(EventType event) final {
@@ -420,7 +396,7 @@ class LeafEventCollection final : public EventCollection<EventType> {
    *   EventType: {event1, event2, event3, event4}
    * </pre>
    *
-   * @throws std::bad_cast if `other_collection` is not an instance of
+   * @throws std::exception if `other_collection` is not an instance of
    * LeafEventCollection.
    */
   void DoAddToEnd(const EventCollection<EventType>& other_collection) final {
@@ -518,19 +494,7 @@ class CompositeEventCollection {
    * Assuming the internal publish event collection is an instance of
    * LeafEventCollection, adds the publish event `event` (ownership is also
    * transferred) to it.
-   * @throws std::bad_cast if the assumption is incorrect.
-   */
-  DRAKE_DEPRECATED("2021-09-01", "Use AddPublishEvent instead.")
-  void add_publish_event(std::unique_ptr<PublishEvent<T>> event) {
-    DRAKE_DEMAND(event != nullptr);
-    AddPublishEvent(std::move(*event));
-  }
-
-  /**
-   * Assuming the internal publish event collection is an instance of
-   * LeafEventCollection, adds the publish event `event` (ownership is also
-   * transferred) to it.
-   * @throws std::bad_cast if the assumption is incorrect.
+   * @throws std::exception if the assumption is incorrect.
    */
   void AddPublishEvent(PublishEvent<T> event) {
     auto& events = dynamic_cast<LeafEventCollection<PublishEvent<T>>&>(
@@ -542,20 +506,7 @@ class CompositeEventCollection {
    * Assuming the internal discrete update event collection is an instance of
    * LeafEventCollection, adds the discrete update event `event` (ownership is
    * also transferred) to it.
-   * @throws std::bad_cast if the assumption is incorrect.
-   */
-  DRAKE_DEPRECATED("2021-09-01", "Use AddDiscreteUpdateEvent instead.")
-  void add_discrete_update_event(
-      std::unique_ptr<DiscreteUpdateEvent<T>> event) {
-    DRAKE_DEMAND(event != nullptr);
-    AddDiscreteUpdateEvent(std::move(*event));
-  }
-
-  /**
-   * Assuming the internal discrete update event collection is an instance of
-   * LeafEventCollection, adds the discrete update event `event` (ownership is
-   * also transferred) to it.
-   * @throws std::bad_cast if the assumption is incorrect.
+   * @throws std::exception if the assumption is incorrect.
    */
   void AddDiscreteUpdateEvent(DiscreteUpdateEvent<T> event) {
     auto& events = dynamic_cast<LeafEventCollection<DiscreteUpdateEvent<T>>&>(
@@ -567,20 +518,7 @@ class CompositeEventCollection {
    * Assuming the internal unrestricted update event collection is an instance
    * of LeafEventCollection, adds the unrestricted update event `event`
    * (ownership is also transferred) to it.
-   * @throws std::bad_cast if the assumption is incorrect.
-   */
-  DRAKE_DEPRECATED("2021-09-01", "Use AddUnrestrictedUpdateEvent instead.")
-  void add_unrestricted_update_event(
-      std::unique_ptr<UnrestrictedUpdateEvent<T>> event) {
-    DRAKE_DEMAND(event != nullptr);
-    AddUnrestrictedUpdateEvent(std::move(*event));
-  }
-
-  /**
-   * Assuming the internal unrestricted update event collection is an instance
-   * of LeafEventCollection, adds the unrestricted update event `event`
-   * (ownership is also transferred) to it.
-   * @throws std::bad_cast if the assumption is incorrect.
+   * @throws std::exception if the assumption is incorrect.
    */
   void AddUnrestrictedUpdateEvent(UnrestrictedUpdateEvent<T> event) {
     auto& events =

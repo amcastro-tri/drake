@@ -173,16 +173,6 @@ class TestSensors(unittest.TestCase):
             np.testing.assert_array_equal(data, channel_default)
             np.testing.assert_array_equal(mutable_data, channel_default)
 
-    def test_constants(self):
-        # Simply ensure we can access the constants.
-        values = [
-            mut.InvalidDepth.kTooFar,
-            mut.InvalidDepth.kTooClose,
-            mut.Label.kNoBody,
-            mut.Label.kFlatTerrain,
-        ]
-        self.assertTrue(values)
-
     def test_camera_info(self):
         width = 640
         height = 480
@@ -262,6 +252,10 @@ class TestSensors(unittest.TestCase):
             self.assertIsInstance(system.depth_image_16U_output_port(),
                                   OutputPort)
             self.assertIsInstance(system.label_image_output_port(), OutputPort)
+            self.assertIsInstance(system.body_pose_in_world_output_port(),
+                                  OutputPort)
+            with catch_drake_warnings(expected_count=1):
+                self.assertIsInstance(system.X_WB_output_port(), OutputPort)
 
         # Use HDTV size.
         width = 1280

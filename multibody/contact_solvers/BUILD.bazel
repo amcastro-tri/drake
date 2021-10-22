@@ -13,17 +13,6 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
-drake_cc_library(
-    name = "block_sparse_matrix",
-    srcs = ["block_sparse_matrix.cc"],
-    hdrs = ["block_sparse_matrix.h"],
-    deps = [
-        "//common:default_scalars",
-        "//common:essential",
-        "//common:unused",
-    ],
-)
-
 drake_cc_package_library(
     name = "contact_solvers",
     visibility = ["//visibility:public"],
@@ -52,6 +41,16 @@ drake_cc_library(
     ],
 )
 
+drake_cc_library(
+    name = "block_sparse_matrix",
+    srcs = ["block_sparse_matrix.cc"],
+    hdrs = ["block_sparse_matrix.h"],
+    deps = [
+        "//common:default_scalars",
+        "//common:essential",
+        "//common:unused",
+    ],
+)
 
 drake_cc_library(
     name = "contact_solver_results",
@@ -328,6 +327,14 @@ drake_cc_googletest(
         ":cone_ray_intersect",
         "//common/test_utilities:eigen_matrix_compare",
         "//math",
+    ],
+)
+
+drake_cc_googletest(
+    name = "block_sparse_linear_operator_test",
+    deps = [
+        ":block_sparse_linear_operator",
+        "//common/test_utilities:eigen_matrix_compare",
     ],
 )
 

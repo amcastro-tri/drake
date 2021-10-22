@@ -82,10 +82,9 @@ class DesiredVelocityMotor final : public LeafSystem<T> {
         kProportional_(proportional) {
     this->DeclareInputPort("Plant state", systems::kVectorValued,
                            plant.num_multibody_states());
-    output_index_ =
-        this->DeclareVectorOutputPort("Torque", BasicVector<T>(1),
-                                      &DesiredVelocityMotor<T>::CalcTorque)
-            .get_index();
+    output_index_ = this->DeclareVectorOutputPort(
+                            "Torque", 1, &DesiredVelocityMotor<T>::CalcTorque)
+                        .get_index();
   }
 
   /// Returns the output port on which the sum is presented.
@@ -141,7 +140,7 @@ int do_main() {
   strandbeest.set_stiction_tolerance(FLAGS_stiction_tolerance);
 
   geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph);
-  ConnectContactResultsToDrakeVisualizer(&builder, strandbeest);
+  ConnectContactResultsToDrakeVisualizer(&builder, strandbeest, scene_graph);
 
   // Create a DesiredVelocityMotor where the proportional term is directly
   // proportional to the mass of the model.

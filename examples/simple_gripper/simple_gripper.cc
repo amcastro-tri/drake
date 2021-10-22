@@ -239,7 +239,7 @@ int do_main() {
   DRAKE_DEMAND(plant.num_actuated_dofs() == 2);
 
   // Sanity check on the availability of the optional source id before using it.
-  DRAKE_DEMAND(!!plant.get_source_id());
+  DRAKE_DEMAND(plant.get_source_id().has_value());
 
   builder.Connect(scene_graph.get_query_output_port(),
                   plant.get_geometry_query_input_port());
@@ -251,7 +251,7 @@ int do_main() {
       scene_graph.get_source_pose_port(plant.get_source_id().value()));
 
   // Publish contact results for visualization.
-  ConnectContactResultsToDrakeVisualizer(&builder, plant, &lcm);
+  ConnectContactResultsToDrakeVisualizer(&builder, plant, scene_graph, &lcm);
 
   // Sinusoidal force input. We want the gripper to follow a trajectory of the
   // form x(t) = X0 * sin(ω⋅t). By differentiating once, we can compute the
@@ -291,7 +291,6 @@ int do_main() {
   // Create a context for this system:
   std::unique_ptr<systems::Context<double>> diagram_context =
       diagram->CreateDefaultContext();
-  diagram_context->EnableCaching();
   diagram->SetDefaultContext(diagram_context.get());
   systems::Context<double>& plant_context =
       diagram->GetMutableSubsystemContext(plant, diagram_context.get());

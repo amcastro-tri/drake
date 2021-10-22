@@ -7,6 +7,7 @@
 #include <variant>
 #include <vector>
 
+#include "drake/common/copyable_unique_ptr.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
@@ -20,6 +21,9 @@
 namespace drake {
 namespace geometry {
 namespace internal {
+
+/* Forward declaration to enable Bvh for deformable meshes. */
+template <typename> class BvhUpdater;
 
 template <class MeshType>
 struct MeshTraits;
@@ -38,6 +42,8 @@ struct MeshTraits<VolumeMesh<T>> {
 template <class BvType, class MeshType>
 class BvNode {
  public:
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(BvNode)
+
   static constexpr int kMaxElementPerLeaf =
       MeshTraits<MeshType>::kMaxElementPerBvhLeaf;
 
@@ -45,7 +51,7 @@ class BvNode {
    The actual number of stored element indices is `num_index`. */
   struct LeafData {
     int num_index;
-    std::array<typename MeshType::ElementIndex, kMaxElementPerLeaf> indices;
+    std::array<int, kMaxElementPerLeaf> indices;
   };
 
   /* Constructor for leaf nodes consisting of multiple elements.
@@ -64,8 +70,6 @@ class BvNode {
       : bv_(std::move(bv)),
         child_(NodeChildren(std::move(left), std::move(right))) {}
 
-  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(BvNode)
-
   /* Returns the bounding volume.  */
   const BvType& bv() const { return bv_; }
 
@@ -78,7 +82,7 @@ class BvNode {
   /* Returns the i-th element index in the leaf data.
    @pre is_leaf() returns true.
    @pre `i` is less than LeafData::num_index, and i >= 0. */
-  typename MeshType::ElementIndex element_index(int i) const {
+  int element_index(int i) const {
     DRAKE_ASSERT(0 <= i && i < std::get<LeafData>(child_).num_index);
     return std::get<LeafData>(child_).indices[i];
   }
@@ -114,9 +118,8 @@ class BvNode {
    @pre both nodes are leaves.  */
   template <typename OtherBvNode>
   bool EqualLeaf(const OtherBvNode& other_leaf) const {
-    if (static_cast<const void*>(this) ==
-        static_cast<const void*>(&other_leaf)) {
-      return true;
+    if constexpr (std::is_same_v<OtherBvNode, BvNode<BvType, MeshType>>) {
+      if (this == &other_leaf) return true;
     }
     if (this->num_element_indices() != other_leaf.num_element_indices()) {
       return false;
@@ -130,22 +133,34 @@ class BvNode {
   }
 
  private:
-  struct NodeChildren {
-    std::unique_ptr<BvNode<BvType, MeshType>> left;
-    std::unique_ptr<BvNode<BvType, MeshType>> right;
+  template <typename> friend class BvhUpdater;
 
-    NodeChildren(std::unique_ptr<BvNode<BvType, MeshType>> left_in,
-                 std::unique_ptr<BvNode<BvType, MeshType>> right_in)
+  /* Provide disciplined access to BvhUpdater to a mutable child node. */
+  BvNode<BvType, MeshType>& left() {
+    return *(std::get<NodeChildren>(child_).left);
+  }
+
+  /* Provide disciplined access to BvhUpdater to a mutable child node. */
+  BvNode<BvType, MeshType>& right() {
+    return *(std::get<NodeChildren>(child_).right);
+  }
+
+  /* Provide disciplined access to BvhUpdater to a mutable bounding volume. */
+  BvType& bv() { return bv_; }
+
+  struct NodeChildren {
+    DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(NodeChildren)
+
+    NodeChildren(std::unique_ptr<BvNode> left_in,
+                 std::unique_ptr<BvNode> right_in)
         : left(std::move(left_in)), right(std::move(right_in)) {
       DRAKE_DEMAND(left != nullptr);
       DRAKE_DEMAND(right != nullptr);
       DRAKE_DEMAND(left != right);
     }
 
-    NodeChildren(const NodeChildren& other)
-        : NodeChildren{
-              std::make_unique<BvNode<BvType, MeshType>>(*other.left),
-              std::make_unique<BvNode<BvType, MeshType>>(*other.right)} {}
+    copyable_unique_ptr<BvNode> left;
+    copyable_unique_ptr<BvNode> right;
   };
 
   BvType bv_;
@@ -165,10 +180,10 @@ enum BvttCallbackResult {
 };
 
 /* Bounding volume tree traversal (BVTT) callback. Returns a BvttCallbackResult
- for further action, e.g. deciding whether to exit early.  */
-template <class MeshType, class OtherMeshType>
-using BvttCallback = std::function<BvttCallbackResult(
-    typename MeshType::ElementIndex, typename OtherMeshType::ElementIndex)>;
+ for further action, e.g. deciding whether to exit early. The parameters are
+ an index into the elements of the *first* mesh followed by the index into
+ the elements of the *second* mesh. */
+using BvttCallback = std::function<BvttCallbackResult(int, int)>;
 
 /* %Bvh is an acceleration structure for performing spatial queries against a
  collection of objects (in this case, triangles or tetrahedra). Specifically,
@@ -188,23 +203,12 @@ using BvttCallback = std::function<BvttCallbackResult(
 template <class BvType, class SourceMeshType>
 class Bvh {
  public:
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Bvh)
+
   using MeshType = SourceMeshType;
-  using IndexType = typename MeshType::ElementIndex;
   using NodeType = BvNode<BvType, MeshType>;
 
   explicit Bvh(const MeshType& mesh);
-
-  Bvh(const Bvh& bvh) { *this = bvh; }
-
-  Bvh& operator=(const Bvh& bvh) {
-    if (&bvh == this) return *this;
-
-    root_node_ = std::make_unique<NodeType>(*bvh.root_node_);
-    return *this;
-  }
-
-  Bvh(Bvh&&) = default;
-  Bvh& operator=(Bvh&&) = default;
 
   const NodeType& root_node() const { return *root_node_; }
 
@@ -221,7 +225,7 @@ class Bvh {
   template <class OtherBvhType>
   void Collide(
       const OtherBvhType& bvh_B, const math::RigidTransformd& X_AB,
-      BvttCallback<MeshType, typename OtherBvhType::MeshType> callback) const {
+      BvttCallback callback) const {
     using NodePair =
         std::pair<const NodeType&, const typename OtherBvhType::NodeType&>;
     std::stack<NodePair, std::vector<NodePair>> node_pairs;
@@ -284,10 +288,9 @@ class Bvh {
    @note This method can be only used for a primitive type that has an overload
    for BvType::HasOverlap() defined.  */
   template <typename PrimitiveType>
-  void Collide(
-      const PrimitiveType& primitive_P, const math::RigidTransformd& X_PH,
-      std::function<BvttCallbackResult(typename MeshType::ElementIndex)>
-          callback) const {
+  void Collide(const PrimitiveType& primitive_P,
+               const math::RigidTransformd& X_PH,
+               std::function<BvttCallbackResult(int)> callback) const {
     std::stack<const NodeType*> nodes;
     nodes.emplace(&root_node());
     while (!nodes.empty()) {
@@ -314,16 +317,13 @@ class Bvh {
   /* Wrapper around `Collide` with a callback that accumulates each pair of
    collision candidates and returns them all.
    @return Vector of element index pairs whose elements are candidates for
-   collision.  */
+   collision (index into *this* mesh's elements, index into bvh_B's mesh's
+   elements).  */
   template <class OtherBvhType>
-  std::vector<
-      std::pair<IndexType, typename OtherBvhType::MeshType::ElementIndex>>
-  GetCollisionCandidates(const OtherBvhType& bvh_B,
-                         const math::RigidTransformd& X_AB) const {
-    using OtherIndexType = typename OtherBvhType::MeshType::ElementIndex;
-    std::vector<std::pair<IndexType, OtherIndexType>> result;
-    auto callback = [&result](IndexType a,
-                              OtherIndexType b) -> BvttCallbackResult {
+  std::vector<std::pair<int, int>> GetCollisionCandidates(
+      const OtherBvhType& bvh_B, const math::RigidTransformd& X_AB) const {
+    std::vector<std::pair<int, int>> result;
+    BvttCallback callback = [&result](int a, int b) -> BvttCallbackResult {
       result.emplace_back(a, b);
       return BvttCallbackResult::Continue;
     };
@@ -335,8 +335,8 @@ class Bvh {
    Assumes that the quantities are measured and expressed in the same frame. */
   template <typename OtherBvhType>
   bool Equal(const OtherBvhType& other) const {
-    if (static_cast<const void*>(this) == static_cast<const void*>(&other)) {
-      return true;
+    if constexpr (std::is_same_v<OtherBvhType, Bvh<BvType, SourceMeshType>>) {
+      if (this == &other) return true;
     }
     return EqualTrees(this->root_node(), other.root_node());
   }
@@ -349,7 +349,7 @@ class Bvh {
 
   NodeType& mutable_root_node() { return *root_node_; }
 
-  using CentroidPair = std::pair<IndexType, Vector3<double>>;
+  using CentroidPair = std::pair<int, Vector3<double>>;
 
   static std::unique_ptr<NodeType> BuildBvTree(
       const MeshType& mesh,
@@ -362,19 +362,19 @@ class Bvh {
       const typename std::vector<CentroidPair>::iterator& end);
 
   // TODO(tehbelinda): Move this function into SurfaceMesh/VolumeMesh directly
-  // and rename to CalcElementCentroid(ElementIndex).
-  static Vector3<double> ComputeCentroid(const MeshType& mesh,
-                                         IndexType i);
+  // and rename to CalcElementCentroid(int element_index).
+  // Computes the centroid of the ith element of the given mesh.
+  static Vector3<double> ComputeCentroid(const MeshType& mesh, int i);
 
-  // Tests that two trees, rooted at nodes a and b, respectively, are
-  // *topologically* equal in the sense that they have identical node structure
-  // and equal bounding volumes (see BvType::Equal()).
-  // The two hierarchies must be built from the same bounding volume type, and
-  // the same mesh type, but the mesh scalar can differ.
+  // Tests that two trees, rooted at nodes a and b, respectively, are equal
+  // in the sense that they have identical node structure and equal bounding
+  // volumes (see BvType::Equal()). The two hierarchies must be built from the
+  // same bounding volume type, and the same mesh type, but the mesh scalar can
+  // differ.
   template <typename OtherNodeType>
   static bool EqualTrees(const NodeType& a, const OtherNodeType& b) {
-    if (static_cast<const void*>(&a) == static_cast<const void*>(&b)) {
-       return true;
+    if constexpr (std::is_same_v<NodeType, OtherNodeType>) {
+      if (&a == &b) return true;
     }
 
     if (!a.bv().Equal(b.bv())) return false;
@@ -394,7 +394,7 @@ class Bvh {
 
   static constexpr int kElementVertexCount = MeshType::kVertexPerElement;
 
-  std::unique_ptr<NodeType> root_node_;
+  copyable_unique_ptr<NodeType> root_node_;
 };
 
 }  // namespace internal

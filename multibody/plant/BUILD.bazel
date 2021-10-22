@@ -27,6 +27,8 @@ drake_cc_package_library(
         ":hydroelastic_contact_info",
         ":hydroelastic_quadrature_point_data",
         ":hydroelastic_traction",
+        ":multibody_plant_config",
+        ":multibody_plant_config_functions",
         ":multibody_plant_core",
         ":point_pair_contact_info",
         ":propeller",
@@ -71,6 +73,7 @@ drake_cc_library(
     name = "dummy_model",
     testonly = 1,
     hdrs = ["test/dummy_model.h"],
+    visibility = ["//visibility:private"],
     deps = [
         ":multibody_plant_core",
     ],
@@ -89,6 +92,7 @@ drake_cc_library(
         "multibody_plant_discrete_update_manager_attorney.h",
         "multibody_plant_model_attorney.h",
         "physical_model.h",
+        "scalar_convertible_component.h",
     ],
     copts = ["-O2","-g"],
     visibility = ["//visibility:private"],
@@ -100,6 +104,7 @@ drake_cc_library(
         ":discrete_contact_pair",
         ":externally_applied_spatial_force",
         ":hydroelastic_traction",
+        ":multibody_plant_config",
         ":tamsi_solver",
         "//common:default_scalars",
         "//common:essential",
@@ -107,7 +112,6 @@ drake_cc_library(
         "//geometry:geometry_roles",
         "//geometry:scene_graph",
         "//math:geometric_transform",
-        "//math:orthonormal_basis",
         "//multibody/contact_solvers:block_sparse_linear_operator",
         "//multibody/contact_solvers:contact_solver",
         "//multibody/contact_solvers:sparse_linear_operator",        
@@ -309,6 +313,26 @@ drake_cc_library(
     ],
 )
 
+drake_cc_library(
+    name = "multibody_plant_config",
+    srcs = ["multibody_plant_config.cc"],
+    hdrs = ["multibody_plant_config.h"],
+    deps = [
+        "//common:name_value",
+    ],
+)
+
+drake_cc_library(
+    name = "multibody_plant_config_functions",
+    srcs = ["multibody_plant_config_functions.cc"],
+    hdrs = ["multibody_plant_config_functions.h"],
+    deps = [
+        ":multibody_plant_config",
+        ":multibody_plant_core",
+        "//systems/framework:diagram_builder",
+    ],
+)
+
 drake_cc_googletest(
     name = "hydroelastic_traction_test",
     data = [
@@ -318,6 +342,8 @@ drake_cc_googletest(
         ":hydroelastic_traction",
         "//common:find_resource",
         "//common/test_utilities:eigen_matrix_compare",
+        "//math:autodiff",
+        "//math:gradient",
         "//multibody/parsing",
     ],
 )
@@ -556,6 +582,7 @@ drake_cc_googletest(
     deps = [
         ":plant",
         "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
         "//geometry:drake_visualizer",
         "//math:geometric_transform",
         "//multibody/plant:contact_results_to_lcm",
@@ -622,9 +649,6 @@ drake_cc_googletest(
     deps = [
         ":contact_results_to_lcm",
         "//common/test_utilities:eigen_geometry_compare",
-        "//geometry:drake_visualizer",
-        "//multibody/benchmarks/acrobot",
-        "//multibody/benchmarks/inclined_plane",
     ],
 )
 
@@ -712,6 +736,7 @@ drake_cc_googletest(
     name = "multibody_plant_hydroelastic_contact_results_output_test",
     deps = [
         ":plant",
+        "//common/test_utilities:eigen_matrix_compare",
         "//examples/multibody/rolling_sphere:make_rolling_sphere_plant",
     ],
 )
@@ -719,6 +744,7 @@ drake_cc_googletest(
 drake_cc_googletest(
     name = "multibody_plant_scalar_conversion_test",
     deps = [
+        ":dummy_model",
         ":plant",
     ],
 )
@@ -748,7 +774,9 @@ drake_cc_googletest(
         ":dummy_model",
         ":multibody_plant_core",
         "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
         "//systems/analysis:simulator",
+        "//systems/framework:abstract_value_cloner",
     ],
 )
 
@@ -775,6 +803,15 @@ drake_cc_googletest(
         ":multibody_plant_core",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "multibody_plant_config_functions_test",
+    deps = [
+        ":multibody_plant_config_functions",
+        "//common/test_utilities:expect_throws_message",
+        "//common/yaml",
     ],
 )
 

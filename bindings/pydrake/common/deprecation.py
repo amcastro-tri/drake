@@ -63,7 +63,7 @@ class ModuleShim:
             try:
                 value = self._handler(name)
             except AttributeError as e:
-                if e.message:
+                if str(e):
                     raise e
                 else:
                     raise AttributeError(
@@ -88,13 +88,15 @@ class ModuleShim:
         return self._orig_module.__all__
 
     @classmethod
-    def _install(cls, name, handler):
+    def _install(cls, name, handler, *, auto_all=False):
         """Hook into module's attribute accessors and mutators.
 
         Args:
             name: Module name. Generally should be __name__.
             handler: Function of the form `handler(var)`, where `var` is the
                 variable name.
+            auto_all: If True, this will override `__all__` with a listing of
+                all non-private variables in the module.
 
         Note:
             This is private such that `install` does not pollute completion
@@ -102,6 +104,12 @@ class ModuleShim:
             `__bases__`.
         """
         old_module = sys.modules[name]
+        if auto_all:
+            old_module.__all__ = [
+                name
+                for name in old_module.__dict__
+                if not name.startswith("_")
+            ]
         new_module = cls(old_module, handler)
         sys.modules[name] = new_module
 
@@ -192,6 +200,9 @@ def deprecated(message, *, date=None):
 
     Use `ModuleShim` for deprecating variables in a module.
     """
+    # TODO(eric.cousineau): If possible, distinguish between descriptors and
+    # free functions. See PR #15877 for attempt.
+
     def wrapped(original):
         return _DeprecatedDescriptor(original, message, date=date)
 
@@ -217,23 +228,54 @@ def install_numpy_warning_filters(force=False):
     warnings.filterwarnings(
         "error", category=DeprecationWarning,
         message="elementwise == comparison failed")
+    warnings.filterwarnings(
+        "error", category=DeprecationWarning,
+        message="elementwise != comparison failed")
     # Error changed in 1.16.0
     warnings.filterwarnings(
         "error", category=DeprecationWarning,
         message="elementwise comparison failed")
 
 
-def _deprecated_callable(f, message, *, date=None):
+def deprecated_callable(message, *, date=None):
+    """
+    Deprecates a callable (a free function or a type/class object) by
+    wrapping its invocation to emit a deprecation.
 
-    def wrapper(*args, **kwargs):
-        _warn_deprecated(message, date=date, stacklevel=3)
-        return f(*args, **kwargs)
+    When possible, use ModuleShim to ensure that a deprecation warning is
+    emitted at *import time*, as it can easily be used with pure Python
+    modules.
 
-    wrapper.__name__ = f.__name__
-    wrapper.__qualname__ = f.__name__
-    warning = _format_deprecation_message(message, date=date)
-    wrapper.__doc__ = f"Warning:\n\n    {warning}"
-    return wrapper
+    However, if you are dealing with a C++ module (and are writing code inside
+    of `_{module}_extra.py`), you should use this approach.
+
+    Example as decorator:
+
+        @deprecated_callable("Please use `func_y` instead", date="2038-01-19")
+        def func_x():
+            ...
+
+    Example for alias:
+
+        my_alias = deprecated_callable(
+            "Please use `my_original` instead", date="2038-01-19"
+        )(my_original)
+    """
+
+    def decorator(original):
+
+        def wrapped(*args, **kwargs):
+            _warn_deprecated(message, date=date, stacklevel=3)
+            return original(*args, **kwargs)
+
+        wrapped.__name__ = original.__name__
+        wrapped.__qualname__ = original.__name__
+        warning = _format_deprecation_message(message, date=date)
+        wrapped.__doc__ = f"Warning:\n\n    {warning}"
+
+        return wrapped
+
+    return decorator
 
 
 def _forward_callables_as_deprecated(var_dict, m_new, date):
@@ -250,7 +292,7 @@ def _forward_callables_as_deprecated(var_dict, m_new, date):
             f"Please use ``{m_new.__name__}.{symbol}`` instead of "
             f"``{old_name}.{symbol}``."
         )
-        old = _deprecated_callable(new, message, date=date)
+        old = deprecated_callable(message, date=date)(new)
         old.__module__ = old_name
         var_dict[symbol] = old
 

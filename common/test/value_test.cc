@@ -89,10 +89,10 @@ GTEST_TEST(ValueTest, DefaultConstructor) {
   const AbstractValue& value_bare_struct = Value<BareStruct>();
   EXPECT_EQ(0, value_bare_struct.get_value<BareStruct>().data);
 
-  static_assert(!std::is_default_constructible<Value<CopyableInt>>::value,
+  static_assert(!std::is_default_constructible_v<Value<CopyableInt>>,
                 "Value<CopyableInt>() should not work.");
 
-  static_assert(!std::is_default_constructible<Value<CloneableInt>>::value,
+  static_assert(!std::is_default_constructible_v<Value<CloneableInt>>,
                 "Value<CloneableInt>() should not work.");
 
   const AbstractValue& value_move_or_clone_int = Value<MoveOrCloneInt>();
@@ -153,6 +153,11 @@ TYPED_TEST(TypedValueTest, Make) {
   EXPECT_EQ(42, abstract_value->template get_value<T>());
 }
 
+GTEST_TEST(TypedValueTest, MakeDefault) {
+  EXPECT_EQ(0, AbstractValue::Make<int>()->get_value<int>());
+  EXPECT_EQ("", AbstractValue::Make<std::string>()->get_value<std::string>());
+}
+
 GTEST_TEST(ValueTest, NiceTypeName) {
   auto double_value = AbstractValue::Make<double>(3.);
   auto string_value = AbstractValue::Make<std::string>("hello");
@@ -193,11 +198,38 @@ GTEST_TEST(ValueTest, MaybeGetValue) {
   EXPECT_EQ(double_value->maybe_get_value<std::string>(), nullptr);
   EXPECT_EQ(string_value->maybe_get_value<double>(), nullptr);
 
-  ASSERT_NE(double_value->maybe_get_value<double>(), nullptr);
-  EXPECT_EQ(*double_value->maybe_get_value<double>(), 3.);
+  const double* const double_pointer =
+      double_value->maybe_get_value<double>();
+  const std::string* const string_pointer =
+      string_value->maybe_get_value<std::string>();
 
-  ASSERT_NE(string_value->maybe_get_value<std::string>(), nullptr);
-  EXPECT_EQ(*string_value->maybe_get_value<std::string>(), "hello");
+  ASSERT_NE(double_pointer, nullptr);
+  ASSERT_NE(string_pointer, nullptr);
+  EXPECT_EQ(*double_pointer, 3.);
+  EXPECT_EQ(*string_pointer, "hello");
+}
+
+// Check that maybe_get_mutable_value() returns nullptr for wrong-type
+// requests, and returns the correct value for right-type requests.
+GTEST_TEST(ValueTest, MaybeGetMutableValue) {
+  auto double_value = AbstractValue::Make<double>(3.);
+  auto string_value = AbstractValue::Make<std::string>("hello");
+
+  EXPECT_EQ(double_value->maybe_get_mutable_value<std::string>(), nullptr);
+  EXPECT_EQ(string_value->maybe_get_mutable_value<double>(), nullptr);
+
+  double* const double_pointer =
+      double_value->maybe_get_mutable_value<double>();
+  std::string* const string_pointer =
+      string_value->maybe_get_mutable_value<std::string>();
+
+  ASSERT_NE(double_pointer, nullptr);
+  ASSERT_NE(string_pointer, nullptr);
+  EXPECT_EQ(*double_pointer, 3.);
+  EXPECT_EQ(*string_pointer, "hello");
+
+  *string_pointer = "goodbye";
+  EXPECT_EQ(string_value->get_value<std::string>(), "goodbye");
 }
 
 TYPED_TEST(TypedValueTest, Access) {
@@ -397,16 +429,19 @@ class NiceAnonEnumTemplate {
 
 }  // namespace
 
-#ifdef __APPLE__
-constexpr bool kApple = true;
+// Apple clang prior to version 13 needs a fixup for inline namespaces.
+#if defined(__APPLE__) && defined(__clang__) && __clang_major__ < 13
+constexpr bool kAppleInlineNamespace = true;
 #else
-constexpr bool kApple = false;
+constexpr bool kAppleInlineNamespace = false;
 #endif
+
 #ifdef __clang__
 constexpr bool kClang = true;
 #else
 constexpr bool kClang = false;
 #endif
+
 #if __GNUC__ >= 9
 constexpr bool kGcc9 = true;
 #else
@@ -425,7 +460,7 @@ GTEST_TEST(TypeHashTest, WellKnownValues) {
   CheckHash<AnonEnum>("drake::test::{anonymous}::AnonEnum");
 
   // Templated containers without default template arguments.
-  const std::string stdcc = kApple ? "std::__1" : "std";
+  const std::string stdcc = kAppleInlineNamespace ? "std::__1" : "std";
   CheckHash<std::shared_ptr<double>>(fmt::format(
       "{std}::shared_ptr<double>",
       fmt::arg("std", stdcc)));

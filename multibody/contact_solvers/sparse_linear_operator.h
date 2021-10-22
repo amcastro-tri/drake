@@ -52,7 +52,7 @@ class SparseLinearOperator final : public LinearOperator<T> {
     *y = A_->transpose() * x;
   }
 
-  void DoMultiplyByTranspose(const Eigen::SparseVector<T>& x,
+  void DoMultiplyByTranspose(const Eigen::Ref<const Eigen::SparseVector<T>>& x,
                              Eigen::SparseVector<T>* y) const final {
     *y = A_->transpose() * x;
   }

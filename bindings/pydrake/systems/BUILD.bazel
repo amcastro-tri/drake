@@ -91,6 +91,7 @@ drake_pybind_library(
         "//bindings/pydrake:documentation_pybind",
         "//bindings/pydrake/common:cpp_template_pybind",
         "//bindings/pydrake/common:default_scalars_pybind",
+        "//bindings/pydrake/common:deprecation_pybind",
     ],
     cc_srcs = ["primitives_py.cc"],
     package_info = PACKAGE_INFO,
@@ -139,6 +140,7 @@ drake_pybind_library(
     name = "rendering_py",
     cc_deps = [
         "//bindings/pydrake:documentation_pybind",
+        "//bindings/pydrake/common:deprecation_pybind",
         "//bindings/pydrake/common:eigen_geometry_pybind",
         "//bindings/pydrake/common:value_pybind",
     ],
@@ -214,6 +216,7 @@ drake_pybind_library(
     cc_deps = [
         ":lcm_pybind",
         "//bindings/pydrake:documentation_pybind",
+        "//bindings/pydrake/common:deprecation_pybind",
         "//lcmtypes:contact_results_for_viz",
         "//lcmtypes:iiwa",
         "//lcmtypes:image_array",
@@ -257,7 +260,6 @@ drake_py_library(
         "//bindings/pydrake:lcm_py",
         "//bindings/pydrake:math_py",
         "//bindings/pydrake/common:eigen_geometry_py",
-        "//lcmtypes:lcmtypes_drake_py",
         "@meshcat_python//:meshcat",
         "@meshcat_python//:meshcat-server",
     ],
@@ -543,6 +545,7 @@ drake_py_unittest(
         ":framework_py",
         ":planar_scenegraph_visualizer_py",
         "//bindings/pydrake:geometry_py",
+        "//bindings/pydrake/common/test_utilities",
         "//bindings/pydrake/multibody",
     ],
 )
@@ -555,6 +558,7 @@ drake_py_unittest(
         ":primitives_py",
         ":pyplot_visualizer_py",
         "//bindings/pydrake:trajectories_py",
+        "//bindings/pydrake/common/test_utilities:deprecation_py",
     ],
 )
 
@@ -563,6 +567,7 @@ drake_py_unittest(
     data = ["//multibody/benchmarks/acrobot:models"],
     deps = [
         ":rendering_py",
+        "//bindings/pydrake/common/test_utilities:deprecation_py",
         "//bindings/pydrake/multibody:math_py",
         "//bindings/pydrake/multibody:parsing_py",
         "//bindings/pydrake/multibody:plant_py",

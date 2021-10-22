@@ -309,8 +309,8 @@ class Geometries final : public ShapeReifier {
    @param id            The unique identifier for the geometry.
    @param properties    The proximity properties which will determine if a
                         hydroelastic representation is requested.
-   @throws std::logic_error if the shape is a supported type but the properties
-                            are malformed.
+   @throws std::exception if the shape is a supported type but the properties
+                          are malformed.
    @pre There is no previous representation associated with id.  */
   void MaybeAddGeometry(const Shape& shape, GeometryId id,
                         const ProximityProperties& properties);
@@ -323,6 +323,8 @@ class Geometries final : public ShapeReifier {
     GeometryId id;
     const ProximityProperties& properties;
   };
+
+  using ShapeReifier::ImplementGeometry;
 
   void ImplementGeometry(const Sphere& sphere, void* user_data) override;
   void ImplementGeometry(const Cylinder& cylinder, void* user_data) override;
@@ -432,36 +434,36 @@ std::optional<SoftGeometry> MakeSoftRepresentation(const Shape& shape,
 
 /* Creates a soft sphere (assuming the proximity properties have sufficient
  information). Requires the ('hydroelastic', 'resolution_hint') and
- ('material', 'elastic_modulus') properties.  */
+ ('material', 'hydroelastic_modulus') properties.  */
 std::optional<SoftGeometry> MakeSoftRepresentation(
     const Sphere& sphere, const ProximityProperties& props);
 
 /* Creates a soft box (assuming the proximity properties have sufficient
- information). Requires the ('material', 'elastic_modulus') properties.  */
+ information). Requires the ('material', 'hydroelastic_modulus') properties.  */
 std::optional<SoftGeometry> MakeSoftRepresentation(
     const Box& box, const ProximityProperties& props);
 
 /* Creates a soft cylinder (assuming the proximity properties have sufficient
  information). Requires the ('hydroelastic', 'resolution_hint') and
- ('material', 'elastic_modulus') properties.  */
+ ('material', 'hydroelastic_modulus') properties.  */
 std::optional<SoftGeometry> MakeSoftRepresentation(
     const Cylinder& cylinder, const ProximityProperties& props);
 
 /* Creates a soft capsule (assuming the proximity properties have sufficient
  information). Requires the ('hydroelastic', 'resolution_hint') and
- ('material', 'elastic_modulus') properties.  */
+ ('material', 'hydroelastic_modulus') properties.  */
 std::optional<SoftGeometry> MakeSoftRepresentation(
     const Capsule& capsule, const ProximityProperties& props);
 
 /* Creates a soft ellipsoid (assuming the proximity properties have sufficient
  information). Requires the ('hydroelastic', 'resolution_hint') and
- ('material', 'elastic_modulus') properties.  */
+ ('material', 'hydroelastic_modulus') properties.  */
 std::optional<SoftGeometry> MakeSoftRepresentation(
     const Ellipsoid& ellipsoid, const ProximityProperties& props);
 
 /* Creates a compliant half space (assuming the proximity properties have
  sufficient information). Requires the ('hydroelastic', 'slab_thickness') and
- ('material', 'elastic_modulus') properties.  */
+ ('material', 'hydroelastic_modulus') properties.  */
 std::optional<SoftGeometry> MakeSoftRepresentation(
     const HalfSpace& half_space, const ProximityProperties& props);
 

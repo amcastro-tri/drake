@@ -4,14 +4,14 @@
 
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/math/autodiff_gradient.h"
+#include "drake/multibody/fem/linear_simplex_element.h"
+#include "drake/multibody/fem/simplex_gaussian_quadrature.h"
 #include "drake/multibody/fixed_fem/dev/fem_state.h"
 #include "drake/multibody/fixed_fem/dev/linear_constitutive_model.h"
-#include "drake/multibody/fixed_fem/dev/linear_simplex_element.h"
-#include "drake/multibody/fixed_fem/dev/simplex_gaussian_quadrature.h"
 
 namespace drake {
 namespace multibody {
-namespace fixed_fem {
+namespace fem {
 class DynamicElasticityElementTest : public ::testing::Test {
  protected:
   using T = AutoDiffXd;
@@ -21,11 +21,12 @@ class DynamicElasticityElementTest : public ::testing::Test {
   const T kDummyDensity{1.23};
   const ElementIndex kZeroIndex{0};
   using QuadratureType =
-      SimplexGaussianQuadrature<kNaturalDimension, kQuadratureOrder>;
-  static constexpr int kNumQuads = QuadratureType::num_quadrature_points();
+      internal::SimplexGaussianQuadrature<kNaturalDimension, kQuadratureOrder>;
+  static constexpr int kNumQuads = QuadratureType::num_quadrature_points;
   using IsoparametricElementType =
-      LinearSimplexElement<T, kNaturalDimension, kSpatialDimension, kNumQuads>;
-  using ConstitutiveModelType = LinearConstitutiveModel<T, kNumQuads>;
+      internal::LinearSimplexElement<T, kNaturalDimension, kSpatialDimension,
+                                     kNumQuads>;
+  using ConstitutiveModelType = internal::LinearConstitutiveModel<T, kNumQuads>;
   using ElementType =
       DynamicElasticityElement<IsoparametricElementType, QuadratureType,
                                ConstitutiveModelType>;
@@ -46,8 +47,8 @@ class DynamicElasticityElementTest : public ::testing::Test {
         get_reference_positions();
     ConstitutiveModelType model(1, 0.25);
     elements_.emplace_back(kZeroIndex, dummy_node_indices, model,
-                           reference_positions, kDummyDensity,
-                           kGravity_W, dummy_damping_model);
+                           reference_positions, kDummyDensity, kGravity_W,
+                           dummy_damping_model);
   }
 
   void SetupState() {
@@ -62,9 +63,9 @@ class DynamicElasticityElementTest : public ::testing::Test {
     Vector<T, kNumDofs> x_autodiff;
     Vector<T, kNumDofs> v_autodiff;
     Vector<T, kNumDofs> a_autodiff;
-    math::initializeAutoDiff(x, x_autodiff, 3 * kNumDofs, 0);
-    math::initializeAutoDiff(v, v_autodiff, 3 * kNumDofs, kNumDofs);
-    math::initializeAutoDiff(a, a_autodiff, 3 * kNumDofs, 2 * kNumDofs);
+    math::InitializeAutoDiff(x, 3 * kNumDofs, 0, &x_autodiff);
+    math::InitializeAutoDiff(v, 3 * kNumDofs, kNumDofs, &v_autodiff);
+    math::InitializeAutoDiff(a, 3 * kNumDofs, 2 * kNumDofs, &a_autodiff);
     state_ = std::make_unique<FemState<ElementType>>(x_autodiff, v_autodiff,
                                                      a_autodiff);
     state_->MakeElementData(elements_);
@@ -193,6 +194,6 @@ TEST_F(DynamicElasticityElementTest, MassMatrixIsAccelerationDerivative) {
   }
 }
 }  // namespace
-}  // namespace fixed_fem
+}  // namespace fem
 }  // namespace multibody
 }  // namespace drake

@@ -5,7 +5,6 @@
 
 #include "drake/common/drake_copyable.h"
 #include "drake/geometry/geometry_ids.h"
-#include "drake/geometry/geometry_index.h"
 
 namespace drake {
 namespace geometry {
@@ -41,12 +40,9 @@ class InternalFrame {
    @param name          The name of the frame.
    @param frame_group   The frame's frame group membership.
    @param index         The index of this frame in the SceneGraph.
-   @param parent_id     The id of the parent frame.
-   @param clique        The clique that will be used to prevent self-collision
-                        among geometries rigidly affixed to this frame.  */
+   @param parent_id     The id of the parent frame.  */
   InternalFrame(SourceId source_id, FrameId frame_id, const std::string& name,
-                int frame_group, FrameIndex index, FrameId parent_id,
-                int clique);
+                int frame_group, int index, FrameId parent_id);
 
   /* Compares two %InternalFrame instances for "equality". Two internal frames
    are considered equal if they have the same frame identifier.  */
@@ -74,10 +70,7 @@ class InternalFrame {
   int frame_group() const { return frame_group_; }
 
   /* Returns the index of this frame in the full scene graph.  */
-  FrameIndex index() const { return index_; }
-
-  /* Returns the clique associated with this frame.  */
-  int clique() const { return clique_; }
+  int index() const { return index_; }
 
   //@}
 
@@ -162,16 +155,6 @@ class InternalFrame {
     return -1234567;
   }
 
-  /* Reports the reserved clique for the world frame.  */
-  static int world_frame_clique() {
-    // Pick a sentinel value that can't be mistaken for initialization noise.
-    // Cliques are generated strictly internally. They start at zero and span
-    // the non-negative integers (if roll over occurs, an exception is thrown.)
-    // Therefore, a negative value here cannot collide with valid user values.
-    // Also, the world frame's clique is *not* used.
-    return -1234567;
-  }
-
  private:
   // The identifier of the source, to which this frame belongs.
   SourceId source_id_;
@@ -189,11 +172,7 @@ class InternalFrame {
   int frame_group_{0};
 
   // The index of this frame in the full SceneGraph.
-  FrameIndex index_;
-
-  // The clique used to prevent self-collision among the geometries affixed to
-  // this frame.
-  int clique_{};
+  int index_{};
 
   // The identifier of this frame's parent frame.
   FrameId parent_id_;

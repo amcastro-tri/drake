@@ -33,27 +33,23 @@ std::string SystemBase::GetSystemPathname() const {
 }
 
 CacheEntry& SystemBase::DeclareCacheEntry(
-    std::string description, CacheEntry::AllocCallback alloc_function,
-    CacheEntry::CalcCallback calc_function,
+    std::string description, ValueProducer value_producer,
     std::set<DependencyTicket> prerequisites_of_calc) {
   return DeclareCacheEntryWithKnownTicket(
       assign_next_dependency_ticket(), std::move(description),
-      std::move(alloc_function), std::move(calc_function),
-      std::move(prerequisites_of_calc));
+      std::move(value_producer), std::move(prerequisites_of_calc));
 }
 
 CacheEntry& SystemBase::DeclareCacheEntryWithKnownTicket(
     DependencyTicket known_ticket, std::string description,
-    CacheEntry::AllocCallback alloc_function,
-    CacheEntry::CalcCallback calc_function,
+    ValueProducer value_producer,
     std::set<DependencyTicket> prerequisites_of_calc) {
   // If the prerequisite list is empty the CacheEntry constructor will throw
   // a logic error.
   const CacheIndex index(num_cache_entries());
   cache_entries_.emplace_back(std::make_unique<CacheEntry>(
       this, index, known_ticket, std::move(description),
-      std::move(alloc_function), std::move(calc_function),
-      std::move(prerequisites_of_calc)));
+      std::move(value_producer), std::move(prerequisites_of_calc)));
   CacheEntry& new_entry = *cache_entries_.back();
   return new_entry;
 }
@@ -269,6 +265,20 @@ void SystemBase::ThrowValidateContextMismatch(
       "Context was not created for {} system {}; it was created for system {}",
       this->GetSystemType(), this->GetSystemPathname(),
       context.GetSystemPathname()));
+}
+
+void SystemBase::ThrowNotCreatedForThisSystemImpl(
+    const std::string& nice_type_name, internal::SystemId id) const {
+  if (!id.is_valid()) {
+    throw std::logic_error(fmt::format(
+        "{} was not associated with any System but should have been "
+        "created for {} System {}",
+        nice_type_name, GetSystemType(), GetSystemPathname()));
+  } else {
+    throw std::logic_error(fmt::format("{} was not created for {} System {}",
+                                       nice_type_name, GetSystemType(),
+                                       GetSystemPathname()));
+  }
 }
 
 [[noreturn]] void SystemBase::ThrowUnsupportedScalarConversion(

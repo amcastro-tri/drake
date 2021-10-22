@@ -17,9 +17,9 @@ from pydrake.math import RigidTransform, RotationMatrix
 from pydrake.systems.framework import DiagramBuilder
 from pydrake.systems.analysis import Simulator
 from pydrake.systems.meshcat_visualizer import MeshcatVisualizer
-from pydrake.systems.primitives import FirstOrderLowPassFilter, SignalLogger
+from pydrake.systems.primitives import FirstOrderLowPassFilter, VectorLogSink
 from pydrake.systems.planar_scenegraph_visualizer import \
-    PlanarSceneGraphVisualizer
+    ConnectPlanarSceneGraphVisualizer
 
 
 def main():
@@ -78,19 +78,17 @@ def main():
 
         station.Finalize()
 
-        DrakeVisualizer.AddToBuilder(builder,
-                                     station.GetOutputPort("query_object"))
+        geometry_query_port = station.GetOutputPort("geometry_query")
+        DrakeVisualizer.AddToBuilder(builder, geometry_query_port)
         if args.meshcat:
             meshcat = ConnectMeshcatVisualizer(
-                builder, output_port=station.GetOutputPort("geometry_query"),
+                builder, output_port=geometry_query_port,
                 zmq_url=args.meshcat, open_browser=args.open_browser)
             if args.setup == 'planar':
                 meshcat.set_planar_viewpoint()
         if args.setup == 'planar':
-            pyplot_visualizer = builder.AddSystem(PlanarSceneGraphVisualizer(
-                station.get_scene_graph()))
-            builder.Connect(station.GetOutputPort("pose_bundle"),
-                            pyplot_visualizer.get_input_port(0))
+            pyplot_visualizer = ConnectPlanarSceneGraphVisualizer(
+                builder, station.get_scene_graph(), geometry_query_port)
 
     teleop = builder.AddSystem(JointSliders(station.get_controller_plant(),
                                             length=800))
@@ -113,7 +111,7 @@ def main():
     # When in regression test mode, log our joint velocities to later check
     # that they were sufficiently quiet.
     if args.test:
-        iiwa_velocities = builder.AddSystem(SignalLogger(num_iiwa_joints))
+        iiwa_velocities = builder.AddSystem(VectorLogSink(num_iiwa_joints))
         builder.Connect(station.GetOutputPort("iiwa_velocity_estimated"),
                         iiwa_velocities.get_input_port(0))
     else:
@@ -121,6 +119,7 @@ def main():
 
     diagram = builder.Build()
     simulator = Simulator(diagram)
+    iiwa_velocities_log = iiwa_velocities.FindLog(simulator.get_context())
 
     # This is important to avoid duplicate publishes to the hardware interface:
     simulator.set_publish_every_time_step(False)
@@ -152,8 +151,8 @@ def main():
     # Ensure that our initialization logic was correct, by inspecting our
     # logged joint velocities.
     if args.test:
-        for time, qdot in zip(iiwa_velocities.sample_times(),
-                              iiwa_velocities.data().transpose()):
+        for time, qdot in zip(iiwa_velocities_log.sample_times(),
+                              iiwa_velocities_log.data().transpose()):
             # TODO(jwnimmer-tri) We should be able to do better than a 40
             # rad/sec limit, but that's the best we can enforce for now.
             if qdot.max() > 0.1:

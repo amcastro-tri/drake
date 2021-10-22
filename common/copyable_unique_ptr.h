@@ -47,6 +47,9 @@ namespace drake {
  3. To allow for future copy-on-write optimizations, there is a distinction
     between writable and const access, the get() method is modified to return
     only a const pointer, with get_mutable() added to return a writable pointer.
+    Furthermore, derefencing (operator*()) a mutable pointer will give a mutable
+    reference (in so far as T is not declared const), and dereferencing a
+    const pointer will give a const reference.
 
  This class is entirely inline and has no computational or space overhead except
  when copying is required; it contains just a single pointer and does no
@@ -71,7 +74,7 @@ namespace drake {
  @code
  copyable_unique_ptr<Base> cu_ptr = make_unique<Derived>();
  copyable_unique_ptr<Base> other_cu_ptr = cu_ptr;           // Triggers a copy.
- is_dynamic_castable<Derived>(cu_other_ptr.get());          // Should be true.
+ is_dynamic_castable<Derived>(other_cu_ptr.get());          // Should be true.
  @endcode
 
  This works for well-designed polymorphic classes.
@@ -81,15 +84,8 @@ namespace drake {
  instead of `Derived`. Some mistakes that would lead to this degenerate
  behavior:
 
-   - The `Base` class has a public copy constructor.
    - The `Base` class's Clone() implementation does not invoke the `Derived`
    class's implementation of a suitable virtual method.
-
- @warning One important difference between unique_ptr and %copyable_unique_ptr
- is that a unique_ptr can be declared on a forward-declared class type. The
- %copyable_unique_ptr _cannot_. The class must be fully defined so that the
- %copyable_unique_ptr is able to determine if the type meets the requirements
- (i.e., public copy constructible or cloneable).
 
  <!--
  For future developers:
@@ -116,9 +112,14 @@ class copyable_unique_ptr : public std::unique_ptr<T> {
    %copyable_unique_ptr. */
   copyable_unique_ptr() noexcept : std::unique_ptr<T>() {}
 
-  /** Given a pointer to a writable heap-allocated object, take over
+  /** Given a raw pointer to a writable heap-allocated object, take over
    ownership of that object. No copying occurs. */
-  explicit copyable_unique_ptr(T* ptr) noexcept : std::unique_ptr<T>(ptr) {}
+  explicit copyable_unique_ptr(T* raw) noexcept : std::unique_ptr<T>(raw) {}
+
+  /** Constructs a unique instance of T as a copy of the provided model value.
+   */
+  explicit copyable_unique_ptr(const T& value)
+      : std::unique_ptr<T>(CopyOrNull(&value)) {}
 
   /** Copy constructor is deep; the new %copyable_unique_ptr object contains a
    new copy of the object in the source, created via the source object's
@@ -165,8 +166,8 @@ class copyable_unique_ptr : public std::unique_ptr<T> {
   /** This form of assignment replaces the currently-held object by
    the given source object and takes over ownership of the source object. The
    currently-held object (if any) is deleted. */
-  copyable_unique_ptr& operator=(T* ptr) noexcept {
-    std::unique_ptr<T>::reset(ptr);
+  copyable_unique_ptr& operator=(T* raw) noexcept {
+    std::unique_ptr<T>::reset(raw);
     return *this;
   }
 
@@ -283,6 +284,9 @@ class copyable_unique_ptr : public std::unique_ptr<T> {
    here for that purpose. */
   const T* get() const noexcept { return std::unique_ptr<T>::get(); }
 
+  // TODO(SeanCurtis-TRI): Consider adding some debug assertions about whether
+  // T is const or not. If so, it would be nice to give feedback that calling
+  // the mutable version makes no sense.
   /** Return a writable pointer to the contained object if any, or `nullptr`.
    Note that you need write access to this container in order to get write
    access to the object it contains.
@@ -291,6 +295,48 @@ class copyable_unique_ptr : public std::unique_ptr<T> {
    parameter (e.g., `copyable_unique_ptr<const Foo>`), then get_mutable()
    returns a const pointer. */
   T* get_mutable() noexcept { return std::unique_ptr<T>::get(); }
+
+  // TODO(15344) We need to shore up this const correctness hole. Rather than an
+  //  is-a relationship, we need some alternative relationship that will provide
+  //  the same functionality but not be upcastable. One possibility is to own
+  //  an unique_ptr and forward various APIs. Another is to implement from
+  //  scratch. The current "is-A" relationship was intended so that the
+  //  copyable_unique_ptr could be used where unique_ptrs are used. What would
+  //  the impact of such a change in the relationship be to Drake and Drake
+  //  users?
+
+  /** Return a const reference to the contained object. Note that this is
+   different from `std::unique_ptr::operator*()` which would return a non-const
+   reference (if `T` is non-const), even if the container itself is const. For
+   a const %copyable_unique_ptr will always return a const reference to its
+   contained value.
+
+   @warning Currently %copyable_unique_ptr is a std::unique_ptr. As such, a
+   const copyable_unique_ptr<Foo> can be upcast to a const unique_ptr<Foo> and
+   the parent's behavior will provide a mutable reference. This is strongly
+   discouraged and will break as the implementation of this class changes to
+   shore up this gap in the const correctness protection.
+
+   @pre `this != nullptr` reports `true`. */
+  const T& operator*() const { return *get(); }
+
+  /** Return a writable reference to the contained object (if T is itself not
+   const). Note that you need write access to this container in order to get
+   write access to the object it contains.
+
+   We *strongly* recommend, that, if dereferencing a %copyable_unique_ptr
+   without the intention of mutating the underlying value, prefer to dereference
+   a *const* %copyable_unique_ptr (or use *my_ptr.get()) and not a mutable
+   %copyable_unique_ptr. As "copy-on-write" behavior is introduced in the
+   future, this recommended practice will prevent unwanted copies of the
+   underlying value.
+
+   If %copyable_unique_ptr is instantiated on a const template parameter (e.g.,
+   `copyable_unique_ptr<const Foo>`), then operator*() must return a const
+   reference.
+
+   @pre `this != nullptr` reports `true`. */
+  T& operator*() { return *get_mutable(); }
 
   /**@}*/
  private:
@@ -316,16 +362,14 @@ class copyable_unique_ptr : public std::unique_ptr<T> {
 
   // True iff type T provides a copy constructor that is accessible from
   // %copyable_unique_ptr<T>. Invoke with `can_copy(1)`; the argument is used
-  // to select the right method. Note that if both `can_copy()` and
-  // `can_clone()` return true, we will prefer the copy constructor over the
-  // Clone() method.
+  // to select the right method.
   static constexpr bool can_copy(...) { return false; }
 
   // If this instantiates successfully it will be the preferred method called
   // when an integer argument is provided.
   template <typename U = T>
   static constexpr std::enable_if_t<
-      std::is_same<decltype(U(std::declval<const U&>())), U>::value,
+      std::is_same_v<decltype(U(std::declval<const U&>())), U>,
       bool>
   can_copy(int) {
     return true;
@@ -341,38 +385,33 @@ class copyable_unique_ptr : public std::unique_ptr<T> {
   // when an integer argument is provide.
   template <typename U = T>
   static constexpr std::enable_if_t<
-      std::is_same<decltype(std::declval<const U>().Clone()),
-                   std::unique_ptr<std::remove_const_t<U>>>::value,
+      std::is_same_v<decltype(std::declval<const U>().Clone()),
+                     std::unique_ptr<std::remove_const_t<U>>>,
       bool>
   can_clone(int) {
     return true;
   }
 
-  static_assert(
-      can_copy(1) || can_clone(1),
-      "copyable_unique_ptr<T> can only be used with a 'copyable' class T, "
-      "requiring either a copy constructor or a Clone method of the form "
-      "'unique_ptr<T> Clone() const', accessible to copyable_unique_ptr<T>. "
-      "You may need to friend copyable_unique_ptr<T>.");
-
-  // Selects Clone iff there is no copy constructor and the Clone method is of
-  // the expected form.
-  template <typename U = T>
-  static typename std::enable_if<!can_copy(1) && can_clone(1), U*>::type
-  CopyOrNullHelper(const U* ptr, int) {
-    return ptr->Clone().release();
-  }
-
-  // Default to copy constructor if present.
-  template <typename U>
-  static
-  U* CopyOrNullHelper(const U* ptr, ...) {
-    return new U(*ptr);
-  }
-
   // If src is non-null, clone it; otherwise return nullptr.
-  static T* CopyOrNull(const T *ptr) {
-    return ptr ? CopyOrNullHelper(ptr, 1) : nullptr;
+  // If both can_copy() and can_clone() return true, we will prefer the Clone()
+  // function over the copy constructor.
+  // The caller has ownership over the return value.
+  static T* CopyOrNull(const T* raw) {
+    constexpr bool check_can_clone = can_clone(1);
+    constexpr bool check_can_copy = can_copy(1);
+    static_assert(
+        check_can_clone || check_can_copy,
+        "copyable_unique_ptr<T> can only be used with a 'copyable' class T, "
+        "requiring either a copy constructor or a Clone method of the form "
+        "'unique_ptr<T> Clone() const'.");
+    if (raw == nullptr) {
+      return nullptr;
+    }
+    if constexpr (check_can_clone) {
+      return raw->Clone().release();
+    } else {
+      return new T(*raw);
+    }
   }
 };
 

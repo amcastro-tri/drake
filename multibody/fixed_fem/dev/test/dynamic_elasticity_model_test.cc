@@ -5,15 +5,15 @@
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/geometry/proximity/make_box_mesh.h"
 #include "drake/math/autodiff_gradient.h"
+#include "drake/multibody/fem/linear_simplex_element.h"
+#include "drake/multibody/fem/simplex_gaussian_quadrature.h"
 #include "drake/multibody/fixed_fem/dev/dynamic_elasticity_element.h"
 #include "drake/multibody/fixed_fem/dev/fem_state.h"
 #include "drake/multibody/fixed_fem/dev/linear_constitutive_model.h"
-#include "drake/multibody/fixed_fem/dev/linear_simplex_element.h"
-#include "drake/multibody/fixed_fem/dev/simplex_gaussian_quadrature.h"
 
 namespace drake {
 namespace multibody {
-namespace fixed_fem {
+namespace fem {
 namespace {
 constexpr int kNaturalDimension = 3;
 constexpr int kSpatialDimension = 3;
@@ -21,11 +21,12 @@ constexpr int kSolutionDimension = 3;
 constexpr int kQuadratureOrder = 1;
 using T = AutoDiffXd;
 using QuadratureType =
-    SimplexGaussianQuadrature<kNaturalDimension, kQuadratureOrder>;
-constexpr int kNumQuads = QuadratureType::num_quadrature_points();
+    internal::SimplexGaussianQuadrature<kNaturalDimension, kQuadratureOrder>;
+constexpr int kNumQuads = QuadratureType::num_quadrature_points;
 using IsoparametricElementType =
-    LinearSimplexElement<T, kNaturalDimension, kSpatialDimension, kNumQuads>;
-using ConstitutiveModelType = LinearConstitutiveModel<T, kNumQuads>;
+    internal::LinearSimplexElement<T, kNaturalDimension, kSpatialDimension,
+                                   kNumQuads>;
+using ConstitutiveModelType = internal::LinearConstitutiveModel<T, kNumQuads>;
 using ElementType =
     DynamicElasticityElement<IsoparametricElementType, QuadratureType,
                              ConstitutiveModelType>;
@@ -84,9 +85,9 @@ class DynamicElasticityModelTest : public ::testing::Test {
     FemState<ElementType> deformed_state = model_.MakeFemState();
     /* Perturb qddot and set up derivatives. */
     const Vector<double, kNumDofs> perturbed_qddot =
-        math::autoDiffToValueMatrix(deformed_state.qddot()) + perturbation();
+        math::ExtractValue(deformed_state.qddot()) + perturbation();
     Vector<T, kNumDofs> perturbed_qddot_autodiff;
-    math::initializeAutoDiff(perturbed_qddot, perturbed_qddot_autodiff);
+    math::InitializeAutoDiff(perturbed_qddot, &perturbed_qddot_autodiff);
     /* It's important to set up the `deformed_state` with AdvanceOneTimeStep()
      so that the derivatives such as dq/dqddot are set up. */
     model_.AdvanceOneTimeStep(reference_state, perturbed_qddot_autodiff,
@@ -152,6 +153,6 @@ TEST_F(DynamicElasticityModelTest, MultipleMesh) {
       CompareMatrices(residual.head(kNumDofs), residual.tail(kNumDofs), 0));
 }
 }  // namespace
-}  // namespace fixed_fem
+}  // namespace fem
 }  // namespace multibody
 }  // namespace drake

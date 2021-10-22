@@ -84,8 +84,8 @@ void DirectCollocationConstraint::dynamics(const AutoDiffVecXd& state,
 void DirectCollocationConstraint::DoEval(
     const Eigen::Ref<const Eigen::VectorXd>& x, Eigen::VectorXd* y) const {
   AutoDiffVecXd y_t;
-  Eval(math::initializeAutoDiff(x), &y_t);
-  *y = math::autoDiffToValueMatrix(y_t);
+  Eval(math::InitializeAutoDiff(x), &y_t);
+  *y = math::ExtractValue(y_t);
 }
 
 // The format of the input to the eval() function is the
@@ -210,7 +210,7 @@ void DirectCollocation::DoAddRunningCost(const symbolic::Expression& g) {
 
 PiecewisePolynomial<double> DirectCollocation::ReconstructInputTrajectory(
     const solvers::MathematicalProgramResult& result) const {
-  DRAKE_DEMAND(input_port_);
+  DRAKE_DEMAND(input_port_ != nullptr);
   Eigen::VectorXd times = GetSampleTimes(result);
   std::vector<double> times_vec(N());
   std::vector<Eigen::MatrixXd> inputs(N());

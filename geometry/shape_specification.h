@@ -58,7 +58,7 @@ class Shape {
    Provides optional user-data (cast as a void*) for the reifier to consume. */
   void Reify(ShapeReifier* reifier, void* user_data = nullptr) const;
 
-  /** Creates a unique copy of this shape. Invokes the protected DoClone(). */
+  /** Creates a unique copy of this shape. */
   std::unique_ptr<Shape> Clone() const;
 
  protected:
@@ -106,8 +106,8 @@ class Sphere final : public Shape {
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Sphere)
 
   /** Constructs a sphere with the given `radius`.
-   @throws std::logic_error if `radius` is negative. Note that a zero radius is
-   is considered valid. */
+   @throws std::exception if `radius` is negative. Note that a zero radius is
+   considered valid. */
   explicit Sphere(double radius);
 
   double radius() const { return radius_; }
@@ -123,7 +123,7 @@ class Cylinder final : public Shape {
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Cylinder)
 
   /** Constructs a cylinder with the given `radius` and `length`.
-   @throws std::logic_error if `radius` or `length` are not strictly positive.
+   @throws std::exception if `radius` or `length` are not strictly positive.
    */
   Cylinder(double radius, double length);
 
@@ -145,7 +145,7 @@ class Box final : public Shape {
   /** Constructs a box with the given `width`, `depth`, and `height`, which
    specify the box's dimension along the canonical x-, y-, and z-axes,
    respectively.
-   @throws std::logic_error if `width`, `depth` or `height` are not strictly
+   @throws std::exception if `width`, `depth` or `height` are not strictly
    positive. */
   Box(double width, double depth, double height);
 
@@ -181,7 +181,7 @@ class Capsule final : public Shape {
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Capsule)
 
   /** Constructs a capsule with the given `radius` and `length`.
-   @throws std::logic_error if `radius` or `length` are not strictly positive.
+   @throws std::exception if `radius` or `length` are not strictly positive.
    */
   Capsule(double radius, double length);
 
@@ -207,7 +207,7 @@ class Ellipsoid final : public Shape {
 
   /** Constructs an ellipsoid with the given lengths of its principal
    semi-axes.
-   @throws std::logic_error if `a`, `b`, or `c` are not strictly positive.
+   @throws std::exception if `a`, `b`, or `c` are not strictly positive.
    */
   Ellipsoid(double a, double b, double c);
 
@@ -243,25 +243,29 @@ class HalfSpace final : public Shape {
    @param p_FB      A point B lying on the half space's boundary measured
                     and expressed in frame F.
    @retval X_FH     The pose of the canonical half-space in frame F.
-   @throws std::logic_error if the normal is _close_ to a zero-vector (e.g.,
-                            ‖normal_F‖₂ < ε). */
+   @throws std::exception if the normal is _close_ to a zero-vector (e.g.,
+                          ‖normal_F‖₂ < ε). */
   static math::RigidTransform<double> MakePose(const Vector3<double>& Hz_dir_F,
                                                const Vector3<double>& p_FB);
 };
 
-// TODO(DamrongGuoy): Update documentation when the level of support for
-//  meshes extends to more collision and rendering.
-/** Limited support for meshes. Meshes are supported in Rendering and
- Illustration roles. For Proximity role, Meshes are supported in
- ComputeContactSurfaces() query only. No other proximity queries are supported.
- */
+// TODO(DamrongGuoy): Update documentation when mesh is fully supported (i.e.,
+// doesn't require equivocation here).
+/** Definition of a general (possibly non-convex) triangular surface mesh.
+ Meshes can be used for illustration and perception roles, but have limited
+ proximity support. See the documentation of QueryObject's proximity queries to
+ see how meshes are used in each type of proximity query.
+
+ The mesh is defined in a canonical frame C, implicit in the file parsed. Upon
+ loading it in SceneGraph it can be scaled around the origin of C by a given
+ `scale` amount. */
 class Mesh final : public Shape {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Mesh)
 
   /** Constructs a mesh specification from the mesh file located at the given
    _absolute_ file path. Optionally uniformly scaled by the given scale factor.
-   @throws std::logic_error if |scale| < 1e-8. Note that a negative scale is
+   @throws std::exception if |scale| < 1e-8. Note that a negative scale is
    considered valid. We want to preclude scales near zero but recognise that
    scale is a convenience tool for "tweaking" models. 8 orders of magnitude
    should be plenty without considering revisiting the model itself. */
@@ -276,7 +280,11 @@ class Mesh final : public Shape {
   double scale_;
 };
 
-/** Support for convex shapes. */
+/** Definition of a *convex* surface mesh.
+
+ The mesh is defined in a canonical frame C, implicit in the file parsed. Upon
+ loading it in SceneGraph it can be scaled around the origin of C by a given
+ `scale` amount. */
 class Convex final : public Shape {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Convex)
@@ -289,12 +297,12 @@ class Convex final : public Shape {
                                 We assume that the polyhedron is convex.
    @param scale                 An optional scale to coordinates.
 
-   @throws std::runtime_error   if the .obj file doesn't define a single object.
+   @throws std::exception       if the .obj file doesn't define a single object.
                                 This can happen if it is empty, if there are
                                 multiple object-name statements (e.g.,
                                 "o object_name"), or if there are faces defined
                                 outside a single object-name statement.
-   @throws std::logic_error     if |scale| < 1e-8. Note that a negative scale is
+   @throws std::exception       if |scale| < 1e-8. Note that a negative scale is
                                 considered valid. We want to preclude scales
                                 near zero but recognise that scale is a
                                 convenience tool for "tweaking" models. 8 orders
@@ -308,6 +316,39 @@ class Convex final : public Shape {
  private:
   std::string filename_;
   double scale_;
+};
+
+// TODO(russt): Rename this to `Cone` if/when it is supported by more of the
+// geometry engine.
+/** Definition of a cone. Its point is at the origin, its height extends in the
+ direction of the frame's +z axis. Or, more formally: a finite section of a
+ Lorentz cone (aka "second-order cone"), defined by
+
+      sqrt(x²/a² + y²/b²) ≤ z;  z ∈ [0, height],
+
+ where `a` and `b` are the lengths of the principle semi-axes of the horizontal
+ section at `z=1`.
+
+ This shape is currently only supported by Meshcat. It will not appear in any
+ renderings, proximity queries, or other visualizers.
+*/
+class MeshcatCone final : public Shape {
+ public:
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(MeshcatCone)
+
+  /** Constructs the parameterized cone.
+   @throws std::exception if `height`, `a`, or `b` are not strictly positive.
+   */
+  explicit MeshcatCone(double height, double a = 1.0, double b = 1.0);
+
+  double height() const { return height_; }
+  double a() const { return a_; }
+  double b() const { return b_; }
+
+ private:
+  double height_;
+  double a_;
+  double b_;
 };
 
 /** The interface for converting shape descriptions to real shapes. Any entity
@@ -347,8 +388,8 @@ class Convex final : public Shape {
    }
    ...
    void ImplementGeometry(const Sphere& sphere, void* data) override {
-     DRAKE_ASSERT(data);
-     ImportantData& data = *reinterpret_cast<ImportantData*>(data);
+     DRAKE_ASSERT(data != nullptr);
+     ImportantData& data = *static_cast<ImportantData*>(data);
      // Do work to create a sphere using the provided user data.
    }
  };
@@ -371,6 +412,7 @@ class ShapeReifier {
   virtual void ImplementGeometry(const Ellipsoid& ellipsoid, void* user_data);
   virtual void ImplementGeometry(const Mesh& mesh, void* user_data);
   virtual void ImplementGeometry(const Convex& convex, void* user_data);
+  virtual void ImplementGeometry(const MeshcatCone& cone, void* user_data);
 
  protected:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(ShapeReifier)
@@ -384,7 +426,7 @@ class ShapeReifier {
 
 template <typename S>
 Shape::Shape(ShapeTag<S>) {
-  static_assert(std::is_base_of<Shape, S>::value,
+  static_assert(std::is_base_of_v<Shape, S>,
                 "Concrete shapes *must* be derived from the Shape class");
   cloner_ = [](const Shape& shape_arg) {
     DRAKE_DEMAND(typeid(shape_arg) == typeid(S));
@@ -441,6 +483,9 @@ class ShapeName final : public ShapeReifier {
   }
   void ImplementGeometry(const Convex&, void*) final {
     string_ = "Convex";
+  }
+  void ImplementGeometry(const MeshcatCone&, void*) final {
+    string_ = "MeshcatCone";
   }
 
   //@}

@@ -6,19 +6,22 @@
 #include <vector>
 
 #include "drake/common/eigen_types.h"
+#include "drake/geometry/geometry_roles.h"
 #include "drake/geometry/proximity/volume_mesh.h"
 #include "drake/multibody/fixed_fem/dev/deformable_body_config.h"
 #include "drake/multibody/fixed_fem/dev/fem_model_base.h"
+#include "drake/multibody/fixed_fem/dev/mesh_utilities.h"
 #include "drake/multibody/plant/physical_model.h"
 
 namespace drake {
 namespace multibody {
-namespace fixed_fem {
+namespace fem {
 // TODO(xuchenhan-tri): Consider changing the name to DeformableSolidModel.
 /** %DeformableModel implements the interface in PhysicalModel and provides the
  functionalities to specify deformable bodies. Unlike rigid bodies, the shape of
  deformable bodies can change in a simulation. Each deformable body is modeled
- as a volumetric mesh with persisting topology and changing vertex positions.
+ as a volumetric mesh with persisting topology, changing vertex positions, and
+ an approximated signed distance field.
 
  Deformable bodies can only be added, but not deleted. Each deformable body is
  uniquely identified by its index, which is equal to the number of deformable
@@ -34,10 +37,11 @@ namespace fixed_fem {
  and 3j + 2 in the i-th VectorX from the output port.
 
  The connectivity of the meshes representing the deformable bodies and their
- initial positions can be queried via `reference_configuration_meshes()` which
- returns an std::vector of volume meshes. The i-th mesh stores the connectivity
- for body i, which does not change throughout the simulation, as well as the
- initial positions of the vertices of the i-th body.
+ initial positions can be queried via `reference_configuration_geometries()`
+ which returns the geometries of the deformable bodies at the reference
+ configuration. The i-th mesh stores the connectivity for body i, which does not
+ change throughout the simulation, as well as the initial positions of the
+ vertices of the i-th body.
 
  Simple zero DirichletBoundaryCondition can be configured via
  `SetRegisteredBodyInWall()`.
@@ -59,14 +63,18 @@ class DeformableModel final : public multibody::internal::PhysicalModel<T> {
   // TODO(xuchenhan-tri): Identify deformable bodies with actual identifiers,
   //  which would make deleting deformable bodies easier to track in the future.
   /** Adds a deformable body modeled with linear simplex element, linear
-   quadrature rule and the physical properties specified by the given `config`.
-   Returns the index of the newly added deformable body.
+   quadrature rule, the physical properties specified by the given `config`,
+   and proximity properties specified by the given `proximity_props`. Returns
+   the index of the newly added deformable body.
    @pre config.IsValid() == true.
+   @pre `proximity_props` includes the (`material`, `coulomb_friction`) property
+   of type CoulombFriction<double>.
    @throw std::exception if `name` is not distinct from names of all previously
    registered bodies. */
-  SoftBodyIndex RegisterDeformableBody(const geometry::VolumeMesh<T>& mesh,
-                                       std::string name,
-                                       const DeformableBodyConfig<T>& config);
+  DeformableBodyIndex RegisterDeformableBody(
+      internal::ReferenceDeformableGeometry<T> geometry, std::string name,
+      const DeformableBodyConfig<T>& config,
+      geometry::ProximityProperties proximity_props);
 
   /** Sets zero Dirichlet boundary conditions for a given body. All vertices in
    the mesh of corresponding to the deformable body with `body_id` within
@@ -74,16 +82,21 @@ class DeformableModel final : public multibody::internal::PhysicalModel<T> {
    `p_WQ` and outward normal `n_W` will be set with a wall boundary condition.
    @pre n_W.norm() > 1e-10.
    @throw std::exception if body_id >= num_bodies(). */
-  void SetWallBoundaryCondition(SoftBodyIndex body_id, const Vector3<T>& p_WQ,
-                                const Vector3<T>& n_W,
+  void SetWallBoundaryCondition(DeformableBodyIndex body_id,
+                                const Vector3<T>& p_WQ, const Vector3<T>& n_W,
                                 double distance_tolerance = 1e-6);
 
   /** Returns the number of deformable bodies registered. */
-  int num_bodies() const { return reference_configuration_meshes_.size(); }
+  int num_bodies() const { return reference_configuration_geometries_.size(); }
+
+  // TODO(xuchenhan-tri): Implement the O(1) `num_dofs()` that precomputes the
+  //  result at initialization phase.
+  /** Returns the number deformable degrees of freedom. */
+  int NumDofs() const;
 
   /** Returns the FEM model of the selected deformable body. Each deformable
    body is modeled as an individual FEM model. */
-  const FemModelBase<T>& fem_model(SoftBodyIndex body_index) const {
+  const FemModelBase<T>& fem_model(DeformableBodyIndex body_index) const {
     DRAKE_DEMAND(body_index < num_bodies());
     return *fem_models_[body_index];
   }
@@ -96,12 +109,19 @@ class DeformableModel final : public multibody::internal::PhysicalModel<T> {
     return discrete_state_indexes_;
   }
 
-  /** Returns the volume meshes of the deformable bodies at reference
-   configuration. The meshes have the same order as the registration of their
-   corresponding deformable bodies. */
-  const std::vector<geometry::VolumeMesh<T>>& reference_configuration_meshes()
+  /** Returns the geometries of the deformable bodies at reference
+   configuration. The geometries have the same order as the registration of
+   their corresponding deformable bodies. */
+  const std::vector<internal::ReferenceDeformableGeometry<T>>&
+  reference_configuration_geometries() const {
+    return reference_configuration_geometries_;
+  }
+
+  /* Returns the proximity properties of the registered deformable bodies in the
+   same order as they are registered. */
+  const std::vector<geometry::ProximityProperties>& proximity_properties()
       const {
-    return reference_configuration_meshes_;
+    return proximity_properties_;
   }
 
   /** Returns the names of all the registered deformable bodies in the same
@@ -125,6 +145,9 @@ class DeformableModel final : public multibody::internal::PhysicalModel<T> {
   }
 
  private:
+  // TODO(xuchenhan-tri): Implement CloneToDouble() and CloneToAutoDiffXd() and
+  //  the corresponding is_cloneable methods.
+
   /* Registers a deformable body with the given type of constitutive model.
    @tparam Model  The type of constitutive model for the new deformable body,
                   must be derived from ConstitutiveModel. */
@@ -139,13 +162,16 @@ class DeformableModel final : public multibody::internal::PhysicalModel<T> {
   const MultibodyPlant<T>* plant_{nullptr};
   /* The FemModels owned by this DeformableModel. One per deformable body. */
   std::vector<std::unique_ptr<FemModelBase<T>>> fem_models_{};
-  /* Initial meshes for all deformable bodies at time of registration. */
-  std::vector<geometry::VolumeMesh<T>> reference_configuration_meshes_{};
+  /* The geometries of the deformable bodies at reference configuration. */
+  std::vector<internal::ReferenceDeformableGeometry<T>>
+      reference_configuration_geometries_{};
   /* The state of each deformable body at reference configuration. This contains
    the same information as the vertex positions in
-   reference_configuration_meshes_, but is stored in a more convenient format.
-  */
+   reference_configuration_geometries_, but is stored in a more convenient
+   format. */
   std::vector<VectorX<T>> model_discrete_states_;
+  /* Proximity properties for all registered deformable bodies. */
+  std::vector<geometry::ProximityProperties> proximity_properties_{};
   /* Names of all registered deformable bodies. */
   std::vector<std::string> names_{};
   /* OutputPorts. */
@@ -153,8 +179,8 @@ class DeformableModel final : public multibody::internal::PhysicalModel<T> {
   /* The discrete state indexes for all deformable bodies. */
   std::vector<systems::DiscreteStateIndex> discrete_state_indexes_;
 };
-}  // namespace fixed_fem
+}  // namespace fem
 }  // namespace multibody
 }  // namespace drake
 DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    class ::drake::multibody::fixed_fem::DeformableModel);
+    class ::drake::multibody::fem::DeformableModel);

@@ -26,14 +26,18 @@ from pydrake.multibody.plant import (
 class TestParsing(unittest.TestCase):
 
     def test_package_map(self):
+        # Simple coverage test for default constructor
         dut = PackageMap()
-        dut2 = PackageMap()
+        self.assertEqual(dut.size(), 1)
+
+        dut = PackageMap.MakeEmpty()
+        dut2 = PackageMap.MakeEmpty()
         tmpdir = os.environ.get('TEST_TMPDIR')
         model = FindResourceOrThrow(
             "drake/examples/atlas/urdf/atlas_minimal_contact.urdf")
 
         # Simple coverage test for Add, AddMap, Contains, size,
-        # GetPackageNames, GetPath, AddPackageXml.
+        # GetPackageNames, GetPath, AddPackageXml, Remove.
         dut.Add(package_name="root", package_path=tmpdir)
         dut2.Add(package_name="root", package_path=tmpdir)
         dut.AddMap(dut2)
@@ -43,6 +47,8 @@ class TestParsing(unittest.TestCase):
         self.assertEqual(dut.GetPath(package_name="root"), tmpdir)
         dut.AddPackageXml(filename=FindResourceOrThrow(
             "drake/multibody/parsing/test/box_package/package.xml"))
+        dut2.Remove(package_name="root")
+        self.assertEqual(dut2.size(), 0)
 
         # Simple coverage test for Drake paths.
         dut.PopulateUpstreamToDrake(model_file=model)

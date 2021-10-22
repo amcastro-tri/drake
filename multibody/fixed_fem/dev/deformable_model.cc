@@ -1,22 +1,23 @@
 #include "drake/multibody/fixed_fem/dev/deformable_model.h"
 
+#include "drake/multibody/fem/linear_simplex_element.h"
+#include "drake/multibody/fem/simplex_gaussian_quadrature.h"
 #include "drake/multibody/fixed_fem/dev/corotated_model.h"
 #include "drake/multibody/fixed_fem/dev/dirichlet_boundary_condition.h"
 #include "drake/multibody/fixed_fem/dev/dynamic_elasticity_element.h"
 #include "drake/multibody/fixed_fem/dev/dynamic_elasticity_model.h"
 #include "drake/multibody/fixed_fem/dev/linear_constitutive_model.h"
-#include "drake/multibody/fixed_fem/dev/linear_simplex_element.h"
-#include "drake/multibody/fixed_fem/dev/simplex_gaussian_quadrature.h"
 #include "drake/multibody/plant/multibody_plant.h"
 
 namespace drake {
 namespace multibody {
-namespace fixed_fem {
+namespace fem {
 
 template <typename T>
-SoftBodyIndex DeformableModel<T>::RegisterDeformableBody(
-    const geometry::VolumeMesh<T>& mesh, std::string name,
-    const DeformableBodyConfig<T>& config) {
+DeformableBodyIndex DeformableModel<T>::RegisterDeformableBody(
+    internal::ReferenceDeformableGeometry<T> geometry, std::string name,
+    const DeformableBodyConfig<T>& config,
+    geometry::ProximityProperties proximity_props) {
   /* Throw if name is not unique. */
   for (int i = 0; i < num_bodies(); ++i) {
     if (name == names_[i]) {
@@ -25,22 +26,24 @@ SoftBodyIndex DeformableModel<T>::RegisterDeformableBody(
           name));
     }
   }
-  SoftBodyIndex body_index(num_bodies());
+  DeformableBodyIndex body_index(num_bodies());
   switch (config.material_model()) {
     case MaterialModel::kLinear:
-      RegisterDeformableBodyHelper<LinearConstitutiveModel>(
-          mesh, std::move(name), config);
+      RegisterDeformableBodyHelper<internal::LinearConstitutiveModel>(
+          geometry.mesh(), std::move(name), config);
       break;
     case MaterialModel::kCorotated:
-      RegisterDeformableBodyHelper<CorotatedModel>(mesh, std::move(name),
-                                                   config);
+      RegisterDeformableBodyHelper<internal::CorotatedModel>(
+          geometry.mesh(), std::move(name), config);
       break;
   }
+  proximity_properties_.emplace_back(std::move(proximity_props));
+  reference_configuration_geometries_.emplace_back(std::move(geometry));
   return body_index;
 }
 
 template <typename T>
-void DeformableModel<T>::SetWallBoundaryCondition(SoftBodyIndex body_id,
+void DeformableModel<T>::SetWallBoundaryCondition(DeformableBodyIndex body_id,
                                                   const Vector3<T>& p_WQ,
                                                   const Vector3<T>& n_W,
                                                   double distance_tolerance) {
@@ -72,6 +75,15 @@ void DeformableModel<T>::SetWallBoundaryCondition(SoftBodyIndex body_id,
 }
 
 template <typename T>
+int DeformableModel<T>::NumDofs() const {
+  int dofs = 0;
+  for (const auto& fem_model : fem_models_) {
+    dofs += fem_model->num_dofs();
+  }
+  return dofs;
+}
+
+template <typename T>
 template <template <class, int> class Model>
 void DeformableModel<T>::RegisterDeformableBodyHelper(
     const geometry::VolumeMesh<T>& mesh, std::string name,
@@ -80,17 +92,19 @@ void DeformableModel<T>::RegisterDeformableBodyHelper(
   constexpr int kSpatialDimension = 3;
   constexpr int kQuadratureOrder = 1;
   using QuadratureType =
-      SimplexGaussianQuadrature<kNaturalDimension, kQuadratureOrder>;
-  constexpr int kNumQuads = QuadratureType::num_quadrature_points();
+      internal::SimplexGaussianQuadrature<kNaturalDimension, kQuadratureOrder>;
+  constexpr int kNumQuads = QuadratureType::num_quadrature_points;
   using IsoparametricElementType =
-      LinearSimplexElement<T, kNaturalDimension, kSpatialDimension, kNumQuads>;
+      internal::LinearSimplexElement<T, kNaturalDimension, kSpatialDimension,
+                                     kNumQuads>;
   using ConstitutiveModelType = Model<T, kNumQuads>;
-  static_assert(std::is_base_of_v<
-                    ConstitutiveModel<ConstitutiveModelType,
+  static_assert(
+      std::is_base_of_v<
+          internal::ConstitutiveModel<ConstitutiveModelType,
                                       typename ConstitutiveModelType::Traits>,
-                    ConstitutiveModelType>,
-                "The template parameter 'Model' must be derived from "
-                "ConstitutiveModel.");
+          ConstitutiveModelType>,
+      "The template parameter 'Model' must be derived from "
+      "ConstitutiveModel.");
   using ElementType =
       DynamicElasticityElement<IsoparametricElementType, QuadratureType,
                                ConstitutiveModelType>;
@@ -117,7 +131,6 @@ void DeformableModel<T>::RegisterDeformableBodyHelper(
   model_discrete_states_.emplace_back(discrete_state);
 
   fem_models_.emplace_back(std::move(fem_model));
-  reference_configuration_meshes_.emplace_back(mesh);
   names_.emplace_back(std::move(name));
 }
 
@@ -128,7 +141,7 @@ void DeformableModel<T>::DoDeclareSystemResources(MultibodyPlant<T>* plant) {
   /* Declare output ports. */
   vertex_positions_port_ = &this->DeclareAbstractOutputPort(
       plant, "vertex_positions",
-      []() { return AbstractValue::Make(std::vector<VectorX<T>>{}); },
+      []() { return AbstractValue::Make<std::vector<VectorX<T>>>(); },
       [this](const systems::Context<T>& context, AbstractValue* output) {
         std::vector<VectorX<T>>& output_value =
             output->get_mutable_value<std::vector<VectorX<T>>>();
@@ -136,9 +149,8 @@ void DeformableModel<T>::DoDeclareSystemResources(MultibodyPlant<T>* plant) {
         const systems::DiscreteValues<T>& all_discrete_states =
             context.get_discrete_state();
         for (int i = 0; i < num_bodies(); ++i) {
-          const systems::BasicVector<T>& discrete_state =
-              all_discrete_states.get_vector(discrete_state_indexes_[i]);
-          const auto& discrete_value = discrete_state.get_value();
+          const auto& discrete_value =
+              all_discrete_states.get_value(discrete_state_indexes_[i]);
           const int num_dofs = discrete_value.size() / 3;
           const auto& q = discrete_value.head(num_dofs);
           output_value[i] = q;
@@ -152,9 +164,9 @@ void DeformableModel<T>::DoDeclareSystemResources(MultibodyPlant<T>* plant) {
         this->DeclareDiscreteState(plant, model_discrete_states_[i]));
   }
 }
-}  // namespace fixed_fem
+}  // namespace fem
 }  // namespace multibody
 }  // namespace drake
 
 DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    class ::drake::multibody::fixed_fem::DeformableModel);
+    class ::drake::multibody::fem::DeformableModel);

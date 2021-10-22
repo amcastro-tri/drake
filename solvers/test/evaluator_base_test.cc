@@ -68,15 +68,15 @@ struct GenericTrivialFunctor {
 AssertionResult CompareAutodiff(const AutoDiffVecXd& tx_expected,
                                 const AutoDiffVecXd& tx_actual,
                                 double tolerance = 0.0) {
-  const VectorXd x_expected = math::autoDiffToValueMatrix(tx_expected);
-  const VectorXd x_actual = math::autoDiffToValueMatrix(tx_actual);
+  const VectorXd x_expected = math::ExtractValue(tx_expected);
+  const VectorXd x_actual = math::ExtractValue(tx_actual);
   AssertionResult value_result =
       CompareMatrices(x_expected, x_actual, tolerance);
   if (!value_result) {
     return value_result << "(value)";
   }
-  const MatrixXd dx_expected = math::autoDiffToGradientMatrix(tx_expected);
-  const MatrixXd dx_actual = math::autoDiffToGradientMatrix(tx_actual);
+  const MatrixXd dx_expected = math::ExtractGradient(tx_expected);
+  const MatrixXd dx_actual = math::ExtractGradient(tx_actual);
   AssertionResult grad_result =
       CompareMatrices(dx_expected, dx_actual, tolerance);
   if (!grad_result) {
@@ -98,10 +98,10 @@ void VerifyFunctionEvaluator(F&& f, const VectorXd& x) {
   // inferring T from Eigen::Ref<VectorX<T>>. It works in FunctionEvaluator
   // because Ref<VectorX<T>> is already determined by the function signature.
   deref(f).template eval<double>(x, &y_expected);
-  const AutoDiffVecXd tx = math::initializeAutoDiff(x);
+  const AutoDiffVecXd tx = math::InitializeAutoDiff(x);
   AutoDiffVecXd ty_expected(3);
   deref(f).template eval<AutoDiffXd>(tx, &ty_expected);
-  Eigen::MatrixXd dy_expected = math::autoDiffToGradientMatrix(ty_expected);
+  Eigen::MatrixXd dy_expected = math::ExtractGradient(ty_expected);
 
   // Construct evaluator, moving `f` if applicable.
   shared_ptr<EvaluatorBase> evaluator =
@@ -205,7 +205,7 @@ GTEST_TEST(EvaluatorBaseTest, SetGradientSparsityPattern) {
   const VectorXd ub = VectorXd::Constant(2, 1);
   SimpleEvaluator evaluator;
   EXPECT_EQ(fmt::format("{}", evaluator),
-            "SimpleEvaluator with 3 decision variables $(0) $(1) $(2)");
+            "SimpleEvaluator with 3 decision variables $(0) $(1) $(2)\n");
   // The gradient sparsity pattern should be unset at evaluator construction.
   EXPECT_FALSE(evaluator.gradient_sparsity_pattern().has_value());
   // Now set the gradient sparsity pattern.
@@ -271,9 +271,9 @@ class DynamicSizedEvaluator : public EvaluatorBase {
 
 GTEST_TEST(EvaluatorBaseTest, DynamicSizedEvaluatorTest) {
   DynamicSizedEvaluator evaluator{};
-  EXPECT_EQ(
-      fmt::format("{}", evaluator),
-      "DynamicSizedEvaluator with 1 decision variables dynamic_sized_variable");
+  EXPECT_EQ(fmt::format("{}", evaluator),
+            "DynamicSizedEvaluator with 1 decision variables "
+            "dynamic_sized_variable\n");
 }
 }  // anonymous namespace
 }  // namespace solvers

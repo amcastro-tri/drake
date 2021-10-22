@@ -5,7 +5,7 @@
 #include "drake/systems/framework/basic_vector.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/framework/system_constraint.h"
-#include "drake/systems/primitives/signal_logger.h"
+#include "drake/systems/primitives/vector_log_sink.h"
 
 namespace drake {
 namespace examples {
@@ -15,15 +15,14 @@ template <typename T>
 VanDerPolOscillator<T>::VanDerPolOscillator()
     : systems::LeafSystem<T>(systems::SystemTypeTag<VanDerPolOscillator>{}) {
   // State is (q,q̇).
-  this->DeclareContinuousState(1, 1, 0);
+  auto state_index = this->DeclareContinuousState(1, 1, 0);
 
   // First output, y₁ = q, for interesting estimation problems.
-  this->DeclareVectorOutputPort(systems::BasicVector<T>(1),
+  this->DeclareVectorOutputPort(systems::kUseDefaultName, 1,
                                 &VanDerPolOscillator::CopyPositionToOutput);
 
   // Second output, y₂ = [q,q̇]', for e.g. visualizing the full state.
-  this->DeclareVectorOutputPort(systems::BasicVector<T>(2),
-                                &VanDerPolOscillator::CopyFullStateToOutput);
+  this->DeclareStateOutputPort(systems::kUseDefaultName, state_index);
 
   // Single parameter, μ, with default μ=1.
   this->DeclareNumericParameter(systems::BasicVector<T>(Vector1<T>(1.0)));
@@ -42,7 +41,7 @@ Eigen::Matrix2Xd VanDerPolOscillator<T>::CalcLimitCycle() {
   systems::DiagramBuilder<double> builder;
 
   auto vdp = builder.AddSystem<VanDerPolOscillator<double>>();
-  auto logger = LogOutput(vdp->get_full_state_output_port(), &builder);
+  auto logger = LogVectorOutput(vdp->get_full_state_output_port(), &builder);
   auto diagram = builder.Build();
 
   systems::Simulator<double> simulator(*diagram);
@@ -57,7 +56,7 @@ Eigen::Matrix2Xd VanDerPolOscillator<T>::CalcLimitCycle() {
   // simulation results) of the cycle for μ=1.
   simulator.AdvanceTo(6.667);
 
-  return logger->data();
+  return logger->FindLog(simulator.get_context()).data();
 }
 
 // q̈ + μ(q² - 1)q̇ + q = 0
@@ -84,12 +83,6 @@ void VanDerPolOscillator<T>::CopyPositionToOutput(
   output->SetAtIndex(
       0,
       context.get_continuous_state().get_generalized_position().GetAtIndex(0));
-}
-
-template <typename T>
-void VanDerPolOscillator<T>::CopyFullStateToOutput(
-    const systems::Context<T>& context, systems::BasicVector<T>* output) const {
-  output->SetFromVector(context.get_continuous_state_vector().CopyToVector());
 }
 
 }  // namespace van_der_pol

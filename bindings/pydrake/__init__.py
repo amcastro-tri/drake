@@ -34,20 +34,14 @@ try:
 except ImportError:
     pass
 
-# When running from python, turn DRAKE_ASSERT and DRAKE_DEMAND failures into
-# SystemExit, instead of process aborts.  See RobotLocomotion/drake#5268.
-# We specifically load `common` prior to loading any other pydrake modules,
-# in order to get assertion configuration done as early as possible.
-from . import common
-from .common.deprecation import ModuleShim
 
-__all__ = ['common', 'getDrakePath']
-common.set_assertion_failure_to_throw_exception()
+__all__ = ['getDrakePath']
 
 
 def getDrakePath():
     # Compatibility alias.
-    return os.path.abspath(common.GetDrakePath())
+    from . import common as _common
+    return os.path.abspath(_common.GetDrakePath())
 
 
 def _execute_extra_python_code(m):
@@ -66,8 +60,14 @@ def _execute_extra_python_code(m):
             ).format(m.__name__))
     top_module_name = module_path[0]
     top_module_dir = os.path.dirname(sys.modules[top_module_name].__file__)
-    extra_path = [top_module_dir] + module_path[1:-1] + [
-        "_{}_extra.py".format(module_path[-1])]
+    mid_module_names = module_path[1:-1]
+    base_module_name = module_path[-1]
+    if base_module_name.startswith("_"):
+        # Do not repeat leading `_`.
+        extra_module_name = f"{base_module_name}_extra.py"
+    else:
+        extra_module_name = f"_{base_module_name}_extra.py"
+    extra_path = [top_module_dir] + mid_module_names + [extra_module_name]
     extra_filename = os.path.join(*extra_path)
     with open(extra_filename) as f:
         _code = compile(f.read(), extra_filename, 'exec')
@@ -80,7 +80,12 @@ def _setattr_kwargs(obj, kwargs):
         setattr(obj, name, value)
 
 
-def _import_cc_module_vars(cc_module, py_module_name):
+def _import_cc_module_vars(
+    cc_module,
+    py_module_name,
+    *,
+    include_private=False,
+):
     # Imports the cc_module's public symbols into the named py module
     # (py_module_name), resetting their __module__ to be the py module in the
     # process.
@@ -88,7 +93,9 @@ def _import_cc_module_vars(cc_module, py_module_name):
     py_module = sys.modules[py_module_name]
     var_list = []
     for name, value in cc_module.__dict__.items():
-        if name.startswith("_"):
+        if name.startswith("_") and not include_private:
+            continue
+        if name.startswith("__"):
             continue
         if getattr(value, "__module__", None) == cc_module.__name__:
             value.__module__ = py_module_name

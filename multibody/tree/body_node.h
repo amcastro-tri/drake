@@ -386,14 +386,13 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   //   A pointer to a valid, non nullptr, vector of spatial accelerations
   //   containing the spatial acceleration `A_WB` for each body. On input, it
   //   must contain already pre-computed spatial accelerations for the inboard
-  //   bodies to this node's body B, see precondition below.
-  //   It must be of size equal to the number of bodies in the MultibodyTree
-  //   and ordered by BodyNodeIndex. The calling MultibodyTree method must
-  //   guarantee these conditions are satisfied. This method will abort if the
-  //   the pointer is null. There is no mechanism to assert that
-  //   `A_WB_array_ptr` is ordered by BodyNodeIndex and the correctness of
-  //   MultibodyTree methods, properly unit tested, should guarantee this
-  //   condition.
+  //   bodies to this node's body B, see precondition below.  It must be of
+  //   size equal to the number of bodies in the MultibodyTree and ordered by
+  //   BodyNodeIndex. The calling MultibodyTree method must guarantee these
+  //   conditions are satisfied. This method will abort if the pointer is
+  //   null. There is no mechanism to assert that `A_WB_array_ptr` is ordered
+  //   by BodyNodeIndex and the correctness of MultibodyTree methods, properly
+  //   unit tested, should guarantee this condition.
   //
   // @pre The position kinematics cache `pc` was already updated to be in sync
   // with `context` by MultibodyTree::CalcPositionKinematicsCache().
@@ -589,20 +588,19 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   //   `tau_applied` **must** not be an entry into `tau_array`, which would
   //   result in undefined results.
   // @param[out] F_BMo_W_array_ptr
-  //   A pointer to a valid, non nullptr, vector of spatial forces
-  //   containing, for each body B, the spatial force `F_BMo_W` corresponding
-  //   to its inboard mobilizer reaction forces on body B applied at the origin
-  //   `Mo` of the inboard mobilizer, expressed in the world frame W.
-  //   It must be of size equal to the number of bodies in the MultibodyTree
-  //   and ordered by BodyNodeIndex. The calling MultibodyTree method must
-  //   guarantee these conditions are satisfied. This method will abort if the
-  //   the pointer is null.
+  //   A pointer to a valid, non nullptr, vector of spatial forces containing,
+  //   for each body B, the spatial force `F_BMo_W` corresponding to its
+  //   inboard mobilizer reaction forces on body B applied at the origin `Mo`
+  //   of the inboard mobilizer, expressed in the world frame W.  It must be of
+  //   size equal to the number of bodies in the MultibodyTree and ordered by
+  //   BodyNodeIndex. The calling MultibodyTree method must guarantee these
+  //   conditions are satisfied. This method will abort if the pointer is null.
   //   To access a mobilizer's reaction force on a given body B, access this
   //   array with the index returned by Body::node_index().
   // @param[out] tau_array
   //   A non-null pointer to the output vector of generalized forces that would
   //   result in body B having spatial acceleration `A_WB`. This method will
-  //   abort if the the pointer is null. The calling MultibodyTree method must
+  //   abort if the pointer is null. The calling MultibodyTree method must
   //   guarantee the size of the array is the number of generalized velocities
   //   in the model.
   //
@@ -869,12 +867,14 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
     DRAKE_DEMAND(static_cast<int>(H_array.size()) ==
         this->get_parent_tree().num_velocities());
     const int start_index_in_v = get_topology().mobilizer_velocities_start_in_v;
-    DRAKE_DEMAND(start_index_in_v < this->get_parent_tree().num_velocities());
     const int num_velocities = get_topology().num_mobilizer_velocities;
+    DRAKE_DEMAND(num_velocities == 0 ||
+                 start_index_in_v < this->get_parent_tree().num_velocities());
     // The first column of this node's hinge matrix H_PB_W:
-    const Vector6<T>& H_col0 = H_array[start_index_in_v];
+    const T* H_col0 =
+        num_velocities == 0 ? nullptr : H_array[start_index_in_v].data();
     // Create an Eigen map to the full H_PB_W for this node:
-    return Eigen::Map<const MatrixUpTo6<T>>(H_col0.data(), 6, num_velocities);
+    return Eigen::Map<const MatrixUpTo6<T>>(H_col0, 6, num_velocities);
   }
 
   // Mutable version of GetJacobianFromArray().
@@ -883,12 +883,14 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
     DRAKE_DEMAND(static_cast<int>(H_array->size()) ==
                  this->get_parent_tree().num_velocities());
     const int start_index_in_v = get_topology().mobilizer_velocities_start_in_v;
-    DRAKE_DEMAND(start_index_in_v < this->get_parent_tree().num_velocities());
     const int num_velocities = get_topology().num_mobilizer_velocities;
+    DRAKE_DEMAND(num_velocities == 0 ||
+                 start_index_in_v < this->get_parent_tree().num_velocities());
     // The first column of this node's hinge matrix H_PB_W:
-    Vector6<T>& H_col0 = (*H_array)[start_index_in_v];
+    T* H_col0 =
+        num_velocities == 0 ? nullptr : (*H_array)[start_index_in_v].data();
     // Create an Eigen map to the full H_PB_W for this node:
-    return Eigen::Map<MatrixUpTo6<T>>(H_col0.data(), 6, num_velocities);
+    return Eigen::Map<MatrixUpTo6<T>>(H_col0, 6, num_velocities);
   }
 
   // This method is used by MultibodyTree within a tip-to-base loop to compute
@@ -932,7 +934,8 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
       ArticulatedBodyInertiaCache<T>* abic) const {
     DRAKE_THROW_UNLESS(topology_.body != world_index());
     DRAKE_THROW_UNLESS(abic != nullptr);
-    DRAKE_THROW_UNLESS(this->velocity_start() < reflected_inertia.size());
+    DRAKE_THROW_UNLESS(reflected_inertia.size() ==
+                       this->get_parent_tree().num_velocities());
 
     // As a guideline for developers, a summary of the computations performed in
     // this method is provided:
@@ -1056,15 +1059,17 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
 
       // Compute the LDLT factorization of D_B as ldlt_D_B.
       // TODO(bobbyluig): Test performance against inverse().
-      Eigen::LDLT<MatrixUpTo6<T>>& ldlt_D_B = get_mutable_ldlt_D_B(abic);
-      ldlt_D_B = D_B.template selfadjointView<Eigen::Lower>().ldlt();
+      math::LinearSolver<Eigen::LDLT, MatrixUpTo6<T>>& ldlt_D_B =
+          get_mutable_ldlt_D_B(abic);
+      ldlt_D_B = math::LinearSolver<Eigen::LDLT, MatrixUpTo6<T>>(
+          MatrixUpTo6<T>(D_B.template selfadjointView<Eigen::Lower>()));
 
       // Ensure that D_B is not singular.
       // Singularity means that a non-physical hinge mapping matrix was used or
       // that this articulated body inertia has some non-physical quantities
       // (such as zero moment of inertia along an axis which the hinge mapping
       // matrix permits motion).
-      if (ldlt_D_B.info() != Eigen::Success) {
+      if (ldlt_D_B.eigen_linear_solver().info() != Eigen::Success) {
         std::stringstream message;
         message << "Encountered singular articulated body hinge inertia "
                 << "for body node index " << topology_.index << ". "
@@ -1075,7 +1080,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
 
       // Compute the Kalman gain, g_PB_W, using (6).
       Matrix6xUpTo6<T>& g_PB_W = get_mutable_g_PB_W(abic);
-      g_PB_W = ldlt_D_B.solve(U_B_W).transpose();
+      g_PB_W = ldlt_D_B.Solve(U_B_W).transpose();
 
       // Project P_B_W using (7) to obtain Pplus_PB_W, the articulated body
       // inertia of this body B as felt by body P and expressed in frame W.
@@ -1261,7 +1266,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
       // Compute nu_B, the articulated body inertia innovations generalized
       // acceleration.
       const VectorUpTo6<T> nu_B =
-          get_ldlt_D_B(abic).solve(get_e_B(aba_force_cache));
+          get_ldlt_D_B(abic).Solve(get_e_B(aba_force_cache));
 
       // Mutable reference to the generalized acceleration.
       auto vmdot = get_mutable_accelerations(ac);
@@ -1417,14 +1422,14 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
 
  protected:
   // Returns the inboard frame F of this node's mobilizer.
-  // @throws std::runtime_error if called on the root node corresponding to
+  // @throws std::exception if called on the root node corresponding to
   // the _world_ body.
   const Frame<T>& inboard_frame() const {
     return get_mobilizer().inboard_frame();
   }
 
   // Returns the outboard frame M of this node's mobilizer.
-  // @throws std::runtime_error if called on the root node corresponding to
+  // @throws std::exception if called on the root node corresponding to
   // the _world_ body.
   const Frame<T>& outboard_frame() const {
     return get_mobilizer().outboard_frame();
@@ -1599,19 +1604,11 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   // Returns an Eigen expression of the vector of generalized accelerations
   // for this node's inboard mobilizer from the vector of generalized
   // accelerations for the entire model.
-  Eigen::VectorBlock<const VectorX<T>> get_accelerations(
-      AccelerationKinematicsCache<T>* ac) const {
-    const VectorX<T>& vdot = ac->get_vdot();
-    return get_velocities_from_array(vdot);
-  }
-
-  // Mutable version of get_accelerations_from_array().
-  Eigen::VectorBlock<Eigen::Ref<VectorX<T>>> get_mutable_accelerations(
+  Eigen::Ref<VectorX<T>> get_mutable_accelerations(
       AccelerationKinematicsCache<T>* ac) const {
     VectorX<T>& vdot = ac->get_mutable_vdot();
     return get_mutable_velocities_from_array(&vdot);
   }
-
 
   // =========================================================================
   // ArticulatedBodyInertiaCache Accessors and Mutators.
@@ -1645,13 +1642,13 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
 
   // Returns a const reference to the LDLT factorization `ldlt_D_B` of the
   // articulated body hinge inertia.
-  const Eigen::LDLT<MatrixUpTo6<T>>& get_ldlt_D_B(
+  const math::LinearSolver<Eigen::LDLT, MatrixUpTo6<T>>& get_ldlt_D_B(
       const ArticulatedBodyInertiaCache<T>& abic) const {
     return abic.get_ldlt_D_B(topology_.index);
   }
 
   // Mutable version of get_ldlt_D_B().
-  Eigen::LDLT<MatrixUpTo6<T>>& get_mutable_ldlt_D_B(
+  math::LinearSolver<Eigen::LDLT, MatrixUpTo6<T>>& get_mutable_ldlt_D_B(
       ArticulatedBodyInertiaCache<T>* abic) const {
     return abic->get_mutable_ldlt_D_B(topology_.index);
   }
@@ -1750,14 +1747,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   // tree. Useful for the implementation of operator forms where the generalized
   // velocity (or time derivatives of the generalized velocities) is an argument
   // to the operator.
-  Eigen::VectorBlock<const Eigen::Ref<const VectorX<T>>>
-  get_velocities_from_array(const Eigen::Ref<const VectorX<T>>& v) const {
-    return v.segment(topology_.mobilizer_velocities_start_in_v,
-                     topology_.num_mobilizer_velocities);
-  }
-
-  // Mutable version of get_velocities_from_array().
-  Eigen::VectorBlock<Eigen::Ref<VectorX<T>>> get_mutable_velocities_from_array(
+  Eigen::Ref<VectorX<T>> get_mutable_velocities_from_array(
       EigenPtr<VectorX<T>> v) const {
     DRAKE_ASSERT(v != nullptr);
     return v->segment(topology_.mobilizer_velocities_start_in_v,
@@ -1767,14 +1757,7 @@ class BodyNode : public MultibodyElement<BodyNode, T, BodyNodeIndex> {
   // Helper to get an Eigen expression of the vector of generalized forces
   // from a vector of generalized forces for the entire parent multibody
   // tree.
-  Eigen::VectorBlock<const VectorX<T>> get_generalized_forces_from_array(
-      const VectorX<T>& tau) const {
-    return get_velocities_from_array(tau);
-  }
-
-  // Mutable version of get_generalized_forces_from_array()
-  Eigen::VectorBlock<Eigen::Ref<VectorX<T>>>
-  get_mutable_generalized_forces_from_array(
+  Eigen::Ref<VectorX<T>> get_mutable_generalized_forces_from_array(
       EigenPtr<VectorX<T>> tau) const {
     DRAKE_ASSERT(tau != nullptr);
     return get_mutable_velocities_from_array(tau);

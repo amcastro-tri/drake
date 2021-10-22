@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "drake/common/default_scalars.h"
 #include "drake/common/eigen_types.h"
 #include "drake/geometry/geometry_ids.h"
 #include "drake/geometry/proximity/bvh.h"
@@ -192,9 +193,8 @@ void SurfaceVolumeIntersector<T>::RemoveDuplicateVertices(
 template <typename T>
 const std::vector<Vector3<T>>&
 SurfaceVolumeIntersector<T>::ClipTriangleByTetrahedron(
-    VolumeElementIndex element, const VolumeMesh<double>& volume_M,
-    SurfaceFaceIndex face, const SurfaceMesh<double>& surface_N,
-    const math::RigidTransform<T>& X_MN) {
+    int element, const VolumeMesh<double>& volume_M, int face,
+    const SurfaceMesh<double>& surface_N, const math::RigidTransform<T>& X_MN) {
   // Although polygon_M starts out pointing to polygon_[0] that is not an
   // invariant in this function.
   std::vector<Vector3<T>>* polygon_M = &(polygon_[0]);
@@ -202,10 +202,8 @@ SurfaceVolumeIntersector<T>::ClipTriangleByTetrahedron(
   // surface_N.
   polygon_M->clear();
   for (int i = 0; i < 3; ++i) {
-    SurfaceVertexIndex v = surface_N.element(face).vertex(i);
-    // TODO(SeanCurtis-TRI): The `M` in `r_MV()` is different from the M in this
-    //  function. More evidence that the `vertex(v).r_MV()` notation is *bad*.
-    const Vector3<T>& p_NV = surface_N.vertex(v).r_MV().cast<T>();
+    const int v = surface_N.element(face).vertex(i);
+    const Vector3<T>& p_NV = surface_N.vertex(v).cast<T>();
     polygon_M->push_back(X_MN * p_NV);
   }
   // Get the positions, in M's frame, of the four vertices of the tetrahedral
@@ -214,8 +212,8 @@ SurfaceVolumeIntersector<T>::ClipTriangleByTetrahedron(
   // as we do transformed computations below.
   Vector3<double> p_MVs[4];
   for (int i = 0; i < 4; ++i) {
-    VolumeVertexIndex v = volume_M.element(element).vertex(i);
-    p_MVs[i] = volume_M.vertex(v).r_MV();
+    int v = volume_M.element(element).vertex(i);
+    p_MVs[i] = volume_M.vertex(v);
   }
   // Sets up the four half spaces associated with the four triangular faces of
   // the tetrahedron. Assume the tetrahedron has the fourth vertex seeing the
@@ -284,7 +282,7 @@ bool SurfaceVolumeIntersector<T>::IsFaceNormalAlongPressureGradient(
     const VolumeMeshFieldLinear<double, double>& volume_field_M,
     const SurfaceMesh<double>& surface_N,
     const math::RigidTransform<double>& X_MN,
-    const VolumeElementIndex& tet_index, const SurfaceFaceIndex& tri_index) {
+    int tet_index, int tri_index) {
   const Vector3<double> grad_p_M = volume_field_M.EvaluateGradient(tet_index);
   return IsFaceNormalInNormalDirection(grad_p_M.normalized(), surface_N,
                                        tri_index, X_MN.rotation());
@@ -297,30 +295,30 @@ void SurfaceVolumeIntersector<T>::SampleVolumeFieldOnSurface(
     const SurfaceMesh<double>& surface_N,
     const Bvh<Obb, SurfaceMesh<double>>& bvh_N,
     const math::RigidTransform<T>& X_MN,
+    ContactPolygonRepresentation representation,
     std::unique_ptr<SurfaceMesh<T>>* surface_MN_M,
     std::unique_ptr<SurfaceMeshFieldLinear<T, T>>* e_MN,
     std::vector<Vector3<T>>* grad_eM_Ms) {
-  DRAKE_DEMAND(surface_MN_M);
-  DRAKE_DEMAND(e_MN);
-  DRAKE_DEMAND(grad_eM_Ms);
+  DRAKE_DEMAND(surface_MN_M != nullptr);
+  DRAKE_DEMAND(e_MN != nullptr);
+  DRAKE_DEMAND(grad_eM_Ms != nullptr);
   grad_eM_Ms->clear();
 
   std::vector<SurfaceFace> surface_faces;
-  std::vector<SurfaceVertex<T>> surface_vertices_M;
+  std::vector<Vector3<T>> surface_vertices_M;
   std::vector<T> surface_e;
   const VolumeMesh<double>& mesh_M = volume_field_M.mesh();
   // We know that each contact polygon has at most 7 vertices because
   // each surface triangle is clipped by four half-spaces of the four
   // triangular faces of a tetrahedron.
-  std::vector<SurfaceVertexIndex> contact_polygon;
+  std::vector<int> contact_polygon;
   contact_polygon.reserve(7);
 
   const math::RigidTransform<double> X_MN_d = convert_to_double(X_MN);
   auto callback = [&volume_field_M, &surface_N, &surface_faces,
                    &surface_vertices_M, &surface_e, &mesh_M, &X_MN_d, &X_MN,
-                   &contact_polygon, grad_eM_Ms,
-                   this](VolumeElementIndex tet_index,
-                         SurfaceFaceIndex tri_index) -> BvttCallbackResult {
+                   &contact_polygon, grad_eM_Ms, representation,
+                   this](int tet_index, int tri_index) -> BvttCallbackResult {
     if (!this->IsFaceNormalAlongPressureGradient(
             volume_field_M, surface_N, X_MN_d, tet_index, tri_index)) {
       return BvttCallbackResult::Continue;
@@ -344,20 +342,29 @@ void SurfaceVolumeIntersector<T>::SampleVolumeFieldOnSurface(
     if (poly_vertex_count < 3) return BvttCallbackResult::Continue;
 
     const int num_previous_vertices = surface_vertices_M.size();
-    // Add the new polygon vertices to the mesh vertices and construct a
-    // polygon from the vertex indices.
-    contact_polygon.clear();
-    for (int i = 0; i < poly_vertex_count; ++i) {
-      contact_polygon.emplace_back(surface_vertices_M.size());
-      surface_vertices_M.emplace_back(polygon_vertices_M[i]);
+    if (representation == ContactPolygonRepresentation::kCentroidSubdivision) {
+      // Add the new polygon vertices to the mesh vertices and construct a
+      // polygon from the vertex indices.
+      contact_polygon.clear();
+      for (int i = 0; i < poly_vertex_count; ++i) {
+        contact_polygon.emplace_back(surface_vertices_M.size());
+        surface_vertices_M.emplace_back(polygon_vertices_M[i]);
+      }
     }
     const Vector3<T> nhat_M =
         X_MN.rotation() * surface_N.face_normal(tri_index).cast<T>();
 
     size_t old_count = surface_faces.size();
-    AddPolygonToMeshData(contact_polygon, nhat_M, &surface_faces,
-                         &surface_vertices_M);
-
+    switch (representation) {
+      case ContactPolygonRepresentation::kCentroidSubdivision:
+        AddPolygonToMeshData(contact_polygon, nhat_M, &surface_faces,
+                             &surface_vertices_M);
+        break;
+      case ContactPolygonRepresentation::kSingleTriangle:
+        AddPolygonToMeshDataAsOneTriangle(polygon_vertices_M, nhat_M,
+                                          &surface_faces, &surface_vertices_M);
+        break;
+    }
     // TODO(SeanCurtis-TRI) Consider rolling this operation into
     // AddPolygonToMeshData to eliminate the extra pass through triangles.
     const Vector3<double>& grad_eMi_M =
@@ -367,10 +374,9 @@ void SurfaceVolumeIntersector<T>::SampleVolumeFieldOnSurface(
     }
 
     const int num_current_vertices = surface_vertices_M.size();
-    // Calculate values of the pressure field and the normal field at the
-    // new vertices.
+    // Calculate values of the pressure field at the new vertices.
     for (int v = num_previous_vertices; v < num_current_vertices; ++v) {
-      const Vector3<T>& r_MV = surface_vertices_M[v].r_MV();
+      const Vector3<T>& r_MV = surface_vertices_M[v];
       const T pressure = volume_field_M.EvaluateCartesian(tet_index, r_MV);
       surface_e.push_back(pressure);
     }
@@ -385,7 +391,7 @@ void SurfaceVolumeIntersector<T>::SampleVolumeFieldOnSurface(
       std::move(surface_faces), std::move(surface_vertices_M));
   const bool calculate_gradient = false;
   *e_MN = std::make_unique<SurfaceMeshFieldLinear<T, T>>(
-      "e", std::move(surface_e), surface_MN_M->get(), calculate_gradient);
+      std::move(surface_e), surface_MN_M->get(), calculate_gradient);
 }
 
 template <typename T>
@@ -396,7 +402,8 @@ ComputeContactSurfaceFromSoftVolumeRigidSurface(
     const math::RigidTransform<T>& X_WS, const GeometryId id_R,
     const SurfaceMesh<double>& mesh_R,
     const Bvh<Obb, SurfaceMesh<double>>& bvh_R,
-    const math::RigidTransform<T>& X_WR) {
+    const math::RigidTransform<T>& X_WR,
+    ContactPolygonRepresentation representation) {
   // TODO(SeanCurtis-TRI): This function is insufficiently templated. Generally,
   //  there are three types of scalars: the pose scalar, the mesh field *value*
   //  scalar, and the mesh vertex-position scalar. However, short term, it is
@@ -410,7 +417,7 @@ ComputeContactSurfaceFromSoftVolumeRigidSurface(
   //  See issue #14136.
 
   // Compute the transformation from the rigid frame to the soft frame.
-  const math::RigidTransform<T> X_SR = X_WS.inverse() * X_WR;
+  const math::RigidTransform<T> X_SR = X_WS.InvertAndCompose(X_WR);
 
   // The mesh will be computed in Frame S and then transformed to the world
   // frame.
@@ -419,7 +426,8 @@ ComputeContactSurfaceFromSoftVolumeRigidSurface(
   std::vector<Vector3<T>> grad_eS_S;
 
   SurfaceVolumeIntersector<T>().SampleVolumeFieldOnSurface(
-      field_S, bvh_S, mesh_R, bvh_R, X_SR, &surface_SR, &e_SR, &grad_eS_S);
+      field_S, bvh_S, mesh_R, bvh_R, X_SR, representation,
+      &surface_SR, &e_SR, &grad_eS_S);
 
   if (surface_SR == nullptr) return nullptr;
 
@@ -451,23 +459,12 @@ ComputeContactSurfaceFromSoftVolumeRigidSurface(
                                              std::move(grad_eS_W), nullptr);
 }
 
-template class SurfaceVolumeIntersector<double>;
-template class SurfaceVolumeIntersector<AutoDiffXd>;
+DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
+    class SurfaceVolumeIntersector)
 
-template std::unique_ptr<ContactSurface<double>>
-ComputeContactSurfaceFromSoftVolumeRigidSurface(
-    const GeometryId, const VolumeMeshFieldLinear<double, double>&,
-    const Bvh<Obb, VolumeMesh<double>>&, const math::RigidTransform<double>&,
-    const GeometryId, const SurfaceMesh<double>&,
-    const Bvh<Obb, SurfaceMesh<double>>&, const math::RigidTransform<double>&);
-
-template std::unique_ptr<ContactSurface<AutoDiffXd>>
-ComputeContactSurfaceFromSoftVolumeRigidSurface(
-    const GeometryId, const VolumeMeshFieldLinear<double, double>&,
-    const Bvh<Obb, VolumeMesh<double>>&,
-    const math::RigidTransform<AutoDiffXd>&, const GeometryId,
-    const SurfaceMesh<double>&, const Bvh<Obb, SurfaceMesh<double>>&,
-    const math::RigidTransform<AutoDiffXd>&);
+DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS((
+    &ComputeContactSurfaceFromSoftVolumeRigidSurface<T>
+))
 
 }  // namespace internal
 }  // namespace geometry

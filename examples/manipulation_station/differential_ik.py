@@ -46,7 +46,7 @@ class DifferentialIK(LeafSystem):
             self.robot_context)[-robot.num_velocities():].any()
 
         # Store the robot positions as state.
-        self.DeclareDiscreteState(robot.num_positions())
+        position_state_index = self.DeclareDiscreteState(robot.num_positions())
         self.DeclarePeriodicDiscreteUpdate(time_step)
 
         # Desired pose of frame E in world frame.
@@ -54,8 +54,8 @@ class DifferentialIK(LeafSystem):
                               PortDataType.kVectorValued, 6)
 
         # Provide the output as desired positions.
-        self.DeclareVectorOutputPort("joint_position_desired", BasicVector(
-            robot.num_positions()), self.CopyPositionOut)
+        self.DeclareStateOutputPort("joint_position_desired",
+                                    position_state_index)
 
     def SetPositions(self, context, q):
         context.get_mutable_discrete_state(0).SetFromVector(q)
@@ -80,7 +80,7 @@ class DifferentialIK(LeafSystem):
             self, context, events, discrete_state):
         rpy_xyz_desired = self.EvalVectorInput(context, 0).get_value()
         X_WE_desired = RigidTransform(RollPitchYaw(rpy_xyz_desired[:3]),
-                                      rpy_xyz_desired[-3:]).GetAsIsometry3()
+                                      rpy_xyz_desired[-3:])
         q_last = context.get_discrete_state_vector().get_value()
 
         x = self.robot.GetMutablePositionsAndVelocities(
@@ -93,10 +93,7 @@ class DifferentialIK(LeafSystem):
 
         if (result.status != result.status.kSolutionFound):
             print("Differential IK could not find a solution.")
-            discrete_state.get_mutable_vector().SetFromVector(q_last)
+            discrete_state.set_value(q_last)
         else:
-            discrete_state.get_mutable_vector().\
-                SetFromVector(q_last + self.time_step*result.joint_velocities)
-
-    def CopyPositionOut(self, context, output):
-        output.SetFromVector(context.get_discrete_state_vector().get_value())
+            discrete_state.set_value(
+                q_last + self.time_step * result.joint_velocities)

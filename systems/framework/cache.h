@@ -14,7 +14,6 @@ values. */
 
 #include "drake/common/copyable_unique_ptr.h"
 #include "drake/common/drake_assert.h"
-#include "drake/common/never_destroyed.h"
 #include "drake/common/reset_on_copy.h"
 #include "drake/common/value.h"
 #include "drake/systems/framework/framework_common.h"
@@ -92,9 +91,9 @@ class CacheEntryValue {
   frozen. However, the corresponding value won't be accessible while the cache
   remains frozen (since it is out of date).
 
-  @throws std::logic_error if the given value is null or if there is already a
-                           value, or if this %CacheEntryValue is malformed in
-                           some detectable way. */
+  @throws std::exception if the given value is null or if there is already a
+                         value, or if this %CacheEntryValue is malformed in
+                         some detectable way. */
   void SetInitialValue(std::unique_ptr<AbstractValue> init_value) {
     if (init_value == nullptr) {
       throw std::logic_error(FormatName(__func__) +
@@ -123,7 +122,7 @@ class CacheEntryValue {
   not be out of date with respect to any of its prerequisites. It is
   an error to call this if there is no stored value object, or if the value is
   out of date.
-  @throws std::logic_error if there is no value or it is out of date.
+  @throws std::exception if there is no value or it is out of date.
   @see get_abstract_value() */
   const AbstractValue& GetAbstractValueOrThrow() const {
     return GetAbstractValueOrThrowHelper(__func__);
@@ -132,8 +131,8 @@ class CacheEntryValue {
   /** Returns a const reference to the contained value of known type V. It is
   an error to call this if there is no stored value, or the value is out of
   date, or the value doesn't actually have type V.
-  @throws std::logic_error if there is no stored value, or if it is out of
-                           date, or it doesn't actually have type V.
+  @throws std::exception if there is no stored value, or if it is out of
+                         date, or it doesn't actually have type V.
   @see get_value() */
   template <typename V>
   const V& GetValueOrThrow() const {
@@ -156,9 +155,9 @@ class CacheEntryValue {
   large ones. You can alternatively obtain a mutable reference to the value
   already contained in the cache entry and update it in place via
   GetMutableValueOrThrow().
-  @throws std::logic_error if there is no value, or the value is already up
-                           to date, of it doesn't actually have type V.
-  @throws std::logic_error if the cache is frozen.
+  @throws std::exception if there is no value, or the value is already up
+                         to date, of it doesn't actually have type V.
+  @throws std::exception if the cache is frozen.
   @see set_value(), GetMutableValueOrThrow() */
   template <typename V>
   void SetValueOrThrow(const V& new_value) {
@@ -179,9 +178,9 @@ class CacheEntryValue {
   perform, use set_value() instead. If your computation completes successfully,
   you must mark the entry up to date yourself using mark_up_to_date() if you
   want anyone to be able to use the new value.
-  @throws std::logic_error if there is no value, or if the value is already
-                           up to date.
-  @throws std::logic_error if the cache is frozen.
+  @throws std::exception if there is no value, or if the value is already
+                         up to date.
+  @throws std::exception if the cache is frozen.
   @see SetValueOrThrow(), set_value(), mark_up_to_date() */
   AbstractValue& GetMutableAbstractValueOrThrow() {
     return GetMutableAbstractValueOrThrowHelper(__func__);
@@ -192,9 +191,9 @@ class CacheEntryValue {
   the contained value does not have the indicated concrete type. Note that you
   must call mark_up_to_date() after modifying the value through the returned
   reference. See GetMutableAbstractValueOrThrow() above for more information.
-  @throws std::logic_error if there is no value, or if the value is already
-                           up to date, of it doesn't actually have type V.
-  @throws std::logic_error if the cache is frozen.
+  @throws std::exception if there is no value, or if the value is already
+                         up to date, of it doesn't actually have type V.
+  @throws std::exception if the cache is frozen.
   @see SetValueOrThrow(), set_value(), mark_up_to_date()
   @tparam V The known actual value type. */
   template <typename V>
@@ -207,7 +206,7 @@ class CacheEntryValue {
   whether the value is out of date. This can be used to check type and size
   information but should not be used to look at the value unless you _really_
   know what you're doing.
-  @throws std::logic_error if there is no contained value. */
+  @throws std::exception if there is no contained value. */
   const AbstractValue& PeekAbstractValueOrThrow() const {
     ThrowIfNoValuePresent(__func__);
     return *value_;
@@ -217,8 +216,8 @@ class CacheEntryValue {
   downcast to its known concrete type, _without_ checking whether the value is
   out of date. This can be used to check type and size information but should
   not be used to look at the value unless you _really_ know what you're doing.
-  @throws std::logic_error if there is no contained value, or if the contained
-                           value does not actually have type V.
+  @throws std::exception if there is no contained value, or if the contained
+                         value does not actually have type V.
   @tparam V The known actual value type. */
   template <typename V>
   const V& PeekValueOrThrow() const {
@@ -277,7 +276,7 @@ class CacheEntryValue {
   this value went out of date. The serial number is incremented. If you are not
   in a performance-critical situation (and you probably are not!), use
   `SetValueOrThrow<V>()` instead.
-  @throws std::logic_error if the cache is frozen.
+  @throws std::exception if the cache is frozen.
   @tparam V The known actual value type. */
   template <typename V>
   void set_value(const V& new_value) {
@@ -296,7 +295,7 @@ class CacheEntryValue {
   This is useful for discrete updates of abstract state variables that contain
   large objects. Both values must be non-null and of the same concrete type but
   we won't check for errors except in Debug builds.
-  @throws std::logic_error if the cache is frozen.
+  @throws std::exception if the cache is frozen.
   */
   void swap_value(std::unique_ptr<AbstractValue>* other_value) {
     DRAKE_ASSERT_VOID(ThrowIfNoValuePresent(__func__));
@@ -411,12 +410,12 @@ class CacheEntryValue {
   can disable just a single entry if necessary. */
   //@{
 
-  /** Throws an std::logic_error if there is something clearly wrong with this
+  /** Throws an std::exception if there is something clearly wrong with this
   %CacheEntryValue object. If the owning subcontext is known, provide a pointer
   to it here and we'll check that this cache entry agrees. In addition we check
   for other internal inconsistencies.
-  @throws std::logic_error for anything that goes wrong, with an appropriate
-                           explanatory message. */
+  @throws std::exception for anything that goes wrong, with an appropriate
+                         explanatory message. */
   // These invariants hold for all CacheEntryValues except the dummy one.
   void ThrowIfBadCacheEntryValue(const internal::ContextMessageInterface*
                                      owning_subcontext = nullptr) const;
@@ -451,38 +450,21 @@ class CacheEntryValue {
   }
   //@}
 
-#ifndef DRAKE_DOXYGEN_CXX
-  // (Internal use only) Returns a mutable reference to an unused cache entry
-  // value object, which has no valid CacheIndex or DependencyTicket and has a
-  // meaningless value. The reference is to a singleton %CacheEntryValue and
-  // will always return the same address. You may invoke mark_up_to_date()
-  // harmlessly on this object, but may not depend on its contents in any way as
-  // they may change unexpectedly. The intention is that this object is used as
-  // a common throw-away destination for non-cache DependencyTracker
-  // invalidations so that invalidation can be done unconditionally, and to the
-  // same memory location, for speed.
-  static CacheEntryValue& dummy() {
-    static never_destroyed<CacheEntryValue> dummy;
-    return dummy.access();
-  }
-#endif
-
  private:
   // So Cache and no one else can construct and copy CacheEntryValues.
   friend class Cache;
 
-  // Allow these adapters access to our private constructors on our behalf.
-  // TODO(sherm1) These friend declarations allow us to hide constructors we
+  // Allow this adapter access to our private constructors on our behalf.
+  // TODO(sherm1) This friend declaration allows us to hide constructors we
   //   don't want users to call. But there is still a loophole in that a user
-  //   could create objects of these types and get access indirectly. Consider
+  //   could create objects of this type and get access indirectly. Consider
   //   whether that is a real problem that needs to be solved and if so fix it.
-  friend class never_destroyed<CacheEntryValue>;
   friend class copyable_unique_ptr<CacheEntryValue>;
 
   // Default constructor can only be used privately to construct an empty
   // CacheEntryValue with description "DUMMY" and a meaningless value.
   CacheEntryValue()
-      : description_("DUMMY"), value_(AbstractValue::Make<int>(0)) {}
+      : description_("DUMMY"), value_(AbstractValue::Make<int>()) {}
 
   // Creates a new cache value with the given human-readable description and
   // (optionally) an abstract value that defines the right concrete type for
@@ -750,6 +732,10 @@ class Cache {
   @see ContextBase::is_cache_frozen() for the user-facing API */
   bool is_cache_frozen() const { return is_cache_frozen_; }
 
+  /** (Internal use only) Returns a mutable reference to a dummy CacheEntryValue
+  that can serve as a /dev/null-like destination for throw-away writes. */
+  CacheEntryValue& dummy_cache_entry_value() { return dummy_; }
+
  private:
   // So ContextBase and no one else can copy a Cache.
   friend class ContextBase;
@@ -775,6 +761,16 @@ class Cache {
 
   // All CacheEntryValue objects, indexed by CacheIndex.
   std::vector<copyable_unique_ptr<CacheEntryValue>> store_;
+
+  // A per-Cache (and hence, per-Context) mutable, unused cache entry value
+  // object, which has no valid CacheIndex or DependencyTicket and has a
+  // meaningless value. A DependencyTracker may invoke mark_up_to_date()
+  // harmlessly on this object, but may not depend on its contents in any way as
+  // they may change unexpectedly. The intention is that this object is used as
+  // a common throw-away destination for non-cache DependencyTracker
+  // invalidations so that invalidation can be done unconditionally, and to the
+  // same memory location within a LeafContext, for speed.
+  CacheEntryValue dummy_;
 
   // Whether we are currently preventing mutable access to the cache.
   bool is_cache_frozen_{false};

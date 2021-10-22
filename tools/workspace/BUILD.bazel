@@ -47,20 +47,21 @@ drake_py_binary(
 
 _DRAKE_EXTERNAL_PACKAGE_INSTALLS = ["@%s//:install" % p for p in [
     "ccd",
+    "common_robotics_utilities",
     "fcl",
     "fmt",
     "ghc_filesystem",
     "ignition_math",
     "ignition_utils",
     "lcm",
-    "lcmtypes_bot2_core",
-    "lcmtypes_robotlocomotion",
     "meshcat",
     "meshcat_python",
     "pybind11",
     "sdformat",
     "spdlog",
     "tinyobjloader",
+    "usockets",
+    "uwebsockets",
     "vtk",
 ]] + ["//tools/workspace/%s:install" % p for p in [
     "cds",

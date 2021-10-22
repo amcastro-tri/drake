@@ -78,7 +78,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   @param[in] is_discrete Whether to allocate discrete state variables for the
       MultibodyTree kinematics. Otherwise allocates continuous state variables.
 
-  @throws std::logic_error if `tree` is null. */
+  @throws std::exception if `tree` is null. */
   explicit MultibodyTreeSystem(std::unique_ptr<MultibodyTree<T>> tree,
                                bool is_discrete = false);
 
@@ -515,8 +515,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
                       std::unique_ptr<MultibodyTree<T>> tree,
                       bool is_discrete);
 
-  // Use continuous state variables by default.
-  bool is_discrete_{false};
+  const bool is_discrete_;
 
   std::unique_ptr<drake::multibody::internal::MultibodyTree<T>> tree_;
 
@@ -564,6 +563,12 @@ class MultibodyTreeSystemElementAttorney {
       const systems::BasicVector<T>& model_vector) {
     return systems::NumericParameterIndex{
         tree_system->DeclareNumericParameter(model_vector)};
+  }
+
+  static systems::AbstractParameterIndex DeclareAbstractParameter(
+      MultibodyTreeSystem<T>* tree_system, const AbstractValue& model_value) {
+    return systems::AbstractParameterIndex{
+        tree_system->DeclareAbstractParameter(model_value)};
   }
 };
 }  // namespace internal

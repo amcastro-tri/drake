@@ -38,8 +38,9 @@ drake_cc_package_library(
         ":equality_constrained_qp_solver",
         ":evaluator_base",
         ":function",
-        ":gurobi_qp",
+        ":get_program_type",
         ":gurobi_solver",
+        ":ibex_solver",
         ":indeterminate",
         ":integer_inequality_solver",
         ":integer_optimization_util",
@@ -112,6 +113,7 @@ drake_cc_library(
         ":clp_solver",
         ":csdp_solver",
         ":equality_constrained_qp_solver",
+        ":get_program_type",
         ":gurobi_solver",
         ":ipopt_solver",
         ":linear_system_solver",
@@ -232,6 +234,15 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "get_program_type",
+    srcs = ["get_program_type.cc"],
+    hdrs = ["get_program_type.h"],
+    deps = [
+        ":mathematical_program",
+    ],
+)
+
+drake_cc_library(
     name = "solver_type",
     hdrs = ["solver_type.h"],
 )
@@ -283,6 +294,7 @@ drake_cc_library(
         ":dreal_solver",
         ":equality_constrained_qp_solver",
         ":gurobi_solver",
+        ":ibex_solver",
         ":ipopt_solver",
         ":linear_system_solver",
         ":moby_lcp_solver",
@@ -752,6 +764,50 @@ drake_cc_library(
     }),
 )
 
+# Ibex is a dependency of dReal; disabling dReal disables Ibex.  We could
+# consider supporting Ibex w/o dReal, but have no use cases that need that
+# support yet.
+drake_cc_library(
+    name = "ibex_solver",
+    srcs = [
+        "ibex_solver_common.cc",
+    ] + select({
+        "//tools:no_dreal": [
+            "no_ibex.cc",
+        ],
+        "//conditions:default": [
+            "ibex_converter.cc",
+            "ibex_solver.cc",
+        ],
+    }),
+    hdrs = [
+        "ibex_solver.h",
+    ] + select({
+        "//conditions:default": [
+            "ibex_converter.h",
+        ],
+        "//tools:no_dreal": [
+        ],
+    }),
+    install_hdrs_exclude = select({
+        "//conditions:default": ["ibex_converter.h"],
+        "//tools:no_dreal": [],
+    }),
+    deps = [
+        ":mathematical_program",
+        ":mathematical_program_result",
+        ":solver_base",
+        ":solver_options",
+        "//common:essential",
+    ] + select({
+        "//conditions:default": [
+            "@ibex//:ibex",
+        ],
+        "//tools:no_dreal": [
+        ],
+    }),
+)
+
 # External Solvers.
 
 # If --config gurobi is used, this target builds object code that satisfies
@@ -811,6 +867,7 @@ drake_cc_library(
     ] + select({
         "//tools:with_mosek": [
             "//common:scoped_singleton",
+            "//common:scope_exit",
             "//math:quadratic_form",
             "@mosek",
         ],
@@ -974,6 +1031,7 @@ drake_cc_library(
         "//common:essential",
     ] + select({
         "//conditions:default": [
+            "//common:scope_exit",
             "//math:eigen_sparse_triplet",
             "@scs//:scsdir",
         ],
@@ -1022,37 +1080,14 @@ drake_cc_library(
         ":mathematical_program",
         ":solver_base",
         ":sdpa_free_format",
+        "//common:filesystem",
+        "//common:scope_exit",
     ] + select({
         "//conditions:default": [
             "@csdp",
         ],
         "//tools:no_csdp": [
         ],
-    }),
-)
-
-# This library is empty unless Gurobi is available.
-drake_cc_library(
-    name = "gurobi_qp",
-    srcs = select({
-        "//tools:with_gurobi": [
-            "qp.cc",
-        ],
-        "//conditions:default": [],
-    }),
-    hdrs = select({
-        "//tools:with_gurobi": [
-            "fast_qp.h",
-            "gurobi_qp.h",
-        ],
-        "//conditions:default": [],
-    }),
-    deps = select({
-        "//tools:with_gurobi": [
-            "@eigen",
-            "@gurobi//:gurobi_c",
-        ],
-        "//conditions:default": [],
     }),
 )
 
@@ -1256,6 +1291,13 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "get_program_type_test",
+    deps = [
+        ":get_program_type",
+    ],
+)
+
+drake_cc_googletest(
     name = "gurobi_solver_test",
     tags = gurobi_test_tags(),
     use_default_main = False,
@@ -1281,6 +1323,25 @@ drake_cc_googletest(
         ":gurobi_solver",
         ":mathematical_program",
         "//common/test_utilities:expect_no_throw",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "ibex_solver_test",
+    deps = [
+        ":generic_trivial_constraint",
+        ":generic_trivial_cost",
+        ":ibex_solver",
+        ":mathematical_program",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "ibex_converter_test",
+    deps = [
+        ":ibex_solver",
     ],
 )
 
@@ -1295,14 +1356,28 @@ drake_cc_googletest(
 
 drake_cc_googletest(
     name = "ipopt_solver_test",
+    copts = select({
+        "//conditions:default": [
+            "-DDRAKE_IPOPT_SOLVER_TEST_HAS_IPOPT=1",
+        ],
+        "//tools:no_ipopt": [
+        ],
+    }),
     deps = [
         ":linear_program_examples",
         ":mathematical_program",
         ":mathematical_program_test_util",
         ":optimization_examples",
         ":quadratic_program_examples",
+        ":second_order_cone_program_examples",
         "//common/test_utilities:eigen_matrix_compare",
-    ],
+    ] + select({
+        "//conditions:default": [
+            "@ipopt",
+        ],
+        "//tools:no_ipopt": [
+        ],
+    }),
 )
 
 drake_cc_googletest(
@@ -1389,6 +1464,7 @@ drake_cc_googletest(
         ":sos_examples",
         "//common:filesystem",
         "//common:temp_directory",
+        "//common/test_utilities:expect_throws_message",
     ],
 )
 
@@ -1399,6 +1475,7 @@ drake_cc_googletest(
         ":mathematical_program",
         ":mosek_solver",
         "//common/test_utilities:expect_no_throw",
+        "//common/test_utilities:expect_throws_message",
     ],
 )
 
@@ -1600,6 +1677,7 @@ drake_cc_googletest(
         ":mathematical_program_test_util",
         ":optimization_examples",
         ":quadratic_program_examples",
+        ":second_order_cone_program_examples",
         "//common:filesystem",
         "//common:temp_directory",
         "//common/test_utilities:eigen_matrix_compare",
@@ -1746,6 +1824,7 @@ drake_cc_googletest(
     deps = [
         ":solve",
         "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
     ],
 )
 
@@ -1781,11 +1860,16 @@ add_lint_tests(cpplint_extra_srcs = [
     "dreal_solver.cc",
     "dreal_solver.h",
     "dreal_solver_common.cc",
-    "fast_qp.h",
-    "gurobi_qp.h",
+    "get_program_type.h",
+    "get_program_type.cc",
     "gurobi_solver.cc",
     "gurobi_solver.h",
     "gurobi_solver_common.cc",
+    "ibex_converter.cc",
+    "ibex_converter.h",
+    "ibex_solver.cc",
+    "ibex_solver.h",
+    "ibex_solver_common.cc",
     "ipopt_solver.cc",
     "ipopt_solver.h",
     "ipopt_solver_common.cc",
@@ -1800,6 +1884,7 @@ add_lint_tests(cpplint_extra_srcs = [
     "no_conex.cc",
     "no_dreal.cc",
     "no_gurobi.cc",
+    "no_ibex.cc",
     "no_ipopt.cc",
     "no_mosek.cc",
     "no_nlopt.cc",
@@ -1808,7 +1893,6 @@ add_lint_tests(cpplint_extra_srcs = [
     "no_snopt.cc",
     "osqp_solver.cc",
     "osqp_solver_common.cc",
-    "qp.cc",
     "scs_solver.cc",
     "scs_solver_common.cc",
     "snopt_solver.cc",

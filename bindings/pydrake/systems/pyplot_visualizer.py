@@ -4,8 +4,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from warnings import warn
 
+from pydrake.common.deprecation import _warn_deprecated
 from pydrake.systems.framework import LeafSystem, PublishEvent, TriggerType
-from pydrake.systems.primitives import SignalLogger
+from pydrake.systems.primitives import SignalLogger, VectorLog
 from pydrake.trajectories import Trajectory
 
 
@@ -25,13 +26,20 @@ class PyPlotVisualizer(LeafSystem):
     appropriate state.
     """
 
-    def __init__(self, draw_period=1./30, facecolor=[1, 1, 1],
+    def __init__(self, draw_period=None, facecolor=[1, 1, 1],
                  figsize=None, ax=None, show=None):
         LeafSystem.__init__(self)
 
+        # To help avoid small simulation timesteps, we use a default period
+        # that has an exact representation in binary floating point; see
+        # drake#15021 for details.
+        default_draw_period = 1./32
+
+        self._warned_signal_logger_deprecated = False  # Remove 2021-12-01.
+
         self.set_name('pyplot_visualization')
-        self.timestep = draw_period
-        self.DeclarePeriodicPublish(draw_period, 0.0)
+        self.timestep = draw_period or default_draw_period
+        self.DeclarePeriodicPublish(self.timestep, 0.0)
 
         if ax is None:
             self.fig = plt.figure(facecolor=facecolor, figsize=figsize)
@@ -67,6 +75,14 @@ class PyPlotVisualizer(LeafSystem):
                 callback=on_initialize))
 
     def DoPublish(self, context, event):
+        # TODO(SeanCurtis-TRI) We want to be able to use this visualizer to
+        # draw without having it part of a Simulator. That means we'd like
+        # vis.Publish(context) to work. Currently, pydrake offers no mechanism
+        # to declare a forced event. However, by overriding DoPublish and
+        # putting the forced event callback code in the override, we can
+        # simulate it.
+        # We need to bind a mechanism for declaring forced events so we don't
+        # have to resort to overriding the dispatcher.
         LeafSystem.DoPublish(self, context, event)
         if self._show:
             self.draw(context)
@@ -108,16 +124,24 @@ class PyPlotVisualizer(LeafSystem):
     def animate(self, log, resample=True, **kwargs):
         """
         Args:
-            log: A reference to a pydrake.systems.primitives.SignalLogger
-                or a pydrake.trajectories.Trajectory that contains the plant
-                state after running a simulation.
+            log: A reference to a pydrake.systems.primitives.VectorLog, or a
+                pydrake.systems.primitives.SignalLogger (deprecated for
+                2021-12-01), or a pydrake.trajectories.Trajectory that contains
+                the plant state after running a simulation.
             resample: Whether we should do a resampling operation to make the
                 samples more consistent in time. This can be disabled if you
                 know the draw_period passed into the constructor exactly
                 matches the sample timestep of the log.
             Additional kwargs are passed through to FuncAnimation.
         """
-        if isinstance(log, SignalLogger):
+        log_is_signal_logger = isinstance(log, SignalLogger)
+        if log_is_signal_logger and not self._warned_signal_logger_deprecated:
+            _warn_deprecated(
+                "SignalLogger is deprecated. Use VectorLog instead.",
+                date="2021-12-01")
+            self._warned_signal_logger_deprecated = True
+
+        if isinstance(log, VectorLog) or log_is_signal_logger:
             t = log.sample_times()
             x = log.data()
 

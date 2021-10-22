@@ -46,7 +46,7 @@ class BallRpyJointTest : public ::testing::Test {
                                             kDamping);
     mutable_joint_ = dynamic_cast<BallRpyJoint<double>*>(
         &model->get_mutable_joint(joint_->index()));
-    DRAKE_DEMAND(mutable_joint_);
+    DRAKE_DEMAND(mutable_joint_ != nullptr);
     mutable_joint_->set_position_limits(
         Vector3d::Constant(kPositionLowerLimit),
         Vector3d::Constant(kPositionUpperLimit));
@@ -60,7 +60,7 @@ class BallRpyJointTest : public ::testing::Test {
     // We are done adding modeling elements. Transfer tree to system and get
     // a Context.
     system_ = std::make_unique<internal::MultibodyTreeSystem<double>>(
-        std::move(model));
+        std::move(model), true/* is_discrete */);
     context_ = system_->CreateDefaultContext();
   }
 
@@ -125,6 +125,10 @@ TEST_F(BallRpyJointTest, ContextDependentAccess) {
   // Angular velocity access:
   joint_->set_angular_velocity(context_.get(), some_value);
   EXPECT_EQ(joint_->get_angular_velocity(*context_), some_value);
+
+  // Joint locking.
+  joint_->Lock(context_.get());
+  EXPECT_EQ(joint_->get_angular_velocity(*context_), Vector3d(0., 0., 0.));
 }
 
 // Tests API to apply torques to joint.

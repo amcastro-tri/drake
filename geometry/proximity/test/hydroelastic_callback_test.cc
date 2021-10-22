@@ -76,6 +76,7 @@ class TestScene {
         shape_A_type_(A_shape_type),
         shape_B_type_(B_shape_type),
         data_{&collision_filter_, &X_WGs_, &hydroelastic_geometries_,
+              ContactPolygonRepresentation::kCentroidSubdivision,
               &surfaces_} {
     X_WGs_[id_A_] = RigidTransform<T>();
     X_WGs_[id_B_] = RigidTransform<T>();
@@ -95,8 +96,8 @@ class TestScene {
                    const HydroelasticType type_B) {
     EncodedData data_A(id_A_, true);
     EncodedData data_B(id_B_, true);
-    collision_filter_.AddGeometry(data_A.encoding());
-    collision_filter_.AddGeometry(data_B.encoding());
+    collision_filter_.AddGeometry(data_A.id());
+    collision_filter_.AddGeometry(data_B.id());
 
     shape_A_ = MakeShape(id_A_, type_A, shape_A_type_, &data_A);
     shape_B_ = MakeShape(id_B_, type_B, shape_B_type_, &data_B);
@@ -150,7 +151,7 @@ class TestScene {
     if constexpr (std::is_same_v<T, double>) {
       return RotationMatrix<T>(RollPitchYaw<T>(rpy));
     } else {
-      const Vector3<T> rpy_ad = math::initializeAutoDiff(rpy);
+      const Vector3<T> rpy_ad = math::InitializeAutoDiff(rpy);
       return RotationMatrix<T>(RollPitchYaw<T>(rpy_ad));
     }
   }
@@ -208,8 +209,15 @@ class TestScene {
   void FilterContact() {
     EncodedData data_A(*shape_A_);
     EncodedData data_B(*shape_B_);
-    collision_filter_.AddToCollisionClique(data_A.encoding(), 1);
-    collision_filter_.AddToCollisionClique(data_B.encoding(), 1);
+    // Filter the pair (A, B); we'll put the ids in a set and simply return that
+    // set for the extract ids function.
+    std::unordered_set<GeometryId> ids{data_A.id(), data_B.id()};
+    CollisionFilter::ExtractIds extract = [&ids](const GeometrySet&) {
+      return ids;
+    };
+    collision_filter_.Apply(CollisionFilterDeclaration().ExcludeWithin(
+                                GeometrySet{data_A.id(), data_B.id()}),
+                            extract, false /* is_invariant */);
   }
 
   // Note: these are non const because the callback takes non-const pointers
@@ -229,7 +237,7 @@ class TestScene {
 
  private:
   Geometries hydroelastic_geometries_;
-  CollisionFilterLegacy collision_filter_;
+  CollisionFilter collision_filter_;
   unordered_map<GeometryId, RigidTransform<T>> X_WGs_;
   GeometryId id_A_{};
   GeometryId id_B_{};
@@ -263,26 +271,24 @@ class TestScene {
 // soft mesh.
 ::testing::AssertionResult ValidateDerivatives(
     const ContactSurface<AutoDiffXd>& surface) {
-  const SurfaceVertexIndex v0(0);
-  const SurfaceFaceIndex f0(0);
   const auto& mesh_W = surface.mesh_W();
-  if (mesh_W.vertex(v0).r_MV().x().derivatives().size() != 3) {
+  if (mesh_W.vertex(0).x().derivatives().size() != 3) {
     return ::testing::AssertionFailure() << "Vertex 0 is missing derivatives";
   }
 
-  if (surface.e_MN().EvaluateAtVertex(v0).derivatives().size() != 3) {
+  if (surface.e_MN().EvaluateAtVertex(0).derivatives().size() != 3) {
     return ::testing::AssertionFailure()
            << "Pressure field at vertex 0 is missing derivatives";
   }
 
   if (surface.HasGradE_M()) {
-    if (surface.EvaluateGradE_M_W(f0).x().derivatives().size() != 3) {
+    if (surface.EvaluateGradE_M_W(0).x().derivatives().size() != 3) {
       return ::testing::AssertionFailure()
              << "Face 0's grad eM is missing derivatives";
     }
   }
   if (surface.HasGradE_N()) {
-    if (surface.EvaluateGradE_N_W(f0).x().derivatives().size() != 3) {
+    if (surface.EvaluateGradE_N_W(0).x().derivatives().size() != 3) {
       return ::testing::AssertionFailure()
              << "Face 0's grad eN is missing derivatives";
     }
@@ -312,27 +318,41 @@ TYPED_TEST(DispatchRigidSoftCalculationTests, SoftMeshRigidMesh) {
   const RigidTransform<T>& X_WA = scene.pose_in_world(id_A);
   scene.AddGeometry(HydroelasticType::kSoft, HydroelasticType::kRigid);
 
-  {
-    // Case 1: Intersecting spheres.
-    scene.PoseGeometry(colliding);
-    const RigidTransform<T>& X_WB = scene.pose_in_world(id_B);
+  for (const auto representation :
+      {ContactPolygonRepresentation::kCentroidSubdivision,
+       ContactPolygonRepresentation::kSingleTriangle}) {
+    SCOPED_TRACE(fmt::format("representation = {}", representation));
+    {
+      // Case 1: Intersecting spheres.
+      scene.PoseGeometry(colliding);
+      const RigidTransform<T>& X_WB = scene.pose_in_world(id_B);
 
-    unique_ptr<ContactSurface<T>> surface = DispatchRigidSoftCalculation(
-        geometries.soft_geometry(id_A), X_WA, id_A,
-        geometries.rigid_geometry(id_B), X_WB, id_B);
-    EXPECT_NE(surface, nullptr);
-    EXPECT_TRUE(ValidateDerivatives(*surface));
-  }
+      unique_ptr<ContactSurface<T>> surface = DispatchRigidSoftCalculation(
+          geometries.soft_geometry(id_A), X_WA, id_A,
+          geometries.rigid_geometry(id_B), X_WB, id_B,
+          representation);
+      EXPECT_NE(surface, nullptr);
+      EXPECT_TRUE(ValidateDerivatives(*surface));
+      switch (representation) {
+        case ContactPolygonRepresentation::kCentroidSubdivision:
+          EXPECT_EQ(100, surface->mesh_W().num_faces());
+          break;
+        case ContactPolygonRepresentation::kSingleTriangle:
+          EXPECT_EQ(28, surface->mesh_W().num_faces());
+      }
+    }
 
-  {
-    // Case 2: Separated spheres.
-    scene.PoseGeometry(!colliding);
-    const RigidTransform<T>& X_WB = scene.pose_in_world(id_B);
+    {
+      // Case 2: Separated spheres.
+      scene.PoseGeometry(!colliding);
+      const RigidTransform<T>& X_WB = scene.pose_in_world(id_B);
 
-    unique_ptr<ContactSurface<T>> surface = DispatchRigidSoftCalculation(
-        geometries.soft_geometry(id_A), X_WA, id_A,
-        geometries.rigid_geometry(id_B), X_WB, id_B);
-    EXPECT_EQ(surface, nullptr);
+      unique_ptr<ContactSurface<T>> surface = DispatchRigidSoftCalculation(
+          geometries.soft_geometry(id_A), X_WA, id_A,
+          geometries.rigid_geometry(id_B), X_WB, id_B,
+          representation);
+      EXPECT_EQ(surface, nullptr);
+    }
   }
 }
 
@@ -349,27 +369,34 @@ TYPED_TEST(DispatchRigidSoftCalculationTests, SoftMeshRigidHalfSpace) {
   const RigidTransform<T>& X_WA = scene.pose_in_world(id_A);
   scene.AddGeometry(HydroelasticType::kSoft, HydroelasticType::kRigid);
 
-  {
-    // Case 1: Intersecting geometry.
-    scene.PoseGeometry(colliding);
-    const RigidTransform<T>& X_WB = scene.pose_in_world(id_B);
+  for (const auto representation :
+      {ContactPolygonRepresentation::kCentroidSubdivision,
+       ContactPolygonRepresentation::kSingleTriangle}) {
+    SCOPED_TRACE(fmt::format("representation = {}", representation));
+    {
+      // Case 1: Intersecting geometry.
+      scene.PoseGeometry(colliding);
+      const RigidTransform<T>& X_WB = scene.pose_in_world(id_B);
 
-    unique_ptr<ContactSurface<T>> surface = DispatchRigidSoftCalculation(
-        geometries.soft_geometry(id_A), X_WA, id_A,
-        geometries.rigid_geometry(id_B), X_WB, id_B);
-    EXPECT_NE(surface, nullptr);
-    EXPECT_TRUE(ValidateDerivatives(*surface));
-  }
+      unique_ptr<ContactSurface<T>> surface = DispatchRigidSoftCalculation(
+          geometries.soft_geometry(id_A), X_WA, id_A,
+          geometries.rigid_geometry(id_B), X_WB, id_B,
+          representation);
+      EXPECT_NE(surface, nullptr);
+      EXPECT_TRUE(ValidateDerivatives(*surface));
+    }
 
-  {
-    // Case 2: Separated geometry.
-    scene.PoseGeometry(!colliding);
-    const RigidTransform<T>& X_WB = scene.pose_in_world(id_B);
+    {
+      // Case 2: Separated geometry.
+      scene.PoseGeometry(!colliding);
+      const RigidTransform<T>& X_WB = scene.pose_in_world(id_B);
 
-    unique_ptr<ContactSurface<T>> surface = DispatchRigidSoftCalculation(
-        geometries.soft_geometry(id_A), X_WA, id_A,
-        geometries.rigid_geometry(id_B), X_WB, id_B);
-    EXPECT_EQ(surface, nullptr);
+      unique_ptr<ContactSurface<T>> surface = DispatchRigidSoftCalculation(
+          geometries.soft_geometry(id_A), X_WA, id_A,
+          geometries.rigid_geometry(id_B), X_WB, id_B,
+          representation);
+      EXPECT_EQ(surface, nullptr);
+    }
   }
 }
 
@@ -385,27 +412,34 @@ TYPED_TEST(DispatchRigidSoftCalculationTests, SoftHalfSpaceRigidMesh) {
   const RigidTransform<T>& X_WA = scene.pose_in_world(id_A);
   scene.AddGeometry(HydroelasticType::kRigid, HydroelasticType::kSoft);
 
-  {
-    // Case 1: Intersecting geometry.
-    scene.PoseGeometry(colliding);
-    const RigidTransform<T>& X_WB = scene.pose_in_world(id_B);
+  for (const auto representation :
+      {ContactPolygonRepresentation::kCentroidSubdivision,
+       ContactPolygonRepresentation::kSingleTriangle}) {
+    SCOPED_TRACE(fmt::format("representation = {}", representation));
+    {
+      // Case 1: Intersecting geometry.
+      scene.PoseGeometry(colliding);
+      const RigidTransform<T>& X_WB = scene.pose_in_world(id_B);
 
-    unique_ptr<ContactSurface<T>> surface = DispatchRigidSoftCalculation(
-        geometries.soft_geometry(id_B), X_WB, id_A,
-        geometries.rigid_geometry(id_A), X_WA, id_B);
-    EXPECT_NE(surface, nullptr);
-    EXPECT_TRUE(ValidateDerivatives(*surface));
-  }
+      unique_ptr<ContactSurface<T>> surface = DispatchRigidSoftCalculation(
+          geometries.soft_geometry(id_B), X_WB, id_A,
+          geometries.rigid_geometry(id_A), X_WA, id_B,
+          representation);
+      EXPECT_NE(surface, nullptr);
+      EXPECT_TRUE(ValidateDerivatives(*surface));
+    }
 
-  {
-    // Case 2: Separated geometry.
-    scene.PoseGeometry(!colliding);
-    const RigidTransform<T>& X_WB = scene.pose_in_world(id_B);
+    {
+      // Case 2: Separated geometry.
+      scene.PoseGeometry(!colliding);
+      const RigidTransform<T>& X_WB = scene.pose_in_world(id_B);
 
-    unique_ptr<ContactSurface<T>> surface = DispatchRigidSoftCalculation(
-        geometries.soft_geometry(id_B), X_WB, id_A,
-        geometries.rigid_geometry(id_A), X_WA, id_B);
-    EXPECT_EQ(surface, nullptr);
+      unique_ptr<ContactSurface<T>> surface = DispatchRigidSoftCalculation(
+          geometries.soft_geometry(id_B), X_WB, id_A,
+          geometries.rigid_geometry(id_A), X_WA, id_B,
+          representation);
+      EXPECT_EQ(surface, nullptr);
+    }
   }
 }
 

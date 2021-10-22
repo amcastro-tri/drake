@@ -1,6 +1,12 @@
 #include "drake/systems/framework/system_scalar_converter.h"
 
+#include <stdexcept>
+
+#include <fmt/format.h>
+
+#include "drake/common/default_scalars.h"
 #include "drake/common/hash.h"
+#include "drake/common/nice_type_name.h"
 
 using std::pair;
 using std::type_index;
@@ -28,7 +34,12 @@ void SystemScalarConverter::Insert(
     const ErasedConverterFunc& converter) {
   const auto& key = Key{t_info, u_info};
   const auto& insert_result = funcs_.insert({key, converter});
-  DRAKE_ASSERT(insert_result.second);
+  DRAKE_DEMAND(insert_result.second);
+}
+
+template <typename T, typename U>
+void SystemScalarConverter::Remove() {
+  funcs_.erase(Key(typeid(T), typeid(U)));
 }
 
 const SystemScalarConverter::ErasedConverterFunc* SystemScalarConverter::Find(
@@ -55,6 +66,48 @@ void SystemScalarConverter::RemoveUnlessAlsoSupportedBy(
     }
   }
 }
+
+namespace system_scalar_converter_internal {
+
+void ThrowConversionMismatch(
+    const type_info& s_t_info, const type_info& s_u_info,
+    const type_info& other_info) {
+  throw std::runtime_error(fmt::format(
+      "SystemScalarConverter was configured to convert a {} into a {}"
+      " but was called with a {} at runtime",
+      NiceTypeName::Get(s_u_info), NiceTypeName::Get(s_t_info),
+      NiceTypeName::Get(other_info)));
+}
+
+template <typename T, typename U>
+void AddPydrakeConverterFunction(
+    SystemScalarConverter* converter,
+    const std::function<System<T>* (const System<U>&)>& func) {
+  DRAKE_DEMAND(converter != nullptr);
+  DRAKE_DEMAND(func != nullptr);
+  // Copy `func` into a lambda that ends up stored into `funcs_`.  The lambda
+  // is typed as `void* => void*` in order to have a non-templated signature
+  // and thus fit into a homogeneously-typed std::unordered_map.
+  converter->Insert(typeid(T), typeid(U), [func](const void* const bare_u) {
+    DRAKE_DEMAND(bare_u != nullptr);
+    const System<U>& other = *static_cast<const System<U>*>(bare_u);
+    // N.B. This returns a bare pointer, whose ownership is transferred to
+    // the caller. We can't use unique_ptr to denote that, though, because
+    // that would introduce a include file dependency cycle with System<T>'s
+    // destructor's declaration.
+    return func(other);
+  });
+}
+
+DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS((
+    &AddPydrakeConverterFunction<T, U>
+))
+
+}  // namespace system_scalar_converter_internal
+
+DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS((
+    &SystemScalarConverter::Remove<T, U>
+))
 
 }  // namespace systems
 }  // namespace drake

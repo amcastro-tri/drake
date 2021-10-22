@@ -72,6 +72,17 @@ TEST_F(IdentifierTests, AssignmentAndComparison) {
   EXPECT_TRUE(temp == a3_);
 }
 
+// Check the specialized internal-use compare that can be used on an invalid
+// Identifier.
+TEST_F(IdentifierTests, InvalidOrSameComparison) {
+  AId same_as_a1 = a1_;
+  EXPECT_TRUE(same_as_a1.is_same_as_valid_id(a1_));
+  EXPECT_FALSE(a1_.is_same_as_valid_id(a2_));
+
+  AId invalid;
+  EXPECT_FALSE(invalid.is_same_as_valid_id(a1_));
+}
+
 // Confirms that ids are configured to serve as unique keys in
 // STL containers.
 TEST_F(IdentifierTests, ServeAsMapKey) {
@@ -203,11 +214,11 @@ BINARY_TEST(=, Assignment)
 // to change and allow conversion between identifiers (or between identifiers
 // and ints), this would fail to compile.
 TEST_F(IdentifierTests, Convertible) {
-  static_assert(!std::is_convertible<AId, BId>::value,
+  static_assert(!std::is_convertible_v<AId, BId>,
                 "Identifiers of different types should not be convertible.");
-  static_assert(!std::is_convertible<AId, int>::value,
+  static_assert(!std::is_convertible_v<AId, int>,
                 "Identifiers should not be convertible to ints.");
-  static_assert(!std::is_convertible<int, AId>::value,
+  static_assert(!std::is_convertible_v<int, AId>,
                 "Identifiers should not be convertible from ints");
 }
 
@@ -217,25 +228,31 @@ TEST_F(IdentifierTests, InvalidGetValueCall) {
   AId invalid;
   DRAKE_EXPECT_THROWS_MESSAGE(
       unused(invalid.get_value()),
-      std::exception, ".*is_valid.*failed.*");
+      ".*is_valid.*failed.*");
 }
 
 // Comparison of invalid ids is an error.
 TEST_F(IdentifierTests, InvalidEqualityCompare) {
   if (kDrakeAssertIsDisarmed) { return; }
   AId invalid;
-  DRAKE_EXPECT_THROWS_MESSAGE(
-      unused(invalid == a1_),
-      std::exception, ".*is_valid.*failed.*");
+  DRAKE_EXPECT_THROWS_MESSAGE(unused(invalid == a1_), ".*is_valid.*failed.*");
 }
 
 // Comparison of invalid ids is an error.
 TEST_F(IdentifierTests, InvalidInequalityCompare) {
   if (kDrakeAssertIsDisarmed) { return; }
   AId invalid;
-  DRAKE_EXPECT_THROWS_MESSAGE(
-      unused(invalid != a1_),
-      std::exception, ".*is_valid.*failed.*");
+  DRAKE_EXPECT_THROWS_MESSAGE(unused(invalid != a1_), ".*is_valid.*failed.*");
+}
+
+// Comparison of invalid ids is an error.
+TEST_F(IdentifierTests, BadInvalidOrSameComparison) {
+  if (kDrakeAssertIsDisarmed) {
+    return;
+  }
+  AId invalid;
+  DRAKE_EXPECT_THROWS_MESSAGE(unused(a1_.is_same_as_valid_id(invalid)),
+                              ".*is_valid.*failed.*");
 }
 
 // Hashing an invalid id is *not* an error.
@@ -253,9 +270,7 @@ TEST_F(IdentifierTests, InvalidStream) {
   if (kDrakeAssertIsDisarmed) { return; }
   AId invalid;
   std::stringstream ss;
-  DRAKE_EXPECT_THROWS_MESSAGE(
-      unused(ss << invalid),
-      std::exception, ".*is_valid.*failed.*");
+  DRAKE_EXPECT_THROWS_MESSAGE(unused(ss << invalid), ".*is_valid.*failed.*");
 }
 
 }  // namespace

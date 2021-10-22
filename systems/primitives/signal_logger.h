@@ -53,7 +53,8 @@ namespace systems {
 /// @tparam_default_scalar
 /// @ingroup primitive_systems
 template <typename T>
-class SignalLogger final : public LeafSystem<T> {
+class DRAKE_DEPRECATED("2021-12-01", "Use VectorLogSink instead.")
+    SignalLogger final : public LeafSystem<T> {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(SignalLogger)
 
@@ -71,14 +72,17 @@ class SignalLogger final : public LeafSystem<T> {
   /// @see LogOutput() helper function for a convenient way to add %logging.
   explicit SignalLogger(int input_size, int batch_allocation_size = 1000);
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   /// Scalar-converting copy constructor. See @ref system_scalar_conversion.
   template <typename U>
   explicit SignalLogger(const SignalLogger<U>&);
+#pragma GCC diagnostic pop
 
   /// Sets the publishing period of this system to specify periodic sampling
   /// and disables the default per-step sampling. This method can only be called
   /// once and only if set_forced_publish_only() hasn't been called.
-  /// @throws std::logic_error if called more than once, or if
+  /// @throws std::exception if called more than once, or if
   ///   set_forced_publish_only() has been called.
   /// @pre `period` must be greater than zero.
   void set_publish_period(double period);
@@ -87,7 +91,7 @@ class SignalLogger final : public LeafSystem<T> {
   /// to System::Publish() issued directly or by the Simulator and disables the
   /// default per-step sampling. This method cannot be called if
   /// set_publish_period() has been called.
-  /// @throws std::logic_error if set_publish_period() has been called.
+  /// @throws std::exception if set_publish_period() has been called.
   void set_forced_publish_only();
 
   /// Returns the number of samples taken since construction or last reset().
@@ -125,7 +129,10 @@ class SignalLogger final : public LeafSystem<T> {
 
   LoggingMode logging_mode_{kPerStep};
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   mutable SignalLog<T> log_;  // TODO(sherm1) Not thread safe :(
+#pragma GCC diagnostic pop
 };
 
 /// Provides a convenience function for adding a SignalLogger, initialized to
@@ -138,7 +145,11 @@ class SignalLogger final : public LeafSystem<T> {
 /// @endcode
 /// @relates drake::systems::SignalLogger
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 template <typename T>
+DRAKE_DEPRECATED("2021-12-01", "Use LogVectorOutput instead.")
 SignalLogger<T>* LogOutput(const OutputPort<T>& src,
                            systems::DiagramBuilder<T>* builder) {
   SignalLogger<T>* logger =
@@ -146,6 +157,8 @@ SignalLogger<T>* LogOutput(const OutputPort<T>& src,
   builder->Connect(src, logger->get_input_port());
   return logger;
 }
+
+#pragma GCC diagnostic pop
 
 }  // namespace systems
 }  // namespace drake

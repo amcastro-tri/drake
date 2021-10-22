@@ -27,8 +27,9 @@ DEFINE_double(simulation_time, 2.0,
 // Contact model parameters.
 DEFINE_string(contact_model, "point",
               "Contact model. Options are: 'point', 'hydroelastic', 'hybrid'.");
-DEFINE_double(elastic_modulus, 5.0e4,
-              "For hydroelastic (and hybrid) contact, elastic modulus, [Pa].");
+DEFINE_double(hydroelastic_modulus, 5.0e4,
+              "For hydroelastic (and hybrid) contact, "
+              "hydroelastic modulus, [Pa].");
 DEFINE_double(dissipation, 5.0,
               "For hydroelastic (and hybrid) contact, Hunt & Crossley "
               "dissipation, [s/m].");
@@ -61,6 +62,9 @@ DEFINE_bool(use_primal_solver, false, "If true, it uses primal solver");
 DEFINE_bool(visualize, true,
             "If true, the simulation will publish messages for Drake "
             "visualizer. Useful to turn off during profiling sessions.");
+DEFINE_bool(vis_hydro, false,
+            "If true, visualize collision geometries as their hydroelastic "
+            "meshes, where possible.");
 
 // Sphere's spatial velocity.
 DEFINE_double(vx, 1.5,
@@ -120,7 +124,7 @@ int do_main() {
       FLAGS_friction_coefficient /* dynamic friction */);
 
   MultibodyPlant<double>& plant = *builder.AddSystem(MakeBouncingBallPlant(
-      FLAGS_mbp_dt, radius, mass, FLAGS_elastic_modulus, FLAGS_dissipation,
+      FLAGS_mbp_dt, radius, mass, FLAGS_hydroelastic_modulus, FLAGS_dissipation,
       coulomb_friction, -g * Vector3d::UnitZ(), FLAGS_rigid_ball,
       FLAGS_soft_ground, &scene_graph));
 
@@ -142,7 +146,7 @@ int do_main() {
 
   // Set contact model and parameters.
   if (FLAGS_contact_model == "hydroelastic") {
-    plant.set_contact_model(ContactModel::kHydroelasticsOnly);
+    plant.set_contact_model(ContactModel::kHydroelastic);
     plant.Finalize();
   } else if (FLAGS_contact_model == "point") {
     // Plant must be finalized before setting the penetration allowance.
@@ -190,7 +194,7 @@ int do_main() {
   }
 
   // Sanity check on the availability of the optional source id before using it.
-  DRAKE_DEMAND(!!plant.get_source_id());
+  DRAKE_DEMAND(plant.get_source_id().has_value());
 
   builder.Connect(scene_graph.get_query_output_port(),
                   plant.get_geometry_query_input_port());
@@ -200,8 +204,14 @@ int do_main() {
       scene_graph.get_source_pose_port(plant.get_source_id().value()));
 
   if (FLAGS_visualize) {
-    geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph);
-    ConnectContactResultsToDrakeVisualizer(&builder, plant);
+    geometry::DrakeVisualizerParams params;
+    if (FLAGS_vis_hydro) {
+      params.role = geometry::Role::kProximity;
+      params.show_hydroelastic = true;
+    }
+    geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph, nullptr,
+                                             params);
+    ConnectContactResultsToDrakeVisualizer(&builder, plant, scene_graph);
   }
   auto diagram = builder.Build();
 

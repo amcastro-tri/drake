@@ -56,15 +56,24 @@ drake_pybind_library(
         "//bindings/pydrake:documentation_pybind",
         "//bindings/pydrake:symbolic_types_pybind",
         "//bindings/pydrake/common:cpp_param_pybind",
+        "//bindings/pydrake/common:cpp_template_pybind",
         "//bindings/pydrake/common:deprecation_pybind",
     ],
+    # N.B. Leading `_` is only for deprecation.
+    cc_so_name = "_mathematicalprogram",
     cc_srcs = ["mathematicalprogram_py.cc"],
     package_info = PACKAGE_INFO,
     py_deps = [
         "//bindings/pydrake:autodiffutils_py",
         "//bindings/pydrake:symbolic_py",
+        "//bindings/pydrake/common:cpp_param_py",
+        "//bindings/pydrake/common:cpp_template_py",
     ],
-    py_srcs = ["_mathematicalprogram_extra.py"],
+    py_srcs = [
+        "_mathematicalprogram_extra.py",
+        # N.B. This file is only for deprecation.
+        "mathematicalprogram.py",
+    ],
 )
 
 drake_pybind_library(
@@ -87,6 +96,22 @@ drake_pybind_library(
         "//bindings/pydrake:symbolic_types_pybind",
     ],
     cc_srcs = ["mixed_integer_optimization_util_py.cc"],
+    package_info = PACKAGE_INFO,
+    py_deps = [
+        ":mathematicalprogram_py",
+    ],
+)
+
+drake_pybind_library(
+    name = "mixed_integer_rotation_constraint_py",
+    cc_deps = [
+        "//bindings/pydrake:documentation_pybind",
+        "//bindings/pydrake:symbolic_types_pybind",
+    ],
+    cc_srcs = [
+        "mixed_integer_optimization_util_py.cc",
+        "mixed_integer_rotation_constraint_py.cc",
+    ],
     package_info = PACKAGE_INFO,
     py_deps = [
         ":mathematicalprogram_py",
@@ -124,7 +149,20 @@ drake_pybind_library(
     package_info = PACKAGE_INFO,
     py_deps = [
         ":mathematicalprogram_py",
+        ":sdpa_free_format_py",
         "//bindings/pydrake/common:value_py",
+    ],
+)
+
+drake_pybind_library(
+    name = "dreal_py",
+    cc_deps = [
+        "//bindings/pydrake:documentation_pybind",
+    ],
+    cc_srcs = ["dreal_py.cc"],
+    package_info = PACKAGE_INFO,
+    py_deps = [
+        ":mathematicalprogram_py",
     ],
 )
 
@@ -140,6 +178,18 @@ drake_pybind_library(
     py_deps = [
         ":mathematicalprogram_py",
         "//bindings/pydrake/common:value_py",
+    ],
+)
+
+drake_pybind_library(
+    name = "ibex_py",
+    cc_deps = [
+        "//bindings/pydrake:documentation_pybind",
+    ],
+    cc_srcs = ["ibex_py.cc"],
+    package_info = PACKAGE_INFO,
+    py_deps = [
+        ":mathematicalprogram_py",
     ],
 )
 
@@ -244,10 +294,13 @@ PY_LIBRARIES_WITH_INSTALL = [
     ":branch_and_bound_py",
     ":clp_py",
     ":csdp_py",
+    ":dreal_py",
     ":gurobi_py",
+    ":ibex_py",
     ":ipopt_py",
     ":mathematicalprogram_py",
     ":mixed_integer_optimization_util_py",
+    ":mixed_integer_rotation_constraint_py",
     ":mosek_py",
     ":nlopt_py",
     ":osqp_py",
@@ -305,9 +358,34 @@ drake_py_unittest(
 )
 
 drake_py_unittest(
+    name = "dreal_solver_test",
+    args = select({
+        "//tools:no_dreal": ["TestDrealSolver.unavailable"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":dreal_py",
+        "//bindings/pydrake/common:containers_py",
+        "//bindings/pydrake/common/test_utilities",
+    ],
+)
+
+drake_py_unittest(
     name = "gurobi_solver_test",
     tags = gurobi_test_tags(),
     deps = [":gurobi_py"],
+)
+
+drake_py_unittest(
+    name = "ibex_solver_test",
+    args = select({
+        "//tools:no_dreal": ["TestIbexSolver.unavailable"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":ibex_py",
+        "//bindings/pydrake/common/test_utilities:numpy_compare_py",
+    ],
 )
 
 drake_py_unittest(
@@ -376,6 +454,8 @@ drake_py_unittest(
     deps = [
         ":gurobi_py",
         ":mathematicalprogram_py",
+        ":osqp_py",
+        ":scs_py",
         ":snopt_py",
         "//bindings/pydrake:math_py",
         "//bindings/pydrake/common/test_utilities",
@@ -396,6 +476,16 @@ drake_py_unittest(
     name = "mixed_integer_optimization_util_test",
     deps = [
         ":mixed_integer_optimization_util_py",
+        "//bindings/pydrake:math_py",
+        "//bindings/pydrake/common/test_utilities",
+    ],
+)
+
+drake_py_unittest(
+    name = "mixed_integer_rotation_constraint_test",
+    deps = [
+        ":mixed_integer_optimization_util_py",
+        ":mixed_integer_rotation_constraint_py",
         "//bindings/pydrake:math_py",
         "//bindings/pydrake/common/test_utilities",
     ],

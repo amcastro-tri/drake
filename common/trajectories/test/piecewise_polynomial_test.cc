@@ -13,7 +13,7 @@
 #include "drake/common/trajectories/test/random_piecewise_polynomial.h"
 #include "drake/math/autodiff_gradient.h"
 
-using drake::math::autoDiffToGradientMatrix;
+using drake::math::ExtractGradient;
 using drake::math::DiscardGradient;
 using Eigen::Matrix;
 using std::default_random_engine;
@@ -265,7 +265,7 @@ GTEST_TEST(testPiecewisePolynomial, ExceptionsTest) {
   DRAKE_EXPECT_THROWS_MESSAGE(
       PiecewisePolynomial<double>::CubicWithContinuousSecondDerivatives(
           breaks, samples, true),
-      std::runtime_error, "Times must be in increasing order.");
+      "Times must be in increasing order.");
 }
 
 GTEST_TEST(testPiecewisePolynomial, AllTests) {
@@ -300,7 +300,7 @@ GTEST_TEST(testPiecewisePolynomial, VectorValueTest) {
 
   PiecewisePolynomial<double> mat(Eigen::Matrix3d::Identity());
   DRAKE_EXPECT_THROWS_MESSAGE(
-      mat.vector_values(times), std::runtime_error,
+      mat.vector_values(times),
       "This method only supports vector-valued trajectories.");
 }
 
@@ -526,9 +526,8 @@ GTEST_TEST(PiecewiseTrajectoryTest, AutoDiffDerivativesTest) {
       ExtractDoubleOrThrow(trajectory.end_time()));
   const double tolerance = 20 * std::numeric_limits<double>::epsilon();
   for (int k = 0; k < num_times; ++k) {
-    AutoDiffXd t_k = math::initializeAutoDiff(Vector1d{t(k)})[0];
-    MatrixX<double> derivative_value =
-        autoDiffToGradientMatrix(trajectory.value(t_k));
+    AutoDiffXd t_k = math::InitializeAutoDiff(Vector1d{t(k)})[0];
+    MatrixX<double> derivative_value = ExtractGradient(trajectory.value(t_k));
     MatrixX<double> expected_derivative_value =
         DiscardGradient(derivative_trajectory->value(t(k)));
     EXPECT_TRUE(CompareMatrices(derivative_value, expected_derivative_value,

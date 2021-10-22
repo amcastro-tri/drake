@@ -123,7 +123,7 @@ class BsplineTrajectory final : public trajectories::Trajectory<T> {
 #else
   // Restrict this method to T = double only; we must mix "Archive" into the
   // conditional type for SFINAE to work, so we just check it against void.
-  std::enable_if_t<std::is_same_v<T, double> && !std::is_void<Archive>::value>
+  std::enable_if_t<std::is_same_v<T, double> && !std::is_void_v<Archive>>
 #endif
   Serialize(Archive* a) {
     a->Visit(MakeNameValue("basis", &basis_));
@@ -132,6 +132,10 @@ class BsplineTrajectory final : public trajectories::Trajectory<T> {
   }
 
  private:
+  bool do_has_derivative() const override;
+
+  MatrixX<T> DoEvalDerivative(const T& t, int derivative_order) const override;
+
   std::unique_ptr<trajectories::Trajectory<T>> DoMakeDerivative(
       int derivative_order) const override;
 

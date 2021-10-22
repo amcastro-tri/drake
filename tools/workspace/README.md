@@ -26,15 +26,6 @@ Drake is using:
   https://docs.bazel.build/versions/master/be/workspace.html
   https://docs.bazel.build/versions/master/skylark/repository_rules.html
 
-Files named `package.cps` are written the in Common Package Specification
-language, which provides the necessary information for a project to be consumed
-by other projects via `cps2cmake`-generated `*.cmake` files:
-  https://mwoehlke.github.io/cps/
-  https://github.com/mwoehlke/pycps
-
-Files names `package-create-cps.py` are code that generates the `package.cps`
-file, in cases where its contents should not be hard-coded.
-
 # Changing the version of third-party software
 
 The instructions for updating third-party software differ depending on how
@@ -43,7 +34,7 @@ Drake is obtaining that software.
 Most third-party software used by Drake will be incorporated via files named
 `//tools/workspace/foo:repository.bzl` where `foo` is the name of the software
 (`boost`, `eigen`, `vtk`, etc.).  Consult that file to check which download or
-installation helper is used; find the helper in the the list below to continue.
+installation helper is used; find the helper in the list below to continue.
 
 Drake maintainers can use the bazel-bin/tools/workspace/new_release tool to
 report any out-of-date externals.

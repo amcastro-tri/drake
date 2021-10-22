@@ -43,7 +43,7 @@ template <typename T>
 template <template <typename Scalar> class BodyType>
 const BodyType<T>& MultibodyTree<T>::AddBody(
     std::unique_ptr<BodyType<T>> body) {
-  static_assert(std::is_convertible<BodyType<T>*, Body<T>*>::value,
+  static_assert(std::is_convertible_v<BodyType<T>*, Body<T>*>,
                 "BodyType must be a sub-class of Body<T>.");
   if (topology_is_valid()) {
     throw std::logic_error(
@@ -86,7 +86,7 @@ const BodyType<T>& MultibodyTree<T>::AddBody(
 template <typename T>
 template<template<typename Scalar> class BodyType, typename... Args>
 const BodyType<T>& MultibodyTree<T>::AddBody(Args&&... args) {
-  static_assert(std::is_convertible<BodyType<T>*, Body<T>*>::value,
+  static_assert(std::is_convertible_v<BodyType<T>*, Body<T>*>,
                 "BodyType must be a sub-class of Body<T>.");
   return AddBody(std::make_unique<BodyType<T>>(std::forward<Args>(args)...));
 }
@@ -127,7 +127,7 @@ template <typename T>
 template <template <typename Scalar> class FrameType>
 const FrameType<T>& MultibodyTree<T>::AddFrame(
     std::unique_ptr<FrameType<T>> frame) {
-  static_assert(std::is_convertible<FrameType<T>*, Frame<T>*>::value,
+  static_assert(std::is_convertible_v<FrameType<T>*, Frame<T>*>,
                 "FrameType must be a sub-class of Frame<T>.");
   if (topology_is_valid()) {
     throw std::logic_error(
@@ -157,7 +157,7 @@ const FrameType<T>& MultibodyTree<T>::AddFrame(
 template <typename T>
 template<template<typename Scalar> class FrameType, typename... Args>
 const FrameType<T>& MultibodyTree<T>::AddFrame(Args&&... args) {
-  static_assert(std::is_convertible<FrameType<T>*, Frame<T>*>::value,
+  static_assert(std::is_convertible_v<FrameType<T>*, Frame<T>*>,
                 "FrameType must be a sub-class of Frame<T>.");
   return AddFrame(
       std::make_unique<FrameType<T>>(std::forward<Args>(args)...));
@@ -167,7 +167,7 @@ template <typename T>
 template <template<typename Scalar> class MobilizerType>
 const MobilizerType<T>& MultibodyTree<T>::AddMobilizer(
     std::unique_ptr<MobilizerType<T>> mobilizer) {
-  static_assert(std::is_convertible<MobilizerType<T>*, Mobilizer<T>*>::value,
+  static_assert(std::is_convertible_v<MobilizerType<T>*, Mobilizer<T>*>,
                 "MobilizerType must be a sub-class of mobilizer<T>.");
   if (topology_is_valid()) {
     throw std::logic_error("This MultibodyTree is finalized already. "
@@ -221,7 +221,7 @@ const MobilizerType<T>& MultibodyTree<T>::AddMobilizer(
 template <typename T>
 template<template<typename Scalar> class MobilizerType, typename... Args>
 const MobilizerType<T>& MultibodyTree<T>::AddMobilizer(Args&&... args) {
-  static_assert(std::is_base_of<Mobilizer<T>, MobilizerType<T>>::value,
+  static_assert(std::is_base_of_v<Mobilizer<T>, MobilizerType<T>>,
                 "MobilizerType must be a sub-class of Mobilizer<T>.");
   return AddMobilizer(
       std::make_unique<MobilizerType<T>>(std::forward<Args>(args)...));
@@ -232,7 +232,7 @@ template <template<typename Scalar> class ForceElementType>
 const ForceElementType<T>& MultibodyTree<T>::AddForceElement(
     std::unique_ptr<ForceElementType<T>> force_element) {
   static_assert(
-      std::is_convertible<ForceElementType<T>*, ForceElement<T>*>::value,
+      std::is_convertible_v<ForceElementType<T>*, ForceElement<T>*>,
       "ForceElementType<T> must be a sub-class of ForceElement<T>.");
   if (topology_is_valid()) {
     throw std::logic_error(
@@ -271,7 +271,7 @@ template <typename T>
 template<template<typename Scalar> class ForceElementType, typename... Args>
 const ForceElementType<T>&
 MultibodyTree<T>::AddForceElement(Args&&... args) {
-  static_assert(std::is_base_of<ForceElement<T>, ForceElementType<T>>::value,
+  static_assert(std::is_base_of_v<ForceElement<T>, ForceElementType<T>>,
                 "ForceElementType<T> must be a sub-class of "
                 "ForceElement<T>.");
   return AddForceElement(
@@ -282,7 +282,7 @@ template <typename T>
 template <template<typename Scalar> class JointType>
 const JointType<T>& MultibodyTree<T>::AddJoint(
     std::unique_ptr<JointType<T>> joint) {
-  static_assert(std::is_convertible<JointType<T>*, Joint<T>*>::value,
+  static_assert(std::is_convertible_v<JointType<T>*, Joint<T>*>,
                 "JointType must be a sub-class of Joint<T>.");
 
   if (HasJointNamed(joint->name(), joint->model_instance())) {
@@ -318,7 +318,7 @@ const JointType<T>& MultibodyTree<T>::AddJoint(
     const Body<T>& child,
     const std::optional<math::RigidTransform<double>>& X_BM,
     Args&&... args) {
-  static_assert(std::is_base_of<Joint<T>, JointType<T>>::value,
+  static_assert(std::is_base_of_v<Joint<T>, JointType<T>>,
                 "JointType<T> must be a sub-class of Joint<T>.");
 
   const Frame<T>* frame_on_parent{nullptr};
@@ -486,60 +486,79 @@ void MultibodyTree<T>::CloneActuatorAndAdd(
 }
 
 template <typename T>
-Eigen::VectorBlock<const VectorX<T>> MultibodyTree<T>::get_state_vector(
+Eigen::VectorBlock<const VectorX<T>>
+MultibodyTree<T>::get_positions_and_velocities(
     const systems::Context<T>& context) const {
+
+  // Note that we can't currently count on MultibodyPlant's API to have
+  // validated this Context. The extract_qv_from_continuous() call
+  // below depends on this being a LeafContext. We'll just verify that this
+  // Context belongs to the owning System, since we know that's a LeafSystem.
+  tree_system().ValidateContext(context);
+
   if (is_state_discrete()) {
     return get_discrete_state_vector(context);
   }
-
-  // State is continuous. This might have x = [q, v, z] -- we only
-  // want q and v.
-  const int num_qv = num_positions() + num_velocities();
-  // TODO(sherm1) This dynamic_cast is likely too expensive -- replace with
-  //              static_cast in Release builds.
-  const systems::BasicVector<T>& continuous_state_vector =
-      dynamic_cast<const systems::BasicVector<T>&>(
-          context.get_continuous_state().get_vector());
-  DRAKE_ASSERT(continuous_state_vector.size() >= num_qv);
-  Eigen::VectorBlock<const VectorX<T>> x =
-      continuous_state_vector.get_value();
-  return x.nestedExpression().head(num_qv);
+  const systems::VectorBase<T>& continuous_qvz_base =
+      context.get_continuous_state().get_vector();
+  return extract_qv_from_continuous(continuous_qvz_base);
 }
 
 template <typename T>
 Eigen::VectorBlock<const VectorX<T>> MultibodyTree<T>::get_positions(
     const systems::Context<T>& context) const {
-  Eigen::VectorBlock<const VectorX<T>> qv = get_state_vector(context);
-  return qv.nestedExpression().head(num_positions());
+  Eigen::VectorBlock<const VectorX<T>> qv =
+      get_positions_and_velocities(context);
+  return make_block_segment(qv, 0, num_positions());
 }
 
 template <typename T>
 Eigen::VectorBlock<const VectorX<T>> MultibodyTree<T>::get_velocities(
     const systems::Context<T>& context) const {
-  Eigen::VectorBlock<const VectorX<T>> qv = get_state_vector(context);
-  return qv.nestedExpression().tail(num_velocities());
+  Eigen::VectorBlock<const VectorX<T>> qv =
+      get_positions_and_velocities(context);
+  return make_block_segment(qv, num_positions(), num_velocities());
 }
 
 template <typename T>
-Eigen::VectorBlock<VectorX<T>> MultibodyTree<T>::get_mutable_state_vector(
+Eigen::VectorBlock<VectorX<T>>
+MultibodyTree<T>::GetMutablePositionsAndVelocities(
     systems::Context<T>* context) const {
+  DRAKE_ASSERT(context != nullptr);
+
+  // Note that we can't currently count on MultibodyPlant's API to have
+  // validated this Context. The extract_mutable_qv_from_continuous() call
+  // below depends on this being a LeafContext. We'll just verify that this
+  // Context belongs to the owning System, since we know that's a LeafSystem.
+  tree_system().ValidateContext(*context);
+
   if (is_state_discrete()) {
-    return get_mutable_discrete_state_vector(&*context);
+    return get_mutable_discrete_state_vector(context);
   }
-  systems::VectorBase<T>& continuous_qvz =
+  systems::VectorBase<T>& continuous_qvz_base =
       context->get_mutable_continuous_state().get_mutable_vector();
-  return extract_qv_from_continuous(&continuous_qvz);
+  return extract_mutable_qv_from_continuous(&continuous_qvz_base);
 }
 
 template <typename T>
-Eigen::VectorBlock<VectorX<T>> MultibodyTree<T>::get_mutable_state_vector(
+Eigen::VectorBlock<VectorX<T>>
+MultibodyTree<T>::get_mutable_positions_and_velocities(
     systems::State<T>* state) const {
+  DRAKE_ASSERT(state != nullptr);
+
+  // Note that we can't currently count on MultibodyPlant's API to have
+  // validated this State. The extract_mutable_qv_from_continuous() call
+  // below depends on this being the State of a LeafContext. We'll just verify
+  // that this State was created by the owning System, since we know that's
+  // a LeafSystem.
+  tree_system().ValidateCreatedForThisSystem(*state);
+
   if (is_state_discrete()) {
-    return get_mutable_discrete_state_vector(&*state);
+    return get_mutable_discrete_state_vector(state);
   }
-  systems::VectorBase<T>& continuous_qvz =
+  systems::VectorBase<T>& continuous_qvz_base =
       state->get_mutable_continuous_state().get_mutable_vector();
-  return extract_qv_from_continuous(&continuous_qvz);
+  return extract_mutable_qv_from_continuous(&continuous_qvz_base);
 }
 
 // Must be implemented carefully to avoid invalidating more cache entries than
@@ -547,31 +566,33 @@ Eigen::VectorBlock<VectorX<T>> MultibodyTree<T>::get_mutable_state_vector(
 // TODO(sherm1) Currently we can only get q and v together so have no way to
 // invalidate just q-dependent or v-dependent cache entries.
 template <typename T>
-Eigen::VectorBlock<VectorX<T>> MultibodyTree<T>::get_mutable_positions(
+Eigen::VectorBlock<VectorX<T>> MultibodyTree<T>::GetMutablePositions(
     systems::Context<T>* context) const {
-  Eigen::VectorBlock<VectorX<T>> qv = get_mutable_state_vector(&*context);
-  return qv.nestedExpression().head(num_positions());
+  Eigen::VectorBlock<VectorX<T>> qv = GetMutablePositionsAndVelocities(context);
+  return make_mutable_block_segment(&qv, 0, num_positions());
 }
 
 template <typename T>
-Eigen::VectorBlock<VectorX<T>> MultibodyTree<T>::get_mutable_velocities(
+Eigen::VectorBlock<VectorX<T>> MultibodyTree<T>::GetMutableVelocities(
     systems::Context<T>* context) const {
-  Eigen::VectorBlock<VectorX<T>> qv = get_mutable_state_vector(&*context);
-  return qv.nestedExpression().tail(num_velocities());
+  Eigen::VectorBlock<VectorX<T>> qv = GetMutablePositionsAndVelocities(context);
+  return make_mutable_block_segment(&qv, num_positions(), num_velocities());
 }
 
 template <typename T>
 Eigen::VectorBlock<VectorX<T>> MultibodyTree<T>::get_mutable_positions(
     systems::State<T>* state) const {
-  Eigen::VectorBlock<VectorX<T>> qv = get_mutable_state_vector(&*state);
-  return qv.nestedExpression().head(num_positions());
+  Eigen::VectorBlock<VectorX<T>> qv =
+      get_mutable_positions_and_velocities(state);
+  return make_mutable_block_segment(&qv, 0, num_positions());
 }
 
 template <typename T>
 Eigen::VectorBlock<VectorX<T>> MultibodyTree<T>::get_mutable_velocities(
     systems::State<T>* state) const {
-  Eigen::VectorBlock<VectorX<T>> qv = get_mutable_state_vector(&*state);
-  return qv.nestedExpression().tail(num_velocities());
+  Eigen::VectorBlock<VectorX<T>> qv =
+      get_mutable_positions_and_velocities(state);
+  return make_mutable_block_segment(&qv, num_positions(), num_velocities());
 }
 
 template <typename T>
@@ -618,23 +639,46 @@ MultibodyTree<T>::get_mutable_discrete_state_vector(
   return discrete_state_vector.get_mutable_value();
 }
 
-// State is continuous. This might have x = [q, v, z] -- we only
-// want q and v.
+// State is continuous. This might have x = [q, v, z] -- we only want q and v.
+
+// These next two private methods are used only in the above implementations for
+// digging continuous State out of a Context, which results in a VectorBase.
+// Profiling showed that it is too expensive to do a dynamic_cast for simple
+// state access, which is VERY frequent. However a static_cast is safe here as
+// long as the supplied VectorBase comes from the State in a LeafContext,
+// because LeafContext continuous state variables are BasicVectors. We're
+// depending on all callers to verify that precondition.
 template <typename T>
-Eigen::VectorBlock<VectorX<T>> MultibodyTree<T>::extract_qv_from_continuous(
-    systems::VectorBase<T>* continuous_qvz) const {
-  DRAKE_ASSERT(continuous_qvz != nullptr);
+Eigen::VectorBlock<const VectorX<T>>
+MultibodyTree<T>::extract_qv_from_continuous(
+    const systems::VectorBase<T>& continuous_qvz_base) const {
   DRAKE_ASSERT(!is_state_discrete());
+  DRAKE_ASSERT(dynamic_cast<const systems::BasicVector<T>*>(
+                   &continuous_qvz_base) != nullptr);
   const int num_qv = num_positions() + num_velocities();
 
-  // TODO(sherm1) This dynamic_cast is likely too expensive -- replace with
-  //              static_cast in Release builds.
-  systems::BasicVector<T>& continuous_state_vector =
-      dynamic_cast<systems::BasicVector<T>&>(*continuous_qvz);
-  DRAKE_ASSERT(continuous_state_vector.size() >= num_qv);
-  Eigen::VectorBlock<VectorX<T>> x =
-      continuous_state_vector.get_mutable_value();
-  return x.nestedExpression().head(num_qv);
+  const systems::BasicVector<T>& continuous_qvz =
+      static_cast<const systems::BasicVector<T>&>(continuous_qvz_base);
+  DRAKE_ASSERT(continuous_qvz.size() >= num_qv);
+  Eigen::VectorBlock<const VectorX<T>> qvz = continuous_qvz.get_value();
+  return make_block_segment(qvz, 0, num_qv);
+}
+
+template <typename T>
+Eigen::VectorBlock<VectorX<T>>
+MultibodyTree<T>::extract_mutable_qv_from_continuous(
+    systems::VectorBase<T>* continuous_qvz_base) const {
+  DRAKE_ASSERT(!is_state_discrete());
+  DRAKE_ASSERT(continuous_qvz_base != nullptr);
+  DRAKE_ASSERT(dynamic_cast<systems::BasicVector<T>*>(continuous_qvz_base) !=
+               nullptr);
+  const int num_qv = num_positions() + num_velocities();
+
+  systems::BasicVector<T>& continuous_qvz =
+      static_cast<systems::BasicVector<T>&>(*continuous_qvz_base);
+  DRAKE_ASSERT(continuous_qvz.size() >= num_qv);
+  Eigen::VectorBlock<VectorX<T>> qvz = continuous_qvz.get_mutable_value();
+  return make_mutable_block_segment(&qvz, 0, num_qv);
 }
 
 }  // namespace internal

@@ -15,6 +15,7 @@ filegroup(
         "test/**/*.config",
         "test/**/*.obj",
         "test/**/*.sdf",
+        "test/**/*.forced_nesting_sdf",
         "test/**/*.urdf",
         "test/**/*.xml",
         "test/**/*.png",
@@ -50,6 +51,9 @@ drake_cc_library(
     hdrs = [
         "package_map.h",
     ],
+    data = [
+        "//:package.xml",
+    ],
     visibility = [
         "//visibility:public",
     ],
@@ -58,6 +62,10 @@ drake_cc_library(
         "@tinyxml2",
     ],
 )
+
+# For simplicity in dependency management (e.g., prevent exposing `sdformat`),
+# we make all `detail_*` headers and libraries private. For more info, see
+# #7451.
 
 drake_cc_library(
     name = "detail_misc",
@@ -74,9 +82,13 @@ drake_cc_library(
         "detail_tinyxml.h",
     ],
     install_hdrs_exclude = [
-        # This header includes `ignition` directly, which we do not
-        # want to expose externally.
+        "detail_common.h",
         "detail_ignition.h",
+        "detail_path_utils.h",
+        "detail_tinyxml.h",
+    ],
+    visibility = [
+        "//visibility:private",
     ],
     deps = [
         ":package_map",
@@ -98,8 +110,6 @@ drake_cc_library(
         "detail_scene_graph.h",
     ],
     install_hdrs_exclude = [
-        # This header includes `sdformat` directly, which we do not want to
-        # expose externally.
         "detail_scene_graph.h",
     ],
     visibility = [
@@ -123,12 +133,16 @@ drake_cc_library(
     hdrs = [
         "detail_sdf_parser.h",
     ],
+    install_hdrs_exclude = [
+        "detail_sdf_parser.h",
+    ],
     visibility = [
         "//visibility:private",
     ],
     deps = [
         ":detail_misc",
         ":detail_scene_graph",
+        ":detail_urdf_parser",
         ":scoped_names",
         "//multibody/plant",
         "@sdformat",
@@ -145,12 +159,17 @@ drake_cc_library(
         "detail_urdf_geometry.h",
         "detail_urdf_parser.h",
     ],
+    install_hdrs_exclude = [
+        "detail_urdf_geometry.h",
+        "detail_urdf_parser.h",
+    ],
     visibility = [
         "//visibility:private",
     ],
     deps = [
         ":detail_misc",
         ":package_map",
+        ":scoped_names",
         "//multibody/plant",
         "@fmt",
         "@tinyxml2",
@@ -379,6 +398,18 @@ drake_cc_googletest(
         "//common:filesystem",
         "//common:find_resource",
         "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "drake_manifest_resolution_test",
+    data = [
+        ":test_models",
+    ],
+    deps = [
+        "//common:find_resource",
+        "//multibody/parsing",
+        "//systems/framework:diagram_builder",
     ],
 )
 

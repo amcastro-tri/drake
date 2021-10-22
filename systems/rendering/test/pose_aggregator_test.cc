@@ -27,6 +27,9 @@ namespace {
 const int kNumBundlePoses = 2;
 const int kNumSinglePoses = 2;
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 class PoseAggregatorTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -188,11 +191,11 @@ TEST_F(PoseAggregatorTest, CompositeAggregation) {
   for (int i = 0; i < bundle.get_num_poses(); i++) {
     EXPECT_TRUE(
         CompareMatrices(bundle.get_transform(i).GetAsMatrix4(),
-                        math::autoDiffToValueMatrix(
+                        math::ExtractValue(
                             autodiff_bundle.get_transform(i).GetAsMatrix4())));
     EXPECT_TRUE(
         CompareMatrices(bundle.get_velocity(i).get_value(),
-                        math::autoDiffToValueMatrix(
+                        math::ExtractValue(
                             autodiff_bundle.get_velocity(i).get_value())));
     EXPECT_EQ(bundle.get_name(i), autodiff_bundle.get_name(i));
     EXPECT_EQ(bundle.get_model_instance_id(i),
@@ -222,6 +225,8 @@ GTEST_TEST(PoseBundleTest, Symbolic) {
   const symbolic::Expression& x = msv[0];
   EXPECT_TRUE(x.EqualTo(0.0));
 }
+
+#pragma GCC diagnostic pop
 
 }  // namespace
 }  // namespace rendering

@@ -11,7 +11,7 @@
 
 namespace drake {
 namespace multibody {
-namespace fixed_fem {
+namespace fem {
 /** The FEM model for static 3D elasticity problems. Implements the interface in
  FemModel. It is assumed that elements are only added to, but never deleted
  from, the model.
@@ -27,7 +27,7 @@ class StaticElasticityModel : public ElasticityModel<Element> {
 
   StaticElasticityModel()
       : ElasticityModel<Element>(
-            std::make_unique<ZerothOrderStateUpdater<FemState<Element>>>()) {}
+            std::make_unique<internal::ZerothOrderStateUpdater<T>>()) {}
 
   ~StaticElasticityModel() = default;
 
@@ -51,7 +51,6 @@ class StaticElasticityModel : public ElasticityModel<Element> {
     constexpr int kNumNodes = Element::Traits::kNumNodes;
     DRAKE_THROW_UNLESS(kNumNodes == 4);
 
-    using geometry::VolumeElementIndex;
     /* Record the reference positions of the input mesh. The returned offset is
      from before the new tets are added. */
     const NodeIndex node_index_offset(this->ParseTetMesh(mesh));
@@ -59,7 +58,7 @@ class StaticElasticityModel : public ElasticityModel<Element> {
     /* Builds and adds new elements. */
     std::array<NodeIndex, kNumNodes> element_node_indices;
     const VectorX<T>& X = this->reference_positions();
-    for (VolumeElementIndex i(0); i < mesh.num_elements(); ++i) {
+    for (int i = 0; i < mesh.num_elements(); ++i) {
       for (int j = 0; j < kNumNodes; ++j) {
         /* To obtain the global node index, offset the local index of the nodes
          in the mesh (starting from 0) by the existing number of nodes
@@ -88,6 +87,6 @@ class StaticElasticityModel : public ElasticityModel<Element> {
     return FemState<Element>(X);
   }
 };
-}  // namespace fixed_fem
+}  // namespace fem
 }  // namespace multibody
 }  // namespace drake

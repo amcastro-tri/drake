@@ -14,11 +14,11 @@ def main():
     # In scratch, mock up a drake_bazel_installed workspace.
     scratch_dir = install_test_helper.create_temporary_dir("scratch")
 
-    # TODO(jamiesnape): Automatically keep this synchronized with the version
-    # used by @drake (or the nearest stable version).
-    rules_python_commit = "0.2.0"
+    # The commit (version) here should be identical to the commit listed in
+    # drake/tools/workspace/rules_python/repository.bzl.
+    rules_python_commit = "0.4.0"
     rules_python_url = f"https://github.com/bazelbuild/rules_python/archive/{rules_python_commit}.tar.gz"  # noqa
-    rules_python_sha256 = "0d25ab1c7b18b3f48d1bff97bfa70c1625438b40c5f661946fb43eca4ba9d9dd"  # noqa
+    rules_python_sha256 = "45f22030b4c3475d5beb74ee9a9b86df6e83d5e18c6f23c7ec1a43cea7a31b93"  # noqa
 
     with open(join(scratch_dir, "WORKSPACE"), "w") as f:
         f.write(f"""

@@ -81,26 +81,31 @@ GTEST_TEST(FileParserTest, BasicStringTest) {
   }
 }
 
-GTEST_TEST(FileParserTest, MultiModelTest) {
+// Try loading a file with two <model> elements, but without a <world>.
+// This should always result in an error. For an example of a valid <world>
+// with two <model> elements, refer to MultiModelViaWorldIncludesTest.
+GTEST_TEST(FileParserTest, MultiModelErrorsTest) {
   const std::string sdf_name = FindResourceOrThrow(
       "drake/multibody/parsing/test/sdf_parser_test/two_models.sdf");
 
-  // Check that the plural method loads two models.
+  // Check the plural method.
   {
     MultibodyPlant<double> plant(0.0);
-    EXPECT_EQ(Parser(&plant).AddAllModelsFromFile(sdf_name).size(), 2);
+    DRAKE_EXPECT_THROWS_MESSAGE(
+        Parser(&plant).AddAllModelsFromFile(sdf_name),
+        R"([\s\S]*Root object can only contain one model.*)");
   }
 
   // The singular method cannot load a two-model file.
   const char* const expected_error =
-      "(.*must have a single <model> element.*)";
+        R"([\s\S]*Root object can only contain one model.*)";
 
   // Check the singular method without model_name.
   {
     MultibodyPlant<double> plant(0.0);
     DRAKE_EXPECT_THROWS_MESSAGE(
         Parser(&plant).AddModelFromFile(sdf_name),
-        std::exception, expected_error);
+        expected_error);
   }
 
   // Check the singular method with empty model_name.
@@ -108,7 +113,7 @@ GTEST_TEST(FileParserTest, MultiModelTest) {
     MultibodyPlant<double> plant(0.0);
     DRAKE_EXPECT_THROWS_MESSAGE(
         Parser(&plant).AddModelFromFile(sdf_name, ""),
-        std::exception, expected_error);
+        expected_error);
   }
 
   // Check the singular method with non-empty model_name.
@@ -116,7 +121,7 @@ GTEST_TEST(FileParserTest, MultiModelTest) {
     MultibodyPlant<double> plant(0.0);
     DRAKE_EXPECT_THROWS_MESSAGE(
         Parser(&plant).AddModelFromFile(sdf_name, "foo"),
-        std::exception, expected_error);
+        expected_error);
   }
 }
 
@@ -153,22 +158,18 @@ GTEST_TEST(FileParserTest, ExtensionMatchTest) {
   MultibodyPlant<double> plant(0.0);
   DRAKE_EXPECT_THROWS_MESSAGE(
       Parser(&plant).AddModelFromFile("acrobot.foo"),
-      std::exception,
       ".*file type '\\.foo' is not supported .*");
   DRAKE_EXPECT_THROWS_MESSAGE(
       Parser(&plant).AddAllModelsFromFile("acrobot.foo"),
-      std::exception,
       ".*file type '\\.foo' is not supported .*");
 
   // Uppercase extensions are accepted (i.e., still call the underlying SDF or
   // URDF parser, shown here by it generating a different exception message).
   DRAKE_EXPECT_THROWS_MESSAGE(
       Parser(&plant).AddModelFromFile("acrobot.SDF"),
-      std::exception,
       ".*does not exist.*");
   DRAKE_EXPECT_THROWS_MESSAGE(
       Parser(&plant).AddModelFromFile("acrobot.URDF"),
-      std::exception,
       ".*does not exist.*");
 }
 
@@ -177,19 +178,16 @@ GTEST_TEST(FileParserTest, BadStringTest) {
   MultibodyPlant<double> plant(0.0);
   DRAKE_EXPECT_THROWS_MESSAGE(
       Parser(&plant).AddModelFromString("bad", "sdf"),
-      std::exception,
       ".*\n.*Unable to read SDF string.*");
 
   // Malformed URDF string is an error.
   DRAKE_EXPECT_THROWS_MESSAGE(
       Parser(&plant).AddModelFromString("bad", "urdf"),
-      std::exception,
       "Failed to parse XML string: XML_ERROR_PARSING_TEXT");
 
   // Unknown extension is an error.
   DRAKE_EXPECT_THROWS_MESSAGE(
       Parser(&plant).AddModelFromString("<bad/>", "weird-ext"),
-      std::exception,
       ".*file type '\\.weird-ext' is not supported .*");
 }
 
@@ -213,14 +211,14 @@ GTEST_TEST(FileParserTest, FindDrakePackageWhenAdding) {
       MultibodyPlant<double> plant(0.0);
       geometry::SceneGraph<double> scene_graph;
       Parser parser(&plant, &scene_graph);
-      EXPECT_EQ(parser.package_map().size(), 0);
+      const int orig_package_size = parser.package_map().size();
 
       // Because the box.sdf references an obj via a package: URI, this would
       // throw if the package were not found.
       EXPECT_NO_THROW(add_func(FindResourceOrThrow(file_name), &parser));
 
       // Now we explicitly confirm the package map has been modified.
-      EXPECT_EQ(parser.package_map().size(), 1);
+      EXPECT_EQ(parser.package_map().size(), orig_package_size + 1);
       EXPECT_TRUE(parser.package_map().Contains("box_model"));
     }
   }

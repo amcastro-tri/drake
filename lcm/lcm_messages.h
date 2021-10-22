@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <stdexcept>
 #include <vector>
 
 #include "drake/common/drake_throw.h"
@@ -24,7 +25,7 @@ std::vector<uint8_t> EncodeLcmMessage(const Message& message) {
 
 /**
  Decodes an LCM message from a series of bytes.
- @throws std::runtime_error if decoding fails.
+ @throws std::exception if decoding fails.
  */
 template <typename Message>
 Message DecodeLcmMessage(const std::vector<uint8_t>& bytes) {

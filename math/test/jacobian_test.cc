@@ -38,7 +38,7 @@ TEST_F(AutodiffJacobianTest, QuadraticForm) {
 #pragma GCC diagnostic ignored "-Wshadow"
   auto quadratic_form = [&](const auto& x) {
 #pragma GCC diagnostic pop
-    using Scalar = typename std::remove_reference<decltype(x)>::type::Scalar;
+    using Scalar = typename std::remove_reference_t<decltype(x)>::Scalar;
     return (x.transpose() * A.cast<Scalar>().eval() * x).eval();
   };
 
@@ -50,14 +50,14 @@ TEST_F(AutodiffJacobianTest, QuadraticForm) {
   auto jac_chunk_size_6 = jacobian<6>(quadratic_form, x);
 
   // Ensure that chunk size has no effect on output type.
-  static_assert(std::is_same<decltype(jac_chunk_size_default),
-                             decltype(jac_chunk_size_1)>::value,
+  static_assert(std::is_same_v<decltype(jac_chunk_size_default),
+                               decltype(jac_chunk_size_1)>,
                 "jacobian output type mismatch");
-  static_assert(std::is_same<decltype(jac_chunk_size_default),
-                             decltype(jac_chunk_size_3)>::value,
+  static_assert(std::is_same_v<decltype(jac_chunk_size_default),
+                               decltype(jac_chunk_size_3)>,
                 "jacobian output type mismatch");
-  static_assert(std::is_same<decltype(jac_chunk_size_default),
-                             decltype(jac_chunk_size_6)>::value,
+  static_assert(std::is_same_v<decltype(jac_chunk_size_default),
+                               decltype(jac_chunk_size_6)>,
                 "jacobian output type mismatch");
 
   // Ensure that the results are the same.
@@ -67,12 +67,12 @@ TEST_F(AutodiffJacobianTest, QuadraticForm) {
 
   // Ensure that value is correct.
   auto value_expected = quadratic_form(x);
-  auto value = autoDiffToValueMatrix(jac_chunk_size_default);
+  auto value = ExtractValue(jac_chunk_size_default);
   EXPECT_TRUE(CompareMatrices(value_expected, value, 1e-12,
                               MatrixCompareType::absolute));
 
   // Ensure that Jacobian is correct.
-  auto jac = autoDiffToGradientMatrix(jac_chunk_size_default);
+  auto jac = ExtractGradient(jac_chunk_size_default);
   auto jac_expected = (x.transpose() * (A + A.transpose())).eval();
   EXPECT_TRUE(
       CompareMatrices(jac_expected, jac, 1e-12, MatrixCompareType::absolute));
@@ -109,7 +109,7 @@ TEST_F(AutoDiffHessianTest, QuadraticFunction) {
 #pragma GCC diagnostic ignored "-Wshadow"
   auto quadratic_function = [&](const auto& x) {
 #pragma GCC diagnostic pop
-    using Scalar = typename std::remove_reference<decltype(x)>::type::Scalar;
+    using Scalar = typename std::remove_reference_t<decltype(x)>::Scalar;
     return ((A.cast<Scalar>() * x + b.cast<Scalar>()).transpose() *
             C.cast<Scalar>() * (D.cast<Scalar>() * x + e.cast<Scalar>()))
         .eval();
@@ -122,8 +122,8 @@ TEST_F(AutoDiffHessianTest, QuadraticFunction) {
   auto hess_chunk_size_2_4 = hessian<2, 4>(quadratic_function, x);
 
   // Ensure that chunk size has no effect on output type.
-  static_assert(std::is_same<decltype(hess_chunk_size_default),
-                             decltype(hess_chunk_size_2_4)>::value,
+  static_assert(std::is_same_v<decltype(hess_chunk_size_default),
+                               decltype(hess_chunk_size_2_4)>,
                 "hessian output type mismatch");
 
   // Ensure that the results are the same.
@@ -131,15 +131,15 @@ TEST_F(AutoDiffHessianTest, QuadraticFunction) {
 
   // Ensure that value is correct.
   auto value_expected = quadratic_function(x);
-  auto value_autodiff = autoDiffToValueMatrix(hess_chunk_size_default);
-  auto value = autoDiffToValueMatrix(value_autodiff);
+  auto value_autodiff = ExtractValue(hess_chunk_size_default);
+  auto value = ExtractValue(value_autodiff);
   EXPECT_TRUE(CompareMatrices(value_expected, value, 1e-12,
                               MatrixCompareType::absolute));
 
   // Ensure that the two ways of computing the Jacobian from AutoDiff match.
-  auto jac_autodiff = autoDiffToGradientMatrix(hess_chunk_size_default);
-  auto jac1 = autoDiffToValueMatrix(jac_autodiff);
-  auto jac2 = autoDiffToGradientMatrix(value_autodiff);
+  auto jac_autodiff = ExtractGradient(hess_chunk_size_default);
+  auto jac1 = ExtractValue(jac_autodiff);
+  auto jac2 = ExtractGradient(value_autodiff);
   EXPECT_TRUE(jac1 == jac2);
 
   // Ensure that the Jacobian is correct.
@@ -152,7 +152,7 @@ TEST_F(AutoDiffHessianTest, QuadraticFunction) {
   // Ensure that the Hessian is correct.
   auto hess_expected =
       (A.transpose() * C * D + D.transpose() * C.transpose() * A).eval();
-  auto hess = autoDiffToGradientMatrix(jac_autodiff);
+  auto hess = ExtractGradient(jac_autodiff);
   EXPECT_TRUE(
       CompareMatrices(hess_expected, hess, 1e-12, MatrixCompareType::absolute));
 }

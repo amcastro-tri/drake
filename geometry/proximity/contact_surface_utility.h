@@ -23,7 +23,8 @@ namespace internal {
  In debug builds, this method will do _expensive_ validation of its parameters.
 
  @param polygon
-     The planar N-sided convex polygon.
+     The planar N-sided convex polygon defined by three or more ordered indices
+     into `vertices_F`.
  @param[in] n_F
      A vector that is perpendicular to the `polygon`'s plane, expressed in
      Frame F.
@@ -36,13 +37,12 @@ namespace internal {
  @pre `n_F` is  perpendicular to the defined `polygon`'s plane.
  @pre `n_F` has non-trivial length.
  @pre `polygon` is planar.
- @tparam T  The computational scalar type. Only supports double and AutoDiffXd.
+ @tparam_nonsymbolic_scalar
  */
 template <typename T>
-Vector3<T> CalcPolygonCentroid(
-    const std::vector<SurfaceVertexIndex>& polygon,
-    const Vector3<T>& n_F,
-    const std::vector<SurfaceVertex<T>>& vertices_F);
+Vector3<T> CalcPolygonCentroid(const std::vector<int>& polygon,
+                               const Vector3<T>& n_F,
+                               const std::vector<Vector3<T>>& vertices_F);
 
 // TODO(14579) This overload of CalcPolygonCentroid() is expected to simply go
 //  away when we implement the final support for discrete hydroelastics. If it
@@ -51,7 +51,7 @@ Vector3<T> CalcPolygonCentroid(
 
 /* Overload that takes a polygon represented as an ordered list of positional
  vectors `p_FVs` of its vertices, each measured and expressed in frame F.
- */
+ @tparam_nonsymbolic_scalar */
 template <typename T>
 Vector3<T> CalcPolygonCentroid(
     const std::vector<Vector3<T>>& p_FVs,
@@ -71,7 +71,7 @@ Vector3<T> CalcPolygonCentroid(
  @param[in] nhat_F  Unit normal vector of the polygon.
  @pre `p_FVs.size()` >= 3.
  @pre nhat_F is consistent with the winding of the polygon.
- */
+ @tparam_nonsymbolic_scalar */
 template <typename T>
 T CalcPolygonArea(const std::vector<Vector3<T>>& p_FVs,
                   const Vector3<T>& nhat_F);
@@ -107,14 +107,12 @@ T CalcPolygonArea(const std::vector<Vector3<T>>& p_FVs,
  @pre `polygon` is planar.
  @pre `n_F` is perpendicular to the defined `polygon`.
  @pre `n_F` has non-trivial length.
- @tparam T  The computational scalar type. Only supports double and AutoDiffXd.
- */
+ @tparam_nonsymbolic_scalar */
 template <typename T>
-void AddPolygonToMeshData(
-    const std::vector<SurfaceVertexIndex>& polygon,
-    const Vector3<T>& n_F,
-    std::vector<SurfaceFace>* faces,
-    std::vector<SurfaceVertex<T>>* vertices_F);
+void AddPolygonToMeshData(const std::vector<int>& polygon,
+                          const Vector3<T>& n_F,
+                          std::vector<SurfaceFace>* faces,
+                          std::vector<Vector3<T>>* vertices_F);
 
 // Any polygon with area less than this threshold is considered having
 // near-zero area in AddPolygonToMeshDataAsOneTriangle() below.
@@ -133,7 +131,8 @@ constexpr double kMinimumPolygonArea = 1e-13;
  introduced into `vertices`.
 
  The exact choice of the representative triangle is arbitrary subject to the
- constraints in the previous paragraph.
+ constraints in the previous paragraph. If the polygon is already a triangle,
+ we will add that original triangle in the output.
 
  In debug builds, this function will do _expensive_ validation of its
  parameters.
@@ -161,12 +160,20 @@ constexpr double kMinimumPolygonArea = 1e-13;
        2. For the scalar type AutoDiffXd, such a polygon may cause unstable
           calculation of derivatives of the representative triangle.
 
- @tparam T  The computational scalar type. Only supports double and AutoDiffXd.
- */
+ @tparam_nonsymbolic_scalar */
 template <typename T>
 void AddPolygonToMeshDataAsOneTriangle(
     const std::vector<Vector3<T>>& polygon_F, const Vector3<T>& nhat_F,
-    std::vector<SurfaceFace>* faces, std::vector<SurfaceVertex<T>>* vertices_F);
+    std::vector<SurfaceFace>* faces, std::vector<Vector3<T>>* vertices_F);
+
+enum class ContactPolygonRepresentation {
+  // Each contact polygon is subdivided into triangles sharing the centroid
+  // of the polygon.
+  kCentroidSubdivision,
+
+  // Use one representative triangle for each contact polygon.
+  kSingleTriangle
+};
 
 /* Determines if the indicated triangle has a face normal that is "in the
  direction" of the given normal.
@@ -184,12 +191,11 @@ void AddPolygonToMeshDataAsOneTriangle(
  @pre `normal_F` is unit length.
  @return `true` if the angle between `normal_F` and the triangle normal lies
           within the hard-coded tolerance.
- @tparam T  The computational scalar type. Only supports double and AutoDiffXd.
- */
+ @tparam_nonsymbolic_scalar */
 template <typename T>
 bool IsFaceNormalInNormalDirection(const Vector3<T>& normal_F,
                                    const SurfaceMesh<T>& surface_M,
-                                   SurfaceFaceIndex tri_index,
+                                   int tri_index,
                                    const math::RotationMatrix<T>& R_FM);
 
 }  // namespace internal

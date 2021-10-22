@@ -41,8 +41,8 @@ class SystemDynamicsData {
   SystemDynamicsData(const LinearOperator<T>* A, const LinearOperator<T>* Ainv,
                      const VectorX<T>* v_star);
 
-  /// Returns the the number of generalized velocities nv in accordance to the
-  /// data provided at construction.
+  // Returns the number of generalized velocities nv in accordance to the data
+  // provided at construction.
   int num_velocities() const { return nv_; }
 
   bool has_forward_dynamics() const { return Ainv_ != nullptr; }

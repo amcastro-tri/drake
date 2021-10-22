@@ -1,15 +1,16 @@
 #include "drake/multibody/parsing/detail_sdf_parser.h"
 
-#include <fstream>
 #include <memory>
+#include <regex>
 #include <stdexcept>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <sdf/sdf.hh>
 
 #include "drake/common/filesystem.h"
 #include "drake/common/find_resource.h"
-#include "drake/common/temp_directory.h"
+#include "drake/common/scope_exit.h"
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/common/test_utilities/expect_no_throw.h"
 #include "drake/common/test_utilities/expect_throws_message.h"
@@ -56,19 +57,31 @@ ModelInstanceIndex AddModelFromSdfFile(
     const std::string& model_name,
     const PackageMap& package_map,
     MultibodyPlant<double>* plant,
-    geometry::SceneGraph<double>* scene_graph = nullptr) {
-  return AddModelFromSdf(
-      { .file_name = &file_name },
-      model_name, package_map, plant, scene_graph);
+    geometry::SceneGraph<double>* scene_graph = nullptr,
+    bool test_sdf_forced_nesting = false) {
+  const DataSource data_source{&file_name, {}};
+  return AddModelFromSdf(data_source, model_name, package_map, plant,
+                         scene_graph, test_sdf_forced_nesting);
 }
 std::vector<ModelInstanceIndex> AddModelsFromSdfFile(
     const std::string& file_name,
     const PackageMap& package_map,
     MultibodyPlant<double>* plant,
-    geometry::SceneGraph<double>* scene_graph = nullptr) {
+    geometry::SceneGraph<double>* scene_graph = nullptr,
+    bool test_sdf_forced_nesting = false) {
+  const DataSource data_source{&file_name, {}};
   return AddModelsFromSdf(
-      { .file_name = &file_name },
-      package_map, plant, scene_graph);
+      data_source, package_map, plant, scene_graph, test_sdf_forced_nesting);
+}
+std::vector<ModelInstanceIndex> AddModelsFromSdfString(
+    const std::string& file_contents,
+    const PackageMap& package_map,
+    MultibodyPlant<double>* plant,
+    geometry::SceneGraph<double>* scene_graph = nullptr,
+    bool test_sdf_forced_nesting = false) {
+  const DataSource data_source{{}, &file_contents};
+  return AddModelsFromSdf(
+      data_source, package_map, plant, scene_graph, test_sdf_forced_nesting);
 }
 
 const Frame<double>& GetModelFrameByName(const MultibodyPlant<double>& plant,
@@ -267,17 +280,15 @@ struct PlantAndSceneGraph {
 
 PlantAndSceneGraph ParseTestString(const std::string& inner,
                                    const std::string& sdf_version = "1.6") {
-  const std::string filename = temp_directory() + "/test_string.sdf";
-  std::ofstream file(filename);
-  file << "<sdf version='" << sdf_version << "'>" << inner << "\n</sdf>\n";
-  file.close();
+  const std::string file_contents =
+      "<sdf version='" + sdf_version + "'>" + inner + "\n</sdf>\n";
   PlantAndSceneGraph pair;
   pair.plant = std::make_unique<MultibodyPlant<double>>(0.0);
   pair.scene_graph = std::make_unique<SceneGraph<double>>();
   PackageMap package_map;
   pair.plant->RegisterAsSourceForSceneGraph(pair.scene_graph.get());
   drake::log()->debug("inner: {}", inner);
-  AddModelsFromSdfFile(filename, package_map, pair.plant.get());
+  AddModelsFromSdfString(file_contents, package_map, pair.plant.get());
   return pair;
 }
 
@@ -508,7 +519,7 @@ GTEST_TEST(SdfParser, StaticModelSupported) {
     const RigidTransformd X_WA = frame_A.CalcPoseInWorld(*context);
     EXPECT_TRUE(CompareMatrices(
           X_WA_expected.GetAsMatrix4(), X_WA.GetAsMatrix4(), kEps));
-    EXPECT_EQ(frame_A.body().node_index(), plant->world_body().node_index());
+    EXPECT_EQ(frame_A.body().index(), plant->world_body().index());
   }
 
   {
@@ -532,7 +543,7 @@ GTEST_TEST(SdfParser, StaticModelSupported) {
     const RigidTransformd X_WA = frame_A.CalcPoseInWorld(*context);
     EXPECT_TRUE(CompareMatrices(
           X_WA_expected.GetAsMatrix4(), X_WA.GetAsMatrix4(), kEps));
-    EXPECT_EQ(frame_A.body().node_index(), plant->world_body().node_index());
+    EXPECT_EQ(frame_A.body().index(), plant->world_body().index());
 
     const RigidTransformd X_WB_expected(
         RollPitchYawd(0.1, 0.2, 0.3), Vector3d(1, 2, 3));
@@ -541,7 +552,7 @@ GTEST_TEST(SdfParser, StaticModelSupported) {
     const RigidTransformd X_WB = frame_B.CalcPoseInWorld(*context);
     EXPECT_TRUE(CompareMatrices(
           X_WB_expected.GetAsMatrix4(), X_WB.GetAsMatrix4(), kEps));
-    EXPECT_EQ(frame_B.body().node_index(), plant->world_body().node_index());
+    EXPECT_EQ(frame_B.body().index(), plant->world_body().index());
   }
 }
 
@@ -570,7 +581,7 @@ GTEST_TEST(SdfParser, StaticFrameOnlyModelsSupported) {
     const RigidTransformd X_WF = frame.CalcPoseInWorld(*context);
     EXPECT_TRUE(CompareMatrices(X_WF_expected.GetAsMatrix4(),
                                 X_WF.GetAsMatrix4(), kEps));
-    EXPECT_EQ(frame.body().node_index(), plant->world_body().node_index());
+    EXPECT_EQ(frame.body().index(), plant->world_body().index());
   };
 
   test_frame("__model__", {RollPitchYawd(0.0, 0.0, 0.0), Vector3d(1, 0, 0)});
@@ -655,7 +666,7 @@ GTEST_TEST(SdfParser, IncludeTags) {
   const std::string full_name = FindResourceOrThrow(
       "drake/multibody/parsing/test/sdf_parser_test/"
       "include_models.sdf");
-  sdf::addURIPath("model://", filesystem::path(full_name).parent_path());
+
   MultibodyPlant<double> plant(0.0);
 
   // We start with the world and default model instances.
@@ -664,7 +675,7 @@ GTEST_TEST(SdfParser, IncludeTags) {
   ASSERT_EQ(plant.num_joints(), 0);
 
   PackageMap package_map;
-  package_map.PopulateUpstreamToDrake(full_name);
+  package_map.PopulateFromFolder(filesystem::path(full_name).parent_path());
   AddModelsFromSdfFile(full_name, package_map, &plant);
   plant.Finalize();
 
@@ -762,14 +773,16 @@ GTEST_TEST(MultibodyPlantSdfParserTest, JointParsingTest) {
   package_map.PopulateUpstreamToDrake(full_name);
 
   // Read in the SDF file.
-  AddModelFromSdfFile(full_name, "", package_map, &plant, &scene_graph);
+  const std::vector<ModelInstanceIndex> instances =
+      AddModelsFromSdfFile(full_name, package_map, &plant, &scene_graph);
+  const ModelInstanceIndex instance1 = instances.front();
   plant.Finalize();
 
   // Revolute joint
   DRAKE_EXPECT_NO_THROW(
-      plant.GetJointByName<RevoluteJoint>("revolute_joint"));
+      plant.GetJointByName<RevoluteJoint>("revolute_joint", instance1));
   const RevoluteJoint<double>& revolute_joint =
-      plant.GetJointByName<RevoluteJoint>("revolute_joint");
+      plant.GetJointByName<RevoluteJoint>("revolute_joint", instance1);
   EXPECT_EQ(revolute_joint.name(), "revolute_joint");
   EXPECT_EQ(revolute_joint.parent_body().name(), "link1");
   EXPECT_EQ(revolute_joint.child_body().name(), "link2");
@@ -790,9 +803,9 @@ GTEST_TEST(MultibodyPlantSdfParserTest, JointParsingTest) {
 
   // Prismatic joint
   DRAKE_EXPECT_NO_THROW(
-      plant.GetJointByName<PrismaticJoint>("prismatic_joint"));
+      plant.GetJointByName<PrismaticJoint>("prismatic_joint", instance1));
   const PrismaticJoint<double>& prismatic_joint =
-      plant.GetJointByName<PrismaticJoint>("prismatic_joint");
+      plant.GetJointByName<PrismaticJoint>("prismatic_joint", instance1);
   EXPECT_EQ(prismatic_joint.name(), "prismatic_joint");
   EXPECT_EQ(prismatic_joint.parent_body().name(), "link2");
   EXPECT_EQ(prismatic_joint.child_body().name(), "link3");
@@ -813,9 +826,11 @@ GTEST_TEST(MultibodyPlantSdfParserTest, JointParsingTest) {
 
   // Limitless revolute joint
   DRAKE_EXPECT_NO_THROW(
-      plant.GetJointByName<RevoluteJoint>("revolute_joint_no_limits"));
+      plant.GetJointByName<RevoluteJoint>("revolute_joint_no_limits",
+                                          instance1));
   const RevoluteJoint<double>& no_limit_joint =
-      plant.GetJointByName<RevoluteJoint>("revolute_joint_no_limits");
+      plant.GetJointByName<RevoluteJoint>("revolute_joint_no_limits",
+                                          instance1);
   EXPECT_EQ(no_limit_joint.name(), "revolute_joint_no_limits");
   EXPECT_EQ(no_limit_joint.parent_body().name(), "link3");
   EXPECT_EQ(no_limit_joint.child_body().name(), "link4");
@@ -831,9 +846,10 @@ GTEST_TEST(MultibodyPlantSdfParserTest, JointParsingTest) {
   EXPECT_TRUE(CompareMatrices(no_limit_joint.acceleration_upper_limits(), inf));
 
   // Ball joint
-  DRAKE_EXPECT_NO_THROW(plant.GetJointByName<BallRpyJoint>("ball_joint"));
+  DRAKE_EXPECT_NO_THROW(plant.GetJointByName<BallRpyJoint>("ball_joint",
+                                                           instance1));
   const BallRpyJoint<double>& ball_joint =
-      plant.GetJointByName<BallRpyJoint>("ball_joint");
+      plant.GetJointByName<BallRpyJoint>("ball_joint", instance1);
   EXPECT_EQ(ball_joint.name(), "ball_joint");
   EXPECT_EQ(ball_joint.parent_body().name(), "link4");
   EXPECT_EQ(ball_joint.child_body().name(), "link5");
@@ -851,9 +867,9 @@ GTEST_TEST(MultibodyPlantSdfParserTest, JointParsingTest) {
 
   // Universal joint
   DRAKE_EXPECT_NO_THROW(
-      plant.GetJointByName<UniversalJoint>("universal_joint"));
+      plant.GetJointByName<UniversalJoint>("universal_joint", instance1));
   const UniversalJoint<double>& universal_joint =
-      plant.GetJointByName<UniversalJoint>("universal_joint");
+      plant.GetJointByName<UniversalJoint>("universal_joint", instance1);
   EXPECT_EQ(universal_joint.name(), "universal_joint");
   EXPECT_EQ(universal_joint.parent_body().name(), "link5");
   EXPECT_EQ(universal_joint.child_body().name(), "link6");
@@ -870,17 +886,37 @@ GTEST_TEST(MultibodyPlantSdfParserTest, JointParsingTest) {
   EXPECT_TRUE(CompareMatrices(universal_joint.velocity_upper_limits(), inf2));
 
   // Planar joint
-  DRAKE_EXPECT_NO_THROW(plant.GetJointByName<PlanarJoint>("planar_joint"));
+  DRAKE_EXPECT_NO_THROW(plant.GetJointByName<PlanarJoint>("planar_joint",
+                                                          instance1));
   const PlanarJoint<double>& planar_joint =
-      plant.GetJointByName<PlanarJoint>("planar_joint");
+      plant.GetJointByName<PlanarJoint>("planar_joint", instance1);
   EXPECT_EQ(planar_joint.name(), "planar_joint");
   EXPECT_EQ(planar_joint.parent_body().name(), "link6");
+  EXPECT_EQ(planar_joint.parent_body().model_instance(), instance1);
   EXPECT_EQ(planar_joint.child_body().name(), "link7");
+  EXPECT_EQ(planar_joint.child_body().model_instance(), instance1);
   EXPECT_TRUE(CompareMatrices(planar_joint.damping(), Vector3d::Constant(0.1)));
   EXPECT_TRUE(CompareMatrices(planar_joint.position_lower_limits(), neg_inf3));
   EXPECT_TRUE(CompareMatrices(planar_joint.position_upper_limits(), inf3));
   EXPECT_TRUE(CompareMatrices(planar_joint.velocity_lower_limits(), neg_inf3));
   EXPECT_TRUE(CompareMatrices(planar_joint.velocity_upper_limits(), inf3));
+
+  const ModelInstanceIndex instance2 = instances.back();
+  DRAKE_EXPECT_NO_THROW(plant.GetJointByName<PlanarJoint>("planar_joint",
+                                                          instance2));
+  const PlanarJoint<double>& planar_joint2 =
+      plant.GetJointByName<PlanarJoint>("planar_joint", instance2);
+  EXPECT_EQ(planar_joint2.name(), "planar_joint");
+  EXPECT_EQ(planar_joint2.parent_body().name(), "link6");
+  EXPECT_EQ(planar_joint2.parent_body().model_instance(), instance2);
+  EXPECT_EQ(planar_joint2.child_body().name(), "link7");
+  EXPECT_EQ(planar_joint2.child_body().model_instance(), instance2);
+  EXPECT_TRUE(CompareMatrices(planar_joint2.damping(),
+                              Vector3d::Constant(0.2)));
+  EXPECT_TRUE(CompareMatrices(planar_joint2.position_lower_limits(), neg_inf3));
+  EXPECT_TRUE(CompareMatrices(planar_joint2.position_upper_limits(), inf3));
+  EXPECT_TRUE(CompareMatrices(planar_joint2.velocity_lower_limits(), neg_inf3));
+  EXPECT_TRUE(CompareMatrices(planar_joint2.velocity_upper_limits(), inf3));
 }
 
 // Verifies that the SDF parser parses the joint actuator limit correctly.
@@ -1012,13 +1048,13 @@ GTEST_TEST(SdfParser, TestSupportedFrames) {
 </model>)");
 }
 
-void FailWithUnsupportedRelativeTo(const std::string& inner) {
+void FailWithRelativeToNotDefined(const std::string& inner) {
   SCOPED_TRACE(inner);
   DRAKE_EXPECT_THROWS_MESSAGE(
       ParseTestString(inner),
       std::runtime_error,
-      R"(<pose relative_to='\{non-empty\}'/> is presently not supported )"
-      R"(in <inertial/> or top-level <model/> tags in model files.)");
+      R"([\s\S]*XML Attribute\[relative_to\] in element\[pose\] not )"
+      R"(defined in SDF.\n)");
 }
 
 void FailWithInvalidWorld(const std::string& inner) {
@@ -1066,20 +1102,84 @@ GTEST_TEST(SdfParser, TestUnsupportedFrames) {
 )", bad_name));
   }
 
-  FailWithUnsupportedRelativeTo(R"(
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      ParseTestString(R"(
 <model name='bad'>
   <pose relative_to='invalid_usage'/>
   <link name='dont_crash_plz'/>  <!-- Need at least one frame -->
-</model>)");
-  // TODO(eric.cousineau): Change this to `FailWithUnsupportedRelativeTo`
-  // once sdformat#543 merges and is released.
-  ParseTestString(R"(
+</model>)"),
+      R"([\s\S]*Error: Attribute //pose\[@relative_to\] of top level model )"
+      R"(must be left empty[\s\S]*)");
+
+  FailWithRelativeToNotDefined(R"(
 <model name='bad'>
   <frame name='my_frame'/>
   <link name='a'>
     <inertial><pose relative_to='my_frame'/></inertial>
   </link>
 </model>)");
+}
+
+// Tests Drake's usage of sdf::EnforcementPolicy.
+GTEST_TEST(SdfParser, TestSdformatParserPolicies) {
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      ParseTestString(R"""(
+<model name='model_with_bad_attribute' bad_attribute="junk">
+  <link name='a'/>
+</model>
+)"""),
+      std::runtime_error,
+      R"([\s\S]*XML Attribute\[bad_attribute\] in element\[model\] not )"
+      R"(defined in SDF.[\s\S]*)");
+
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      ParseTestString(R"""(
+<model name='model_with_too_many_top_level_elements'>
+  <link name='a'/>
+</model>
+<model name='two_models_too_many'>
+  <link name='b'/>
+</model>
+)"""),
+    R"([\s\S]*Root object can only contain one model.*)");
+
+  std::stringstream buffer;
+  sdf::Console::ConsoleStream old_stream =
+    sdf::Console::Instance()->GetMsgStream();
+  ScopeExit revert_stream(
+    [&old_stream]()
+    { sdf::Console::Instance()->GetMsgStream() = old_stream; });
+  sdf::Console::Instance()->GetMsgStream() =
+    sdf::Console::ConsoleStream(&buffer);
+
+  // TODO(#15018): This throws a warning, make this an error.
+  ParseTestString(R"""(
+<model name='model_with_bad_element'>
+  <link name='a'/>
+  <bad_element/>
+</model>
+)""");
+
+  EXPECT_THAT(buffer.str(), testing::MatchesRegex(
+      ".*Warning.*XML Element\\[bad_element\\], child of"
+      " element\\[model\\], not defined in SDF.*"));
+
+  ParseTestString(R"""(
+<model name='a'>
+  <link name='l1'/>
+  <link name='l2'/>
+  <joint name='b' type="revolute">
+    <child>l1</child>
+    <parent>l2</parent>
+    <axis>
+      <initial_position>0</initial_position>
+    </axis>
+  </joint>
+</model>)""", "1.9");
+
+  EXPECT_THAT(buffer.str(), testing::MatchesRegex(
+      ".*Warning.*XML Element\\[initial_position\\], child of element"
+      "\\[axis\\], not defined in SDF.*"));
 }
 
 // Reports if the frame with the given id has a geometry with the given role
@@ -1167,36 +1267,66 @@ GTEST_TEST(SdfParser, VisualGeometryParsing) {
 }
 
 GTEST_TEST(SdfParser, BushingParsing) {
-  // Test successful parsing
+  // Test successful parsing.  Add two copies of the model to make sure the
+  // bushings are associated with the proper model instance.
   auto [plant, scene_graph] = ParseTestString(R"(
-    <model name='BushingModel'>
-      <link name='A'/>
-      <link name='C'/>
-      <frame name='frameA' attached_to='A'/>
-      <frame name='frameC' attached_to='C'/>
-      <drake:linear_bushing_rpy>
-        <drake:bushing_frameA>frameA</drake:bushing_frameA>
-        <drake:bushing_frameC>frameC</drake:bushing_frameC>
-        <drake:bushing_torque_stiffness>1 2 3</drake:bushing_torque_stiffness>
-        <drake:bushing_torque_damping>4 5 6</drake:bushing_torque_damping>
-        <drake:bushing_force_stiffness>7 8 9</drake:bushing_force_stiffness>
-        <drake:bushing_force_damping>10 11 12</drake:bushing_force_damping>
-      </drake:linear_bushing_rpy>
-    </model>)");
+    <world name='BushingWorld'>
+      <model name='BushingModel'>
+        <link name='A'/>
+        <link name='C'/>
+        <frame name='frameA' attached_to='A'/>
+        <frame name='frameC' attached_to='C'/>
+        <drake:linear_bushing_rpy>
+          <drake:bushing_frameA>frameA</drake:bushing_frameA>
+          <drake:bushing_frameC>frameC</drake:bushing_frameC>
+          <drake:bushing_torque_stiffness>1 2 3</drake:bushing_torque_stiffness>
+          <drake:bushing_torque_damping>4 5 6</drake:bushing_torque_damping>
+          <drake:bushing_force_stiffness>7 8 9</drake:bushing_force_stiffness>
+          <drake:bushing_force_damping>10 11 12</drake:bushing_force_damping>
+        </drake:linear_bushing_rpy>
+      </model>
+      <model name='BushingModel2'>
+        <link name='A'/>
+        <link name='C'/>
+        <frame name='frameA' attached_to='A'/>
+        <frame name='frameC' attached_to='C'/>
+        <drake:linear_bushing_rpy>
+          <drake:bushing_frameA>frameA</drake:bushing_frameA>
+          <drake:bushing_frameC>frameC</drake:bushing_frameC>
+          <drake:bushing_torque_stiffness>11 12 13</drake:bushing_torque_stiffness>
+          <drake:bushing_torque_damping>14 15 16</drake:bushing_torque_damping>
+          <drake:bushing_force_stiffness>17 18 19</drake:bushing_force_stiffness>
+          <drake:bushing_force_damping>20 21 22</drake:bushing_force_damping>
+        </drake:linear_bushing_rpy>
+      </model>
+    </world>)");
 
   // MBP will always create a UniformGravityField, so the only other
-  // ForceElement should be the LinearBushingRollPitchYaw element parsed.
-  EXPECT_EQ(plant->num_force_elements(), 2);
+  // ForceElements should be the LinearBushingRollPitchYaw elements parsed.
+  EXPECT_EQ(plant->num_force_elements(), 3);
 
   const LinearBushingRollPitchYaw<double>& bushing =
       plant->GetForceElement<LinearBushingRollPitchYaw>(ForceElementIndex(1));
 
   EXPECT_STREQ(bushing.frameA().name().c_str(), "frameA");
   EXPECT_STREQ(bushing.frameC().name().c_str(), "frameC");
+  EXPECT_EQ(bushing.frameA().model_instance(), bushing.model_instance());
   EXPECT_EQ(bushing.torque_stiffness_constants(), Eigen::Vector3d(1, 2, 3));
   EXPECT_EQ(bushing.torque_damping_constants(), Eigen::Vector3d(4, 5, 6));
   EXPECT_EQ(bushing.force_stiffness_constants(), Eigen::Vector3d(7, 8, 9));
   EXPECT_EQ(bushing.force_damping_constants(), Eigen::Vector3d(10, 11, 12));
+
+  const LinearBushingRollPitchYaw<double>& bushing2 =
+      plant->GetForceElement<LinearBushingRollPitchYaw>(ForceElementIndex(2));
+
+  EXPECT_STREQ(bushing2.frameA().name().c_str(), "frameA");
+  EXPECT_STREQ(bushing2.frameC().name().c_str(), "frameC");
+  EXPECT_EQ(bushing2.frameA().model_instance(), bushing2.model_instance());
+  EXPECT_NE(bushing.model_instance(), bushing2.model_instance());
+  EXPECT_EQ(bushing2.torque_stiffness_constants(), Eigen::Vector3d(11, 12, 13));
+  EXPECT_EQ(bushing2.torque_damping_constants(), Eigen::Vector3d(14, 15, 16));
+  EXPECT_EQ(bushing2.force_stiffness_constants(), Eigen::Vector3d(17, 18, 19));
+  EXPECT_EQ(bushing2.force_damping_constants(), Eigen::Vector3d(20, 21, 22));
 
   // Test missing frame tag
   DRAKE_EXPECT_THROWS_MESSAGE(ParseTestString(R"(
@@ -1486,16 +1616,8 @@ GTEST_TEST(SdfParser, ModelPlacementFrame) {
   ASSERT_TRUE(plant->HasModelInstanceNamed("table::mug"));
   ModelInstanceIndex model_m = plant->GetModelInstanceByName("table::mug");
 
-  ASSERT_TRUE(plant->HasFrameNamed("mug"));
-  const Frame<double>& frame_M = plant->GetFrameByName("mug");
   ASSERT_TRUE(plant->HasFrameNamed("__model__", model_m));
-  // frame M is equivalent to mug::__model__
-  EXPECT_TRUE(CompareMatrices(
-      plant->GetFrameByName("__model__", model_m)
-          .CalcPoseInWorld(*context)
-          .GetAsMatrix4(),
-      plant->GetFrameByName("mug").CalcPoseInWorld(*context).GetAsMatrix4(),
-      kEps));
+  const Frame<double>& frame_M = plant->GetFrameByName("__model__", model_m);
 
   ASSERT_TRUE(plant->HasFrameNamed("table_top"));
   const Frame<double>& frame_S = plant->GetFrameByName("table_top");
@@ -1673,11 +1795,11 @@ GTEST_TEST(SdfParser, FrameAttachedToMultiLevelNestedFrame) {
   // Also check that the frame is attached to the right body
   ModelInstanceIndex model_c_instance =
       plant->GetModelInstanceByName("a::b::c");
-  EXPECT_EQ(frame_E.body().node_index(),
-            plant->GetBodyByName("d", model_c_instance).node_index());
+  EXPECT_EQ(frame_E.body().index(),
+            plant->GetBodyByName("d", model_c_instance).index());
 
-  EXPECT_EQ(frame_F.body().node_index(),
-            plant->GetBodyByName("d", model_c_instance).node_index());
+  EXPECT_EQ(frame_F.body().index(),
+            plant->GetBodyByName("d", model_c_instance).index());
 }
 
 // Verify frames and links can have the same local name without violating name
@@ -1739,11 +1861,65 @@ GTEST_TEST(SdfParser, FrameAttachedToModelFrameInWorld) {
       X_WF_expected.GetAsMatrix4(), X_WF.GetAsMatrix4(), kEps));
 
   // Also check that the frame is attached to the right body
-  EXPECT_EQ(frame_E.body().node_index(),
-            plant->GetBodyByName("d").node_index());
+  EXPECT_EQ(frame_E.body().index(),
+            plant->GetBodyByName("d").index());
 
-  EXPECT_EQ(frame_F.body().node_index(),
-            plant->GetBodyByName("d").node_index());
+  EXPECT_EQ(frame_F.body().index(),
+            plant->GetBodyByName("d").index());
+}
+
+// Verify frames can be attached to joint frames
+GTEST_TEST(SdfParser, FrameAttachedToJointFrame) {
+  const std::string model_string = R"""(
+<world name='default'>
+  <model name='parent_model'>
+    <pose>0.1 0.2 0.0  0 0 0</pose>
+    <link name='L1'/>
+    <link name='L2'/>
+    <model name='M1'>
+      <pose>0 0.0 0.3  0 0 0</pose>
+      <link name='L3'/>
+    </model>
+    <!-- SDFormat has implicit frames for joints J1 and J2, but Drake does not
+    -->
+    <joint name='J1' type='fixed'>
+      <parent>L1</parent>
+      <child>L2</child>
+    </joint>
+    <joint name='J2' type='fixed'>
+      <parent>L1</parent>
+      <child>M1::L3</child>
+    </joint>
+    <frame name='F1' attached_to='J1'/>
+    <frame name='F2' attached_to='J2'/>
+  </model>
+</world>)""";
+  auto [plant, scene_graph] = ParseTestString(model_string, "1.8");
+
+  ASSERT_NE(nullptr, plant);
+  plant->Finalize();
+  auto context = plant->CreateDefaultContext();
+
+  const RigidTransformd X_WF1_expected(RollPitchYawd(0.0, 0.0, 0.0),
+                                       Vector3d(0.1, 0.2, 0.0));
+
+  const RigidTransformd X_WF2_expected(RollPitchYawd(0.0, 0.0, 0.0),
+                                       Vector3d(0.1, 0.2, 0.3));
+
+  const auto& frame_F1 = plant->GetFrameByName("F1");
+  const auto& frame_F2 = plant->GetFrameByName("F2");
+  const RigidTransformd X_WF1 = frame_F1.CalcPoseInWorld(*context);
+  const RigidTransformd X_WF2 = frame_F2.CalcPoseInWorld(*context);
+  EXPECT_TRUE(CompareMatrices(
+      X_WF1_expected.GetAsMatrix4(), X_WF1.GetAsMatrix4(), kEps));
+  EXPECT_TRUE(CompareMatrices(
+      X_WF2_expected.GetAsMatrix4(), X_WF2.GetAsMatrix4(), kEps));
+
+  // Also check that the frame is attached to the right body
+  EXPECT_EQ(frame_F1.body().index(),
+            plant->GetBodyByName("L2").index());
+  EXPECT_EQ(frame_F2.body().index(),
+            plant->GetBodyByName("L3").index());
 }
 
 GTEST_TEST(SdfParser, SupportNonDefaultCanonicalLink) {
@@ -1770,6 +1946,357 @@ GTEST_TEST(SdfParser, SupportNonDefaultCanonicalLink) {
 
   EXPECT_EQ(GetModelFrameByName(*plant, "a::c").body().index(),
             plant->GetBodyByName("f").index());
+}
+
+// Verify that frames can be used for //joint/parent and //joint/child
+GTEST_TEST(SdfParser, FramesAsJointParentOrChild) {
+  const std::string full_name = FindResourceOrThrow(
+      "drake/multibody/parsing/test/sdf_parser_test/"
+      "frames_as_joint_parent_or_child.sdf");
+  MultibodyPlant<double> plant(0.0);
+
+  PackageMap package_map;
+  package_map.PopulateUpstreamToDrake(full_name);
+  AddModelsFromSdfFile(full_name, package_map, &plant);
+  ASSERT_TRUE(plant.HasModelInstanceNamed("parent_model"));
+
+  plant.Finalize();
+  auto context = plant.CreateDefaultContext();
+
+  const RigidTransformd X_CJc_expected = RigidTransformd::Identity();
+  const RigidTransformd X_PJp_expected(RollPitchYawd(0, 0, 0),
+                                       Vector3d(3, 3, 3));
+
+  // Frames attached to links in the same model
+  {
+    const auto& joint = plant.GetJointByName("J1");
+    const auto& frame_P = plant.GetFrameByName("L1_offset");
+    const auto& frame_C = plant.GetFrameByName("L2_offset");
+
+    const RigidTransformd X_PJp =
+        joint.frame_on_parent().CalcPose(*context, frame_P);
+    EXPECT_TRUE(CompareMatrices(X_PJp_expected.GetAsMatrix4(),
+                                X_PJp.GetAsMatrix4(), kEps));
+
+    const RigidTransformd X_CJc =
+        joint.frame_on_child().CalcPose(*context, frame_C);
+    EXPECT_TRUE(CompareMatrices(X_CJc_expected.GetAsMatrix4(),
+                                X_CJc.GetAsMatrix4(), kEps));
+  }
+  // Frames attached to links in the other (nested) models
+  {
+    const auto& joint = plant.GetJointByName("J2");
+
+    const auto& frame_P = plant.GetFrameByName("M1_base_link_offset");
+    const auto& frame_C = plant.GetFrameByName("M2_base_link_offset");
+
+    const RigidTransformd X_PJp =
+        joint.frame_on_parent().CalcPose(*context, frame_P);
+    EXPECT_TRUE(CompareMatrices(X_PJp_expected.GetAsMatrix4(),
+                                X_PJp.GetAsMatrix4(), kEps));
+
+    const RigidTransformd X_CJc =
+        joint.frame_on_child().CalcPose(*context, frame_C);
+    EXPECT_TRUE(CompareMatrices(X_CJc_expected.GetAsMatrix4(),
+                                X_CJc.GetAsMatrix4(), kEps));
+  }
+}
+
+// Verifies that URDF files can be loaded into Drake via libsdformat's Interface
+// API which bypasses the URDF->SDFormat conversion. This also verifies that
+// SDFormat files can be forced to be loaded via the Interface API by changing
+// their file extension and registering the appropriate custom parser.
+GTEST_TEST(SdfParser, InterfaceAPI) {
+  const std::string sdf_file_path = FindResourceOrThrow(
+      "drake/multibody/parsing/test/sdf_parser_test/interface_api_test/"
+      "top.sdf");
+  PackageMap package_map;
+  package_map.PopulateUpstreamToDrake(sdf_file_path);
+  MultibodyPlant<double> plant(0.0);
+
+  DRAKE_ASSERT_NO_THROW(AddModelFromSdfFile(sdf_file_path, "", package_map,
+                                            &plant, nullptr, true));
+
+  plant.Finalize();
+  auto context = plant.CreateDefaultContext();
+
+  {
+    // Frame A represents the model frame of model top::arm
+    const RigidTransformd X_WA_expected(RollPitchYawd(0.0, 0.0, 0.0),
+                                        Vector3d(1, 0, 0));
+    const auto arm_model_instance = plant.GetModelInstanceByName("top::arm");
+    const auto& arm_model_frame =
+        plant.GetFrameByName("__model__", arm_model_instance);
+    const RigidTransformd X_WA = arm_model_frame.CalcPoseInWorld(*context);
+    EXPECT_TRUE(CompareMatrices(X_WA_expected.GetAsMatrix4(),
+                                X_WA.GetAsMatrix4(), kEps));
+    const auto& arm_L1 = plant.GetFrameByName("L1", arm_model_instance);
+    const RigidTransformd X_WL1 = arm_L1.CalcPoseInWorld(*context);
+    EXPECT_TRUE(CompareMatrices(X_WA_expected.GetAsMatrix4(),
+                                X_WL1.GetAsMatrix4(), kEps));
+  }
+
+  {
+    // Frame E represents the model frame of model top::extra_arm
+    const RigidTransformd X_WE_expected(RollPitchYawd(0.0, 0.0, 0.0),
+                                        Vector3d(1, 2, 0));
+    const auto extra_arm_model_instance =
+        plant.GetModelInstanceByName("top::extra_arm");
+    const auto& extra_arm_model_frame =
+        plant.GetFrameByName("__model__", extra_arm_model_instance);
+    const RigidTransformd X_WE =
+        extra_arm_model_frame.CalcPoseInWorld(*context);
+    EXPECT_TRUE(CompareMatrices(X_WE_expected.GetAsMatrix4(),
+                                X_WE.GetAsMatrix4(), kEps));
+
+    const RigidTransformd X_WL2_expected(RollPitchYawd(0.1, 0.2, 0.3),
+                                        Vector3d(2, 4, 3));
+    const auto& arm_L2 = plant.GetFrameByName("L2", extra_arm_model_instance);
+    const RigidTransformd X_WL2 = arm_L2.CalcPoseInWorld(*context);
+    EXPECT_TRUE(CompareMatrices(X_WL2_expected.GetAsMatrix4(),
+                                X_WL2.GetAsMatrix4(), kEps));
+  }
+  {
+    // Frame F represents the model frame of model top::arm::flange
+    const RigidTransformd X_WF_expected(RollPitchYawd(0.0, 0.0, 0.0),
+                                        Vector3d(1, 2, 1));
+    const auto flange_model_instance =
+        plant.GetModelInstanceByName("top::arm::flange");
+    const auto& flange_model_frame =
+        plant.GetFrameByName("__model__", flange_model_instance);
+    const RigidTransformd X_WF =
+        flange_model_frame.CalcPoseInWorld(*context);
+    EXPECT_TRUE(CompareMatrices(X_WF_expected.GetAsMatrix4(),
+                                X_WF.GetAsMatrix4(), kEps));
+
+    // Frame M represents the frame of model top::arm::flange::gripper_mount
+    const RigidTransformd X_WM_expected(RollPitchYawd(0.1, 0.2, 0.3),
+                                        Vector3d(1, 2, 3));
+    const auto& gripper_mount_frame =
+        plant.GetFrameByName("gripper_mount", flange_model_instance);
+    const RigidTransformd X_WM = gripper_mount_frame .CalcPoseInWorld(*context);
+    EXPECT_TRUE(CompareMatrices(X_WM_expected.GetAsMatrix4(),
+                                X_WM.GetAsMatrix4(), kEps));
+
+    // Frame G represents the frame of model top::arm::flange::gripper
+    const RigidTransformd X_WG_expected(RollPitchYawd(0.1, 0.2, 0.3),
+                                        Vector3d(1, 2, 3));
+    const auto gripper_model_instance =
+        plant.GetModelInstanceByName("top::arm::gripper");
+    const auto& gripper_model_frame =
+        plant.GetFrameByName("__model__", gripper_model_instance);
+    const RigidTransformd X_WG = gripper_model_frame.CalcPoseInWorld(*context);
+    // TODO(azeey) There is a precision loss that occurs in libsdformat when
+    // resolving poses. Use just kEps when the following ign-math issue is
+    // resolved: https://github.com/ignitionrobotics/ign-math/issues/212.
+    EXPECT_TRUE(CompareMatrices(X_WG_expected.GetAsMatrix4(),
+                                X_WG.GetAsMatrix4(), 10 * kEps));
+  }
+  // Test placement_frame using a table and a mug flipped upside down
+  {
+    // Frame T represents the frame top::table_and_mug::mug::top
+    const RigidTransformd X_WT_expected(RollPitchYawd(M_PI_2, 0.0, 0.0),
+                                        Vector3d(3, 0, 0.5));
+    const auto mug_model_instance =
+        plant.GetModelInstanceByName("top::table_and_mug::mug");
+    const auto& mug_top_frame =
+        plant.GetFrameByName("top", mug_model_instance);
+    const RigidTransformd X_WT =
+        mug_top_frame.CalcPoseInWorld(*context);
+    EXPECT_TRUE(CompareMatrices(X_WT_expected.GetAsMatrix4(),
+                                X_WT.GetAsMatrix4(), kEps));
+  }
+}
+
+// TODO(SeanCurtis-TRI) The logic testing for collision filter group parsing
+// belongs in detail_common_test.cc. Urdf and Sdf parsing just need enough
+// testing to indicate that the method is being invoked correctly.
+GTEST_TEST(SdfParser, CollisionFilterGroupParsingTest) {
+  const std::string full_sdf_filename = FindResourceOrThrow(
+      "drake/multibody/parsing/test/"
+      "sdf_parser_test/collision_filter_group_parsing_test.sdf");
+  MultibodyPlant<double> plant(0.0);
+  SceneGraph<double> scene_graph;
+  PackageMap package_map;
+  package_map.PopulateUpstreamToDrake(full_sdf_filename);
+
+  // Read in the SDF file.
+  AddModelFromSdfFile(full_sdf_filename, "", package_map, &plant, &scene_graph);
+
+  // Get geometry ids for all the bodies.
+  const geometry::SceneGraphInspector<double>& inspector =
+      scene_graph.model_inspector();
+  const auto geometry_id_link1 = inspector.GetGeometryIdByName(
+      plant.GetBodyFrameIdOrThrow(plant.GetBodyByName("link1").index()),
+      geometry::Role::kProximity,
+      "collision_filter_group_parsing_test::link1_sphere");
+  const auto geometry_id_link2 = inspector.GetGeometryIdByName(
+      plant.GetBodyFrameIdOrThrow(plant.GetBodyByName("link2").index()),
+      geometry::Role::kProximity,
+      "collision_filter_group_parsing_test::link2_sphere");
+  const auto geometry_id_link3 = inspector.GetGeometryIdByName(
+      plant.GetBodyFrameIdOrThrow(plant.GetBodyByName("link3").index()),
+      geometry::Role::kProximity,
+      "collision_filter_group_parsing_test::link3_sphere");
+  const auto geometry_id_link4 = inspector.GetGeometryIdByName(
+      plant.GetBodyFrameIdOrThrow(plant.GetBodyByName("link4").index()),
+      geometry::Role::kProximity,
+      "collision_filter_group_parsing_test::link4_sphere");
+
+  // Make sure the plant is not finalized such that the adjacent joint filter
+  // has not taken into effect yet. This guarantees that the collision filtering
+  // is applied due to the collision filter group parsing.
+  ASSERT_FALSE(plant.is_finalized());
+
+  // We have four geometries and six possible pairs, each with a particular
+  // disposition.
+  // (1, 2) - unfiltered
+  // (1, 3) - filtered by group_link_3 ignores group_link_14
+  // (1, 4) - filtered by group_link_14 ignores itself
+  // (2, 3) - filtered by group_link_2 ignores group_link_3
+  // (2, 4) - unfiltered (although declared in an *ignored* self-filtering
+  // group_link_24).
+  // (3, 4) - filtered by group_link_3 ignores group_link_14
+  EXPECT_FALSE(
+      inspector.CollisionFiltered(geometry_id_link1, geometry_id_link2));
+  EXPECT_TRUE(
+      inspector.CollisionFiltered(geometry_id_link1, geometry_id_link3));
+  EXPECT_TRUE(
+      inspector.CollisionFiltered(geometry_id_link1, geometry_id_link4));
+  EXPECT_TRUE(
+      inspector.CollisionFiltered(geometry_id_link2, geometry_id_link3));
+  EXPECT_FALSE(
+      inspector.CollisionFiltered(geometry_id_link2, geometry_id_link4));
+  EXPECT_TRUE(
+      inspector.CollisionFiltered(geometry_id_link3, geometry_id_link4));
+
+  // Make sure we can add the model a second time.
+  AddModelFromSdfFile(
+      full_sdf_filename, "model2", package_map, &plant, &scene_graph);
+}
+
+// TODO(marcoag) We might want to add some form of feedback for:
+// - ignore_collision_filter_groups with non-existing group names.
+// - Empty collision_filter_groups.
+GTEST_TEST(SdfParser, CollisionFilterGroupParsingErrorsTest) {
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      ParseTestString(R"""(
+<model name='error'>
+  <link name='a'/>
+  <drake:collision_filter_group/>
+</model>)"""),
+      std::runtime_error,
+      ".*The tag <drake:collision_filter_group> is "
+      "missing the required attribute "
+      "\"name\".*");
+
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      ParseTestString(R"""(
+<model name='error'>
+  <link name='a'/>
+  <drake:collision_filter_group name="group_a">
+    <drake:member></drake:member>
+  </drake:collision_filter_group>
+</model>)"""),
+      std::runtime_error,
+      ".*The tag <drake:member> is missing a required string value.*");
+
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      ParseTestString(R"""(
+<model name='error'>
+  <link name='a'/>
+  <drake:collision_filter_group name="group_a">
+    <drake:ignored_collision_filter_group>
+    </drake:ignored_collision_filter_group>
+  </drake:collision_filter_group>
+</model>)"""),
+      std::runtime_error,
+      ".*The tag <drake:ignored_collision_filter_group> is missing a "
+      "required string value.*");
+}
+
+GTEST_TEST(SdfParser, PoseWithRotationInDegreesOrQuaternions) {
+  const std::string model_string = R"""(
+  <model name='test_model'>
+    <link name='E1'>
+      <pose degrees='true'>1 2 3   15 30 45</pose>
+    </link>
+    <link name='E2'>
+      <pose rotation_format="euler_rpy" degrees='true'>1 2 3   15 30 45</pose>
+    </link>
+    <link name='Q'>
+      <pose rotation_format='quat_xyzw'>
+        1 2 3
+        0.3826834323650898 0 0 0.9238795325112867
+      </pose>
+    </link>
+  </model>)""";
+  auto [plant, scene_graph] = ParseTestString(model_string, "1.9");
+  plant->Finalize();
+  auto context = plant->CreateDefaultContext();
+
+  constexpr double kDegToRad = M_PI / 180.0;
+
+  const RigidTransformd X_WE_expected(
+      RollPitchYawd(kDegToRad * 15, kDegToRad * 30, kDegToRad * 45),
+      Vector3d(1, 2, 3));
+
+  const RigidTransformd X_WE1 =
+      plant->GetFrameByName("E1").CalcPoseInWorld(*context);
+  EXPECT_TRUE(CompareMatrices(X_WE_expected.GetAsMatrix4(),
+                              X_WE1.GetAsMatrix4(), kEps));
+
+  const RigidTransformd X_WE2 =
+      plant->GetFrameByName("E2").CalcPoseInWorld(*context);
+  EXPECT_TRUE(CompareMatrices(X_WE_expected.GetAsMatrix4(),
+                              X_WE2.GetAsMatrix4(), kEps));
+
+  const RigidTransformd X_WQ_expected(RollPitchYawd(M_PI_4, 0, 0),
+                                      Vector3d(1, 2, 3));
+
+  const RigidTransformd X_WQ =
+      plant->GetFrameByName("Q").CalcPoseInWorld(*context);
+  EXPECT_TRUE(
+      CompareMatrices(X_WQ_expected.GetAsMatrix4(), X_WQ.GetAsMatrix4(), kEps));
+}
+
+GTEST_TEST(SdfParser, MergeInclude) {
+  const std::string full_name = FindResourceOrThrow(
+      "drake/multibody/parsing/test/sdf_parser_test/"
+      "merge_include_models.sdf");
+
+  MultibodyPlant<double> plant(0.0);
+
+  // We start with the world and default model instances.
+  ASSERT_EQ(plant.num_model_instances(), 2);
+  ASSERT_EQ(plant.num_bodies(), 1);
+  ASSERT_EQ(plant.num_joints(), 0);
+
+  PackageMap package_map;
+  package_map.PopulateFromFolder(filesystem::path(full_name).parent_path());
+  AddModelsFromSdfFile(full_name, package_map, &plant);
+  plant.Finalize();
+
+  // We should have loaded *only* 1 more model.
+  EXPECT_EQ(plant.num_model_instances(), 3);
+  EXPECT_EQ(plant.num_bodies(), 4);
+  EXPECT_EQ(plant.num_joints(), 2);
+
+  ASSERT_TRUE(plant.HasModelInstanceNamed("robot1_with_tool"));
+  ModelInstanceIndex robot1_model =
+      plant.GetModelInstanceByName("robot1_with_tool");
+
+  // The bodies and joints from "simple_robot1" should be merged into
+  // "robot1_with_tool" making them direct children of the "robot1_with_tool"
+  // model instance.
+  EXPECT_TRUE(plant.HasBodyNamed("base_link", robot1_model));
+  EXPECT_TRUE(plant.HasBodyNamed("moving_link", robot1_model));
+  EXPECT_TRUE(plant.HasJointNamed("slider", robot1_model));
+
+  // The bodies and joints directly specified in "robot1_with_tool" should be at
+  // the same level of hierarchy as those merged from "simple_robot1"
+  EXPECT_TRUE(plant.HasBodyNamed("tool", robot1_model));
+  EXPECT_TRUE(plant.HasJointNamed("tool_joint", robot1_model));
 }
 }  // namespace
 }  // namespace internal

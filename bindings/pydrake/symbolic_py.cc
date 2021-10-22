@@ -39,6 +39,8 @@ PYBIND11_MODULE(symbolic, m) {
   using namespace drake::symbolic;
   constexpr auto& doc = pydrake_doc.drake.symbolic;
 
+  py::module::import("pydrake.common");
+
   // Install NumPy warning filtres.
   // N.B. This may interfere with other code, but until that is a confirmed
   // issue, we should aggressively try to avoid these warnings.
@@ -152,6 +154,15 @@ PYBIND11_MODULE(symbolic, m) {
       .def(py::self != double());
   internal::BindSymbolicMathOverloads<Variable>(&var_cls);
   DefCopyAndDeepCopy(&var_cls);
+
+  // Bind the free function TaylorExpand.
+  m.def(
+      "TaylorExpand",
+      [](const symbolic::Expression& f, const symbolic::Environment::map& a,
+          int order) {
+        return symbolic::TaylorExpand(f, symbolic::Environment(a), order);
+      },
+      py::arg("f"), py::arg("a"), py::arg("order"), doc.TaylorExpand.doc);
 
   // Bind the free functions for MakeVectorXXXVariable
   m  // BR

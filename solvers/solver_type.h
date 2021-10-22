@@ -3,6 +3,8 @@
 namespace drake {
 namespace solvers {
 
+/** This type only exists for backwards compatiblity, and should not be used in
+new code. */
 enum class SolverType {
   kConex,
   kClp,
@@ -10,6 +12,7 @@ enum class SolverType {
   kDReal,
   kEqualityConstrainedQP,
   kGurobi,
+  kIbex,
   kIpopt,
   kLinearSystem,
   kMobyLCP,

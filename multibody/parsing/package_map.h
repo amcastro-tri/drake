@@ -1,6 +1,8 @@
 #pragma once
 
+#include <initializer_list>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -16,8 +18,12 @@ class PackageMap final {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(PackageMap)
 
-  /// A constructor that initializes an empty map.
+  /// A constructor that initializes a default map containing only the top-
+  /// level `drake` manifest.
   PackageMap();
+
+  /// A factory method that initializes an empty map.
+  static class PackageMap MakeEmpty();
 
   /// Adds package @p package_name and its path, @p package_path.
   /// Throws if @p package_name is already present in this PackageMap with a
@@ -35,8 +41,20 @@ class PackageMap final {
   /// Throws if @p package_name is not present in this PackageMap.
   void Remove(const std::string& package_name);
 
+  /// Sets or clears the deprecation message for package @p package_name. A
+  /// @p deprecated_message value of std::nullopt implies no deprecation. Aborts
+  /// if no package named @p package_name exists in this PackageMap.
+  void SetDeprecated(const std::string& package_name,
+      std::optional<std::string> deprecated_message);
+
   /// Returns the number of entries in this PackageMap.
   int size() const;
+
+  /// Returns the deprecation message for package @p package_name if it has
+  /// been set as deprecated. A value of std::nullopt implies no deprecation.
+  /// Aborts if no package named @p package_name exists in this PackageMap.
+  std::optional<std::string> GetDeprecated(
+      const std::string& package_name) const;
 
   /// Returns the package names in this PackageMap. The order of package names
   /// returned is unspecified.
@@ -88,6 +106,18 @@ class PackageMap final {
                                   const PackageMap& package_map);
 
  private:
+  // Information about a package.
+  struct PackageData {
+    // Directory in which the manifest resides.
+    std::string path;
+    // Optional message declaring deprecation of the package.
+    std::optional<std::string> deprecated_message;
+  };
+
+  // A constructor that initializes a map by parsing a list of package.xml
+  // file paths.
+  PackageMap(std::initializer_list<std::string> manifest_paths);
+
   // Recursively crawls through @p path looking for package.xml files. Adds
   // the packages defined by these package.xml files to this PackageMap.
   // Multiple paths can be searched by separating them using the ':' symbol. In
@@ -110,9 +140,9 @@ class PackageMap final {
       const std::string& directory,
       const std::string& stop_at_directory);
 
-  // The key is the name of a ROS package and the value is the package's
-  // directory.
-  std::map<std::string, std::string> map_;
+  // The key is the name of a ROS package and the value is a struct containing
+  // information about that package.
+  std::map<std::string, struct PackageData> map_;
 };
 
 }  // namespace multibody

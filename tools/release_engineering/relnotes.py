@@ -82,15 +82,46 @@ def _format_commit(gh, drake, commit):
 
     The bullet is a "* Detail (#123)" summary of the change for release notes.
 
-    Ineligible commits: currently commits that only change files in dev
-    directories are ineligible. More ineligible commit conditions may be
-    defined later.
-
+    Ineligible commits are those where:
+    - all changes were to files in dev directories; or
+    - the "release notes: none" label has been applied to the PR.
     """
     # Grab the commit message subject and body.
     message = commit.message
     lines = message.splitlines()
     subject = lines[0]
+
+    # Now, we'll try to find the pull request number and GH API object.  If
+    # we can't find the PR number, we'll leave the sha there for someone to
+    # clean up later.
+    pr_num = commit.sha
+    pr_summary = subject
+    pr_object = None
+
+    # See if the subject contained the pull request number.
+    match = re.match(r'^(.*) +\(#([\d]+)\)$', subject)
+    if match:
+        # Yes; just use it.
+        pr_summary, pr_num = match.groups()
+        pr_object = drake.pull_request(int(pr_num))
+    else:
+        # No number in subject, so we'll have to look for PRs that mention this
+        # commit.  Usually there is just the one PR in the search result (the
+        # one that merged it), but sometimes other PRs might mention it (e.g.,
+        # for reverts).
+        time.sleep(0.2)  # Try not to hit GitHub API rate limits.
+        results = list(gh.search_issues(
+            f"{commit.sha} is:pr is:merged repo:RobotLocomotion/drake",
+            number=2))
+        if len(results) == 1:
+            pr_object = results[0]
+            pr_num = str(pr_object.number)
+
+    # Check if this commit is ineligible due to a label.
+    if pr_object is not None:
+        for label in pr_object.labels:
+            if label["name"] == "release notes: none":
+                return [], ""
 
     # Figure out which top-level package(s) were changed, to help the release
     # notes author sort things better.
@@ -114,37 +145,14 @@ def _format_commit(gh, drake, commit):
     if len(packages) > 1 and "bindings" in packages:
         packages.remove("bindings")
 
-    # See if the subject contained the pull request number.
-    match = re.match(r'^(.*) +\(#([\d]+)\)$', subject)
-    if match:
-        # Yes; just use it.
-        summary, pr = match.groups()
-        summary = summary.strip()
-    else:
-        # No number in subject, so we'll have to look for PRs that mention this
-        # commit.  Usually there is just the one PR in the search result (the
-        # one that merged it), but sometimes other PRs might mention it (e.g.,
-        # for reverts).
-        time.sleep(0.2)  # Try not to hit GitHub API rate limits.
-        summary = subject
-        results = list(gh.search_issues(
-            f"{commit.sha} is:pr is:merged repo:RobotLocomotion/drake",
-            number=2))
-        if len(results) == 1:
-            pr = results[0].number
-        else:
-            # We don't know the PR number, so we'll leave the sha there for
-            # someone to clean up later.
-            pr = commit.sha
-
     # Remove subject line trailing period(s).
-    nice_summary = summary.rstrip(".")
+    nice_summary = pr_summary.strip().rstrip(".").strip()
 
     # If there is a commit message body, turn it into some end-of-line text
     # that we'll have to editorialize by hand.
     detail = " ".join([x.strip() for x in lines[1:] if x])
     # When squashing, reviewable repeats the subject in the body.
-    redundant_detail = f"* {summary}"
+    redundant_detail = f"* {pr_summary}"
     if detail.startswith(redundant_detail):
         detail = detail[len(redundant_detail):].strip()
     if detail:
@@ -156,11 +164,11 @@ def _format_commit(gh, drake, commit):
         preamble = "[" + ",".join(packages) + "] "
 
     # Format as top-level bullet point.
-    inline_link = _format_inline_pr_link(pr)
+    inline_link = _format_inline_pr_link(pr_num)
     return packages, f"* TBD {preamble}{nice_summary} ({inline_link}){detail}"
 
 
-def _update(args, notes_filename, gh, drake):
+def _update(args, notes_filename, gh, drake, target_commit):
     """The --update action."""
 
     # Read in the existing content.
@@ -190,6 +198,22 @@ def _update(args, notes_filename, gh, drake):
         commits.append(commit)
         if len(commits) == args.max_num_commits:
             raise RuntimeError("Reached max_num_commits")
+
+    if target_commit is not None:
+        if target_commit == prior_newest_commit:
+            commits = []
+        else:
+            commit_shas = [commit.sha for commit in commits]
+            # Assert that we see target_commit along the mainline branch.
+            if target_commit not in commit_shas:
+                raise RuntimeError(
+                    f"--target_commit={target_commit} is not part of "
+                    f"commits from prior commit ({prior_newest_commit}) to "
+                    f"latest commit on master. It is either too old (before "
+                    f"prior commit) or not on the master branch.")
+            # Trim commits down to target commit.
+            target_index = commit_shas.index(target_commit)
+            commits = commits[target_index:]
 
     # Edit the newest_commit annotation.
     if commits:
@@ -303,6 +327,11 @@ def main():
         "--max_num_commits", type=int, default=400,
         help="Stop after chasing this many commits")
     parser.add_argument(
+        "--target_commit", type=str,
+        help="Use this as the target commit for --action=update. This *must* "
+        "be newer than the prior commit, and must be fully a resolved "
+        "40-character SHA1.")
+    parser.add_argument(
         "--token_file", default="~/.config/readonly_github_api_token.txt",
         help="Uses an API token read from this filename (default: "
         "%(default)s)")
@@ -333,11 +362,20 @@ def main():
     # Perform the requested action.
     if args.action == "create":
         if not args.prior_version:
-            parser.error("--prior_version is required to --create")
+            parser.error("--prior_version is required to --action=create")
+        if args.target_commit is not None:
+            parser.error(
+                "--target_commit cannot be specified with --action=create")
         _create(args, notes_dir, notes_filename, gh, drake)
     else:
         assert args.action == "update"
-        _update(args, notes_filename, gh, drake)
+        if args.target_commit is not None:
+            if not re.match(r"^[0-9a-f]{40}$", args.target_commit):
+                parser.error(
+                    f"--target_commit={args.target_commit} is not a "
+                    f"40-character SHA1")
+
+        _update(args, notes_filename, gh, drake, args.target_commit)
 
 
 if __name__ == '__main__':

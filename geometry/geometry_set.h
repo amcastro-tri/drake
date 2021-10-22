@@ -20,8 +20,8 @@ class GeometryState;
  frame to which the geometries are rigidly affixed.
 
  This class does no validation; it is a simple collection. Ultimately, it serves
- as the operand of SceneGraph operations (e.g.,
- SceneGraph::ExcludeCollisionsWithin()). If the _operation_ has a particular
+ as the operand of various geometry operations (e.g., CollisionFilterDeclaration
+ and CollisionFilterManager::Apply(). If the _operation_ has a particular
  prerequisite on the members of a %GeometrySet, it is the operation's
  responsibility to enforce that requirement.
 
@@ -189,8 +189,8 @@ class GeometrySet {
    std::vector<GeometryId> geometry_ids{g_2, g_3, g_4};
    group.Add(geometry_ids);
 
-   // This is valid, but redundant; the the ids in those vectors have already
-   // been added.
+   // This is valid, but redundant; the ids in those vectors have already been
+   // added.
    group.Add(geometry_ids, frame_ids);
 
    // Mismatched iterable types.
@@ -269,14 +269,14 @@ class GeometrySet {
   friend class GeometryState;
 
   // Returns the frame ids in the set.
-  const std::unordered_set<FrameId> frames() const { return frame_ids_; }
+  const std::unordered_set<FrameId>& frames() const { return frame_ids_; }
 
   // Reports the number of frames in the set.
   int num_frames() const { return static_cast<int>(frame_ids_.size()); }
 
   // Returns the geometry ids in the set -- these are only the geometry ids
   // explicitly added to the set and _not_ those implied by added frames.
-  const std::unordered_set<GeometryId> geometries() const {
+  const std::unordered_set<GeometryId>& geometries() const {
     return geometry_ids_;
   }
 

@@ -6,6 +6,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/geometry/geometry_ids.h"
 #include "drake/geometry/proximity/bvh.h"
+#include "drake/geometry/proximity/contact_surface_utility.h"
 #include "drake/geometry/proximity/posed_half_space.h"
 #include "drake/geometry/proximity/surface_mesh.h"
 #include "drake/geometry/proximity/surface_mesh_field.h"
@@ -26,7 +27,7 @@ template <typename T> class SurfaceVolumeIntersectorTester;
  variable. It also interpolates the field variable onto the resulted
  surface.
 
- @tparam T Currently, only T = double is supported.
+ @tparam_nonsymbolic_scalar
  */
 template <typename T>
 class SurfaceVolumeIntersector {
@@ -47,8 +48,7 @@ class SurfaceVolumeIntersector {
    surface mesh. The resulting manifold's topology is a function of both the
    volume and surface mesh topologies. The winding of the resulting manifold's
    faces will be such that its face normals will point in the same direction as
-   the input surface mesh's corresponding faces. This does not use any
-   broadphase culling but compares each element of the meshes.
+   the input surface mesh's corresponding faces.
    @param[in] volume_field_M
        The field to sample from. The field contains the volume mesh M that
        defines its domain. The vertex positions of the mesh are measured and
@@ -64,6 +64,10 @@ class SurfaceVolumeIntersector {
        A bounding volume hierarchy built on the geometry `surface_N`.
    @param[in] X_MN
        The pose of frame N in frame M.
+   @param[in] representation
+       Specify the preferred representation of each intersecting polygon,
+       which is the intersection of a tetrahedron and a triangle from the two
+       meshes.
    @param[out] surface_MN_M
        The intersecting surface between the volume mesh M and the surface N.
        Vertex positions are measured and expressed in M's frame. If no
@@ -84,6 +88,7 @@ class SurfaceVolumeIntersector {
       const SurfaceMesh<double>& surface_N,
       const Bvh<Obb, SurfaceMesh<double>>& bvh_N,
       const math::RigidTransform<T>& X_MN,
+      ContactPolygonRepresentation representation,
       std::unique_ptr<SurfaceMesh<T>>* surface_MN_M,
       std::unique_ptr<SurfaceMeshFieldLinear<T, T>>* e_MN,
       std::vector<Vector3<T>>* grad_eM_Ms);
@@ -207,8 +212,8 @@ class SurfaceVolumeIntersector {
           tetrahedron (non-zero area restriction still applies).
    */
   const std::vector<Vector3<T>>& ClipTriangleByTetrahedron(
-      VolumeElementIndex element, const VolumeMesh<double>& volume_M,
-      SurfaceFaceIndex face, const SurfaceMesh<double>& surface_N,
+      int element, const VolumeMesh<double>& volume_M, int face,
+      const SurfaceMesh<double>& surface_N,
       const math::RigidTransform<T>& X_MN);
 
   /* Determines whether a triangle of a rigid surface N and a tetrahedron of a
@@ -292,8 +297,7 @@ class SurfaceVolumeIntersector {
   static bool IsFaceNormalAlongPressureGradient(
       const VolumeMeshFieldLinear<double, double>& volume_field_M,
       const SurfaceMesh<double>& surface_N,
-      const math::RigidTransform<double>& X_MN,
-      const VolumeElementIndex& tet_index, const SurfaceFaceIndex& tri_index);
+      const math::RigidTransform<double>& X_MN, int tet_index, int tri_index);
 
   // To avoid heap allocation by std::vector in low-level functions, we use
   // these member variables instead of local variables in the functions.
@@ -310,7 +314,7 @@ class SurfaceVolumeIntersector {
 };
 
 /* Computes the contact surface between a soft geometry S and a rigid
- geometry R. This does not use any broadphase culling.
+ geometry R.
  @param[in] id_S
      Id of the soft geometry S.
  @param[in] field_S
@@ -333,13 +337,15 @@ class SurfaceVolumeIntersector {
      A bounding volume hierarchy built on the geometry contained in `mesh_R`.
  @param[in] X_WR
      The pose of the rigid frame R in the world frame W.
+ @param[in] representation
+     Specify the preferred representation of each contact polygon between the
+     two geometries.
  @return
      The contact surface between M and N. Geometries S and R map to M and N
      with a consistent mapping (as documented in ContactSurface) but without any
      guarantee as to what that mapping is. Positions of vertex coordinates are
      expressed in the world frame. The pressure distribution comes from the
-     soft geometry S. The normal vector field, expressed in the world frame
-     frame, comes from the rigid geometry R.
+     soft geometry S.
 
                      ooo   soft S
                   o       o
@@ -363,10 +369,11 @@ std::unique_ptr<ContactSurface<T>>
 ComputeContactSurfaceFromSoftVolumeRigidSurface(
     const GeometryId id_S, const VolumeMeshFieldLinear<double, double>& field_S,
     const Bvh<Obb, VolumeMesh<double>>& bvh_S,
-    const math::RigidTransform<T>& X_WS, const GeometryId id_R,
-    const SurfaceMesh<double>& mesh_R,
+    const math::RigidTransform<T>& X_WS,
+    const GeometryId id_R, const SurfaceMesh<double>& mesh_R,
     const Bvh<Obb, SurfaceMesh<double>>& bvh_R,
-    const math::RigidTransform<T>& X_WR);
+    const math::RigidTransform<T>& X_WR,
+    ContactPolygonRepresentation representation);
 
 }  // namespace internal
 }  // namespace geometry

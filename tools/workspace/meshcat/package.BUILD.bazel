@@ -11,9 +11,10 @@ VIEWER_FILES = [
 
 exports_files(
     VIEWER_FILES,
-    visibility = ["@meshcat_python//:__pkg__"],
+    visibility = ["//visibility:public"],
 )
 
+# This installation is for meshcat-python.
 install_files(
     name = "install_viewer",
     dest = "@PYTHON_SITE_PACKAGES@/meshcat/viewer",
@@ -22,7 +23,11 @@ install_files(
 
 install(
     name = "install",
-    docs = ["LICENSE"],
+    docs = [
+        "LICENSE",
+        "dist/main.min.js.THIRD_PARTY_LICENSES.json",
+    ],
+    doc_strip_prefix = ["dist"],
     visibility = ["//visibility:public"],
     deps = [":install_viewer"],
 )

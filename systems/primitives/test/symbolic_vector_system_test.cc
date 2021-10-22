@@ -27,8 +27,6 @@ using symbolic::Variables;
 using symbolic::test::ExprEqual;
 using symbolic::test::PolyEqual;
 
-using Vector6d = Vector6<double>;
-
 class SymbolicVectorSystemTest : public ::testing::Test {
  protected:
   const Variable t_{"t"};
@@ -235,8 +233,8 @@ class CalcRecorder final : public LeafSystem<T> {
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(CalcRecorder);
 
   explicit CalcRecorder(int output_size = 1) {
-    this->DeclareVectorOutputPort(BasicVector<T>(output_size),
-        &CalcRecorder::CalcOutput);
+    this->DeclareVectorOutputPort(kUseDefaultName, output_size,
+                                  &CalcRecorder::CalcOutput);
   }
 
   bool calculated() const { return calculated_; }
@@ -683,13 +681,13 @@ class SymbolicVectorSystemAutoDiffXdTest : public SymbolicVectorSystemTest {
 };
 
 TEST_F(SymbolicVectorSystemAutoDiffXdTest, AutodiffXdFullGradient) {
-  const VectorX<AutoDiffXd> txup = math::initializeAutoDiff(txupval_);
+  const VectorX<AutoDiffXd> txup = math::InitializeAutoDiff(txupval_);
   SetContext(txup);
 
   const auto xdotval =
       autodiff_system_->EvalTimeDerivatives(*context_).CopyToVector();
   EXPECT_TRUE(
-      CompareMatrices(math::autoDiffToValueMatrix(xdotval),
+      CompareMatrices(math::ExtractValue(xdotval),
                       Vector1d{-xval_ * pval_[0] + xval_ * xval_ * xval_}));
   EXPECT_TRUE(
       CompareMatrices(xdotval[0].derivatives(), expected_xdotval0_deriv_));
@@ -698,7 +696,7 @@ TEST_F(SymbolicVectorSystemAutoDiffXdTest, AutodiffXdFullGradient) {
                          .template Eval<BasicVector<AutoDiffXd>>(*context_)
                          .get_value();
   EXPECT_TRUE(CompareMatrices(
-      math::autoDiffToValueMatrix(yval),
+      math::ExtractValue(yval),
       Vector1d{tval_ + 2 * uval_[0] + 3 * uval_[1] + pval_[1]}));
   EXPECT_TRUE(CompareMatrices(yval[0].derivatives(), expected_yval0_deriv_));
 }
@@ -707,8 +705,8 @@ TEST_F(SymbolicVectorSystemAutoDiffXdTest, AutodiffXdGradientRelativeToInput) {
   Eigen::MatrixXd gradient{Eigen::MatrixXd::Zero(6, 2)};
   gradient(2, 0) = 1.0;  // u₀
   gradient(3, 1) = 1.0;  // u₁
-  const VectorX<AutoDiffXd> txup = math::initializeAutoDiffGivenGradientMatrix(
-      Eigen::MatrixXd(txupval_), gradient);
+  const VectorX<AutoDiffXd> txup =
+      math::InitializeAutoDiff(Eigen::MatrixXd(txupval_), gradient);
   SetContext(txup);
 
   const auto xdotval =
@@ -727,7 +725,7 @@ TEST_F(SymbolicVectorSystemAutoDiffXdTest, AutodiffXdGradientRelativeToInput) {
 // derivatives.
 TEST_F(SymbolicVectorSystemAutoDiffXdTest, AutodiffXdGradientRelativeToState) {
   VectorX<AutoDiffXd> txup = txupval_;
-  txup.head<2>() = math::initializeAutoDiff(txupval_.head<2>());
+  txup.head<2>() = math::InitializeAutoDiff(txupval_.head<2>());
   SetContext(txup);
 
   const auto xdotval =
@@ -747,8 +745,8 @@ TEST_F(SymbolicVectorSystemAutoDiffXdTest,
   Eigen::MatrixXd gradient{Eigen::MatrixXd::Zero(6, 2)};
   gradient(4, 0) = 1.0;  // p₀
   gradient(5, 1) = 1.0;  // p₁
-  const VectorX<AutoDiffXd> txup = math::initializeAutoDiffGivenGradientMatrix(
-      Eigen::MatrixXd(txupval_), gradient);
+  const VectorX<AutoDiffXd> txup =
+      math::InitializeAutoDiff(Eigen::MatrixXd(txupval_), gradient);
   SetContext(txup);
 
   const auto xdotval =

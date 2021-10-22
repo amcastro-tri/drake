@@ -2,6 +2,7 @@
 
 #include <limits>
 #include <memory>
+#include <unordered_set>
 #include <utility>
 
 #include "drake/common/drake_copyable.h"
@@ -420,6 +421,12 @@ enum class TriggerType {
 };
 
 /**
+ * This set-type alias provides a convenient API vocabulary for systems to
+ * specify multiple trigger types.
+ */
+using TriggerTypeSet = std::unordered_set<TriggerType, DefaultHash>;
+
+/**
  * Abstract base class that represents an event. The base event contains two
  * main pieces of information: an enum trigger type and an optional attribute
  * of AbstractValue that can be used to explain why the event is triggered.
@@ -496,7 +503,7 @@ class Event {
    * Adds a clone of `this` event to the event collection `events`, with
    * the given trigger type. If `this` event has an unknown trigger type, then
    * any trigger type is acceptable. Otherwise the given trigger type must
-   * match match the trigger type stored in `this` event.
+   * match the trigger type stored in `this` event.
    * @pre `trigger_type` must match the current trigger type unless that is
    *      unknown.
    * @pre `events` must not be null.

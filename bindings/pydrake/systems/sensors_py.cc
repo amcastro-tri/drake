@@ -167,19 +167,6 @@ PYBIND11_MODULE(sensors, m) {
     type_visit(instantiation_visitor, PixelTypeList{});
   }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  // Constants.
-  py::class_<InvalidDepth> invalid_depth(
-      m, "InvalidDepth", doc.InvalidDepth.doc_deprecated);
-  invalid_depth.attr("kTooFar") = InvalidDepth::kTooFar;
-  invalid_depth.attr("kTooClose") = InvalidDepth::kTooClose;
-
-  py::class_<Label> label(m, "Label", doc.Label.doc_deprecated);
-  label.attr("kNoBody") = Label::kNoBody;
-  label.attr("kFlatTerrain") = Label::kFlatTerrain;
-#pragma GCC diagnostic pop
-
   using T = double;
 
   // Systems.
@@ -199,8 +186,17 @@ PYBIND11_MODULE(sensors, m) {
             py_rvp::reference_internal, cls_doc.depth_image_16U_output_port.doc)
         .def("label_image_output_port", &Class::label_image_output_port,
             py_rvp::reference_internal, cls_doc.label_image_output_port.doc)
-        .def("X_WB_output_port", &Class::X_WB_output_port,
-            py_rvp::reference_internal, cls_doc.X_WB_output_port.doc);
+        .def("body_pose_in_world_output_port",
+            &Class::body_pose_in_world_output_port, py_rvp::reference_internal,
+            cls_doc.body_pose_in_world_output_port.doc);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    py_class.def("X_WB_output_port", &Class::X_WB_output_port,
+        py_rvp::reference_internal, cls_doc.X_WB_output_port.doc_deprecated);
+#pragma GCC diagnostic pop
+    DeprecateAttribute(
+        py_class, "X_WB_output_port", cls_doc.X_WB_output_port.doc_deprecated);
   };
 
   py::class_<RgbdSensor, LeafSystem<T>> rgbd_sensor(

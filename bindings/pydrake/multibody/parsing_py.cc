@@ -34,6 +34,8 @@ PYBIND11_MODULE(parsing, m) {
         .def("AddMap", &Class::AddMap, py::arg("other_map"), cls_doc.AddMap.doc)
         .def("Contains", &Class::Contains, py::arg("package_name"),
             cls_doc.Contains.doc)
+        .def("Remove", &Class::Remove, py::arg("package_name"),
+            cls_doc.Remove.doc)
         .def("size", &Class::size, cls_doc.size.doc)
         .def("GetPackageNames", &Class::GetPackageNames,
             cls_doc.GetPackageNames.doc)
@@ -47,7 +49,8 @@ PYBIND11_MODULE(parsing, m) {
             py::arg("environment_variable"),
             cls_doc.PopulateFromEnvironment.doc)
         .def("PopulateUpstreamToDrake", &Class::PopulateUpstreamToDrake,
-            py::arg("model_file"), cls_doc.PopulateUpstreamToDrake.doc);
+            py::arg("model_file"), cls_doc.PopulateUpstreamToDrake.doc)
+        .def_static("MakeEmpty", &Class::MakeEmpty, cls_doc.MakeEmpty.doc);
   }
 
   // Parser

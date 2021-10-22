@@ -58,10 +58,10 @@ class BlockSparseLinearOperator final : public LinearOperator<T> {
     A_->MultiplyByTranspose(x, y);
   }
 
-  void DoMultiplyByTranspose(const Eigen::SparseVector<T>& x,
+  void DoMultiplyByTranspose(const Eigen::Ref<const Eigen::SparseVector<T>>& x,
                              Eigen::SparseVector<T>* y) const final {
     row_vec_ = x;
-    A_->Multiply(row_vec_, &col_vec_);
+    A_->MultiplyByTranspose(row_vec_, &col_vec_);
     *y = col_vec_.sparseView();
   }
 

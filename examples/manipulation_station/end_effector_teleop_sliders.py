@@ -25,15 +25,15 @@ from pydrake.manipulation.planner import (
     DifferentialInverseKinematicsParameters)
 from pydrake.math import RigidTransform, RollPitchYaw, RotationMatrix
 from pydrake.systems.analysis import Simulator
-from pydrake.systems.framework import (BasicVector, DiagramBuilder,
-                                       LeafSystem)
+from pydrake.systems.framework import (DiagramBuilder, LeafSystem,
+                                       PublishEvent)
 from pydrake.systems.lcm import LcmPublisherSystem
 from pydrake.systems.meshcat_visualizer import (
     ConnectMeshcatVisualizer, MeshcatVisualizer)
-from pydrake.systems.primitives import FirstOrderLowPassFilter, SignalLogger
+from pydrake.systems.primitives import FirstOrderLowPassFilter, VectorLogSink
 from pydrake.systems.sensors import ImageToLcmImageArrayT, PixelType
 from pydrake.systems.planar_scenegraph_visualizer import \
-    PlanarSceneGraphVisualizer
+    ConnectPlanarSceneGraphVisualizer
 
 from drake.examples.manipulation_station.differential_ik import DifferentialIK
 
@@ -49,12 +49,12 @@ class EndEffectorTeleop(LeafSystem):
         """
 
         LeafSystem.__init__(self)
-        self.DeclareVectorOutputPort("rpy_xyz", BasicVector(6),
+        self.DeclareVectorOutputPort("rpy_xyz", 6,
                                      self.DoCalcOutput)
 
         # Note: This timing affects the keyboard teleop performance. A larger
         #       time step causes more lag in the response.
-        self.DeclarePeriodicPublish(0.01, 0.0)
+        self.DeclarePeriodicEvent(0.01, 0.0, PublishEvent(self._update_window))
         self.planar = planar
 
         self.window = tk.Tk()
@@ -142,7 +142,8 @@ class EndEffectorTeleop(LeafSystem):
 
     def SetPose(self, pose):
         """
-        @param pose is an Isometry3.
+        @param pose is a RigidTransform or else any type accepted by
+                    RigidTransform's constructor
         """
         tf = RigidTransform(pose)
         self.SetRPY(RollPitchYaw(tf.rotation()))
@@ -166,7 +167,7 @@ class EndEffectorTeleop(LeafSystem):
             self.y.set(xyz[1])
         self.z.set(xyz[2])
 
-    def DoPublish(self, context, event):
+    def _update_window(self, context, event):
         self.window.update_idletasks()
         self.window.update()
 
@@ -257,21 +258,20 @@ def main():
         # If using meshcat, don't render the cameras, since RgbdCamera
         # rendering only works with drake-visualizer. Without this check,
         # running this code in a docker container produces libGL errors.
+        geometry_query_port = station.GetOutputPort("geometry_query")
         if args.meshcat:
             meshcat = ConnectMeshcatVisualizer(
-                builder, output_port=station.GetOutputPort("geometry_query"),
+                builder, output_port=geometry_query_port,
                 zmq_url=args.meshcat, open_browser=args.open_browser)
             if args.setup == 'planar':
                 meshcat.set_planar_viewpoint()
 
         elif args.setup == 'planar':
-            pyplot_visualizer = builder.AddSystem(PlanarSceneGraphVisualizer(
-                station.get_scene_graph()))
-            builder.Connect(station.GetOutputPort("pose_bundle"),
-                            pyplot_visualizer.get_input_port(0))
+            ConnectPlanarSceneGraphVisualizer(
+                builder, station.get_scene_graph(), geometry_query_port)
+
         else:
-            DrakeVisualizer.AddToBuilder(builder,
-                                         station.GetOutputPort("query_object"))
+            DrakeVisualizer.AddToBuilder(builder, geometry_query_port)
             image_to_lcm_image_array = builder.AddSystem(
                 ImageToLcmImageArrayT())
             image_to_lcm_image_array.set_name("converter")
@@ -340,7 +340,7 @@ def main():
     # that they were sufficiently quiet.
     num_iiwa_joints = station.num_iiwa_joints()
     if args.test:
-        iiwa_velocities = builder.AddSystem(SignalLogger(num_iiwa_joints))
+        iiwa_velocities = builder.AddSystem(VectorLogSink(num_iiwa_joints))
         builder.Connect(station.GetOutputPort("iiwa_velocity_estimated"),
                         iiwa_velocities.get_input_port(0))
     else:
@@ -348,6 +348,7 @@ def main():
 
     diagram = builder.Build()
     simulator = Simulator(diagram)
+    iiwa_velocities_log = iiwa_velocities.FindLog(simulator.get_context())
 
     # This is important to avoid duplicate publishes to the hardware interface:
     simulator.set_publish_every_time_step(False)
@@ -385,8 +386,8 @@ def main():
     # Ensure that our initialization logic was correct, by inspecting our
     # logged joint velocities.
     if args.test:
-        for time, qdot in zip(iiwa_velocities.sample_times(),
-                              iiwa_velocities.data().transpose()):
+        for time, qdot in zip(iiwa_velocities_log.sample_times(),
+                              iiwa_velocities_log.data().transpose()):
             # TODO(jwnimmer-tri) We should be able to do better than a 40
             # rad/sec limit, but that's the best we can enforce for now.
             if qdot.max() > 0.1:

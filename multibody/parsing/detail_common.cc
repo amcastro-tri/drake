@@ -34,7 +34,21 @@ geometry::ProximityProperties ParseProximityProperties(
     }
   }
 
-  std::optional<double> elastic_modulus = read_double("drake:elastic_modulus");
+  std::optional<double> hydroelastic_modulus =
+      read_double("drake:hydroelastic_modulus");
+  {
+    std::optional<double> elastic_modulus =
+        read_double("drake:elastic_modulus");
+    if (elastic_modulus.has_value()) {
+      static const logging::Warn log_once(
+          "The tag drake:elastic_modulus is deprecated, and will be removed on"
+          " or around 2022-02-01. Please use drake:hydroelastic_modulus"
+          " instead.");
+    }
+    if (!hydroelastic_modulus.has_value()) {
+      hydroelastic_modulus = elastic_modulus;
+    }
+  }
 
   std::optional<double> dissipation =
       read_double("drake:hunt_crossley_dissipation");
@@ -55,7 +69,7 @@ geometry::ProximityProperties ParseProximityProperties(
     friction = CoulombFriction<double>(*mu_static, *mu_static);
   }
 
-  geometry::AddContactMaterial(elastic_modulus, dissipation, stiffness,
+  geometry::AddContactMaterial(hydroelastic_modulus, dissipation, stiffness,
                                friction, &properties);
 
   return properties;
@@ -80,6 +94,105 @@ const LinearBushingRollPitchYaw<double>& ParseLinearBushingRollPitchYaw(
   return plant->AddForceElement<LinearBushingRollPitchYaw>(
       frame_A, frame_C, bushing_torque_stiffness, bushing_torque_damping,
       bushing_force_stiffness, bushing_force_damping);
+}
+
+// See ParseCollisionFilterGroupCommon at header for documentation
+void CollectCollisionFilterGroup(
+    ModelInstanceIndex model_instance, const MultibodyPlant<double>& plant,
+    const ElementNode& group_node,
+    std::map<std::string, geometry::GeometrySet>* collision_filter_groups,
+    std::set<SortedPair<std::string>>* collision_filter_pairs,
+    const std::function<ElementNode(const ElementNode&, const char*)>&
+        next_child_element,
+    const std::function<ElementNode(const ElementNode&, const char*)>&
+        next_sibling_element,
+    const std::function<bool(const ElementNode&, const char*)>& has_attribute,
+    const std::function<std::string(const ElementNode&, const char*)>&
+        read_string_attribute,
+    const std::function<bool(const ElementNode&, const char*)>&
+        read_bool_attribute,
+    const std::function<std::string(const ElementNode&, const char*)>&
+        read_tag_string) {
+  DRAKE_DEMAND(plant.geometry_source_is_registered());
+  if (has_attribute(group_node, "ignore")) {
+    if (read_bool_attribute(group_node, "ignore")) {
+      return;
+    }
+  }
+  const std::string group_name = read_string_attribute(group_node, "name");
+
+  geometry::GeometrySet collision_filter_geometry_set;
+  for (auto member_node = next_child_element(group_node, "drake:member");
+       std::holds_alternative<sdf::ElementPtr>(member_node)
+           ? std::get<sdf::ElementPtr>(member_node) != nullptr
+           : std::get<tinyxml2::XMLElement*>(member_node) != nullptr;
+       member_node = next_sibling_element(member_node, "drake:member")) {
+    const std::string body_name = read_tag_string(member_node, "link");
+
+    const auto& body = plant.GetBodyByName(body_name.c_str(), model_instance);
+    collision_filter_geometry_set.Add(
+        plant.GetBodyFrameIdOrThrow(body.index()));
+  }
+  collision_filter_groups->insert({group_name, collision_filter_geometry_set});
+
+  for (auto ignore_node = next_child_element(
+           group_node, "drake:ignored_collision_filter_group");
+       std::holds_alternative<sdf::ElementPtr>(ignore_node)
+           ? std::get<sdf::ElementPtr>(ignore_node) != nullptr
+           : std::get<tinyxml2::XMLElement*>(ignore_node) != nullptr;
+       ignore_node =
+           next_sibling_element(ignore_node, "drake:collision_filter_group")) {
+    const std::string target_name = read_tag_string(ignore_node, "name");
+
+    // These two group names are allowed to be identical, which means the
+    // bodies inside this collision filter group should be collision excluded
+    // among each other.
+    collision_filter_pairs->insert({group_name.c_str(), target_name.c_str()});
+  }
+}
+
+void ParseCollisionFilterGroupCommon(
+    ModelInstanceIndex model_instance,
+    const ElementNode& model_node,
+    MultibodyPlant<double>* plant,
+    const std::function<ElementNode(const ElementNode&, const char*)>&
+        next_child_element,
+    const std::function<ElementNode(const ElementNode&, const char*)>&
+        next_sibling_element,
+    const std::function<bool(const ElementNode&, const char*)>& has_attribute,
+    const std::function<std::string(const ElementNode&, const char*)>&
+        read_string_attribute,
+    const std::function<bool(const ElementNode&, const char*)>&
+        read_bool_attribute,
+    const std::function<std::string(const ElementNode&, const char*)>&
+        read_tag_string) {
+  DRAKE_DEMAND(plant->geometry_source_is_registered());
+  std::map<std::string, geometry::GeometrySet> collision_filter_groups;
+  std::set<SortedPair<std::string>> collision_filter_pairs;
+
+  for (auto group_node =
+           next_child_element(model_node, "drake:collision_filter_group");
+       std::holds_alternative<sdf::ElementPtr>(group_node)
+           ? std::get<sdf::ElementPtr>(group_node) != nullptr
+           : std::get<tinyxml2::XMLElement*>(group_node) != nullptr;
+       group_node =
+           next_sibling_element(group_node, "drake:collision_filter_group")) {
+    CollectCollisionFilterGroup(
+        model_instance, *plant, group_node, &collision_filter_groups,
+        &collision_filter_pairs, next_child_element, next_sibling_element,
+        has_attribute, read_string_attribute, read_bool_attribute,
+        read_tag_string);
+  }
+
+  for (const auto& [name_a, name_b] : collision_filter_pairs) {
+    const auto group_a = collision_filter_groups.find(name_a);
+    DRAKE_DEMAND(group_a != collision_filter_groups.end());
+    const auto group_b = collision_filter_groups.find(name_b);
+    DRAKE_DEMAND(group_b != collision_filter_groups.end());
+
+    plant->ExcludeCollisionGeometriesWithCollisionFilterGroupPair(
+        {name_a, group_a->second}, {name_b, group_b->second});
+  }
 }
 
 }  // namespace internal

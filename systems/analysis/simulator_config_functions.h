@@ -28,8 +28,8 @@ system associated with `simulator` according to the given arguments.
   GetIntegrationSchemes() for a the list of valid options.
 @param[in] max_step_size The IntegratorBase::set_maximum_step_size() value.
 @returns A reference to the newly created integrator owned by `simulator`.
+@tparam_nonsymbolic_scalar
 
-@tparam_default_nonsymbolic_scalar
 @ingroup simulator_configuration */
 template <typename T>
 IntegratorBase<T>& ResetIntegratorFromFlags(
@@ -50,20 +50,27 @@ Integrator with a new one; be careful not to keep old references around.)
   the integretor for `simulator` is reset according to the given `config`.
 @param[in] config Configuration to be used. Contains values for both the
   integrator and the simulator.
+@tparam_nonsymbolic_scalar
 
 @ingroup simulator_configuration */
+template <typename T>
 void ApplySimulatorConfig(
-    drake::systems::Simulator<double>* simulator,
+    drake::systems::Simulator<T>* simulator,
     const SimulatorConfig& config);
 
 /** Reports the simulator's current configuration, including the configuration
 of the integrator.
 
 @param[in] simulator The Simulator to extract the configuration from.
+@tparam_nonsymbolic_scalar
+
+@note For non-double T (T=AutoDiffXd), doing ExtractSimulatorConfig will discard
+the integrator's scalar type's extra information such as gradients.
 
 @ingroup simulator_configuration */
+template <typename T>
 SimulatorConfig ExtractSimulatorConfig(
-    const drake::systems::Simulator<double>& simulator);
+    const drake::systems::Simulator<T>& simulator);
 
 }  // namespace systems
 }  // namespace drake

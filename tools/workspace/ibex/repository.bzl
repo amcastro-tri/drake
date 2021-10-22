@@ -41,7 +41,7 @@ def _impl(repo_ctx):
             ))
         return
     if os_result.ubuntu_release not in ["18.04", "20.04"]:
-        fail("Operating system is NOT supported", attr = os_result)
+        fail("Operating system is NOT supported {}".format(os_result))
     result = setup_new_deb_archive(repo_ctx)
     if result.error != None:
         fail("Unable to complete setup for @{} repository: {}".format(
@@ -85,12 +85,12 @@ ibex_repository = repository_rule(
         ),
         "filenames": attr.string_list(
             default = [
-                "libi/libibex-dev/libibex-dev_{}.20190612163212.gitfd0888707728e183c860793f225fd4e5e2ce9d91~16.04_amd64.deb".format(IBEX_VERSION),  # noqa
+                "libi/libibex-dev/libibex-dev_{}.20210826124156.git26eeeaae51b0f1518cbab9751c872b83801dbec8~18.04_amd64.deb".format(IBEX_VERSION),  # noqa
             ],
         ),
         "sha256s": attr.string_list(
             default = [
-                "b996e587c9731b90be3d0f31f8e0b5db364a6b7847a8e2207361d753c985cfed",  # noqa
+                "058ba0d538927c0e25b79cd73906abb1a15dc7ffef4f8407d8c6ae4add940e22",  # noqa
             ],
         ),
         "build_file": attr.label(

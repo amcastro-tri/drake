@@ -6,6 +6,7 @@ from pydrake.common.eigen_geometry import Isometry3_, Quaternion_, AngleAxis_
 from pydrake.common.value import Value
 from pydrake.autodiffutils import AutoDiffXd
 from pydrake.symbolic import Expression
+from pydrake.common.test_utilities.deprecation import catch_drake_warnings
 import pydrake.common.test_utilities.numpy_compare as numpy_compare
 from pydrake.common.test_utilities.pickle_compare import assert_pickle
 
@@ -161,6 +162,10 @@ class TestMath(unittest.TestCase):
             X.multiply(other=RigidTransform()), RigidTransform)
         self.assertIsInstance(X @ RigidTransform(), RigidTransform)
         self.assertIsInstance(X @ [0, 0, 0], np.ndarray)
+        if T != Expression:
+            self.assertTrue(X.IsExactlyIdentity())
+            self.assertTrue(X.IsIdentityToEpsilon(translation_tolerance=0))
+            self.assertTrue(X.IsNearlyEqualTo(other=X, tolerance=0))
         # - Test shaping (#13885).
         v = np.array([0., 0., 0.])
         vs = np.array([[1., 2., 3.], [4., 5., 6.]]).T
@@ -243,6 +248,8 @@ class TestMath(unittest.TestCase):
         if T == float:
             numpy_compare.assert_float_equal(R.row(index=0), [1., 0., 0.])
             numpy_compare.assert_float_equal(R.col(index=0), [1., 0., 0.])
+            R = RotationMatrix.MakeFromOneVector(b_A=[1, 0, 0], axis_index=0)
+            numpy_compare.assert_equal(R.IsValid(), True)
         R.set(R=np.eye(3))
         numpy_compare.assert_float_equal(R.matrix(), np.eye(3))
         # - Cast.
@@ -396,11 +403,6 @@ class TestMath(unittest.TestCase):
         value = wrap_to(T(1.5), T(0.), T(1.))
         if T != Expression:
             self.assertEqual(value, T(.5))
-
-    def test_orthonormal_basis(self):
-        R = mut.ComputeBasisFromAxis(axis_index=0, axis_W=[1, 0, 0])
-        self.assertAlmostEqual(np.linalg.det(R), 1.0)
-        self.assertTrue(np.allclose(R.dot(R.T), np.eye(3)))
 
     def test_random_rotations(self):
         g = RandomGenerator()

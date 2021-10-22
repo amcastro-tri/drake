@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 
 import copy
+import itertools
 import unittest
 
 import numpy as np
 
 import pydrake.symbolic as sym
 import pydrake.common
+import pydrake.math as drake_math
 from pydrake.test.algebra_test_util import ScalarAlgebra, VectorizedAlgebra
 from pydrake.common.containers import EqualToDict
 from pydrake.common.deprecation import install_numpy_warning_filters
@@ -522,6 +524,84 @@ class TestSymbolicExpression(unittest.TestCase):
         self.assertEqual(e_xv.shape, (2,))
         self.assertIsInstance(e_xv[0], sym.Expression)
 
+    def test_vectorized_binary_operator_type_combinatorics(self):
+        """
+        Tests vectorized binary operator via brute-force combinatorics per
+        #15549.
+
+        This complements test with the same name in ``autodiffutils_test.py``.
+        """
+
+        def expand_values(value):
+            return (
+                # Scalar.
+                value,
+                # Scalar array.
+                np.array(value),
+                # Size-1 array.
+                np.array([value]),
+                # Size-2 array.
+                np.array([value, value]),
+            )
+
+        operators = drake_math._OPERATORS
+        operators_reverse = drake_math._OPERATORS_REVERSE
+
+        T_operands_x = (
+            # Variable.
+            expand_values(x)
+            # Expression.
+            + expand_values(e_x)
+        )
+        T_operands_y = (
+            # Variable.
+            expand_values(y)
+            # Expression.
+            + expand_values(e_y)
+        )
+        numeric_operands = (
+            # Float.
+            # - Native.
+            expand_values(1.0)
+            # - np.generic
+            + expand_values(np.float64(1.0))
+            # Int.
+            # - Native.
+            + expand_values(1)
+            # - np.generic
+            + expand_values(np.int64(1.0))
+        )
+
+        @np.vectorize
+        def assert_nontrivial_formula(value):
+            self.assertIsInstance(value, sym.Formula)
+            self.assertNotEqual(value, sym.Formula.True_())
+            self.assertNotEqual(value, sym.Formula.False_())
+
+        def check_operands(op, lhs_operands, rhs_operands):
+            operand_combinatorics_iter = itertools.product(
+                lhs_operands, rhs_operands
+            )
+            op_reverse = operators_reverse[op]
+            for lhs, rhs in operand_combinatorics_iter:
+                hint_for_error = f"{op.__doc__}: {repr(lhs)}, {repr(rhs)}"
+                with numpy_compare.soft_sub_test(hint_for_error):
+                    value = op(lhs, rhs)
+                    assert_nontrivial_formula(value)
+                    reverse_value = op_reverse(rhs, lhs)
+                    assert_nontrivial_formula(reverse_value)
+                    numpy_compare.assert_equal(value, reverse_value)
+
+        # Combinations (unordered) that we're interested in.
+        operand_combinations = (
+            (T_operands_x, T_operands_y),
+            (T_operands_x, numeric_operands),
+        )
+        for op in operators:
+            for (op_a, op_b) in operand_combinations:
+                check_operands(op, op_a, op_b)
+                check_operands(op, op_b, op_a)
+
     def test_equalto(self):
         self.assertTrue((x + y).EqualTo(x + y))
         self.assertFalse((x + y).EqualTo(x - y))
@@ -731,6 +811,12 @@ class TestSymbolicExpression(unittest.TestCase):
     def test_copy(self):
         numpy_compare.assert_equal(copy.copy(e_x), e_x)
         numpy_compare.assert_equal(copy.deepcopy(e_x), e_x)
+
+    def test_taylor_expand(self):
+        e = sym.sin(x)
+        env = {x: 0}
+        numpy_compare.assert_equal(
+            sym.TaylorExpand(f=e, a=env, order=1), sym.Expression(x))
 
     # See `math_overloads_test` for more comprehensive checks on math
     # functions.

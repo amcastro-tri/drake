@@ -71,10 +71,11 @@ void CompliantContactComputationManager<T>::DeclareCacheEntries() {
                                       &contact_jacobian_cache->Jc,
                                       &contact_jacobian_cache->R_WC_list);
                 }}),        
-        // We explicitly declare the configuration dependence even though the
-        // Eval() above implicitly evaluates configuration dependent cache
-        // entries.
-        {systems::System<T>::q_ticket(),
+        // N.B. We use xd_ticket() instead of q_ticket() since discrete
+        // multibody plant does not have q's, but rather discrete state.
+        // Therefore if we make it dependent on q_ticket() the Jacobian only
+        // gets evaluated once at the start of the simulation.
+        {systems::System<T>::xd_ticket(),
          systems::System<T>::all_parameters_ticket()});
     cache_indexes_.contact_jacobian =
         contact_jacobian_cache_entry.cache_index();

@@ -91,7 +91,7 @@ drake_cc_binary(
         "--simulation_time=0.1",
         "--target_realtime_rate=0.0",
     ],
-    copts = ["-O2","-g"],
+    copts = ["-O2","-g","-Wno-error=deprecated-declarations","-Wno-deprecated-declarations"],
     deps = [
         "//common:add_text_logging_gflags",
         "//geometry:drake_visualizer",

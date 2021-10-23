@@ -560,9 +560,11 @@ int do_main() {
   const ConvexSolverBase<double>* solver{nullptr};
   CompliantContactComputationManager<double>* manager{nullptr};
   if (!FLAGS_tamsi) {
-    manager = &plant.set_discrete_update_manager(
+    auto owned_manager =
         std::make_unique<CompliantContactComputationManager<double>>(
-            std::make_unique<UnconstrainedPrimalSolver<double>>()));
+            std::make_unique<UnconstrainedPrimalSolver<double>>());
+    manager = owned_manager.get();
+    plant.SetDiscreteUpdateManager(std::move(owned_manager));
     solver = SetSolver(manager);
   }
 

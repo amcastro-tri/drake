@@ -296,7 +296,7 @@ void ConexSolver::DoSolve(
     MathematicalProgramResult* result) const {
   // Preallocate arbitrary amount of memory for internal conex workspace.
   static Eigen::VectorXd conex_workspace(4000);
-  static bool do_warmstart = false;
+  // static bool do_warmstart = false;  // N.B. Unused variable.
   if (!prog.GetVariableScaling().empty()) {
     static const logging::Warn log_once(
       "ConexSolver doesn't support the feature of variable scaling.");

@@ -35,7 +35,7 @@ Stiffness `k` and friction coefficient `μ` can be specified in SDF within a
 
 Dissipation time scale can only be specified using
 `geometry::ProximityProperties`, see the [clutter
-demo](https://github.com/amcastro-tri/drake-experimental/blob/primal_sparse_v4_simplified2/examples/multibody/mp_convex_solver/README.md)
+demo](https://github.com/amcastro-tri/drake/tree/sap_v0.35.0/examples/multibody/mp_convex_solver/README.md)
 for an example. However, the default value of `τ` (equal to the `MultibodyPlant`
 time step) should work for most applications.
 
@@ -47,7 +47,7 @@ documentation](https://drake.mit.edu/doxygen_cxx/classdrake_1_1multibody_1_1_mul
 ## How to use the new solver in your application.
 
 Please refer to section `Experimental contact solver` of the `Clutter` demo in
-[drake/examples/multibody/mp_convex_solver/README.md](https://github.com/amcastro-tri/drake-experimental/blob/primal_sparse_v4_simplified2/examples/multibody/mp_convex_solver/README.md).
+[drake/examples/multibody/mp_convex_solver/README.md](https://github.com/amcastro-tri/drake/tree/sap_v0.35.0/examples/multibody/mp_convex_solver/README.md).
 You will find that the set of changes you need to run with the new solver is
 very minimal. 
 

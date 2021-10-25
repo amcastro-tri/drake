@@ -62,7 +62,8 @@ DEFINE_double(friction_coefficient, 1.0,
 DEFINE_double(box_stiffness, 1.0e8, "Box point contact stiffness in N/m.");
 DEFINE_double(sphere_stiffness, 1.0e8,
               "Sphere point contact stiffness in N/m.");
-DEFINE_double(dissipation_rate, 0.01, "Linear dissipation rate in seconds.");
+DEFINE_double(dissipation_time_constant, 0.01,
+              "Dissipation time constant in seconds.");
 
 // Contact geometry parameters.
 DEFINE_bool(
@@ -182,8 +183,9 @@ const RigidBody<double>& AddBox(const std::string& name,
   if (!FLAGS_tamsi || FLAGS_mbp_time_step == 0) {
     props.AddProperty(geometry::internal::kMaterialGroup,
                       geometry::internal::kPointStiffness, stiffness);
-    props.AddProperty(geometry::internal::kMaterialGroup, "dissipation_rate",
-                      FLAGS_dissipation_rate);
+    props.AddProperty(geometry::internal::kMaterialGroup,
+                      "dissipation_time_constant",
+                      FLAGS_dissipation_time_constant);
   }
   props.AddProperty(geometry::internal::kMaterialGroup,
                     geometry::internal::kFriction,
@@ -317,8 +319,9 @@ const RigidBody<double>& AddSphere(const std::string& name, const double radius,
   if (!FLAGS_tamsi || FLAGS_mbp_time_step == 0) {
     props.AddProperty(geometry::internal::kMaterialGroup,
                       geometry::internal::kPointStiffness, FLAGS_sphere_stiffness);
-    props.AddProperty(geometry::internal::kMaterialGroup, "dissipation_rate",
-                      FLAGS_dissipation_rate);
+    props.AddProperty(geometry::internal::kMaterialGroup,
+                      "dissipation_time_constant",
+                      FLAGS_dissipation_time_constant);
   }
   props.AddProperty(geometry::internal::kMaterialGroup,
                     geometry::internal::kFriction,

@@ -117,7 +117,7 @@ void BuildRimlessWheelModel(MultibodyPlant<double>* plant) {
   geometry::ProximityProperties props;
   props.AddProperty(geometry::internal::kMaterialGroup,
                     geometry::internal::kPointStiffness, FLAGS_stiffness);
-  props.AddProperty(geometry::internal::kMaterialGroup, "dissipation_rate",
+  props.AddProperty(geometry::internal::kMaterialGroup, "dissipation_time_constant",
                     FLAGS_tau_dissipation);
   props.AddProperty(geometry::internal::kMaterialGroup,
                     geometry::internal::kFriction,
@@ -184,7 +184,7 @@ void AddGround(MultibodyPlant<double>* plant) {
   geometry::ProximityProperties props;
   props.AddProperty(geometry::internal::kMaterialGroup,
                     geometry::internal::kPointStiffness, ground_stiffness);
-  props.AddProperty(geometry::internal::kMaterialGroup, "dissipation_rate",
+  props.AddProperty(geometry::internal::kMaterialGroup, "dissipation_time_constant",
                     ground_dissipation);
   props.AddProperty(geometry::internal::kMaterialGroup,
                     geometry::internal::kFriction,

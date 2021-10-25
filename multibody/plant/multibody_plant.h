@@ -4224,10 +4224,12 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
         penalty_method_contact_parameters_.geometry_stiffness);
 
     T dissipation = 0;
-    if (discrete_update_manager_) {    
-      const T dissipation_rate = prop->template GetPropertyOrDefault<T>(
-          geometry::internal::kMaterialGroup, "dissipation_rate", time_step());
-      dissipation = dissipation_rate * stiffness;
+    if (discrete_update_manager_) {
+      const T dissipation_time_constant =
+          prop->template GetPropertyOrDefault<T>(
+              geometry::internal::kMaterialGroup, "dissipation_time_constant",
+              time_step());
+      dissipation = dissipation_time_constant * stiffness;
     } else {
       dissipation = prop->template GetPropertyOrDefault<T>(
           geometry::internal::kMaterialGroup,
@@ -4260,16 +4262,18 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
             inspector.GetProximityProperties(id)) {
       const T elastic_modulus =
           properties->GetPropertyOrDefault("material", "elastic_modulus", kInf);
-      const T dissipation_rate = properties->template GetPropertyOrDefault<T>(
-          geometry::internal::kMaterialGroup, "dissipation_rate", time_step());
+      const T dissipation_time_constant =
+          properties->template GetPropertyOrDefault<T>(
+              geometry::internal::kMaterialGroup, "dissipation_time_constant",
+              time_step());
       DRAKE_DEMAND(elastic_modulus > 0);
-      DRAKE_DEMAND(dissipation_rate >= 0);
-      return std::pair(elastic_modulus, dissipation_rate);
+      DRAKE_DEMAND(dissipation_time_constant >= 0);
+      return std::pair(elastic_modulus, dissipation_time_constant);
     } else {
       throw std::runtime_error(make_error_message());
     }
     DRAKE_UNREACHABLE();
-  }  
+  }
 
   // Helper to acquire per-geometry Coulomb friction coefficients from
   // SceneGraph.

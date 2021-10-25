@@ -35,7 +35,7 @@ DEFINE_double(dissipation, 5.0,
               "dissipation, [s/m].");
 DEFINE_double(friction_coefficient, 0.3, "friction coefficient.");
 DEFINE_double(point_stiffness, 1.0e5, "Point contact stiffness, [N/n].");
-DEFINE_double(dissipation_rate, 1e-2,
+DEFINE_double(dissipation_time_constant, 1e-2,
               "Linear dissipation model rate (for primal solver only), [s].");
 
 DEFINE_bool(rigid_ball, false,
@@ -180,8 +180,8 @@ int do_main() {
             inspector.GetProximityProperties(id);
         DRAKE_DEMAND(old_props);
         drake::geometry::ProximityProperties new_props(*old_props);
-        new_props.AddProperty("material", "dissipation_rate",
-                              FLAGS_dissipation_rate);
+        new_props.AddProperty("material", "dissipation_time_constant",
+                              FLAGS_dissipation_time_constant);
         // hunt_crossley_dissipation not supported by
         // CompliantContactComputationManager.
         new_props.RemoveProperty("material", "hunt_crossley_dissipation");

@@ -84,13 +84,31 @@ class PizzaSaverProblem {
     // Contact solver data.
     std::unique_ptr<SystemDynamicsData<double>> dynamics_data;
     std::unique_ptr<PointContactData<double>> contact_data;
-  };
+  };  
 
+  PizzaSaverProblem(double dt, double mass, double radius, double mu, double k,
+                    double taud)
+      : time_step_(dt),
+        m_(mass),
+        R_(radius),
+        mu_(mu),
+        stiffness_(k),
+        taud_(taud) {
+    // The radius of the circumscribed circle R is the distance from each
+    // contact point to the triangle's center.
+    // We model the pizza saver as three point masses m/3 at each contact
+    // point and thus the moment of inertia is I = 3 * (m/3 R²) = m R²:
+    I_ = m_ * R_ * R_;
+  }
+
+  // Pizza saver model with default mass m = 1 Kg and radius = 1.0 m.
   PizzaSaverProblem(double dt, double mu, double k, double taud)
-      : time_step_(dt), mu_(mu), stiffness_(k), taud_(taud) {}
+      : PizzaSaverProblem(dt, 1.0, 1.0, mu, k, taud) {}
 
   // Mass of each point mass, Kg. Total mass is three times mass().
   double mass() const { return m_; }
+
+  double radius() const { return R_; }
 
   // Acceleration of gravity, m/s².
   double g() const { return g_; }
@@ -225,68 +243,24 @@ class PizzaSaverProblem {
     return MakeProblemData(q0, v0, tau);
   }
 
-#if 0
-  void SetProblem(const Vector3<double>& v0, const Vector3<double>& tau,
-                  double mu, double theta, double dt) {
-    // Next time step generalized momentum if there are no friction forces.
-    p_star_ = M_ * v0 + dt * tau;
+ private:
+  double time_step_{NAN};  
 
-    // Normal forces. Assume they are equally distributed.
-    fn_ = m_ * g_ / 3.0 * Vector3<double>::Ones();
-
-    // All contact points have the same friction for this case.
-    mu_ = mu * Vector3<double>::Ones();
-
-    // The generalized velocites do not affect the out-of-plane separation
-    // velocities for this problem. Normal forces are decoupled.
-    Jn_.setZero();
-
-    Jt_ = ComputeTangentialJacobian(theta);
-
-    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &fn_, &mu_);
-  }
-
-  void SetNoContactProblem(const Vector3<double>& v0,
-                           const Vector3<double>& tau, double dt) {
-    // Next time step generalized momentum if there are no friction forces.
-    p_star_ = M_ * v0 + dt * tau;
-
-    // No contact points.
-    fn_.resize(0);
-    mu_.resize(0);
-    Jn_.resize(0, num_velocities);
-    Jt_.resize(0, num_velocities);
-
-    solver_.SetOneWayCoupledProblemData(&M_, &Jn_, &Jt_, &p_star_, &fn_, &mu_);
-  }
-#endif
-
- protected:
-  double time_step_{NAN};
+  // Pizza saver parameters.
+  double m_{1.0};   // Mass of the pizza saver.
+  double R_{1.0};   // Distance from COM to any contact point.    
+  double I_{R_ * R_ * m_};  // = 1.0 in this case.
 
   // Contact parameters:
-  double mu_{NAN};         // Friction coefficient.
+  double mu_{0};         // Friction coefficient.
   double stiffness_{NAN};  // Contact stiffness k.
   double taud_{NAN};       // Linear dissipation time scale: c = taud * k.
 
-  // Problem parameters.
-  const double m_{1.0};   // Mass of the pizza saver.
-  const double R_{1.0};   // Distance from COM to any contact point.
-  const double g_{10.0};  // Acceleration of gravity.
-  // The radius of the circumscribed circle R is the distance from each
-  // contact point to the triangle's center.
-  // If we model the pizza saver as three point masses m/3 at each contact
-  // point, the moment of inertia is I = 3 * (m/3 R²):
-  const double I_{R_ * R_ * m_};  // = 1.0 in this case.
+  // Acceleration of gravity.
+  const double g_{10.0};
 };
 
 GTEST_TEST(PizzaSaver, NoAppliedTorque) {
-  // TODO: consider making dt, mu and other problem properties be passed in the
-  // constructor of the problem. In that regard, PizzaSaverProblem is our
-  // (const) model (kinda MBP).
-  // ditto for stiffness and dissipation (dissipation_time_scale).
-  // Consider allowing NaN values for parameters that are not used (e.g. for
-  // PGS or TAMSI).
   const double dt = 0.01;
   const double mu = 1.0;
   const double k = 1.0e12;
@@ -349,6 +323,83 @@ GTEST_TEST(PizzaSaver, NoAppliedTorque) {
                               params.abs_tolerance));
 }
 
+// This tests the solver when we apply a moment Mz about COM to the pizza
+// saver. If Mz < mu * m * g * R, the saver should be in stiction (that is,
+// the sliding velocity should be smaller than the regularization parameter).
+// Otherwise the saver will start sliding. For this setup the transition
+// occurs at M_transition = mu * m * g * R = 5.0
+GTEST_TEST(PizzaSaver, Stiction) {
+  const double dt = 0.01;
+  const double mu = 1.0;
+  const double k = 1.0e12;
+  const double taud = dt;
+  PizzaSaverProblem problem(dt, mu, k, taud);
+
+  const double Mz = 3.0;
+  const VectorXd v0 = VectorXd::Zero(problem.num_velocities);
+  const auto data = problem.MakeProblemData(v0, Mz);
+  PRINT_VARn(data->M);
+  PRINT_VARn(data->J);
+  PRINT_VARn(data->v_star.transpose());
+  PRINT_VARn(data->phi0.transpose());
+  PRINT_VARn(data->vc0.transpose());
+  PRINT_VARn(data->stiffness.transpose());
+  PRINT_VARn(data->dissipation.transpose());
+  PRINT_VARn(data->mu.transpose());
+
+  UnconstrainedPrimalSolverParameters params;
+  params.rel_tolerance = 1e-6;
+  params.alpha = 0;  // Force SAP to use user stiffness.
+  // We ask for very tight stiction. This also help the system to reach steady
+  // state in a single step.
+  params.sigma = 1.0e-6;
+  UnconstrainedPrimalSolver<double> sap;
+  sap.set_parameters(params);
+  ContactSolverResults<double> result;
+  // Arbitrary guess.
+  VectorXd v_guess(problem.num_velocities);
+  v_guess << 0.0, 0.0, 0.0;  // TODO: make more interesting non-zero value.
+
+  EXPECT_EQ(sap.SolveWithGuess(dt, *data->dynamics_data, *data->contact_data,
+                               v_guess, &result),
+            ContactSolverStatus::kSuccess);
+
+  // Expected generalized force.
+  const Vector4d tau_expected(0.0, 0.0, problem.mass() * problem.g(), -Mz);
+
+  // Maximum expected slip. See Castro et al. 2021 for details.
+  const double max_slip_expected = params.sigma * dt * problem.g();
+  PRINT_VAR(max_slip_expected);
+
+  PRINT_VARn(result.ft.transpose());
+  PRINT_VARn(result.fn.transpose());
+  PRINT_VARn(result.v_next.transpose());
+  PRINT_VARn(result.vn.transpose());
+  PRINT_VARn(result.vt.transpose());
+  PRINT_VARn(result.tau_contact.transpose());
+
+  EXPECT_TRUE(CompareMatrices(result.v_next.head<3>(), Vector3d::Zero(),
+                              params.abs_tolerance));
+  EXPECT_TRUE(CompareMatrices(result.tau_contact, tau_expected,
+                              params.rel_tolerance,
+                              MatrixCompareType::relative));
+  EXPECT_TRUE(CompareMatrices(
+      result.fn,
+      VectorXd::Constant(problem.num_contacts, tau_expected(2) / 3.0),
+      params.rel_tolerance, MatrixCompareType::relative));
+  EXPECT_TRUE(CompareMatrices(result.vn, VectorXd::Zero(problem.num_contacts),
+                              params.abs_tolerance));
+  const double friction_force_expected = Mz / problem.radius() / 3.0;
+  for (int i = 0; i < 3; ++i) {
+    const double slip = result.vt.segment<2>(2 * i).norm();
+    const double friction_force = result.ft.segment<2>(2 * i).norm();
+    const double normal_force = result.fn(i);    
+    EXPECT_LE(friction_force, mu * normal_force);
+    EXPECT_NEAR(friction_force, friction_force_expected, params.rel_tolerance);
+    EXPECT_LE(slip, max_slip_expected);
+  }
+}
+
 #if 0
 GTEST_TEST(PizzaSaver, NoFriction) {
   PizzaSaverProblem problem;
@@ -356,22 +407,6 @@ GTEST_TEST(PizzaSaver, NoFriction) {
   const double mu = 0.0;
   const double Mz = 3.0;
   const auto data = problem.MakeProblemData(dt, mu, Mz);
-}
-
-GTEST_TEST(PizzaSaver, Stiction) {
-  PizzaSaverProblem problem;
-  const double dt = 0.01;
-  const auto data = problem.MakeStictionProblemData(dt);
-  PRINT_VARn(data->M);
-  PRINT_VARn(data->J);
-  PRINT_VARn(data->v_star.transpose());  
-  PRINT_VARn(data->phi0.transpose());
-  PRINT_VARn(data->vc0.transpose());
-  PRINT_VARn(data->stiffness.transpose());
-  PRINT_VARn(data->dissipation.transpose());
-  PRINT_VARn(data->mu.transpose());
-
-
 }
 #endif
 

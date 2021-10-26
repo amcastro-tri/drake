@@ -62,7 +62,7 @@ SolverId SolverTypeConverter::TypeToId(SolverType solver_type) {
 std::optional<SolverType> SolverTypeConverter::IdToType(SolverId solver_id) {
   if (solver_id == ConexSolver::id()) {
     return SolverType::kConex;
-  if (solver_id == ClpSolver::id()) {
+  } else if (solver_id == ClpSolver::id()) {
     return SolverType::kClp;
   } else if (solver_id == CsdpSolver::id()) {
     return SolverType::kCsdp;

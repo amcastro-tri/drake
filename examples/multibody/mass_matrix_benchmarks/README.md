@@ -1,114 +1,61 @@
-Cassie benchmark
-----------------
+These benchmarks were put together baed on the Cassie benchmarks in
+`examples/multibody/cassie_benchmark`. See README file for Cassie benchmarks in
+case you need more details regarding the profiling tools. Here I'll summarize
+the strictly needed instructions.
 
-This is a real-world example of a medium-sized robot with timing
-tests for calculating its mass matrix, inverse dynamics, and
-forward dynamics and their AutoDiff derivatives.
+Running the Mass Matrix Benchmarks
+----------------------------------
 
-This gives us a straightforward way to measure local,
-machine-specific, improvements in these basic multibody calculations
-in Drake.
+From Drake's root directory, run the benchmarks with:
 
-This program does not serve as a performance regression test as it has
-no way to normalize for changes in hardware or other environmental
-factors. Its primary purpose is to serve as a platform where
-performance can be measured, code tweaked, and performance measured
-again. Improvements observed on this benchmark on a particular machine
-do not guarantee improvements on other robots or other machines.
+    $ ./examples/multibody/mass_matrix_benchmarks/conduct_experiment ./my_bench
 
-## Supported experiments
+where `./my_bench` names a directory where results will be written. Directory
+`my_bench` **must** not exist. If existent from a previous run, either rename or
+delete.
 
-On the default supported platform, the following command will build code
-and save result data to a user supplied directory, under relatively
-controlled conditions.
+**Note**: The first time this is run, the script will ask for SUDO privileges to
+install tools for CPU speed control.
 
-    $ examples/multibody/cassie_benchmark/conduct_experiment [DIRECTORY] [ARGS...]
+## Results
 
-The `conduct_experiment` script will attempt to reduce result variance
-by controlling cpu throttling and by setting a cpu affinity mask.
+For the example above, look at results with `more my_bench/summary.txt`.
 
-It is still up to the user to make sure the machine is appropriate (not
-a virtual machine, for example), and relatively unloaded. Close as many
-running programs as is practical.
+There are four cases benchmarked:
+ 1. Mass matrix computation.
+ 2. LTDL computation using Featherstone's algorithm.
+ 3. Eigen dense Cholesky LDLT factorization.
+ 3. Eigen sparse Cholesky LDLT factorization.
 
-Optionally, it is possible to pass command line arguments through to the
-`cassie_bench` executable. See 'Configuring details of benchmark runs'
-below.
+For each, the benchmark reports mean, median, standard deviation, minimum and
+maximum cost (in nanoseconds). The benchmarks also count the number of
+allocations.
 
-## Comparing experiment data
+Running Featherstone's LTDL Unit Tests
+--------------------------------------
 
-Since experiment results are highly machine dependent, any stored
-performance data is limited in usefulness for comparisons. The current
-best practice recommendation is to only compare results taken from the
-same machine and software environment, and to carefully track which
-version(s) of drake software were measured.
+We compute the parent array λ(i) used in [Featherstone, 2005] to encode the mass
+matrix's sparsity pattern. These tests use λ(i) to compute the LTDL
+factorization of the mass matrix as described in [Featherstone, 2005]. We load
+two models:
+ 1. Allegro hand welded to the world: 16 degrees of freedom (DOF) model. Each
+    joint has one DOF.
+ 2. Free floating Allegro hand: The palm of the hand has a quaternion joint (6
+    DOFs). This demonstrates the usage of the expanded λ(i) for multi-DOF
+    joints.
 
-## Storing experiment data
+**Note**: The LTDL algorithm oblivious to how λ(i) is obtained and to whether it
+corresponds to models having multi-DOF joints or not. This unit test
+demonstrates that.    
 
-Given the limitations of benchmark data, storing data is only useful as
-very general guidance to expected performance. Example data and
-discussion of methods are being tracked in Github issue #13902.
+To run the test:
 
-## Experiment details
+    $ bazel run examples/multibody/mass_matrix_benchmarks:featherstone_ltdl_test
 
-The following command will perform a benchmark experiment (with
-environment controls) and collect context information. It is not
-confined to a specific platform, like `conduct_experiment`, and it
-controls fewer environment conditions.
+References
+----------
 
-    $ bazel run //examples/multibody/cassie_benchmark:record_results [-- [ARGS...]]
-
-For best results, some conditions will need to be manually
-controlled. These include:
-
-* load average -- close as many other programs as practical
-* cpu throttling -- varies with platform
-  * Linux: https://github.com/google/benchmark#disabling-cpu-frequency-scaling
-
-The `:record_results` target does try to mitigate costs of rescheduling
-to a different processor (Linux only), by setting a processor
-affinity. However, it does not do full-featured processor isolation, so
-it is still important to limit the number of running programs. As of
-this writing, the benchmark is assigned to processor #0; it may be worth
-monitoring the system to ensure that processor will be fully available
-to the experiment.
-
-Optionally, it is possible to pass command line arguments through to the
-`cassie_bench` executable. See 'Configuring details of benchmark runs'
-below.
-
-## Results data files
-
-Bazel buries the results deep in its output tree. To copy them
-somewhere more convenient, use this command outside of Bazel:
-
-    $ examples/multibody/cassie_benchmark/copy_results_to [DIRECTORY]
-
-Note that the results output is an ongoing effort to record the
-conditions at the time the experiment was run, but it is not currently
-complete. Still missing:
-
- * git hash or similar source code version marker
- * platform information for unsupported platforms
-
-## Configuring details of benchmark runs
-
-In addition to the above forms, it is possible run the benchmark program
-directly:
-
-    $ bazel run //examples/multibody/cassie_benchmark:cassie_bench [-- [ARGS...]]
-
-or
-
-    $ bazel-bin/examples/multibody/cassie_benchmark/cassie_bench [ARGS...]
-
-if the `:cassie_bench` target is built. The direct forms may be useful
-for combining debugging or profiling tools.
-
-All of these forms take the same set of command line arguments, which
-can select which cases are run, control iterations and repetitions,
-alter output formatting, etc.
-
-Documentation for command line arguments is here:
-https://github.com/google/benchmark#command-line
+[Featherstone, 2005] Efficient factorization of the joint-space inertia matrix
+for branched kinematic trees. The International Journal of Robotics Research,
+24(6), pp.487-500.
 

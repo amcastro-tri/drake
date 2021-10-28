@@ -49,12 +49,12 @@ class AllegroHandModelTest : public ::testing::Test {
     x_ = context_->get_continuous_state_vector().CopyToVector();
   }
 
-  // Makes expanded array lambda(i) as described in [Featherstone, 2014].
-  // Unlike [Featherstone, 2014], we use 0 based indexing. The root of the tree
+  // Makes expanded array lambda(i) as described in [Featherstone, 2005].
+  // Unlike [Featherstone, 2005], we use 0 based indexing. The root of the tree
   // (the world) is marked with DOF -1.
   // For node i in the (expanded) tree, lambda(i) corresponds to the parent node
   // of node i.
-  // For details refere to Section 2 in [Featherstone, 2014] and Figures 1 and
+  // For details refere to Section 2 in [Featherstone, 2005] and Figures 1 and
   // 2.
   std::vector<int> MakeExpandedParentArray() const {
     const multibody::internal::MultibodyTreeTopology& topology =

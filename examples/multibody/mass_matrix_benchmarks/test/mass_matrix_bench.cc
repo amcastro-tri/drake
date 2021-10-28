@@ -1,18 +1,17 @@
 #include <iostream>
 
-#include <benchmark/benchmark.h>
-
+#include <Eigen/SparseCholesky>
 #include <Eigen/SparseCore>
-#include<Eigen/SparseCholesky>
+#include <benchmark/benchmark.h>
 
 #include "drake/common/find_resource.h"
 #include "drake/common/test_utilities/limit_malloc.h"
+#include "drake/examples/multibody/mass_matrix_benchmarks/test/featherstone_ltdl.h"
 #include "drake/math/autodiff.h"
 #include "drake/math/autodiff_gradient.h"
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/tools/performance/fixture_common.h"
-#include "drake/examples/multibody/mass_matrix_benchmarks/test/featherstone_ltdl.h"
 
 #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
 #define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
@@ -115,18 +114,31 @@ class AllegroHandFixture : public benchmark::Fixture {
   // timing results.
   virtual void InvalidateState() { context_->NoteContinuousStateChange(); }
 
-  // Makes array lambda(i) described in [Featherstone, 2014].
-  // For node i in the tree, lambda(i) corresponds to the parent node of node i.
-  std::vector<int> MakeParentArray() const {
+  // Makes expanded array lambda(i) as described in [Featherstone, 2005].
+  // Unlike [Featherstone, 2005], we use 0 based indexing. The root of the tree
+  // (the world) is marked with DOF -1.
+  // For node i in the (expanded) tree, lambda(i) corresponds to the parent node
+  // of node i.
+  // For details refere to Section 2 in [Featherstone, 2005] and Figures 1 and
+  // 2.
+  std::vector<int> MakeExpandedParentArray() const {
     const multibody::internal::MultibodyTreeTopology& topology =
         multibody::internal::GetInternalTree(*plant_).get_topology();
-    // Lambda does not include the root (node 0).
-    std::vector<int> lambda(topology.get_num_body_nodes() - 1);
+    std::vector<int> lambda;
+    lambda.reserve(topology.num_velocities());
+
     for (multibody::internal::BodyNodeIndex node_index(1);
          node_index < topology.get_num_body_nodes(); ++node_index) {
       const multibody::internal::BodyNodeTopology& node =
           topology.get_body_node(node_index);
-      lambda[node_index - 1] = node.parent_body_node - 1;
+      const multibody::internal::BodyNodeTopology& parent_node =
+          topology.get_body_node(node.parent_body_node);
+      for (int m = 0; m < node.num_mobilizer_velocities; ++m) {
+        const int parent_node_last_dof =
+            parent_node.mobilizer_velocities_start_in_v +
+            parent_node.num_mobilizer_velocities - 1;
+        lambda.push_back(parent_node_last_dof + m);
+      }
     }
     return lambda;
   }
@@ -144,20 +156,12 @@ class AllegroHandFixture : public benchmark::Fixture {
 
 // NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
 BENCHMARK_F(AllegroHandFixture, MassMatrix)(benchmark::State& state) {
-  PRINT_VAR(nq_);
-  PRINT_VAR(nv_);
-  PRINT_VAR(nu_);
   MatrixXd M(nv_, nv_);
   plant_->CalcMassMatrix(*context_, &M);
-  PRINT_VARn(M);
-  const auto lambda = MakeParentArray();
 
+  const auto lambda = MakeExpandedParentArray();
   test::CalcLtdlInPlace(lambda, &M);
-  PRINT_VARn(M);
 
-  for (size_t i = 0; i < lambda.size(); ++i) {
-    std::cout << fmt::format("lambda({}) = {}\n", i, lambda[i]);
-  }
   for (auto _ : state) {
     // @see LimitMalloc note above.
     LimitMalloc guard({.max_num_allocations = 0});
@@ -172,7 +176,7 @@ BENCHMARK_F(AllegroHandFixture, MassMatrix)(benchmark::State& state) {
 BENCHMARK_F(AllegroHandFixture, CalcLtdlInPlace)(benchmark::State& state) {
   MatrixXd M(nv_, nv_);
   plant_->CalcMassMatrix(*context_, &M);
-  const auto lambda = MakeParentArray();
+  const auto lambda = MakeExpandedParentArray();
   for (auto _ : state) {
     // @see LimitMalloc note above.
     LimitMalloc guard({.max_num_allocations = 0});

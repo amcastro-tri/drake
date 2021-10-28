@@ -31,16 +31,6 @@ namespace {
 // without a good reason, maintainers should revisit their changes to see why
 // heap usage has increased.
 
-#if 0
-// TODO(sherm1) Remove this if AutoDiffXd heap usage can be made the same
-//   in Release and Debug builds (higher in Debug currently).
-// Use this to suppress heap limiting in Debug builds.
-drake::test::LimitMallocParams LimitReleaseOnly(int max_num_allocations) {
-  if (kDrakeAssertIsArmed) { return {}; }
-  return { .max_num_allocations = max_num_allocations };
-}
-#endif
-
 // Track and report simple streaming statistics on allocations. Variance
 // tracking is adapted from:
 // https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
@@ -74,12 +64,31 @@ class AllocationTracker {
   double m2_{};
 };
 
+void CalcLtdlInPlace(const std::vector<int>& lambda, MatrixXd* Ainout) {
+  DRAKE_DEMAND(Ainout->rows() == Ainout->cols());
+  auto& A = *Ainout;
+  const int n = A.rows();
+  for (int k = n - 1; k >= 0; --k) {
+    int i = lambda[k];
+    while (i >= 0) {
+      const double a = A(k, i) / A(k, k);
+      int j = i;
+      while (j >= 0) {
+        A(i, j) -= a * A(k, j);
+        j = lambda[j];
+      }
+      A(k, i) = a;
+      i = lambda[i];
+    }
+  }
+}
+
 // Fixture that holds a Cassie robot model in a MultibodyPlant<double>. The
 // class also holds a default context for the plant, and dimensions of its
 // state and inputs.
-class CassieDoubleFixture : public benchmark::Fixture {
+class AllegroHandFixture : public benchmark::Fixture {
  public:
-  CassieDoubleFixture() { tools::performance::AddMinMaxStatistics(this); }
+  AllegroHandFixture() { tools::performance::AddMinMaxStatistics(this); }
 
   // This apparently futile using statement works around "overloaded virtual"
   // errors in g++. All of this is a consequence of the weird deprecation of
@@ -125,17 +134,13 @@ class CassieDoubleFixture : public benchmark::Fixture {
   std::vector<int> MakeParentArray() const {
     const multibody::internal::MultibodyTreeTopology& topology =
         multibody::internal::GetInternalTree(*plant_).get_topology();
-    PRINT_VAR(topology.get_num_body_nodes());
     // Lambda does not include the root (node 0).
-    std::vector<int> lambda(topology.get_num_body_nodes());
-    // So that numbering matches Featherstone, we add trash (negative index) for
-    // the root (no parent).
-    lambda[0] = -1;
+    std::vector<int> lambda(topology.get_num_body_nodes() - 1);
     for (multibody::internal::BodyNodeIndex node_index(1);
          node_index < topology.get_num_body_nodes(); ++node_index) {
       const multibody::internal::BodyNodeTopology& node =
           topology.get_body_node(node_index);
-      lambda[node_index] = node.parent_body_node;
+      lambda[node_index - 1] = node.parent_body_node - 1;
     }
     return lambda;
   }
@@ -152,7 +157,7 @@ class CassieDoubleFixture : public benchmark::Fixture {
 };
 
 // NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
-BENCHMARK_F(CassieDoubleFixture, DoubleMassMatrix)(benchmark::State& state) {
+BENCHMARK_F(AllegroHandFixture, MassMatrix)(benchmark::State& state) {
   PRINT_VAR(nq_);
   PRINT_VAR(nv_);
   PRINT_VAR(nu_);
@@ -160,6 +165,10 @@ BENCHMARK_F(CassieDoubleFixture, DoubleMassMatrix)(benchmark::State& state) {
   plant_->CalcMassMatrix(*context_, &M);
   PRINT_VARn(M);
   const auto lambda = MakeParentArray();
+
+  CalcLtdlInPlace(lambda, &M);
+  PRINT_VARn(M);
+
   for (size_t i = 0; i < lambda.size(); ++i) {
     std::cout << fmt::format("lambda({}) = {}\n", i, lambda[i]);
   }
@@ -173,39 +182,19 @@ BENCHMARK_F(CassieDoubleFixture, DoubleMassMatrix)(benchmark::State& state) {
   tracker_.Report(&state);
 }
 
-#if 0
-BENCHMARK_F(CassieDoubleFixture, DoubleInverseDynamics)
-    // NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
-    (benchmark::State& state) {
-  VectorXd desired_vdot = VectorXd::Zero(nv_);
-  multibody::MultibodyForces<double> external_forces(*plant_);
+// NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
+BENCHMARK_F(AllegroHandFixture, CalcLtdlInPlace)(benchmark::State& state) {
+  MatrixXd M(nv_, nv_);
+  plant_->CalcMassMatrix(*context_, &M);
+  const auto lambda = MakeParentArray();
   for (auto _ : state) {
     // @see LimitMalloc note above.
-    LimitMalloc guard({.max_num_allocations = 3});
-    InvalidateState();
-    plant_->CalcInverseDynamics(*context_, desired_vdot, external_forces);
+    LimitMalloc guard({.max_num_allocations = 0});
+    CalcLtdlInPlace(lambda, &M);
     tracker_.Update(guard.num_allocations());
   }
   tracker_.Report(&state);
 }
-
-BENCHMARK_F(CassieDoubleFixture, DoubleForwardDynamics)
-    // NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
-    (benchmark::State& state) {
-  auto derivatives = plant_->AllocateTimeDerivatives();
-  auto& port_value =
-      plant_->get_actuation_input_port().FixValue(context_.get(), u_);
-  for (auto _ : state) {
-    // @see LimitMalloc note above.
-    LimitMalloc guard({.max_num_allocations = 22});
-    InvalidateState();
-    port_value.GetMutableData();  // Invalidates caching of inputs.
-    plant_->CalcTimeDerivatives(*context_, derivatives.get());
-    tracker_.Update(guard.num_allocations());
-  }
-  tracker_.Report(&state);
-}
-#endif
 
 }  // namespace
 }  // namespace examples

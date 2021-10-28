@@ -24,7 +24,7 @@ namespace {
 
 class AllegroHandModelTest : public ::testing::Test {
  protected:
-  void SetUp() override {
+  void MakeModel(bool weld) {
     plant_ = std::make_unique<MultibodyPlant<double>>(0);
 
     multibody::Parser parser(plant_.get());
@@ -32,9 +32,11 @@ class AllegroHandModelTest : public ::testing::Test {
         "drake/manipulation/models/"
         "allegro_hand_description/sdf/allegro_hand_description_right.sdf";
     parser.AddModelFromFile(FindResourceOrThrow(model));
-    // Weld the hand to the world frame
-    plant_->WeldFrames(plant_->world_frame(),
-                       plant_->GetBodyByName("hand_root").body_frame());
+    if (weld) {
+      // Weld the hand to the world frame
+      plant_->WeldFrames(plant_->world_frame(),
+                         plant_->GetBodyByName("hand_root").body_frame());
+    }
     plant_->Finalize();
 
     nq_ = plant_->num_positions();
@@ -47,9 +49,14 @@ class AllegroHandModelTest : public ::testing::Test {
     x_ = context_->get_continuous_state_vector().CopyToVector();
   }
 
-  // Makes expanded array lambda(i) described in [Featherstone, 2014].
-  // For node i in the tree, lambda(i) corresponds to the parent node of node i.
-  std::vector<int> MakeParentArray() const {
+  // Makes expanded array lambda(i) as described in [Featherstone, 2014].
+  // Unlike [Featherstone, 2014], we use 0 based indexing. The root of the tree
+  // (the world) is marked with DOF -1.
+  // For node i in the (expanded) tree, lambda(i) corresponds to the parent node
+  // of node i.
+  // For details refere to Section 2 in [Featherstone, 2014] and Figures 1 and
+  // 2.
+  std::vector<int> MakeExpandedParentArray() const {
     const multibody::internal::MultibodyTreeTopology& topology =
         multibody::internal::GetInternalTree(*plant_).get_topology();
     std::vector<int> lambda;
@@ -65,7 +72,7 @@ class AllegroHandModelTest : public ::testing::Test {
         const int parent_node_last_dof =
             parent_node.mobilizer_velocities_start_in_v +
             parent_node.num_mobilizer_velocities - 1;
-        lambda.push_back(parent_node_last_dof);
+        lambda.push_back(parent_node_last_dof + m);
       }
     }
 
@@ -81,6 +88,7 @@ class AllegroHandModelTest : public ::testing::Test {
 };
 
 TEST_F(AllegroHandModelTest, Ltdl) {
+  MakeModel(true);  // Palm welded to the world.
   PRINT_VAR(nq_);
   PRINT_VAR(nv_);
   PRINT_VAR(nu_);
@@ -88,7 +96,40 @@ TEST_F(AllegroHandModelTest, Ltdl) {
   plant_->CalcMassMatrix(*context_, &M);
   PRINT_VARn(M);
 
-  const auto lambda = MakeParentArray();
+  const auto lambda = MakeExpandedParentArray();
+  for (size_t i = 0; i < lambda.size(); ++i) {
+    std::cout << fmt::format("lambda({}) = {}\n", i, lambda[i]);
+  }
+
+  MatrixXd LTDL = M;
+  test::CalcLtdlInPlace(lambda, &LTDL);
+  PRINT_VARn(LTDL);
+
+  // Extract lower triangular matrix L, with ones in the diagonal.
+  const MatrixXd L = LTDL.triangularView<Eigen::UnitLower>();
+
+  // Extract diagonal matrix D.
+  const VectorXd D = LTDL.diagonal();
+
+  // Reconstruct matrix M.
+  const MatrixXd M_reconstructed = L.transpose() * D.asDiagonal() * L;
+
+  // Verify result.
+  EXPECT_TRUE(CompareMatrices(M, M_reconstructed, 1.0e-14,
+                              MatrixCompareType::relative));
+  PRINT_VAR((M - M_reconstructed).norm());
+}
+
+TEST_F(AllegroHandModelTest, FreeFloatingModelLtdl) {
+  MakeModel(false);  // Palm is a free floating base of the model.
+  PRINT_VAR(nq_);
+  PRINT_VAR(nv_);
+  PRINT_VAR(nu_);
+  MatrixXd M(nv_, nv_);
+  plant_->CalcMassMatrix(*context_, &M);
+  PRINT_VARn(M);
+
+  const auto lambda = MakeExpandedParentArray();
   for (size_t i = 0; i < lambda.size(); ++i) {
     std::cout << fmt::format("lambda({}) = {}\n", i, lambda[i]);
   }

@@ -75,11 +75,7 @@ class AllegroHandFixture : public benchmark::Fixture {
  public:
   AllegroHandFixture() { tools::performance::AddMinMaxStatistics(this); }
 
-  // This apparently futile using statement works around "overloaded virtual"
-  // errors in g++. All of this is a consequence of the weird deprecation of
-  // const-ref State versions of SetUp() and TearDown() in benchmark.h.
-  using benchmark::Fixture::SetUp;
-  void SetUp(benchmark::State&) override {
+  void MakeModel(bool weld) {
     plant_ = std::make_unique<MultibodyPlant<double>>(0);
 
     multibody::Parser parser(plant_.get());
@@ -87,9 +83,10 @@ class AllegroHandFixture : public benchmark::Fixture {
         "drake/manipulation/models/"
         "allegro_hand_description/sdf/allegro_hand_description_right.sdf";
     parser.AddModelFromFile(FindResourceOrThrow(model));
-    // Weld the hand to the world frame
-    plant_->WeldFrames(plant_->world_frame(),
-                       plant_->GetBodyByName("hand_root").body_frame());
+    if (weld) {
+      plant_->WeldFrames(plant_->world_frame(),
+                         plant_->GetBodyByName("hand_root").body_frame());
+    }
     plant_->Finalize();
 
     nq_ = plant_->num_positions();
@@ -103,6 +100,12 @@ class AllegroHandFixture : public benchmark::Fixture {
     // Use default state to avoid problems with all-zero quaternions.
     x_ = context_->get_continuous_state_vector().CopyToVector();
   }
+
+  // This apparently futile using statement works around "overloaded virtual"
+  // errors in g++. All of this is a consequence of the weird deprecation of
+  // const-ref State versions of SetUp() and TearDown() in benchmark.h.
+  using benchmark::Fixture::SetUp;
+  void SetUp(benchmark::State&) override {}
 
   // Use this method to invalidate state-dependent computations within each
   // benchmarked step. Disabling the cache entirely could affect the performance
@@ -156,6 +159,7 @@ class AllegroHandFixture : public benchmark::Fixture {
 
 // NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
 BENCHMARK_F(AllegroHandFixture, MassMatrix)(benchmark::State& state) {
+  MakeModel(true);
   MatrixXd M(nv_, nv_);
   plant_->CalcMassMatrix(*context_, &M);
 
@@ -174,6 +178,7 @@ BENCHMARK_F(AllegroHandFixture, MassMatrix)(benchmark::State& state) {
 
 // NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
 BENCHMARK_F(AllegroHandFixture, CalcLtdlInPlace)(benchmark::State& state) {
+  MakeModel(true);
   MatrixXd M(nv_, nv_);
   plant_->CalcMassMatrix(*context_, &M);
   const auto lambda = MakeExpandedParentArray();
@@ -188,6 +193,7 @@ BENCHMARK_F(AllegroHandFixture, CalcLtdlInPlace)(benchmark::State& state) {
 
 // NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
 BENCHMARK_F(AllegroHandFixture, EigenDenseCholesky)(benchmark::State& state) {
+  MakeModel(true);
   MatrixXd M(nv_, nv_);
   plant_->CalcMassMatrix(*context_, &M);
   for (auto _ : state) {
@@ -202,6 +208,77 @@ BENCHMARK_F(AllegroHandFixture, EigenDenseCholesky)(benchmark::State& state) {
 
 // NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
 BENCHMARK_F(AllegroHandFixture, EigenSparseCholesky)(benchmark::State& state) {
+  MakeModel(true);
+  MatrixXd M(nv_, nv_);
+  plant_->CalcMassMatrix(*context_, &M);
+  Eigen::SparseMatrix<double> Msp = M.sparseView(1.0, 1.0e-14);
+  Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver;
+  for (auto _ : state) {
+    // @see LimitMalloc note above.
+    LimitMalloc guard(
+        {.max_num_allocations = -1});  // Do not limit allocations.
+    solver.compute(Msp);
+    tracker_.Update(guard.num_allocations());
+  }
+  tracker_.Report(&state);
+}
+
+// NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
+BENCHMARK_F(AllegroHandFixture, FloatingBaseMassMatrix)
+(benchmark::State& state) {
+  MakeModel(false);
+  MatrixXd M(nv_, nv_);
+  plant_->CalcMassMatrix(*context_, &M);
+
+  const auto lambda = MakeExpandedParentArray();
+  test::CalcLtdlInPlace(lambda, &M);
+
+  for (auto _ : state) {
+    // @see LimitMalloc note above.
+    LimitMalloc guard({.max_num_allocations = 0});
+    InvalidateState();
+    plant_->CalcMassMatrix(*context_, &M);
+    tracker_.Update(guard.num_allocations());
+  }
+  tracker_.Report(&state);
+}
+
+// NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
+BENCHMARK_F(AllegroHandFixture, FloatingBaseCalcLtdlInPlace)
+(benchmark::State& state) {
+  MakeModel(false);
+  MatrixXd M(nv_, nv_);
+  plant_->CalcMassMatrix(*context_, &M);
+  const auto lambda = MakeExpandedParentArray();
+  for (auto _ : state) {
+    // @see LimitMalloc note above.
+    LimitMalloc guard({.max_num_allocations = 0});
+    test::CalcLtdlInPlace(lambda, &M);
+    tracker_.Update(guard.num_allocations());
+  }
+  tracker_.Report(&state);
+}
+
+// NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
+BENCHMARK_F(AllegroHandFixture, FloatingBaseEigenDenseCholesky)
+(benchmark::State& state) {
+  MakeModel(false);
+  MatrixXd M(nv_, nv_);
+  plant_->CalcMassMatrix(*context_, &M);
+  for (auto _ : state) {
+    // @see LimitMalloc note above.
+    LimitMalloc guard(
+        {.max_num_allocations = -1});  // Do not limit allocations.
+    M.ldlt();
+    tracker_.Update(guard.num_allocations());
+  }
+  tracker_.Report(&state);
+}
+
+// NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
+BENCHMARK_F(AllegroHandFixture, FloatingBaseEigenSparseCholesky)
+(benchmark::State& state) {
+  MakeModel(false);
   MatrixXd M(nv_, nv_);
   plant_->CalcMassMatrix(*context_, &M);
   Eigen::SparseMatrix<double> Msp = M.sparseView(1.0, 1.0e-14);

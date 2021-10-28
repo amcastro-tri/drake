@@ -196,6 +196,20 @@ BENCHMARK_F(AllegroHandFixture, CalcLtdlInPlace)(benchmark::State& state) {
   tracker_.Report(&state);
 }
 
+// NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
+BENCHMARK_F(AllegroHandFixture, EigenDenseCholesky)(benchmark::State& state) {
+  MatrixXd M(nv_, nv_);
+  plant_->CalcMassMatrix(*context_, &M);
+  for (auto _ : state) {
+    // @see LimitMalloc note above.
+    LimitMalloc guard(
+        {.max_num_allocations = -1});  // Do not limit allocations.
+    M.ldlt();
+    tracker_.Update(guard.num_allocations());
+  }
+  tracker_.Report(&state);
+}
+
 }  // namespace
 }  // namespace examples
 }  // namespace drake

@@ -94,6 +94,15 @@ TEST_F(AllegroHandModelTest, Ltdl) {
 
   test::CalcLtdlInPlace(lambda, &M);
   PRINT_VARn(M);
+
+  // Extract lower triangular matrix L, with ones in the diagonal.
+  const MatrixXd L = M.triangularView<Eigen::UnitLower>();
+
+  // Extract diagonal matrix D.
+  const MatrixXd D = M.diagonal().asDiagonal();
+
+  // Reconstruct matrix M.
+  const MatrixXd M_reconstructed = L.transpose() * D * L;
 }
 
 }  // namespace

@@ -2,6 +2,9 @@
 
 #include <benchmark/benchmark.h>
 
+#include <Eigen/SparseCore>
+#include<Eigen/SparseCholesky>
+
 #include "drake/common/find_resource.h"
 #include "drake/common/test_utilities/limit_malloc.h"
 #include "drake/math/autodiff.h"
@@ -188,6 +191,22 @@ BENCHMARK_F(AllegroHandFixture, EigenDenseCholesky)(benchmark::State& state) {
     LimitMalloc guard(
         {.max_num_allocations = -1});  // Do not limit allocations.
     M.ldlt();
+    tracker_.Update(guard.num_allocations());
+  }
+  tracker_.Report(&state);
+}
+
+// NOLINTNEXTLINE(runtime/references) cpplint disapproves of gbench choices.
+BENCHMARK_F(AllegroHandFixture, EigenSparseCholesky)(benchmark::State& state) {
+  MatrixXd M(nv_, nv_);
+  plant_->CalcMassMatrix(*context_, &M);
+  Eigen::SparseMatrix<double> Msp = M.sparseView(1.0, 1.0e-14);
+  Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver;
+  for (auto _ : state) {
+    // @see LimitMalloc note above.
+    LimitMalloc guard(
+        {.max_num_allocations = -1});  // Do not limit allocations.
+    solver.compute(Msp);
     tracker_.Update(guard.num_allocations());
   }
   tracker_.Report(&state);

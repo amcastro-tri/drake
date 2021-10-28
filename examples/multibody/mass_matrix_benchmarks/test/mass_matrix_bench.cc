@@ -120,6 +120,26 @@ class CassieDoubleFixture : public benchmark::Fixture {
   // timing results.
   virtual void InvalidateState() { context_->NoteContinuousStateChange(); }
 
+  // Makes array lambda(i) described in [Featherstone, 2014].
+  // For node i in the tree, lambda(i) corresponds to the parent node of node i.
+  std::vector<int> MakeParentArray() const {
+    const multibody::internal::MultibodyTreeTopology& topology =
+        multibody::internal::GetInternalTree(*plant_).get_topology();
+    PRINT_VAR(topology.get_num_body_nodes());
+    // Lambda does not include the root (node 0).
+    std::vector<int> lambda(topology.get_num_body_nodes());
+    // So that numbering matches Featherstone, we add trash (negative index) for
+    // the root (no parent).
+    lambda[0] = -1;
+    for (multibody::internal::BodyNodeIndex node_index(1);
+         node_index < topology.get_num_body_nodes(); ++node_index) {
+      const multibody::internal::BodyNodeTopology& node =
+          topology.get_body_node(node_index);
+      lambda[node_index] = node.parent_body_node;
+    }
+    return lambda;
+  }
+
  protected:
   AllocationTracker tracker_;
   std::unique_ptr<MultibodyPlant<double>> plant_{};
@@ -139,6 +159,10 @@ BENCHMARK_F(CassieDoubleFixture, DoubleMassMatrix)(benchmark::State& state) {
   MatrixXd M(nv_, nv_);
   plant_->CalcMassMatrix(*context_, &M);
   PRINT_VARn(M);
+  const auto lambda = MakeParentArray();
+  for (size_t i = 0; i < lambda.size(); ++i) {
+    std::cout << fmt::format("lambda({}) = {}\n", i, lambda[i]);
+  }
   for (auto _ : state) {
     // @see LimitMalloc note above.
     LimitMalloc guard({.max_num_allocations = 0});

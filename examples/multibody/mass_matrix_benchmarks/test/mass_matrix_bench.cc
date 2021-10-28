@@ -9,6 +9,8 @@
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/tools/performance/fixture_common.h"
+#include "drake/examples/multibody/mass_matrix_benchmarks/test/featherstone_ltdl.h"
+
 #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
 #define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
 
@@ -63,25 +65,6 @@ class AllocationTracker {
   double mean_{};
   double m2_{};
 };
-
-void CalcLtdlInPlace(const std::vector<int>& lambda, MatrixXd* Ainout) {
-  DRAKE_DEMAND(Ainout->rows() == Ainout->cols());
-  auto& A = *Ainout;
-  const int n = A.rows();
-  for (int k = n - 1; k >= 0; --k) {
-    int i = lambda[k];
-    while (i >= 0) {
-      const double a = A(k, i) / A(k, k);
-      int j = i;
-      while (j >= 0) {
-        A(i, j) -= a * A(k, j);
-        j = lambda[j];
-      }
-      A(k, i) = a;
-      i = lambda[i];
-    }
-  }
-}
 
 // Fixture that holds a Cassie robot model in a MultibodyPlant<double>. The
 // class also holds a default context for the plant, and dimensions of its
@@ -166,7 +149,7 @@ BENCHMARK_F(AllegroHandFixture, MassMatrix)(benchmark::State& state) {
   PRINT_VARn(M);
   const auto lambda = MakeParentArray();
 
-  CalcLtdlInPlace(lambda, &M);
+  test::CalcLtdlInPlace(lambda, &M);
   PRINT_VARn(M);
 
   for (size_t i = 0; i < lambda.size(); ++i) {
@@ -190,7 +173,7 @@ BENCHMARK_F(AllegroHandFixture, CalcLtdlInPlace)(benchmark::State& state) {
   for (auto _ : state) {
     // @see LimitMalloc note above.
     LimitMalloc guard({.max_num_allocations = 0});
-    CalcLtdlInPlace(lambda, &M);
+    test::CalcLtdlInPlace(lambda, &M);
     tracker_.Update(guard.num_allocations());
   }
   tracker_.Report(&state);

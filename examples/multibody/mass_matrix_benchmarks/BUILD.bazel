@@ -1,13 +1,32 @@
 # -*- python -*-
 # This file contains rules for Bazel; see drake/doc/bazel.rst.
 
-load(
+load(    
     "@drake//tools/performance:defs.bzl",
     "drake_cc_googlebench_binary",
 )
+
+load(
+    "@drake//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
+    "drake_cc_googletest",
+    "drake_cc_library",
+)
+
 load("//tools/lint:lint.bzl", "add_lint_tests")
 
 package(default_visibility = ["//visibility:public"])
+
+drake_cc_library(
+    name = "featherstone_ltdl",
+    srcs = [],
+    hdrs = [
+        "test/featherstone_ltdl.h",
+    ],
+    deps = [
+        "//common:essential",
+    ],
+)
 
 drake_cc_googlebench_binary(
     name = "mass_matrix_bench",
@@ -17,12 +36,27 @@ drake_cc_googlebench_binary(
         "//manipulation/models/allegro_hand_description:models",
     ],
     deps = [
+        ":featherstone_ltdl",
         "//common:essential",
         "//common:find_resource",
         "//common/test_utilities:limit_malloc",
         "//math:gradient",
         "//multibody/parsing:parser",
         "//tools/performance:fixture_common",
+    ],
+)
+
+drake_cc_googletest(
+    name = "featherstone_ltdl_test",
+    data = [      
+        "//manipulation/models/allegro_hand_description:models",
+    ],
+    deps = [
+        ":featherstone_ltdl",
+        "//common:essential",
+        "//common:find_resource",
+        "//multibody/parsing:parser",
+        "//multibody/plant",
     ],
 )
 
@@ -33,7 +67,7 @@ sh_test(
     srcs = ["record_results.sh"],
     data = [
         ":mass_matrix_bench",
-        "//tools/performance:record_results",
+        "//tools/performance:record_results",        
     ],
     tags = ["no_valgrind_tools"],
 )

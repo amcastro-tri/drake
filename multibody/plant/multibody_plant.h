@@ -76,6 +76,8 @@ class MultibodyPlantDiscreteUpdateManagerAttorney;
 }  // namespace internal
 template <typename>
 class CompliantContactComputationManager;
+template <typename>
+class CompliantContactManager;
 
 // TODO(amcastro-tri): Add a section on contact models in
 // contact_model_doxygen.h.
@@ -4130,6 +4132,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   friend class internal::MultibodyPlantModelAttorney<T>;
   friend class internal::MultibodyPlantDiscreteUpdateManagerAttorney<T>;
   friend class CompliantContactComputationManager<T>;
+  friend class CompliantContactManager<T>;
 
   // This struct stores in one single place all indexes related to
   // MultibodyPlant specific cache entries. These are initialized at Finalize()

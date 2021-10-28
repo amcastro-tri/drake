@@ -1,14 +1,15 @@
 #include "drake/examples/multibody/mass_matrix_benchmarks/test/featherstone_ltdl.h"
 
+#include <iostream>
+
 #include <gtest/gtest.h>
 
 #include "drake/common/drake_assert.h"
 #include "drake/common/eigen_types.h"
 #include "drake/common/find_resource.h"
+#include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/multibody_plant.h"
-
-#include <iostream>
 #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
 #define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
 
@@ -59,7 +60,7 @@ class AllegroHandModelTest : public ::testing::Test {
       const multibody::internal::BodyNodeTopology& node =
           topology.get_body_node(node_index);
       const multibody::internal::BodyNodeTopology& parent_node =
-          topology.get_body_node(node.parent_body_node);          
+          topology.get_body_node(node.parent_body_node);
       for (int m = 0; m < node.num_mobilizer_velocities; ++m) {
         const int parent_node_last_dof =
             parent_node.mobilizer_velocities_start_in_v +
@@ -92,17 +93,23 @@ TEST_F(AllegroHandModelTest, Ltdl) {
     std::cout << fmt::format("lambda({}) = {}\n", i, lambda[i]);
   }
 
-  test::CalcLtdlInPlace(lambda, &M);
-  PRINT_VARn(M);
+  MatrixXd LTDL = M;
+  test::CalcLtdlInPlace(lambda, &LTDL);
+  PRINT_VARn(LTDL);
 
   // Extract lower triangular matrix L, with ones in the diagonal.
-  const MatrixXd L = M.triangularView<Eigen::UnitLower>();
+  const MatrixXd L = LTDL.triangularView<Eigen::UnitLower>();
 
   // Extract diagonal matrix D.
-  const MatrixXd D = M.diagonal().asDiagonal();
+  const VectorXd D = LTDL.diagonal();
 
   // Reconstruct matrix M.
-  const MatrixXd M_reconstructed = L.transpose() * D * L;
+  const MatrixXd M_reconstructed = L.transpose() * D.asDiagonal() * L;
+
+  // Verify result.
+  EXPECT_TRUE(CompareMatrices(M, M_reconstructed, 1.0e-14,
+                              MatrixCompareType::relative));
+  PRINT_VAR((M - M_reconstructed).norm());
 }
 
 }  // namespace

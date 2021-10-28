@@ -55,8 +55,9 @@ drake_cc_googletest(
         ":featherstone_ltdl",
         "//common:essential",
         "//common:find_resource",
+        "//common/test_utilities:eigen_matrix_compare",
         "//multibody/parsing:parser",
-        "//multibody/plant",
+        "//multibody/plant",        
     ],
 )
 

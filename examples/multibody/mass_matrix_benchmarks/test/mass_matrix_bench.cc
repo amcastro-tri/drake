@@ -68,9 +68,61 @@ class AllocationTracker {
   double m2_{};
 };
 
-// Fixture that holds a Cassie robot model in a MultibodyPlant<double>. The
-// class also holds a default context for the plant, and dimensions of its
-// state and inputs.
+/* Bench for a model of the anthropomorphic Allegro hand sketched below along with its connectivity graph.
+There are 4 finger with 4 degrees of freedom (DOFs) each, for a total of 16 DOFs. DOFs are assigned as in [Featherstone, 2005] so that the parent array satisfies λ(i) < i. In the case of the hand model welded to the world by the palm, the parent array is:
+   λ = {-1, -1, -1, -1, 
+         0,  1,  2,  3, 
+         4,  5,  6,  7,
+         8,  9, 10, 11,
+        12, 13, 14, 15}
+ 
+where we use 0-based index and the invalid index -1 refers to the world.
+
+                                    12● 13● 14● 15●
+         ┌─┐   ┌─┐   ┌─┐              │   │   │   │
+         │ │   │ │   │ │              │   │   │   │
+       12├─┤ 13├─┤ 14├─┤             8●  9● 10● 11●
+         │ │   │ │   │ │              │   │   │   │
+        8├─┤  9├─┤ 10├─┤              │   │   │   │
+         │ │   │ │   │ │             4●  5●  6●  7●
+        4├─┤  5├─┤  6├─┤              │   │   │   │
+         ├─┴───┴─┴───┴─┤              │   │   │   │
+         │0     1     2│             0●  1●  2●  3●
+         │             ├┬──┬──┬──┐    │   │   │   │
+         │            3││  │  │  │    └───┴─┬─┴───┘
+         └─────────────┴┴──┴──┴──┘          │
+                        7  11 15          -1◯
+       a) Allegro hand schematic    b) Connectivity graph.
+ 
+When the model is not welded to the world there is a 6-DOFs joint connecting the palm to the world. Therefore the "extended" parent array λ(i) looks like:
+
+
+                     18● 19● 20● 21●
+                       │   │   │   │
+                       │   │   │   │
+                     14● 15● 16● 17●
+                       │   │   │   │
+                       │   │   │   │
+                     10● 11● 12● 13●
+                       │   │   │   │
+                       │   │   │   │
+                      6●  7●  8●  9●
+                       │   │   │   │
+                       └───┴─┬─┴───┘
+                             │              0
+                             ●──●──●──●──●──●
+                             5  4  3  2  1  │
+                                            │
+                                          -1◯
+
+where the first 6-DOFs branch between the world and the fingers correspond to the free floating palm of the hand. Refer to [Featherstone, 2005] for details.
+
+
+[Featherstone, 2005] Efficient factorization of the joint-space inertia matrix
+for branched kinematic trees. The International Journal of Robotics Research,
+24(6), pp.487-500.
+
+*/
 class AllegroHandFixture : public benchmark::Fixture {
  public:
   AllegroHandFixture() { tools::performance::AddMinMaxStatistics(this); }

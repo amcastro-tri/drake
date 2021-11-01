@@ -115,6 +115,7 @@ class CompliantContactManager
 
  private:
   struct CacheIndexes {
+    systems::CacheIndex discrete_contact_pairs;
     systems::CacheIndex contact_jacobian;
   };
 
@@ -159,6 +160,13 @@ class CompliantContactManager
   void CalcDiscreteContactPairs(
       const systems::Context<T>&,
       std::vector<internal::DiscreteContactPair<T>>*) const;
+
+  const std::vector<internal::DiscreteContactPair<T>>& EvalDiscreteContactPairs(
+      const systems::Context<T>& context) const {
+    return plant()
+        .get_cache_entry(cache_indexes_.discrete_contact_pairs)
+        .template Eval<std::vector<internal::DiscreteContactPair<T>>>(context);
+  }
 
   void AppendDiscreteContactPairsForPointContact(
       const systems::Context<T>& context,

@@ -32,7 +32,7 @@ using drake::systems::Context;
 namespace drake {
 namespace multibody {
 
-//using internal::BodyIndex;
+// using internal::BodyIndex;
 
 template <typename T>
 CompliantContactManager<T>::CompliantContactManager(
@@ -60,6 +60,21 @@ void CompliantContactManager<T>::ExtractModelInfo() {
 
 template <typename T>
 void CompliantContactManager<T>::DeclareCacheEntries() {
+  // N.B. We use xd_ticket() instead of q_ticket() since discrete
+  // multibody plant does not have q's, but rather discrete state.
+  // Therefore if we make it dependent on q_ticket() the Jacobian only
+  // gets evaluated once at the start of the simulation.
+
+  // Cache discrete contact pairs.
+  const auto& discrete_contact_pairs_cache_entry = this->DeclareCacheEntry(
+      "Discrete contact pairs.",
+      systems::ValueProducer(
+          this, &CompliantContactManager<T>::CalcDiscreteContactPairs),
+      {systems::System<T>::xd_ticket(),
+       systems::System<T>::all_parameters_ticket()});
+  cache_indexes_.discrete_contact_pairs =
+      discrete_contact_pairs_cache_entry.cache_index();
+
   auto& contact_jacobian_cache_entry = this->DeclareCacheEntry(
       std::string("Contact Jacobians Jc(q)."),
       systems::ValueProducer(
@@ -75,10 +90,6 @@ void CompliantContactManager<T>::DeclareCacheEntries() {
                                     &contact_jacobian_cache->Jc,
                                     &contact_jacobian_cache->R_WC_list);
               }}),
-      // N.B. We use xd_ticket() instead of q_ticket() since discrete
-      // multibody plant does not have q's, but rather discrete state.
-      // Therefore if we make it dependent on q_ticket() the Jacobian only
-      // gets evaluated once at the start of the simulation.
       {systems::System<T>::xd_ticket(),
        systems::System<T>::all_parameters_ticket()});
   cache_indexes_.contact_jacobian = contact_jacobian_cache_entry.cache_index();
@@ -1072,10 +1083,10 @@ void CompliantContactManager<T>::CalcDiscreteContactPairs(
     const systems::Context<T>& context,
     std::vector<internal::DiscreteContactPair<T>>* contact_pairs) const {
   plant().ValidateContext(context);
-  DRAKE_DEMAND(contact_pairs != nullptr);    
+  DRAKE_DEMAND(contact_pairs != nullptr);
 
   contact_pairs->clear();
-  if (plant().num_collision_geometries() == 0) return;  
+  if (plant().num_collision_geometries() == 0) return;
 
   const auto contact_model = plant().get_contact_model();
 
@@ -1101,7 +1112,7 @@ void CompliantContactManager<T>::CalcDiscreteContactPairs(
   const std::vector<double>& wq = quadrature.weights();
   const int num_quad_points = wq.size();
   if (contact_model == ContactModel::kHydroelastic ||
-      contact_model == ContactModel::kHydroelasticWithFallback) {        
+      contact_model == ContactModel::kHydroelasticWithFallback) {
     const std::vector<geometry::ContactSurface<T>>& surfaces =
         plant().EvalContactSurfaces(context);
     for (const auto& s : surfaces) {
@@ -1111,8 +1122,14 @@ void CompliantContactManager<T>::CalcDiscreteContactPairs(
   }
   const int num_contact_pairs = num_point_pairs + num_quadrature_pairs;
   contact_pairs->reserve(num_contact_pairs);
-  AppendDiscreteContactPairsForPointContact(context, contact_pairs);
-  AppendDiscreteContactPairsForHydroelasticContact(context, contact_pairs);
+  if (contact_model == ContactModel::kPoint ||
+      contact_model == ContactModel::kHydroelasticWithFallback) {
+    AppendDiscreteContactPairsForPointContact(context, contact_pairs);
+  }
+  if (contact_model == ContactModel::kHydroelastic ||
+      contact_model == ContactModel::kHydroelasticWithFallback) {
+    AppendDiscreteContactPairsForHydroelasticContact(context, contact_pairs);
+  }
 }
 
 template <typename T>
@@ -1130,10 +1147,10 @@ void CompliantContactManager<T>::AppendDiscreteContactPairsForPointContact(
       plant().EvalPointPairPenetrations(context);
   for (const PenetrationAsPointPair<T>& pair : point_pairs) {
     const T kA = GetPointContactStiffness(pair.id_A, inspector);
-    const T kB = GetPointContactStiffness(pair.id_A, inspector);
+    const T kB = GetPointContactStiffness(pair.id_B, inspector);
     const T k = CombineCompliance(kA, kB);
     const T tauA = GetDissipationTimeConstant(pair.id_A, inspector);
-    const T tauB = GetDissipationTimeConstant(pair.id_A, inspector);
+    const T tauB = GetDissipationTimeConstant(pair.id_B, inspector);
     const T tau = CombineDissipationTimeConstant(tauA, tauB);
     const T d = tau * k;
 
@@ -1168,7 +1185,7 @@ void CompliantContactManager<T>::
   const GaussianTriangleQuadratureRule quadrature(1 /* order */);
   const std::vector<Vector2<double>>& xi = quadrature.quadrature_points();
   const std::vector<double>& wq = quadrature.weights();
-  const int num_quad_points = wq.size();  
+  const int num_quad_points = wq.size();
 
   // TODO: use MBP's public port. Add sugar to it.
   const auto& query_object = plant().EvalGeometryQueryInput(context);
@@ -1176,10 +1193,10 @@ void CompliantContactManager<T>::
   const std::vector<geometry::ContactSurface<T>>& surfaces =
       plant().EvalContactSurfaces(context);
   for (const auto& s : surfaces) {
-    const geometry::SurfaceMesh<T>& mesh_W = s.mesh_W();        
+    const geometry::SurfaceMesh<T>& mesh_W = s.mesh_W();
     const T tau_M = GetDissipationTimeConstant(s.id_M(), inspector);
     const T tau_N = GetDissipationTimeConstant(s.id_N(), inspector);
-    const T tau = CombineDissipationTimeConstant(tau_M, tau_N);    
+    const T tau = CombineDissipationTimeConstant(tau_M, tau_N);
 
     for (int face = 0; face < mesh_W.num_faces(); ++face) {
       const T& Ae = mesh_W.area(face);  // Face element area.
@@ -1278,7 +1295,7 @@ void CompliantContactManager<T>::
 
           // phi < 0 when in penetration.
           const T phi0 = -sign * p0 / grad_pres_W.dot(nhat_W);
-          
+
           using std::abs;
           if (k > 0 && abs(phi0) < 0.1) {
             const T dissipation = tau * k;

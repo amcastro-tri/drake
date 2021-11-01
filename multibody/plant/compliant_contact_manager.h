@@ -161,6 +161,11 @@ class CompliantContactManager
       const systems::Context<T>&,
       std::vector<internal::DiscreteContactPair<T>>*) const;
 
+  const std::vector<geometry::ContactSurface<T>>& EvalContactSurfaces(
+      const systems::Context<T>& context) const {
+    return plant().EvalContactSurfaces(context);
+  }
+
   const std::vector<internal::DiscreteContactPair<T>>& EvalDiscreteContactPairs(
       const systems::Context<T>& context) const {
     return plant()

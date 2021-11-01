@@ -40,6 +40,7 @@ class CompliantContactManagerTest : public ::testing::Test {
     double compliance;
     double dissipation_time_constant;
     double friction_coefficient;
+    bool use_hydroelastic_contact{false};
   };
 
   struct SphereParameters {
@@ -63,7 +64,7 @@ class CompliantContactManagerTest : public ::testing::Test {
     // Add model of the ground.
     {
       const ProximityProperties ground_properties =
-          MakePointContactProximityProperties(ground_params);
+          MakeProximityProperties(ground_params);
       plant_->RegisterCollisionGeometry(plant_->world_body(), RigidTransformd(),
                                         geometry::HalfSpace(),
                                         "ground_collision", ground_properties);
@@ -75,6 +76,10 @@ class CompliantContactManagerTest : public ::testing::Test {
 
     sphere1_ = &AddSphere(sphere1_params);
 
+    if (ground_params.use_hydroelastic_contact ||
+        sphere1_params.contact_parameters.use_hydroelastic_contact) {
+      plant_->set_contact_model(drake::multibody::ContactModel::kHydroelastic);
+    }
     plant_->Finalize();
     auto owned_contact_manager =
         std::make_unique<CompliantContactManager<double>>(
@@ -108,7 +113,7 @@ class CompliantContactManagerTest : public ::testing::Test {
     // Add collision geometry.
     const geometry::Sphere shape(params.radius);
     const ProximityProperties properties =
-        MakePointContactProximityProperties(params.contact_parameters);
+        MakeProximityProperties(params.contact_parameters);
     sphere1_geometry_ = plant_->RegisterCollisionGeometry(
         body, RigidTransformd(), shape, params.name + "_collision", properties);
 
@@ -151,12 +156,39 @@ class CompliantContactManagerTest : public ::testing::Test {
     return contact_manager_->EvalDiscreteContactPairs(context);
   }
 
-  static ProximityProperties MakePointContactProximityProperties(
+  const std::vector<geometry::ContactSurface<double>>& EvalContactSurfaces(
+      const Context<double>& context) const {
+    return contact_manager_->EvalContactSurfaces(context);
+  }
+
+  static ProximityProperties MakeProximityProperties(
       const ContactParameters& params) {
     ProximityProperties properties;
-    properties.AddProperty(geometry::internal::kMaterialGroup,
-                           geometry::internal::kPointStiffness,
-                           params.compliance);
+    if (params.use_hydroelastic_contact) {
+      // Hydroelastic compliance.
+      if (params.compliance == std::numeric_limits<double>::infinity()) {
+        properties.AddProperty(geometry::internal::kHydroGroup,
+                               geometry::internal::kComplianceType,
+                               geometry::internal::HydroelasticType::kRigid);
+      } else {
+        properties.AddProperty(geometry::internal::kHydroGroup,
+                               geometry::internal::kComplianceType,
+                               geometry::internal::HydroelasticType::kSoft);
+        properties.AddProperty(geometry::internal::kMaterialGroup,
+                               geometry::internal::kElastic, params.compliance);
+      }
+      // N.B. Add the slab thickness property by default so that we can model a
+      // half space (either compliant or rigid).
+      properties.AddProperty(geometry::internal::kHydroGroup,
+                             geometry::internal::kSlabThickness, 1.0);
+      properties.AddProperty(geometry::internal::kHydroGroup,
+                             geometry::internal::kRezHint, 1.0);
+    } else {
+      // Point contact compliance.
+      properties.AddProperty(geometry::internal::kMaterialGroup,
+                             geometry::internal::kPointStiffness,
+                             params.compliance);
+    }
     properties.AddProperty(geometry::internal::kMaterialGroup,
                            "dissipation_time_constant",
                            params.dissipation_time_constant);
@@ -252,6 +284,29 @@ TEST_F(CompliantContactManagerTest, EvalDiscreteContactPairs) {
 
   // Soft ground/hard sphere.
   VerifyDiscreteContactPairs(soft_contact, hard_contact);
+}
+
+TEST_F(CompliantContactManagerTest,
+       EvalDiscreteContactPairsFromHydroelasticContact) {
+  const bool use_hydroelastic_contact = true;
+  ContactParameters soft_contact{1.0e3, 0.01, 1.0, use_hydroelastic_contact};
+  ContactParameters hard_contact{std::numeric_limits<double>::infinity(), 0.0,
+                                 1.0, use_hydroelastic_contact};
+  SphereParameters sphere_params = default_sphere_parameters_;
+  sphere_params.contact_parameters = soft_contact;
+
+  // Soft sphere/hard ground.
+  MakeModel(hard_contact, sphere_params);
+
+  const std::vector<DiscreteContactPair<double>>& pairs =
+      EvalDiscreteContactPairs(*plant_context_);
+
+  const std::vector<geometry::ContactSurface<double>>& surfaces =
+      EvalContactSurfaces(*plant_context_);
+  ASSERT_EQ(surfaces.size(), 1u);
+  const geometry::SurfaceMesh<double>& patch = surfaces[0].mesh_W();
+  EXPECT_EQ(pairs.size(), patch.num_faces());
+  PRINT_VAR(pairs.size());
 }
 
 }  // namespace multibody

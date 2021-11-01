@@ -56,6 +56,7 @@ drake_cc_library(
         ":plant",
         "//common/test_utilities:limit_malloc",
         "//multibody/contact_solvers:contact_solver",
+        "//multibody/triangle_quadrature",
     ],
 )
 

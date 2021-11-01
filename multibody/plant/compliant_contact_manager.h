@@ -145,9 +145,28 @@ class CompliantContactManager
       geometry::GeometryId id,
       const geometry::SceneGraphInspector<T>& inspector) const;
 
+  T GetHydroelasticContactModulus(
+      geometry::GeometryId id,
+      const geometry::SceneGraphInspector<T>& inspector) const;
+
   T GetDissipationTimeConstant(
       geometry::GeometryId id,
       const geometry::SceneGraphInspector<T>& inspector) const;
+
+  static T CombineCompliance(const T& k1, const T& k2);
+  static T CombineDissipationTimeConstant(const T& tau1, const T& tau2);
+
+  void CalcDiscreteContactPairs(
+      const systems::Context<T>&,
+      std::vector<internal::DiscreteContactPair<T>>*) const;
+
+  void AppendDiscreteContactPairsForPointContact(
+      const systems::Context<T>& context,
+      std::vector<internal::DiscreteContactPair<T>>* result) const;
+
+  void AppendDiscreteContactPairsForHydroelasticContact(
+      const systems::Context<T>& context,
+      std::vector<internal::DiscreteContactPair<T>>* result) const;      
 
   // TODO: change signature so that it returns a new contact graph instead.
   void CalcContactGraph(

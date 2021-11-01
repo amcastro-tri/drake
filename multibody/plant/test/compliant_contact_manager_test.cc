@@ -4,7 +4,7 @@
 #include "drake/common/test_utilities/expect_throws_message.h"
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/contact_solvers/pgs_solver.h"
-#include "drake/multibody/fixed_fem/dev/deformable_rigid_manager.h"
+#include "drake/multibody/plant/compliant_contact_manager.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/systems/analysis/simulator.h"
 
@@ -69,7 +69,7 @@ class CompliantContactManagerTest : public ::testing::Test {
                                      green);
     }
 
-    large_box_ = AddBox(box1_parameters_);
+    box1_ = &AddBox(box1_parameters_);
 
     plant_->Finalize();
     auto owned_contact_manager =
@@ -107,7 +107,7 @@ class CompliantContactManagerTest : public ::testing::Test {
   }
 
   // N.B. This method assumes a single geometry per body.
-  T GetPointContactStiffness(const RigidBody<double>& body) {
+  double GetPointContactStiffness(const RigidBody<double>& body) {
     const geometry::QueryObject<double>& query_object =
         plant_->get_geometry_query_input_port()
             .Eval<geometry::QueryObject<double>>(*plant_context_);
@@ -117,6 +117,20 @@ class CompliantContactManagerTest : public ::testing::Test {
         plant_->GetCollisionGeometriesForBody(body);
     DRAKE_DEMAND(geometries.size() == 1u);
     return contact_manager_->GetPointContactStiffness(geometries[0], inspector);
+  }
+
+  // N.B. This method assumes a single geometry per body.
+  double GetDissipationTimeConstant(const RigidBody<double>& body) {
+    const geometry::QueryObject<double>& query_object =
+        plant_->get_geometry_query_input_port()
+            .Eval<geometry::QueryObject<double>>(*plant_context_);
+    const geometry::SceneGraphInspector<double>& inspector =
+        query_object.inspector();
+    const std::vector<geometry::GeometryId>& geometries =
+        plant_->GetCollisionGeometriesForBody(body);
+    DRAKE_DEMAND(geometries.size() == 1u);
+    return contact_manager_->GetDissipationTimeConstant(geometries[0],
+                                                        inspector);
   }
 
   static ProximityProperties MakePointContactProximityProperties(
@@ -142,16 +156,9 @@ class CompliantContactManagerTest : public ::testing::Test {
       {51 / 255, 1.0, 1.0, 1.0} /* cyan */,
       10.0 /* mass */,
       0.2 /* size */,
-      {1.0e5 /* stiffness */, 0.001 /* dissipation */, 0.5 /* friction */}};
+      {1.0e5 /* stiffness */, 0.001 /* dissipation */, 0.5 /* friction */}};  
 
-  double stiffness_{1.0e5};
-  double dissipation_time_constant_{0.01};
-  double ground_friction_{0.5};
-  double large_box_mass_{10.0};
-  double large_box_size_{0.2};
-  double large_box_friction_{0.5};
-
-  const RigidBody<double>* large_box_{nullptr};
+  const RigidBody<double>* box1_{nullptr};
 
   SceneGraph<double>* scene_graph_{nullptr};
   MultibodyPlant<double>* plant_{nullptr};
@@ -162,7 +169,16 @@ class CompliantContactManagerTest : public ::testing::Test {
 };
 
 TEST_F(CompliantContactManagerTest, PointContactProperties) {
-  PRINT_VAR(GetPointContactStiffness(plant_->world_body()));
+  auto verify_point_contact_parameters =
+      [this](const RigidBody<double>& body,
+             const PointContactParameters& parameters) {
+        EXPECT_EQ(GetPointContactStiffness(body), parameters.stiffness);
+        EXPECT_EQ(GetDissipationTimeConstant(body),
+                  parameters.dissipation_time_constant);
+      };
+  verify_point_contact_parameters(plant_->world_body(),
+                                  ground_contact_parameters_);
+  verify_point_contact_parameters(*box1_, box1_parameters_.contact_parameters);
 }
 
 }  // namespace multibody

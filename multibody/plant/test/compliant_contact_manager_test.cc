@@ -49,6 +49,25 @@ class CompliantContactManagerTest : public ::testing::Test {
     ContactParameters contact_parameters;
   };
 
+  void MakeDefaultSetup() {
+    const ContactParameters soft_contact{1.0e5, 1.0e5, 0.01, 1.0};
+    const ContactParameters hard_hydro_contact{
+        std::nullopt, std::numeric_limits<double>::infinity(), 0.0, 1.0};
+    const SphereParameters sphere1_params{"Sphere1",
+                                          {0.0, 0.0, 1.0, 1.0} /* blue */,
+                                          10.0 /* mass */,
+                                          0.2 /* size */,
+                                          soft_contact};
+    const SphereParameters sphere2_params{"Sphere2",
+                                          {1.0, 0.0, 0.0, 1.0} /* red */,
+                                          10.0 /* mass */,
+                                          0.2 /* size */,
+                                          soft_contact};
+
+    // Soft sphere/hard ground.
+    MakeModel(hard_hydro_contact, sphere1_params, sphere2_params);
+  }
+
   void MakeModel(const ContactParameters& ground_params,
                  const SphereParameters& sphere1_params,
                  const SphereParameters& sphere2_params) {
@@ -153,11 +172,6 @@ class CompliantContactManagerTest : public ::testing::Test {
                                                         inspector);
   }
 
-  const std::vector<DiscreteContactPair<double>>& EvalDiscreteContactPairs(
-      const Context<double>& context) const {
-    return contact_manager_->EvalDiscreteContactPairs(context);
-  }
-
   const std::vector<PenetrationAsPointPair<double>>& EvalPointPairPenetrations(
       const Context<double>& context) const {
     return contact_manager_->EvalPointPairPenetrations(context);
@@ -166,6 +180,16 @@ class CompliantContactManagerTest : public ::testing::Test {
   const std::vector<geometry::ContactSurface<double>>& EvalContactSurfaces(
       const Context<double>& context) const {
     return contact_manager_->EvalContactSurfaces(context);
+  }
+
+  const std::vector<DiscreteContactPair<double>>& EvalDiscreteContactPairs(
+      const Context<double>& context) const {
+    return contact_manager_->EvalDiscreteContactPairs(context);
+  }
+
+  const internal::ContactJacobianCache<double>& EvalContactJacobianCache(
+      const systems::Context<double>& context) const {
+    return contact_manager_->EvalContactJacobianCache(context);
   }
 
   static ProximityProperties MakeProximityProperties(
@@ -359,6 +383,24 @@ TEST_F(CompliantContactManagerTest,
   const geometry::SurfaceMesh<double>& patch = surfaces[0].mesh_W();
   EXPECT_EQ(pairs.size(), patch.num_faces() + num_point_pairs);
   PRINT_VAR(pairs.size());
+}
+
+TEST_F(CompliantContactManagerTest, EvalContactJacobianCache) {
+  MakeDefaultSetup();
+
+  const std::vector<DiscreteContactPair<double>>& pairs =
+      EvalDiscreteContactPairs(*plant_context_);
+  const auto& cache = EvalContactJacobianCache(*plant_context_);
+  const auto& Jc = cache.Jc;
+  EXPECT_EQ(Jc.cols(), plant_->num_velocities());
+  EXPECT_EQ(Jc.rows(), 3 * pairs.size());
+
+  // For this model we know the first entry corresponds to the single point pair
+  // between sphere 1 and sphere 2.
+  
+
+  // Test that Jc*v gives v_WB1 and v_B1B2_W
+
 }
 
 }  // namespace multibody

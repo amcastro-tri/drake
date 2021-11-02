@@ -75,21 +75,12 @@ void CompliantContactManager<T>::DeclareCacheEntries() {
   cache_indexes_.discrete_contact_pairs =
       discrete_contact_pairs_cache_entry.cache_index();
 
+  // Contact Jacobian for the discrete pairs computed with
+  // CompliantContactManager::CalcDiscreteContactPairs().
   auto& contact_jacobian_cache_entry = this->DeclareCacheEntry(
-      std::string("Contact Jacobians Jc(q)."),
+      std::string("Contact Jacobian."),
       systems::ValueProducer(
-          internal::ContactJacobianCache<T>(),
-          std::function<void(const systems::Context<T>&,
-                             internal::ContactJacobianCache<T>*)>{
-              [this](
-                  const systems::Context<T>& context,
-                  internal::ContactJacobianCache<T>* contact_jacobian_cache) {
-                const std::vector<internal::DiscreteContactPair<T>>&
-                    contact_pairs = plant().EvalDiscreteContactPairs(context);
-                CalcContactJacobian(context, contact_pairs,
-                                    &contact_jacobian_cache->Jc,
-                                    &contact_jacobian_cache->R_WC_list);
-              }}),
+          this, &CompliantContactManager<T>::CalcContactJacobianCache),
       {systems::System<T>::xd_ticket(),
        systems::System<T>::all_parameters_ticket()});
   cache_indexes_.contact_jacobian = contact_jacobian_cache_entry.cache_index();
@@ -741,148 +732,32 @@ void CompliantContactManager<T>::LogStats(
 }
 
 template <typename T>
-void CompliantContactManager<T>::CalcContactJacobian(
+void CompliantContactManager<T>::CalcContactJacobianCache(
     const systems::Context<T>& context,
-    const std::vector<internal::DiscreteContactPair<T>>& contact_pairs,
-    MatrixX<T>* Jc_ptr, std::vector<RotationMatrix<T>>* R_WC_set) const {
-  DRAKE_DEMAND(Jc_ptr != nullptr);
+    internal::ContactJacobianCache<T>* cache) const {
+  DRAKE_DEMAND(cache != nullptr);
 
+  const std::vector<internal::DiscreteContactPair<T>>& contact_pairs =
+      EvalDiscreteContactPairs(context);
   const int num_contacts = contact_pairs.size();
 
   // Jn is defined such that vn = Jn * v, with vn of size nc.
-  auto& Jc = *Jc_ptr;
+  auto& Jc = cache->Jc;
   Jc.resize(3 * num_contacts, plant().num_velocities());
 
-  if (R_WC_set != nullptr) {
-    R_WC_set->clear();
-    R_WC_set->reserve(num_contacts);
-  }
+  std::vector<drake::math::RotationMatrix<T>>& R_WC_set = cache->R_WC_list;
+  R_WC_set.clear();
+  R_WC_set.reserve(num_contacts);
 
-  // Quick no-op exit. Notice we did resize Jn, Jt and R_WC_set to be zero
-  // sized.
+  // Quick no-op exit.
   if (num_contacts == 0) return;
 
   const int nv = plant().num_velocities();
 
   // Scratch workspace variables.
-  Matrix3X<T> Jtmp(3, nv);
-  Matrix3X<T> Jv_AcBc(3, nv);
-  // Alloc workspace once for successive calls.
-  internal::CalcJacobianWorkspace<T> jacobian_workspace(
-      plant().num_bodies(), plant().num_velocities(), num_contacts);
-
-#if 0
-  std::vector<int> num_body_points(plant().num_bodies(), 0);
-  for (int icontact = 0; icontact < num_contacts; ++icontact) {
-    const auto& point_pair = contact_pairs[icontact];
-    const GeometryId geometryA_id = point_pair.id_A;
-    const GeometryId geometryB_id = point_pair.id_B;
-    BodyIndex bodyA_index = plant().geometry_id_to_body_index_.at(geometryA_id);
-    BodyIndex bodyB_index = plant().geometry_id_to_body_index_.at(geometryB_id);
-    if (bodyA_index != world_index()) ++num_body_points[bodyA_index];
-    if (bodyB_index != world_index()) ++num_body_points[bodyB_index];
-  }
-
-  std::vector<int> body_offset(plant().num_bodies(), 0);
-  for (BodyIndex b(1); b < plant().num_bodies(); ++b) {
-    body_offset[b] = body_offset[b - 1] + num_body_points[b - 1];
-  }
-
-  std::vector<BodyIndex> participating_bodies;
-  participating_bodies.reserve(plant().num_bodies());  // simply reserve max.
-  for (BodyIndex b(0); b < plant().num_bodies(); ++b) {
-    if (num_body_points[b] > 0) participating_bodies.push_back(b);
-  }  
-
-  std::fill(num_body_points.begin(), num_body_points.end(), 0);  // reset to 0.
-  // Collect contact point offsets p_WC.
-  // At most 2nc poits (since we ignore the world)
-  Matrix3X<T> p_WC(3, 2 * num_contacts);
-  //std::vector<int> contact_map(2 * num_contacts);
-  int num_entries = 0;
-  std::vector<std::pair<int, int>> contact_map(num_contacts);
-  for (int icontact = 0; icontact < num_contacts; ++icontact) {
-    const auto& point_pair = contact_pairs[icontact];
-    const GeometryId geometryA_id = point_pair.id_A;
-    const GeometryId geometryB_id = point_pair.id_B;
-    BodyIndex bodyA_index = plant().geometry_id_to_body_index_.at(geometryA_id);
-    BodyIndex bodyB_index = plant().geometry_id_to_body_index_.at(geometryB_id);
-    const Vector3<T>& p_WCi = point_pair.p_WC;
-    contact_map[icontact] = {0, 0};
-    if (bodyA_index != world_index()) {
-      const int k = body_offset[bodyA_index] + num_body_points[bodyA_index];
-      p_WC.col(k) = p_WCi;
-      contact_map[icontact].first = k;
-      ++num_body_points[bodyA_index];
-      ++num_entries;
-    }
-    if (bodyB_index != world_index()) {
-      const int k = body_offset[bodyB_index] + num_body_points[bodyB_index];
-      p_WC.col(k) = p_WCi;
-      contact_map[icontact].second = k;
-      ++num_body_points[bodyB_index];
-      ++num_entries;
-    }
-  }
-
-  DRAKE_DEMAND(std::accumulate(num_body_points.begin(), num_body_points.end(),
-                               0) == num_entries);
-
-  const int num_contacting_bodies = participating_bodies.size();
-  MatrixX<T> Jv_v_WBc(3 * num_entries, nv);
-  //MatrixX<T> Jv_w_WB(3 * num_contacting_bodies, nv);
-  Jv_v_WBc.setZero();
-  //Jv_w_WB.setZero();
-  const Frame<T>& frame_W = plant().world_frame();
-  //int participating_body = 0;
-  for (BodyIndex b(1); b < plant().num_bodies(); ++b) {
-    if (num_body_points[b] > 0) {
-      const Body<T>& body = plant().get_body(b);
-      const int row_offset = 3 * body_offset[b];
-      const int num_rows = 3 * num_body_points[b];
-      auto Jv_v_WBi = Jv_v_WBc.block(row_offset, 0, num_rows, nv);
-      const auto p_WBiC = p_WC.block(0, body_offset[b], 3, num_body_points[b]);
-      plant().internal_tree().CalcJacobianTranslationalVelocity(
-        context, JacobianWrtVariable::kV, body.body_frame(), frame_W, p_WBiC,
-        frame_W, frame_W, &Jv_v_WBi);
-
-#if 0
-      auto Jv_w_WBi = Jv_w_WB.block(3 * participating_body, 0, 3, nv);
-      plant().CalcJacobianAngularVelocity(context, JacobianWrtVariable::kV,
-                                          body.body_frame(), frame_W, frame_W,
-                                          &Jv_w_WBi);
-      ++participating_body;
-#endif      
-    }
-  }
-
-  // From Jc = Jv_WBc - Jv_WAc
-  for (int icontact = 0; icontact < num_contacts; ++icontact) {
-    const auto& point_pair = contact_pairs[icontact];
-    const GeometryId geometryA_id = point_pair.id_A;
-    const GeometryId geometryB_id = point_pair.id_B;
-    BodyIndex bodyA_index = plant().geometry_id_to_body_index_.at(geometryA_id);
-    BodyIndex bodyB_index = plant().geometry_id_to_body_index_.at(geometryB_id);
-    const int kA = contact_map[icontact].first;
-    const int kB = contact_map[icontact].first;
-
-    // TODO. set to zero first.
-    // TODO: set to bodyB jacobian
-
-    if (bodyA_index != world_index()) {
-      const auto J_WAc = Jv_v_WBc.block(3 * kA, 0, 3, nv);
-      Jc.block(3 * icontact, 0, 3, nv) -= J_WAc;
-    }
-
-    Jc.block(3 * icontact, 0, 3, nv) =
-        R_WC.transpose() * Jc.block(3 * icontact, 0, 3, nv);
-
-    // TODO: fix this to have all consistent signs.
-    // Negate the normal direction so that this component corresponds to the
-    // "separation" velocity.
-    Jc.row(3 * icontact + 2) = -Jc.row(3 * icontact + 2);        
-  }
-#endif
+  Matrix3X<T> Jv_WAc_W(3, nv);
+  Matrix3X<T> Jv_WBc_W(3, nv);
+  Matrix3X<T> Jv_AcBc_W(3, nv);
 
   // test::LimitMalloc guard({.max_num_allocations = 0});
 
@@ -898,45 +773,31 @@ void CompliantContactManager<T>::CalcContactJacobian(
     BodyIndex bodyB_index = plant().geometry_id_to_body_index_.at(geometryB_id);
     const Body<T>& bodyB = plant().get_body(bodyB_index);
 
-    // Penetration depth > 0 if bodies interpenetrate.
-    const Vector3<T>& nhat_BA_W = point_pair.nhat_BA_W;
+    // Contact normal from point A into B.
+    const Vector3<T>& nhat_W = -point_pair.nhat_BA_W;
     const Vector3<T>& p_WC = point_pair.p_WC;
 
-    // For point Ac (origin of frame A shifted to C), calculate Jv_v_WAc (Ac's
-    // translational velocity Jacobian in the world frame W with respect to
-    // generalized velocities v).  Note: Ac's translational velocity in W can
-    // be written in terms of this Jacobian as v_WAc = Jv_v_WAc * v.
+    // Since v_AcBc_W = v_WBc - v_WAc the relative velocity Jacobian will be:
+    //   J_AcBc_W = Jv_WBc_W - Jv_WAc_W.
+    // That is the relative velocity at C is v_AcBc_W = J_AcBc_W * v.
     plant().internal_tree().CalcJacobianTranslationalVelocity(
         context, JacobianWrtVariable::kV, bodyA.body_frame(), frame_W, p_WC,
-        frame_W, frame_W, &Jtmp, &jacobian_workspace);
-    Jv_AcBc = -Jtmp;  // Jv_AcBc = -J_WAc.
-
-    // Similarly, for point Bc (origin of frame B shifted to C), calculate
-    // Jv_v_WBc (Bc's translational velocity Jacobian in W with respect to v).
+        frame_W, frame_W, &Jv_WAc_W);
+    Jv_AcBc_W = -Jv_WAc_W;  // Jv_AcBc_W = -Jv_WAc_W.
     plant().internal_tree().CalcJacobianTranslationalVelocity(
         context, JacobianWrtVariable::kV, bodyB.body_frame(), frame_W, p_WC,
-        frame_W, frame_W, &Jtmp, &jacobian_workspace);
-    Jv_AcBc += Jtmp;  // Jv_AcBc = J_WBc - J_WAc.
+        frame_W, frame_W, &Jv_WBc_W);
+    Jv_AcBc_W += Jv_WBc_W;  // Jv_AcBc_W = Jv_WBc_W - Jv_WAc_W.
 
-    // Computation of the tangential velocities Jacobian Jt:
-    //
-    // Compute the orientation of a contact frame C at the contact point such
-    // that the z-axis Cz equals to nhat_BA_W. The tangent vectors are
-    // arbitrary, with the only requirement being that they form a valid right
-    // handed basis with nhat_BA.
+    // Define a contact frame C at the contact point such that the z-axis Cz
+    // equals nhat_W. The tangent vectors are arbitrary, with the only
+    // requirement being that they form a valid right handed basis with nhat_W.
     const math::RotationMatrix<T> R_WC =
-        math::RotationMatrix<T>::MakeFromOneVector(nhat_BA_W, 2);
-    if (R_WC_set != nullptr) {
-      R_WC_set->push_back(R_WC);
-    }
+        math::RotationMatrix<T>::MakeFromOneVector(nhat_W, 2);
+    R_WC_set.push_back(R_WC);
 
     Jc.block(3 * icontact, 0, 3, nv).noalias() =
-        R_WC.matrix().transpose() * Jv_AcBc;
-
-    // TODO: fix this to have all consistent signs.
-    // Negate the normal direction so that this component corresponds to the
-    // "separation" velocity.
-    Jc.row(3 * icontact + 2) = -Jc.row(3 * icontact + 2);
+        R_WC.matrix().transpose() * Jv_AcBc_W;
   }
 }
 

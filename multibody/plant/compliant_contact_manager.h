@@ -232,10 +232,9 @@ class CompliantContactManager
       VectorX<T>* vc0, VectorX<T>* mu, VectorX<T>* stiffness,
       VectorX<T>* linear_damping) const;
 
-  void CalcContactJacobian(
+  void CalcContactJacobianCache(
       const systems::Context<T>& context,
-      const std::vector<internal::DiscreteContactPair<T>>& contact_pairs,
-      MatrixX<T>* Jc_ptr, std::vector<math::RotationMatrix<T>>* R_WC_set) const;
+      internal::ContactJacobianCache<T>* cache) const;
 
   const internal::ContactJacobianCache<T>& EvalContactJacobianCache(
       const systems::Context<T>& context) const {

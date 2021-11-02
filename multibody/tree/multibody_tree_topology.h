@@ -783,7 +783,7 @@ class MultibodyTreeTopology {
       queue.pop();  // Pops front element.
       for (BodyIndex child : bodies_[current].child_bodies) {
         queue.push(child);  // Pushes at the back.
-      }      
+      }
     }
 
     // Checks that all bodies were reached. We could have this situation if a

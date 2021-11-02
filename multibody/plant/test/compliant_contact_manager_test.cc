@@ -209,56 +209,6 @@ class CompliantContactManagerTest : public ::testing::Test {
     return properties;
   }
 
-#if 0
-  static ProximityProperties MakePointContactProximityProperties(
-      const ContactParameters& params) {
-    ProximityProperties properties;
-    properties.AddProperty(geometry::internal::kMaterialGroup,
-                           geometry::internal::kPointStiffness,
-                           params.compliance);
-
-    properties.AddProperty(geometry::internal::kMaterialGroup,
-                           "dissipation_time_constant",
-                           params.dissipation_time_constant);
-    properties.AddProperty(
-        geometry::internal::kMaterialGroup, geometry::internal::kFriction,
-        CoulombFriction<double>(params.friction_coefficient,
-                                params.friction_coefficient));
-    return properties;
-  }
-
-  static ProximityProperties MakeHydroelasticContactProximityProperties(
-      const ContactParameters& params) {
-    ProximityProperties properties;
-    if (params.compliance == std::numeric_limits<double>::infinity()) {
-      properties.AddProperty(geometry::internal::kHydroGroup,
-                             geometry::internal::kComplianceType,
-                             geometry::internal::HydroelasticType::kRigid);
-    } else {
-      properties.AddProperty(geometry::internal::kHydroGroup,
-                             geometry::internal::kComplianceType,
-                             geometry::internal::HydroelasticType::kSoft);
-      properties.AddProperty(geometry::internal::kMaterialGroup,
-                             geometry::internal::kElastic, params.compliance);
-    }
-    // N.B. Add the slab thickness property by default so that we can model a
-    // half space (either compliant or rigid).
-    properties.AddProperty(geometry::internal::kHydroGroup,
-                           geometry::internal::kSlabThickness, 1.0);
-    properties.AddProperty(geometry::internal::kHydroGroup,
-                           geometry::internal::kRezHint, 1.0);
-
-    properties.AddProperty(geometry::internal::kMaterialGroup,
-                           "dissipation_time_constant",
-                           params.dissipation_time_constant);
-    properties.AddProperty(
-        geometry::internal::kMaterialGroup, geometry::internal::kFriction,
-        CoulombFriction<double>(params.friction_coefficient,
-                                params.friction_coefficient));
-    return properties;
-  }
-#endif
-
   void VerifyDiscreteContactPairsFromPointContact(
       const ContactParameters& sphere1_point_params,
       const ContactParameters& sphere2_point_params) {

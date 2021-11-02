@@ -13,6 +13,7 @@
 #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
 
 using drake::geometry::GeometryId;
+using drake::geometry::PenetrationAsPointPair;
 using drake::geometry::ProximityProperties;
 using drake::geometry::SceneGraph;
 using drake::geometry::SurfaceMesh;
@@ -34,13 +35,10 @@ class CompliantContactManagerTest : public ::testing::Test {
  protected:
   // Model parameters.
   struct ContactParameters {
-    // Compliance:
-    //   - For point contact, the linear spring constant in N/m.
-    //   - For hydroelastic contact, the hydroelastic modulus in N/m².
-    double compliance;
+    std::optional<double> point_stiffness;
+    std::optional<double> hydro_modulus;
     double dissipation_time_constant;
     double friction_coefficient;
-    bool use_hydroelastic_contact{false};
   };
 
   struct SphereParameters {
@@ -51,35 +49,31 @@ class CompliantContactManagerTest : public ::testing::Test {
     ContactParameters contact_parameters;
   };
 
-  void SetUp() override {
-    MakeModel(default_ground_parameters_, default_sphere_parameters_);
-  }
-
   void MakeModel(const ContactParameters& ground_params,
-                 const SphereParameters& sphere1_params) {
+                 const SphereParameters& sphere1_params,
+                 const SphereParameters& sphere2_params) {
     systems::DiagramBuilder<double> builder;
     std::tie(plant_, scene_graph_) =
         AddMultibodyPlantSceneGraph(&builder, time_step_);
 
     // Add model of the ground.
-    {
-      const ProximityProperties ground_properties =
-          MakeProximityProperties(ground_params);
-      plant_->RegisterCollisionGeometry(plant_->world_body(), RigidTransformd(),
-                                        geometry::HalfSpace(),
-                                        "ground_collision", ground_properties);
-      const Vector4<double> green(0.5, 1.0, 0.5, 1.0);
-      plant_->RegisterVisualGeometry(plant_->world_body(), RigidTransformd(),
-                                     geometry::HalfSpace(), "ground_visual",
-                                     green);
-    }
+    const ProximityProperties ground_properties =
+        MakeProximityProperties(ground_params);
+    plant_->RegisterCollisionGeometry(plant_->world_body(), RigidTransformd(),
+                                      geometry::HalfSpace(), "ground_collision",
+                                      ground_properties);
+    const Vector4<double> green(0.5, 1.0, 0.5, 1.0);
+    plant_->RegisterVisualGeometry(plant_->world_body(), RigidTransformd(),
+                                   geometry::HalfSpace(), "ground_visual",
+                                   green);
 
+    // Add models of the spheres.
     sphere1_ = &AddSphere(sphere1_params);
+    sphere2_ = &AddSphere(sphere2_params);
 
-    if (ground_params.use_hydroelastic_contact ||
-        sphere1_params.contact_parameters.use_hydroelastic_contact) {
-      plant_->set_contact_model(drake::multibody::ContactModel::kHydroelastic);
-    }
+    plant_->set_contact_model(
+        drake::multibody::ContactModel::kHydroelasticWithFallback);
+
     plant_->Finalize();
     auto owned_contact_manager =
         std::make_unique<CompliantContactManager<double>>(
@@ -92,14 +86,22 @@ class CompliantContactManagerTest : public ::testing::Test {
     plant_context_ =
         &plant_->GetMyMutableContextFromRoot(diagram_context_.get());
 
-    SetContactState();
+    SetContactState(sphere1_params, sphere2_params);
   }
 
-  void SetContactState() const {
-    const double sphere1_com_z =
-        default_sphere_parameters_.radius - penetration_distance_;
+  void SetContactState(
+      const SphereParameters& sphere1_params,
+      const std::optional<SphereParameters>& sphere2_params) const {
+    const double sphere1_com_z = sphere1_params.radius - penetration_distance_;
     const RigidTransformd X_WB1(Vector3d(0, 0, sphere1_com_z));
     plant_->SetFreeBodyPose(plant_context_, *sphere1_, X_WB1);
+    if (sphere2_params) {
+      const double sphere2_com_z = 2.0 * sphere1_params.radius +
+                                   sphere2_params->radius -
+                                   2.0 * penetration_distance_;
+      const RigidTransformd X_WB2(Vector3d(0, 0, sphere2_com_z));
+      plant_->SetFreeBodyPose(plant_context_, *sphere2_, X_WB2);
+    }
   }
 
   const RigidBody<double>& AddSphere(const SphereParameters& params) {
@@ -114,8 +116,8 @@ class CompliantContactManagerTest : public ::testing::Test {
     const geometry::Sphere shape(params.radius);
     const ProximityProperties properties =
         MakeProximityProperties(params.contact_parameters);
-    sphere1_geometry_ = plant_->RegisterCollisionGeometry(
-        body, RigidTransformd(), shape, params.name + "_collision", properties);
+    plant_->RegisterCollisionGeometry(body, RigidTransformd(), shape,
+                                      params.name + "_collision", properties);
 
     // Add visual geometry.
     plant_->RegisterVisualGeometry(body, RigidTransformd(), shape,
@@ -156,6 +158,11 @@ class CompliantContactManagerTest : public ::testing::Test {
     return contact_manager_->EvalDiscreteContactPairs(context);
   }
 
+  const std::vector<PenetrationAsPointPair<double>>& EvalPointPairPenetrations(
+      const Context<double>& context) const {
+    return contact_manager_->EvalPointPairPenetrations(context);
+  }
+
   const std::vector<geometry::ContactSurface<double>>& EvalContactSurfaces(
       const Context<double>& context) const {
     return contact_manager_->EvalContactSurfaces(context);
@@ -163,10 +170,16 @@ class CompliantContactManagerTest : public ::testing::Test {
 
   static ProximityProperties MakeProximityProperties(
       const ContactParameters& params) {
+    DRAKE_DEMAND(params.point_stiffness || params.hydro_modulus);
     ProximityProperties properties;
-    if (params.use_hydroelastic_contact) {
-      // Hydroelastic compliance.
-      if (params.compliance == std::numeric_limits<double>::infinity()) {
+    if (params.point_stiffness) {
+      properties.AddProperty(geometry::internal::kMaterialGroup,
+                             geometry::internal::kPointStiffness,
+                             *params.point_stiffness);
+    }
+
+    if (params.hydro_modulus) {
+      if (params.hydro_modulus == std::numeric_limits<double>::infinity()) {
         properties.AddProperty(geometry::internal::kHydroGroup,
                                geometry::internal::kComplianceType,
                                geometry::internal::HydroelasticType::kRigid);
@@ -175,7 +188,8 @@ class CompliantContactManagerTest : public ::testing::Test {
                                geometry::internal::kComplianceType,
                                geometry::internal::HydroelasticType::kSoft);
         properties.AddProperty(geometry::internal::kMaterialGroup,
-                               geometry::internal::kElastic, params.compliance);
+                               geometry::internal::kElastic,
+                               *params.hydro_modulus);
       }
       // N.B. Add the slab thickness property by default so that we can model a
       // half space (either compliant or rigid).
@@ -183,12 +197,8 @@ class CompliantContactManagerTest : public ::testing::Test {
                              geometry::internal::kSlabThickness, 1.0);
       properties.AddProperty(geometry::internal::kHydroGroup,
                              geometry::internal::kRezHint, 1.0);
-    } else {
-      // Point contact compliance.
-      properties.AddProperty(geometry::internal::kMaterialGroup,
-                             geometry::internal::kPointStiffness,
-                             params.compliance);
     }
+
     properties.AddProperty(geometry::internal::kMaterialGroup,
                            "dissipation_time_constant",
                            params.dissipation_time_constant);
@@ -199,65 +209,141 @@ class CompliantContactManagerTest : public ::testing::Test {
     return properties;
   }
 
-  void VerifyDiscreteContactPairs(
-      const ContactParameters& ground_contact_params,
-      const ContactParameters& sphere_contact_params) {
-    SphereParameters sphere_params = default_sphere_parameters_;
-    sphere_params.contact_parameters = sphere_contact_params;
+#if 0
+  static ProximityProperties MakePointContactProximityProperties(
+      const ContactParameters& params) {
+    ProximityProperties properties;
+    properties.AddProperty(geometry::internal::kMaterialGroup,
+                           geometry::internal::kPointStiffness,
+                           params.compliance);
+
+    properties.AddProperty(geometry::internal::kMaterialGroup,
+                           "dissipation_time_constant",
+                           params.dissipation_time_constant);
+    properties.AddProperty(
+        geometry::internal::kMaterialGroup, geometry::internal::kFriction,
+        CoulombFriction<double>(params.friction_coefficient,
+                                params.friction_coefficient));
+    return properties;
+  }
+
+  static ProximityProperties MakeHydroelasticContactProximityProperties(
+      const ContactParameters& params) {
+    ProximityProperties properties;
+    if (params.compliance == std::numeric_limits<double>::infinity()) {
+      properties.AddProperty(geometry::internal::kHydroGroup,
+                             geometry::internal::kComplianceType,
+                             geometry::internal::HydroelasticType::kRigid);
+    } else {
+      properties.AddProperty(geometry::internal::kHydroGroup,
+                             geometry::internal::kComplianceType,
+                             geometry::internal::HydroelasticType::kSoft);
+      properties.AddProperty(geometry::internal::kMaterialGroup,
+                             geometry::internal::kElastic, params.compliance);
+    }
+    // N.B. Add the slab thickness property by default so that we can model a
+    // half space (either compliant or rigid).
+    properties.AddProperty(geometry::internal::kHydroGroup,
+                           geometry::internal::kSlabThickness, 1.0);
+    properties.AddProperty(geometry::internal::kHydroGroup,
+                           geometry::internal::kRezHint, 1.0);
+
+    properties.AddProperty(geometry::internal::kMaterialGroup,
+                           "dissipation_time_constant",
+                           params.dissipation_time_constant);
+    properties.AddProperty(
+        geometry::internal::kMaterialGroup, geometry::internal::kFriction,
+        CoulombFriction<double>(params.friction_coefficient,
+                                params.friction_coefficient));
+    return properties;
+  }
+#endif
+
+  void VerifyDiscreteContactPairsFromPointContact(
+      const ContactParameters& sphere1_point_params,
+      const ContactParameters& sphere2_point_params) {
+    // This test is specific to point contact. Both spheres must have point
+    // contact properties.
+    DRAKE_DEMAND(sphere1_point_params.point_stiffness.has_value());
+    DRAKE_DEMAND(sphere2_point_params.point_stiffness.has_value());
+
+    ContactParameters sphere1_contact_params = sphere1_point_params;
+    sphere1_contact_params.hydro_modulus = 1.0e5;
+    const ContactParameters sphere2_contact_params = sphere2_point_params;
+
+    const ContactParameters hard_hydro_contact{
+        std::nullopt, std::numeric_limits<double>::infinity(), 0.0, 1.0};
+    const SphereParameters sphere1_params{"Sphere1",
+                                          {0.0, 0.0, 1.0, 1.0} /* blue */,
+                                          10.0 /* mass */,
+                                          0.2 /* size */,
+                                          sphere1_contact_params};
+    const SphereParameters sphere2_params{"Sphere2",
+                                          {1.0, 0.0, 0.0, 1.0} /* red */,
+                                          10.0 /* mass */,
+                                          0.2 /* size */,
+                                          sphere2_contact_params};
 
     // Soft sphere/hard ground.
-    MakeModel(ground_contact_params, sphere_params);
+    MakeModel(hard_hydro_contact, sphere1_params, sphere2_params);
 
+    const std::vector<PenetrationAsPointPair<double>>& point_pairs =
+        EvalPointPairPenetrations(*plant_context_);
+    const int num_point_pairs = point_pairs.size();
+    const std::vector<geometry::ContactSurface<double>>& surfaces =
+        EvalContactSurfaces(*plant_context_);
+    ASSERT_EQ(surfaces.size(), 1u);
+    const int num_hydro_pairs = surfaces[0].mesh_W().num_faces();
     const std::vector<DiscreteContactPair<double>>& pairs =
         EvalDiscreteContactPairs(*plant_context_);
-    EXPECT_EQ(pairs.size(), 1u);
+    EXPECT_EQ(pairs.size(), num_point_pairs + num_hydro_pairs);
 
     constexpr double kTolerance = 1.0e-14;
 
-    const int sign = pairs[0].id_A == sphere1_geometry_ ? 1 : -1;
+    const GeometryId sphere2_geometry =
+        plant_->GetCollisionGeometriesForBody(*sphere2_)[0];
+
+    const int sign = pairs[0].id_A == sphere2_geometry ? 1 : -1;
     const Vector3d normal_expected = sign * Vector3d::UnitZ();
     EXPECT_TRUE(CompareMatrices(pairs[0].nhat_BA_W, normal_expected));
 
     const double phi_expected = -penetration_distance_;
     EXPECT_NEAR(pairs[0].phi0, phi_expected, kTolerance);
 
-    const double k1 = ground_contact_params.compliance;
-    const double k2 = sphere_contact_params.compliance;
+    const double k1 = *sphere1_contact_params.point_stiffness;
+    const double k2 = *sphere2_contact_params.point_stiffness;
     const double stiffness_expected = (k1 * k2) / (k1 + k2);
     EXPECT_NEAR(pairs[0].stiffness, stiffness_expected,
                 kTolerance * stiffness_expected);
 
-    const double tau1 = ground_contact_params.dissipation_time_constant;
-    const double tau2 = sphere_contact_params.dissipation_time_constant;
+    const double tau1 = sphere1_contact_params.dissipation_time_constant;
+    const double tau2 = sphere2_contact_params.dissipation_time_constant;
     const double dissipation_expected = stiffness_expected * (tau1 + tau2);
     EXPECT_NEAR(pairs[0].damping, dissipation_expected,
                 kTolerance * dissipation_expected);
 
-    const double pz_WC = -k2 / (k1 + k2) * penetration_distance_;
+    const double pz_WS1 =
+        plant_->GetFreeBodyPose(*plant_context_, *sphere1_).translation().z();
+    const double pz_WC = -k2 / (k1 + k2) * penetration_distance_ + pz_WS1 +
+                         sphere1_params.radius;
     EXPECT_NEAR(pairs[0].p_WC.z(), pz_WC, kTolerance);
     EXPECT_TRUE(std::isnan(pairs[0].fn0));  // Expect NaN since not used.
   }
 
   double time_step_{0.001};
-  ContactParameters default_ground_parameters_{1.0e20, 0.0, 1.0};
-  SphereParameters default_sphere_parameters_{
-      "box1",
-      {51 / 255, 1.0, 1.0, 1.0} /* cyan */,
-      10.0 /* mass */,
-      0.2 /* size */,
-      {1.0e5 /* stiffness */, 0.001 /* dissipation */, 0.5 /* friction */}};
   const double penetration_distance_{1.0e-3};
 
   std::unique_ptr<systems::Diagram<double>> diagram_;
   MultibodyPlant<double>* plant_{nullptr};
   SceneGraph<double>* scene_graph_{nullptr};
   const RigidBody<double>* sphere1_{nullptr};
-  GeometryId sphere1_geometry_;
+  const RigidBody<double>* sphere2_{nullptr};
   CompliantContactManager<double>* contact_manager_{nullptr};
   std::unique_ptr<Context<double>> diagram_context_;
   Context<double>* plant_context_{nullptr};
 };
 
+#if 0
 TEST_F(CompliantContactManagerTest, PointContactProperties) {
   auto verify_point_contact_parameters =
       [this](const RigidBody<double>& body,
@@ -271,33 +357,49 @@ TEST_F(CompliantContactManagerTest, PointContactProperties) {
   verify_point_contact_parameters(
       *sphere1_, default_sphere_parameters_.contact_parameters);
 }
+#endif
 
-TEST_F(CompliantContactManagerTest, EvalDiscreteContactPairs) {
-  ContactParameters soft_contact{1.0e3, 0.01, 1.0};
-  ContactParameters hard_contact{1.0e40, 0.0, 1.0};
+TEST_F(CompliantContactManagerTest,
+       VerifyDiscreteContactPairsFromPointContact) {
+  ContactParameters soft_point_contact{1.0e3, std::nullopt, 0.01, 1.0};
+  ContactParameters hard_point_contact{1.0e40, std::nullopt, 0.0, 1.0};
 
   // Hard ground/soft sphere.
-  VerifyDiscreteContactPairs(hard_contact, soft_contact);
+  VerifyDiscreteContactPairsFromPointContact(hard_point_contact,
+                                             soft_point_contact);
 
   // Equally soft ground and sphere.
-  VerifyDiscreteContactPairs(soft_contact, soft_contact);
+  VerifyDiscreteContactPairsFromPointContact(soft_point_contact,
+                                             soft_point_contact);
 
   // Soft ground/hard sphere.
-  VerifyDiscreteContactPairs(soft_contact, hard_contact);
+  VerifyDiscreteContactPairsFromPointContact(soft_point_contact,
+                                             hard_point_contact);
 }
 
 TEST_F(CompliantContactManagerTest,
-       EvalDiscreteContactPairsFromHydroelasticContact) {
-  const bool use_hydroelastic_contact = true;
-  ContactParameters soft_contact{1.0e3, 0.01, 1.0, use_hydroelastic_contact};
-  ContactParameters hard_contact{std::numeric_limits<double>::infinity(), 0.0,
-                                 1.0, use_hydroelastic_contact};
-  SphereParameters sphere_params = default_sphere_parameters_;
-  sphere_params.contact_parameters = soft_contact;
+       VerifyDiscreteContactPairsFromHydroelasticContact) {
+  const ContactParameters soft_contact{1.0e5, 1.0e5, 0.01, 1.0};
+  const ContactParameters hard_hydro_contact{
+      std::nullopt, std::numeric_limits<double>::infinity(), 0.0, 1.0};
+  const SphereParameters sphere1_params{"Sphere1",
+                                        {0.0, 0.0, 1.0, 1.0} /* blue */,
+                                        10.0 /* mass */,
+                                        0.2 /* size */,
+                                        soft_contact};
+  const SphereParameters sphere2_params{"Sphere2",
+                                        {1.0, 0.0, 0.0, 1.0} /* red */,
+                                        10.0 /* mass */,
+                                        0.2 /* size */,
+                                        soft_contact};
 
   // Soft sphere/hard ground.
-  MakeModel(hard_contact, sphere_params);
+  MakeModel(hard_hydro_contact, sphere1_params, sphere2_params);
 
+  const std::vector<PenetrationAsPointPair<double>>& point_pairs =
+      EvalPointPairPenetrations(*plant_context_);
+  const int num_point_pairs = point_pairs.size();
+  EXPECT_EQ(num_point_pairs, 1);
   const std::vector<DiscreteContactPair<double>>& pairs =
       EvalDiscreteContactPairs(*plant_context_);
 
@@ -305,7 +407,7 @@ TEST_F(CompliantContactManagerTest,
       EvalContactSurfaces(*plant_context_);
   ASSERT_EQ(surfaces.size(), 1u);
   const geometry::SurfaceMesh<double>& patch = surfaces[0].mesh_W();
-  EXPECT_EQ(pairs.size(), patch.num_faces());
+  EXPECT_EQ(pairs.size(), patch.num_faces() + num_point_pairs);
   PRINT_VAR(pairs.size());
 }
 

@@ -1114,7 +1114,7 @@ void CompliantContactManager<T>::CalcDiscreteContactPairs(
   if (contact_model == ContactModel::kHydroelastic ||
       contact_model == ContactModel::kHydroelasticWithFallback) {
     const std::vector<geometry::ContactSurface<T>>& surfaces =
-        plant().EvalContactSurfaces(context);
+        EvalContactSurfaces(context);
     for (const auto& s : surfaces) {
       const geometry::SurfaceMesh<T>& mesh = s.mesh_W();
       num_quadrature_pairs += num_quad_points * mesh.num_faces();
@@ -1191,7 +1191,7 @@ void CompliantContactManager<T>::
   const auto& query_object = plant().EvalGeometryQueryInput(context);
   const geometry::SceneGraphInspector<T>& inspector = query_object.inspector();
   const std::vector<geometry::ContactSurface<T>>& surfaces =
-      plant().EvalContactSurfaces(context);
+      EvalContactSurfaces(context);
   for (const auto& s : surfaces) {
     const geometry::SurfaceMesh<T>& mesh_W = s.mesh_W();
     const T tau_M = GetDissipationTimeConstant(s.id_M(), inspector);

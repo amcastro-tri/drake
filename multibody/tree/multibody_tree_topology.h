@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <queue>
 #include <set>
+#include <stack>
 #include <string>
 #include <utility>
 #include <vector>
@@ -737,7 +738,7 @@ class MultibodyTreeTopology {
 
     // Compute body levels in the tree. Root is the zero level.
     // Breadth First Traversal (a.k.a. Level Order Traversal).
-    std::queue<BodyIndex> queue;
+    std::stack<BodyIndex> queue;
     queue.push(BodyIndex(0));  // Starts at the root.
     tree_height_ = 1;  // At least one level with the world body at the root.
     // While at it, create body nodes and index them in this BFT order for
@@ -745,7 +746,7 @@ class MultibodyTreeTopology {
     body_nodes_.reserve(num_bodies());
     while (!queue.empty()) {
       const BodyNodeIndex node(get_num_body_nodes());
-      const BodyIndex current = queue.front();
+      const BodyIndex current = queue.top();
       const BodyIndex parent = bodies_[current].parent_body;
 
       bodies_[current].body_node = node;
@@ -779,10 +780,10 @@ class MultibodyTreeTopology {
           bodies_[current].inboard_mobilizer /* This node's mobilizer */);
 
       // Pushes children to the back of the queue and pops current.
+      queue.pop();  // Pops front element.
       for (BodyIndex child : bodies_[current].child_bodies) {
         queue.push(child);  // Pushes at the back.
-      }
-      queue.pop();  // Pops front element.
+      }      
     }
 
     // Checks that all bodies were reached. We could have this situation if a

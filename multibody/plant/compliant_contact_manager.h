@@ -9,13 +9,14 @@
 #include "drake/common/eigen_types.h"
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/contact_solvers/block_sparse_matrix.h"
-#include "drake/multibody/plant/discrete_update_manager.h"
 #include "drake/multibody/plant/contact_permutation_utils.h"
+#include "drake/multibody/plant/discrete_update_manager.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/systems/framework/context.h"
 
 namespace drake {
 namespace multibody {
+namespace internal {
 
 struct ContactManagerStats {
   double time;
@@ -30,13 +31,11 @@ struct ContactManagerStats {
   double pack_results_time{0};
 };
 
-namespace internal {
 template <typename T>
 struct ContactJacobianCache {
   MatrixX<T> Jc;
   std::vector<drake::math::RotationMatrix<T>> R_WC_list;
 };
-}  // namespace internal
 
 // Forward declare MultibodyPlant.
 // template <typename T>
@@ -47,8 +46,7 @@ struct ContactJacobianCache {
 // problem, and reports results as ContactSolverResults.
 // @tparam_default_scalar
 template <typename T>
-class CompliantContactManager
-    : public internal::DiscreteUpdateManager<T> {
+class CompliantContactManager : public internal::DiscreteUpdateManager<T> {
  public:
   // TODO(amcastro-tri): consider owning a proper contact solver here.
   CompliantContactManager(
@@ -163,7 +161,8 @@ class CompliantContactManager
 
   // Convenience wrapper around MultibodyPlant::EvalPointPairPenetrations().
   // It allows access from within friend test fixtures.
-  const std::vector<geometry::PenetrationAsPointPair<T>>& EvalPointPairPenetrations(const systems::Context<T>& context) const {
+  const std::vector<geometry::PenetrationAsPointPair<T>>&
+  EvalPointPairPenetrations(const systems::Context<T>& context) const {
     return plant().EvalPointPairPenetrations(context);
   }
 
@@ -187,7 +186,7 @@ class CompliantContactManager
 
   void AppendDiscreteContactPairsForHydroelasticContact(
       const systems::Context<T>& context,
-      std::vector<internal::DiscreteContactPair<T>>* result) const;      
+      std::vector<internal::DiscreteContactPair<T>>* result) const;
 
   // TODO: change signature so that it returns a new contact graph instead.
   void CalcContactGraph(
@@ -232,13 +231,13 @@ class CompliantContactManager
       VectorX<T>* vc0, VectorX<T>* mu, VectorX<T>* stiffness,
       VectorX<T>* linear_damping) const;
 
-  void CalcContactJacobianCache(
-      const systems::Context<T>& context,
-      internal::ContactJacobianCache<T>* cache) const;
+  void CalcContactJacobianCache(const systems::Context<T>& context,
+                                internal::ContactJacobianCache<T>* cache) const;
 
   const internal::ContactJacobianCache<T>& EvalContactJacobianCache(
       const systems::Context<T>& context) const {
-    return plant().get_cache_entry(cache_indexes_.contact_jacobian)
+    return plant()
+        .get_cache_entry(cache_indexes_.contact_jacobian)
         .template Eval<internal::ContactJacobianCache<T>>(context);
   }
 
@@ -284,7 +283,7 @@ class CompliantContactManager
   mutable std::vector<std::vector<int>> participating_velocities_permutation_;
   // Contact graph. It makes reference to the "reduced tree indexes" tr.
   // The original tree can be obtained with t = participating_trees_[tr].
-  mutable internal::ContactGraph graph_;  
+  mutable internal::ContactGraph graph_;
 
   // Scratch workspace.
   struct Workspace {
@@ -307,5 +306,6 @@ class CompliantContactManager
   double theta_qv_{0.0};  // how q is computed in the equation for v.
 };
 
+}  // namespace internal
 }  // namespace multibody
 }  // namespace drake

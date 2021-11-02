@@ -30,6 +30,7 @@ using Eigen::VectorXd;
 
 namespace drake {
 namespace multibody {
+namespace internal {
 
 class CompliantContactManagerTest : public ::testing::Test {
  protected:
@@ -397,11 +398,10 @@ TEST_F(CompliantContactManagerTest, EvalContactJacobianCache) {
 
   // For this model we know the first entry corresponds to the single point pair
   // between sphere 1 and sphere 2.
-  
 
   // Test that Jc*v gives v_WB1 and v_B1B2_W
-
 }
 
+}  // namespace internal
 }  // namespace multibody
 }  // namespace drake

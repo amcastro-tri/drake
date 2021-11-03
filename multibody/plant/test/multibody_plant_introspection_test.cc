@@ -120,11 +120,13 @@ GTEST_TEST(MultibodyPlantIntrospection, FloatingBodies) {
   EXPECT_EQ(expected_floating_bodies, floating_bodies);
 
   // Verify state indexes for free bodies.
-  // N.B. This test assumes DOFs are in a depth-first-traversal order.
+  // N.B. This test assumes DOFs are in a depth-first-traversal order with
+  // mobilities assigned in the order bodies were added to the model. This
+  // assumption implies that DOFs for the first tree are first, followed by DOFs
+  // for the second tree, etc.
   const int atlas_nq = plant.num_positions(atlas_model1);
-  const int mug_nq = plant.num_positions(mug_model);
   const std::unordered_set<int> expected_floating_positions_start(
-      {0, mug_nq, mug_nq + atlas_nq});
+      {0, atlas_nq, 2 * atlas_nq});
   const std::unordered_set<int> floating_positions_start(
       {pelvis1.floating_positions_start(), pelvis2.floating_positions_start(),
        mug.floating_positions_start()});
@@ -132,9 +134,8 @@ GTEST_TEST(MultibodyPlantIntrospection, FloatingBodies) {
 
   const int nq = plant.num_positions();
   const int atlas_nv = plant.num_velocities(atlas_model1);
-  const int mug_nv = plant.num_velocities(mug_model);
   const std::unordered_set<int> expected_floating_velocities_start(
-      {nq, nq + mug_nv, nq + mug_nv + atlas_nv});
+      {nq, nq + atlas_nv, nq + 2 * atlas_nv});
   const std::unordered_set<int> floating_velocities_start(
       {pelvis1.floating_velocities_start(), pelvis2.floating_velocities_start(),
        mug.floating_velocities_start()});

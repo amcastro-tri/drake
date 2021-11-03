@@ -779,10 +779,17 @@ class MultibodyTreeTopology {
           bodies_[current].parent_body       /* This node's parent body */,
           bodies_[current].inboard_mobilizer /* This node's mobilizer */);
 
-      // Pushes children to the back of the queue and pops current.
+      // We want to order body nodes so that mobilities are assigned in the
+      // order bodies were added to the model. Since we are using a DFT
+      // ordering, this implies that DOFs are naturally split by trees (in a
+      // forest). Therefore DOFs for the first tree will be first, followed by
+      // DOFs for the second three, and so on. Since we are using a stack to
+      // store bodies that will be processed next, we must place bodies in
+      // reverse order so that the first child is at the top of the stack.
       queue.pop();  // Pops front element.
-      for (BodyIndex child : bodies_[current].child_bodies) {
-        queue.push(child);  // Pushes at the back.
+      for (auto it = bodies_[current].child_bodies.rbegin();
+           it != bodies_[current].child_bodies.rend(); ++it) {
+        queue.push(*it);
       }
     }
 

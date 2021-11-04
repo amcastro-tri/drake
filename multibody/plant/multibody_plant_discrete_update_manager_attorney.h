@@ -79,6 +79,12 @@ class MultibodyPlantDiscreteUpdateManagerAttorney {
     return discrete_pairs;
   }
 
+  static const std::vector<geometry::ContactSurface<T>>& EvalContactSurfaces(
+      const MultibodyPlant<T>& plant,
+      const systems::Context<T>& context) {
+    return plant.EvalContactSurfaces(context);
+  }
+
   // TODO(xuchenhan-tri): Remove this when SceneGraph takes control of all
   //  geometries.
   /* Returns the per-body arrays of collision geometries indexed by BodyIndex

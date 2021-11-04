@@ -293,7 +293,7 @@ class CompliantContactManagerTest : public ::testing::Test {
 
   const std::vector<PenetrationAsPointPair<double>>& EvalPointPairPenetrations(
       const Context<double>& context) const {
-    return contact_manager_->EvalPointPairPenetrations(context);
+    return plant_->EvalPointPairPenetrations(context);
   }
 
   const std::vector<geometry::ContactSurface<double>>& EvalContactSurfaces(

@@ -92,9 +92,9 @@ void CompliantContactManager<T>::CalcContactJacobianCache(
     const GeometryId geometryA_id = point_pair.id_A;
     const GeometryId geometryB_id = point_pair.id_B;
 
-    BodyIndex bodyA_index = plant().geometry_id_to_body_index_.at(geometryA_id);
+    BodyIndex bodyA_index = this->geometry_id_to_body_index().at(geometryA_id);
     const Body<T>& bodyA = plant().get_body(bodyA_index);
-    BodyIndex bodyB_index = plant().geometry_id_to_body_index_.at(geometryB_id);
+    BodyIndex bodyB_index = this->geometry_id_to_body_index().at(geometryB_id);
     const Body<T>& bodyB = plant().get_body(bodyB_index);
 
     // Contact normal from point A into B.
@@ -104,11 +104,11 @@ void CompliantContactManager<T>::CalcContactJacobianCache(
     // Since v_AcBc_W = v_WBc - v_WAc the relative velocity Jacobian will be:
     //   J_AcBc_W = Jv_WBc_W - Jv_WAc_W.
     // That is the relative velocity at C is v_AcBc_W = J_AcBc_W * v.
-    plant().internal_tree().CalcJacobianTranslationalVelocity(
+    this->internal_tree().CalcJacobianTranslationalVelocity(
         context, JacobianWrtVariable::kV, bodyA.body_frame(), frame_W, p_WC,
         frame_W, frame_W, &Jv_WAc_W);
     Jv_AcBc_W = -Jv_WAc_W;  // Jv_AcBc_W = -Jv_WAc_W.
-    plant().internal_tree().CalcJacobianTranslationalVelocity(
+    this->internal_tree().CalcJacobianTranslationalVelocity(
         context, JacobianWrtVariable::kV, bodyB.body_frame(), frame_W, p_WC,
         frame_W, frame_W, &Jv_WBc_W);
     Jv_AcBc_W += Jv_WBc_W;  // Jv_AcBc_W = Jv_WBc_W - Jv_WAc_W.
@@ -134,7 +134,7 @@ T CompliantContactManager<T>::GetPointContactStiffness(
   DRAKE_DEMAND(prop != nullptr);
   return prop->template GetPropertyOrDefault<T>(
       geometry::internal::kMaterialGroup, geometry::internal::kPointStiffness,
-      plant().penalty_method_contact_parameters_.geometry_stiffness);
+      this->default_contact_stiffness());
 }
 
 template <typename T>
@@ -201,7 +201,7 @@ void CompliantContactManager<T>::CalcDiscreteContactPairs(
   if (contact_model == ContactModel::kHydroelastic ||
       contact_model == ContactModel::kHydroelasticWithFallback) {
     const std::vector<geometry::ContactSurface<T>>& surfaces =
-        EvalContactSurfaces(context);
+        this->EvalContactSurfaces(context);
     for (const auto& s : surfaces) {
       const geometry::SurfaceMesh<T>& mesh = s.mesh_W();
       num_quadrature_pairs += num_quad_points * mesh.num_faces();
@@ -224,9 +224,11 @@ void CompliantContactManager<T>::AppendDiscreteContactPairsForPointContact(
     const systems::Context<T>& context,
     std::vector<internal::DiscreteContactPair<T>>* result) const {
   std::vector<internal::DiscreteContactPair<T>>& contact_pairs = *result;
-
-  // TODO: use MBP's public port. Add sugar to it.
-  const auto& query_object = plant().EvalGeometryQueryInput(context);
+  
+  const geometry::QueryObject<T>& query_object =
+      this->plant()
+          .get_geometry_query_input_port()
+          .template Eval<geometry::QueryObject<T>>(context);
   const geometry::SceneGraphInspector<T>& inspector = query_object.inspector();
 
   // Fill in the point contact pairs.
@@ -274,11 +276,13 @@ void CompliantContactManager<T>::
   const std::vector<double>& wq = quadrature.weights();
   const int num_quad_points = wq.size();
 
-  // TODO: use MBP's public port. Add sugar to it.
-  const auto& query_object = plant().EvalGeometryQueryInput(context);
+  const geometry::QueryObject<T>& query_object =
+      this->plant()
+          .get_geometry_query_input_port()
+          .template Eval<geometry::QueryObject<T>>(context);
   const geometry::SceneGraphInspector<T>& inspector = query_object.inspector();
   const std::vector<geometry::ContactSurface<T>>& surfaces =
-      EvalContactSurfaces(context);
+      this->EvalContactSurfaces(context);
   for (const auto& s : surfaces) {
     const geometry::SurfaceMesh<T>& mesh_W = s.mesh_W();
     const T tau_M = GetDissipationTimeConstant(s.id_M(), inspector);

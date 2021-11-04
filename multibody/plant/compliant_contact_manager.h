@@ -167,20 +167,6 @@ class CompliantContactManager : public internal::DiscreteUpdateManager<T> {
         .template Eval<internal::ContactJacobianCache<T>>(context);
   }
 
-  // Convenience wrapper around MultibodyPlant::EvalPointPairPenetrations().
-  // It allows access from within friend test fixtures.
-  const std::vector<geometry::PenetrationAsPointPair<T>>&
-  EvalPointPairPenetrations(const systems::Context<T>& context) const {
-    return plant().EvalPointPairPenetrations(context);
-  }
-
-  // Convenience wrapper around MultibodyPlant::EvalContactSurfaces().
-  // It allows access from within friend test fixtures.
-  const std::vector<geometry::ContactSurface<T>>& EvalContactSurfaces(
-      const systems::Context<T>& context) const {
-    return plant().EvalContactSurfaces(context);
-  }
-
   std::unique_ptr<contact_solvers::internal::ContactSolver<T>> contact_solver_;
   CacheIndexes cache_indexes_;
 };

@@ -72,8 +72,6 @@ template <typename>
 class MultibodyPlantModelAttorney;
 template <typename>
 class MultibodyPlantDiscreteUpdateManagerAttorney;
-template <typename>
-class CompliantContactManager;
 
 }  // namespace internal
 template <typename>
@@ -4132,7 +4130,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   friend class internal::MultibodyPlantModelAttorney<T>;
   friend class internal::MultibodyPlantDiscreteUpdateManagerAttorney<T>;
   friend class CompliantContactComputationManager<T>;
-  friend class internal::CompliantContactManager<T>;
 
   // This struct stores in one single place all indexes related to
   // MultibodyPlant specific cache entries. These are initialized at Finalize()

@@ -79,6 +79,13 @@ DiscreteUpdateManager<T>::EvalDiscreteContactPairs(
 }
 
 template <typename T>
+const std::vector<geometry::ContactSurface<T>>& DiscreteUpdateManager<T>::EvalContactSurfaces(
+      const systems::Context<T>& context) const {
+  return MultibodyPlantDiscreteUpdateManagerAttorney<T>::EvalContactSurfaces(
+      plant(), context);
+}
+
+template <typename T>
 std::vector<CoulombFriction<double>>
 DiscreteUpdateManager<T>::CalcCombinedFrictionCoefficients(
     const systems::Context<T>& context,

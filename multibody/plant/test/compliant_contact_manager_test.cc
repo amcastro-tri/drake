@@ -11,6 +11,7 @@
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/systems/analysis/simulator.h"
 #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
 
 using drake::geometry::GeometryId;
 using drake::geometry::PenetrationAsPointPair;
@@ -20,6 +21,7 @@ using drake::geometry::SurfaceMesh;
 using drake::geometry::VolumeMesh;
 using drake::geometry::VolumeMeshFieldLinear;
 using drake::math::RigidTransformd;
+using drake::math::RotationMatrixd;
 using drake::multibody::contact_solvers::internal::BlockSparseMatrix;
 using drake::multibody::contact_solvers::internal::PgsSolver;
 using drake::multibody::internal::DiscreteContactPair;
@@ -50,6 +52,15 @@ class CompliantContactManagerTest : public ::testing::Test {
     ContactParameters contact_parameters;
   };
 
+  // The default setup for this fixture corresponds to:
+  //   - A rigid-hidroelastic half-space for the ground.
+  //   - A compliant-hidroelastic sphere on top of the ground.
+  //   - A second compliant-hidroelastic sphere on top of the first sphere.
+  //   - Both spheres also have point contact compliance.
+  //   - We set MultibdyPlant to use hydroelastic contact with fallback.
+  //   - Sphere 1 penetrates into the ground penetration_distance_.
+  //   - Sphere 1 and 2 penetrate penetration_distance_.
+  //   - Velocities are zero.
   void MakeDefaultSetup() {
     const ContactParameters soft_contact{1.0e5, 1.0e5, 0.01, 1.0};
     const ContactParameters hard_hydro_contact{
@@ -64,8 +75,6 @@ class CompliantContactManagerTest : public ::testing::Test {
                                           10.0 /* mass */,
                                           0.2 /* size */,
                                           soft_contact};
-
-    // Soft sphere/hard ground.
     MakeModel(hard_hydro_contact, sphere1_params, sphere2_params);
   }
 
@@ -388,6 +397,8 @@ TEST_F(CompliantContactManagerTest,
 
 TEST_F(CompliantContactManagerTest, EvalContactJacobianCache) {
   MakeDefaultSetup();
+  const double radius = 0.2;  // Spheres's radii in the default setup.
+  const double kTolerance = std::numeric_limits<double>::epsilon();
 
   const std::vector<DiscreteContactPair<double>>& pairs =
       EvalDiscreteContactPairs(*plant_context_);
@@ -396,8 +407,48 @@ TEST_F(CompliantContactManagerTest, EvalContactJacobianCache) {
   EXPECT_EQ(Jc.cols(), plant_->num_velocities());
   EXPECT_EQ(Jc.rows(), 3 * pairs.size());
 
+  PRINT_VAR(Jc.rows());
+
+    // Arbitrary velocity of sphere 1.
+  const Vector3d v_WS1(1, 2, 3);
+  const Vector3d w_WS1(4, 5, 6);
+  const SpatialVelocity<double> V_WS1(w_WS1, v_WS1);
+
+  // Arbitrary velocity of sphere 2.
+  const Vector3d v_WS2(7, 8, 9);
+  const Vector3d w_WS2(10, 11, 12);
+  const SpatialVelocity<double> V_WS2(w_WS2, v_WS2);
+
+  plant_->SetFreeBodySpatialVelocity(plant_context_, *sphere1_, V_WS1);
+  plant_->SetFreeBodySpatialVelocity(plant_context_, *sphere2_, V_WS2);
+  const VectorXd v = plant_->GetVelocities(*plant_context_);
+
+  // Verify contact Jacobian for the point pair.
   // For this model we know the first entry corresponds to the single point pair
   // between sphere 1 and sphere 2.
+  {
+    // For the default setaup both spheres are equally compliant and therefore
+    // the contact point C lies right in the middle.
+    const Vector3d p_S1C_W(0, 0, radius - penetration_distance_ / 2.0);
+    const Vector3d p_S2C_W(0, 0, -(radius - penetration_distance_ / 2.0));
+
+    // Compute expected contact point velocity.
+    const Vector3d v_WS1c = V_WS1.Shift(p_S1C_W).translational();
+    const Vector3d v_WS2c = V_WS2.Shift(p_S2C_W).translational();
+    const Vector3d expected_v_S1cS2c_W = v_WS2c - v_WS1c;
+
+    const GeometryId sphere1_geometry =
+        plant_->GetCollisionGeometriesForBody(*sphere1_)[0];
+    const int sign = pairs[0].id_A == sphere1_geometry ? 1 : -1;
+    const MatrixXd J_S1S2_C = sign * Jc.topRows(3);
+    const RotationMatrixd& R_WC = cache.R_WC_list[0];
+    const MatrixXd J_S1cS2c_W = R_WC.matrix() * J_S1S2_C;
+    const Vector3d v_S1cS2c_W = J_S1cS2c_W * v;
+    PRINT_VAR(v_S1cS2c_W.transpose());
+    PRINT_VARn(J_S1cS2c_W);
+    EXPECT_TRUE(CompareMatrices(v_S1cS2c_W, expected_v_S1cS2c_W, kTolerance,
+                                MatrixCompareType::relative));
+  }
 
   // Test that Jc*v gives v_WB1 and v_B1B2_W
 }

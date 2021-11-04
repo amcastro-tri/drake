@@ -54,7 +54,6 @@ drake_cc_library(
     hdrs = ["compliant_contact_manager.h"],
     deps = [
         ":plant",
-        "//common/test_utilities:limit_malloc",
         "//multibody/contact_solvers:contact_solver",
         "//multibody/triangle_quadrature",
     ],

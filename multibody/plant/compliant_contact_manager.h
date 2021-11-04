@@ -140,14 +140,18 @@ class CompliantContactManager : public internal::DiscreteUpdateManager<T> {
 
   void DeclareCacheEntries() final;
 
+  // Returns the point contact stiffness stored in group
+  // geometry::internal::kMaterialGroup with property
+  // geometry::internal::kPointStiffness for the specified geometry.
+  // If not present, it returns MultibodyPlant's default stiffness.
   T GetPointContactStiffness(
       geometry::GeometryId id,
       const geometry::SceneGraphInspector<T>& inspector) const;
 
-  T GetHydroelasticContactModulus(
-      geometry::GeometryId id,
-      const geometry::SceneGraphInspector<T>& inspector) const;
-
+  // Returns the dissipation time constant stored in group
+  // geometry::internal::kMaterialGroup with property
+  // "dissipation_time_constant". If not present, it returns
+  // plant().time_step().
   T GetDissipationTimeConstant(
       geometry::GeometryId id,
       const geometry::SceneGraphInspector<T>& inspector) const;

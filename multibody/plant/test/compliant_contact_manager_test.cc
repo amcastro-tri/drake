@@ -1,7 +1,5 @@
 #include "drake/multibody/plant/compliant_contact_manager.h"
 
-#include <iostream>
-
 #include <gtest/gtest.h>
 
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
@@ -10,8 +8,6 @@
 #include "drake/multibody/contact_solvers/pgs_solver.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/systems/analysis/simulator.h"
-#define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
-#define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
 
 using drake::geometry::GeometryId;
 using drake::geometry::PenetrationAsPointPair;
@@ -34,16 +30,33 @@ namespace drake {
 namespace multibody {
 namespace internal {
 
+// In this fixture we set a simple model consisting of:
+//  1. The flat ground.
+//  2. A sphere (sphere 1) on top of the ground.
+//  3. A second sphere (sphere 2) on top of the first sphere.
+// The flat ground is modeled as rigid-hydroelastic.
+// Sphere 1 interacts with the ground using the hydroelastic contact model
+// Sphere 2 interacts with sphere 1 using the point contact model.
+// We use this fixture to verify the contact quantities computed by the
+// CompliantContactManager.
 class CompliantContactManagerTest : public ::testing::Test {
- protected:
-  // Model parameters.
+ public:
+  // Contact model parameters.
   struct ContactParameters {
+    // Point contact stiffness. If nullopt, this property is not added to the
+    // model.
     std::optional<double> point_stiffness;
+    // Hydroelastic modulus. If nullopt, this property is not added to the
+    // model.
     std::optional<double> hydro_modulus;
+    // Dissipation time constant τ is used to setup the linear dissipation model
+    // where dissipation is c = τ⋅k, with k the point pair stiffness.
     double dissipation_time_constant;
+    // Coefficient of dynamic friction.
     double friction_coefficient;
   };
 
+  // Parameters used to setup the model of a compliant sphere.
   struct SphereParameters {
     const std::string name;
     const Vector4<double> color;
@@ -57,7 +70,7 @@ class CompliantContactManagerTest : public ::testing::Test {
   //   - A compliant-hidroelastic sphere on top of the ground.
   //   - A second compliant-hidroelastic sphere on top of the first sphere.
   //   - Both spheres also have point contact compliance.
-  //   - We set MultibdyPlant to use hydroelastic contact with fallback.
+  //   - We set MultibodyPlant to use hydroelastic contact with fallback.
   //   - Sphere 1 penetrates into the ground penetration_distance_.
   //   - Sphere 1 and 2 penetrate penetration_distance_.
   //   - Velocities are zero.
@@ -118,6 +131,10 @@ class CompliantContactManagerTest : public ::testing::Test {
     SetContactState(sphere1_params, sphere2_params);
   }
 
+  // Sphere 1 is set on top of the ground and sphere 2 sits right on top of
+  // sphere 1. We set the state of the model so that sphere 1 penetrates into
+  // the ground a distance penetration_distance_ and so that sphere 1 and 2 also
+  // interpenetrate a distance penetration_distance_.
   void SetContactState(
       const SphereParameters& sphere1_params,
       const std::optional<SphereParameters>& sphere2_params) const {
@@ -155,53 +172,7 @@ class CompliantContactManagerTest : public ::testing::Test {
     return body;
   }
 
-  // N.B. This method assumes a single geometry per body.
-  double GetPointContactStiffness(const RigidBody<double>& body) {
-    const geometry::QueryObject<double>& query_object =
-        plant_->get_geometry_query_input_port()
-            .Eval<geometry::QueryObject<double>>(*plant_context_);
-    const geometry::SceneGraphInspector<double>& inspector =
-        query_object.inspector();
-    const std::vector<geometry::GeometryId>& geometries =
-        plant_->GetCollisionGeometriesForBody(body);
-    DRAKE_DEMAND(geometries.size() == 1u);
-    return contact_manager_->GetPointContactStiffness(geometries[0], inspector);
-  }
-
-  // N.B. This method assumes a single geometry per body.
-  double GetDissipationTimeConstant(const RigidBody<double>& body) {
-    const geometry::QueryObject<double>& query_object =
-        plant_->get_geometry_query_input_port()
-            .Eval<geometry::QueryObject<double>>(*plant_context_);
-    const geometry::SceneGraphInspector<double>& inspector =
-        query_object.inspector();
-    const std::vector<geometry::GeometryId>& geometries =
-        plant_->GetCollisionGeometriesForBody(body);
-    DRAKE_DEMAND(geometries.size() == 1u);
-    return contact_manager_->GetDissipationTimeConstant(geometries[0],
-                                                        inspector);
-  }
-
-  const std::vector<PenetrationAsPointPair<double>>& EvalPointPairPenetrations(
-      const Context<double>& context) const {
-    return contact_manager_->EvalPointPairPenetrations(context);
-  }
-
-  const std::vector<geometry::ContactSurface<double>>& EvalContactSurfaces(
-      const Context<double>& context) const {
-    return contact_manager_->EvalContactSurfaces(context);
-  }
-
-  const std::vector<DiscreteContactPair<double>>& EvalDiscreteContactPairs(
-      const Context<double>& context) const {
-    return contact_manager_->EvalDiscreteContactPairs(context);
-  }
-
-  const internal::ContactJacobianCache<double>& EvalContactJacobianCache(
-      const systems::Context<double>& context) const {
-    return contact_manager_->EvalContactJacobianCache(context);
-  }
-
+  // Utility to make ProximityProperties from ContactParameters.
   static ProximityProperties MakeProximityProperties(
       const ContactParameters& params) {
     DRAKE_DEMAND(params.point_stiffness || params.hydro_modulus);
@@ -243,6 +214,8 @@ class CompliantContactManagerTest : public ::testing::Test {
     return properties;
   }
 
+  // This method makes a model with the specified sphere 1 and sphere 2
+  // properties and verifies the resulting contact pairs.
   void VerifyDiscreteContactPairsFromPointContact(
       const ContactParameters& sphere1_point_params,
       const ContactParameters& sphere2_point_params) {
@@ -314,7 +287,36 @@ class CompliantContactManagerTest : public ::testing::Test {
     EXPECT_TRUE(std::isnan(pairs[0].fn0));  // Expect NaN since not used.
   }
 
+  // In the methods below we use CompliantContactManagerTest's friendship with
+  // CompliantContactManager to provide access to private methods for unit
+  // testing.
+
+  const std::vector<PenetrationAsPointPair<double>>& EvalPointPairPenetrations(
+      const Context<double>& context) const {
+    return contact_manager_->EvalPointPairPenetrations(context);
+  }
+
+  const std::vector<geometry::ContactSurface<double>>& EvalContactSurfaces(
+      const Context<double>& context) const {
+    return contact_manager_->EvalContactSurfaces(context);
+  }
+
+  const std::vector<DiscreteContactPair<double>>& EvalDiscreteContactPairs(
+      const Context<double>& context) const {
+    return contact_manager_->EvalDiscreteContactPairs(context);
+  }
+
+  const internal::ContactJacobianCache<double>& EvalContactJacobianCache(
+      const systems::Context<double>& context) const {
+    return contact_manager_->EvalContactJacobianCache(context);
+  }
+
+ protected:
+  // Arbitrary positive value so that the model is discrete.
   double time_step_{0.001};
+
+  // Default penetration distance. The configuration of the model is set so that
+  // ground/sphere1 and sphere1/sphere2 interpenetrate by this amount.
   const double penetration_distance_{1.0e-3};
 
   std::unique_ptr<systems::Diagram<double>> diagram_;
@@ -327,22 +329,8 @@ class CompliantContactManagerTest : public ::testing::Test {
   Context<double>* plant_context_{nullptr};
 };
 
-#if 0
-TEST_F(CompliantContactManagerTest, PointContactProperties) {
-  auto verify_point_contact_parameters =
-      [this](const RigidBody<double>& body,
-             const ContactParameters& parameters) {
-        EXPECT_EQ(GetPointContactStiffness(body), parameters.compliance);
-        EXPECT_EQ(GetDissipationTimeConstant(body),
-                  parameters.dissipation_time_constant);
-      };
-  verify_point_contact_parameters(plant_->world_body(),
-                                  default_ground_parameters_);
-  verify_point_contact_parameters(
-      *sphere1_, default_sphere_parameters_.contact_parameters);
-}
-#endif
-
+// Unit test to verify discrete contact pairs computed by the manger for
+// different combinations of compliance.
 TEST_F(CompliantContactManagerTest,
        VerifyDiscreteContactPairsFromPointContact) {
   ContactParameters soft_point_contact{1.0e3, std::nullopt, 0.01, 1.0};
@@ -361,6 +349,8 @@ TEST_F(CompliantContactManagerTest,
                                              hard_point_contact);
 }
 
+// Unit test to verify discrete contact pairs computed by the manger for
+// hydroelastic contact.
 TEST_F(CompliantContactManagerTest,
        VerifyDiscreteContactPairsFromHydroelasticContact) {
   const ContactParameters soft_contact{1.0e5, 1.0e5, 0.01, 1.0};
@@ -392,9 +382,9 @@ TEST_F(CompliantContactManagerTest,
   ASSERT_EQ(surfaces.size(), 1u);
   const geometry::SurfaceMesh<double>& patch = surfaces[0].mesh_W();
   EXPECT_EQ(pairs.size(), patch.num_faces() + num_point_pairs);
-  PRINT_VAR(pairs.size());
 }
 
+// Unit test to verify the computation of the contact Jacobian.
 TEST_F(CompliantContactManagerTest, EvalContactJacobianCache) {
   MakeDefaultSetup();
   const double radius = 0.2;  // Spheres's radii in the default setup.
@@ -406,8 +396,6 @@ TEST_F(CompliantContactManagerTest, EvalContactJacobianCache) {
   const auto& Jc = cache.Jc;
   EXPECT_EQ(Jc.cols(), plant_->num_velocities());
   EXPECT_EQ(Jc.rows(), 3 * pairs.size());
-
-  PRINT_VAR(Jc.rows());
 
   // Arbitrary velocity of sphere 1.
   const Vector3d v_WS1(1, 2, 3);
@@ -439,14 +427,12 @@ TEST_F(CompliantContactManagerTest, EvalContactJacobianCache) {
     const Vector3d v_WS1c = V_WS1.Shift(p_S1C_W).translational();
     const Vector3d v_WS2c = V_WS2.Shift(p_S2C_W).translational();
     const Vector3d expected_v_S1cS2c_W = v_WS2c - v_WS1c;
-    
+
     const int sign = pairs[0].id_A == sphere1_geometry ? 1 : -1;
     const MatrixXd J_S1cS2c_C = sign * Jc.topRows(3);
     const RotationMatrixd& R_WC = cache.R_WC_list[0];
     const MatrixXd J_S1cS2c_W = R_WC.matrix() * J_S1cS2c_C;
     const Vector3d v_S1cS2c_W = J_S1cS2c_W * v;
-    PRINT_VAR(v_S1cS2c_W.transpose());
-    PRINT_VARn(J_S1cS2c_W);
     EXPECT_TRUE(CompareMatrices(v_S1cS2c_W, expected_v_S1cS2c_W, kTolerance,
                                 MatrixCompareType::relative));
   }
@@ -454,11 +440,6 @@ TEST_F(CompliantContactManagerTest, EvalContactJacobianCache) {
   // Verify contact Jacobian for hydroelastic pairs.
   // We know hydroelastic pairs come after point pairs.
   {
-    // const std::vector<geometry::ContactSurface<double>>& surfaces =
-    //    EvalContactSurfaces(*plant_context_);
-    // ASSERT_EQ(surfaces.size(), 1u);
-    // const geometry::SurfaceMesh<double>& mesh = surfaces[0].mesh_W();
-    // const int num_hydro_pairs = mesh.num_faces();
     const Vector3d p_WS1(0, 0, radius - penetration_distance_);
     for (size_t q = 1; q < pairs.size(); ++q) {
       const Vector3d& p_WC = pairs[q].p_WC;
@@ -467,11 +448,9 @@ TEST_F(CompliantContactManagerTest, EvalContactJacobianCache) {
       const int sign = pairs[q].id_B == sphere1_geometry ? 1 : -1;
       const MatrixXd J_WS1c_C =
           sign * Jc.block(3 * q, 0, 3, plant_->num_velocities());
-      const RotationMatrixd& R_WC = cache.R_WC_list[q];          
+      const RotationMatrixd& R_WC = cache.R_WC_list[q];
       const MatrixXd J_WS1c_W = R_WC.matrix() * J_WS1c_C;
       const Vector3d v_WS1c_W = J_WS1c_W * v;
-      PRINT_VAR(v_WS1c_W.transpose());
-      // PRINT_VARn(J_S1cS2c_W);
       EXPECT_TRUE(CompareMatrices(v_WS1c_W, expected_v_WS1c, kTolerance,
                                   MatrixCompareType::relative));
     }

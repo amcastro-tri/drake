@@ -878,38 +878,9 @@ T CompliantContactManager<T>::GetPointContactStiffness(
   const geometry::ProximityProperties* prop =
       inspector.GetProximityProperties(id);
   DRAKE_DEMAND(prop != nullptr);
-  // TODO: add
-  // MultibodyPlantDiscreteUpdateManagerAttorney::GetDefaultPointContactStiffness()
   return prop->template GetPropertyOrDefault<T>(
       geometry::internal::kMaterialGroup, geometry::internal::kPointStiffness,
       plant().penalty_method_contact_parameters_.geometry_stiffness);
-}
-
-template <typename T>
-T CompliantContactManager<T>::GetHydroelasticContactModulus(
-    geometry::GeometryId id,
-    const geometry::SceneGraphInspector<T>& inspector) const {
-  auto make_error_message = [&]() {
-    BodyIndex body_index = plant().geometry_id_to_body_index_.at(id);
-    const std::string& body_name = plant().get_body(body_index).name();
-    const std::string& geometry_name = inspector.GetName(id);
-    const std::string message =
-        "Proximity properties not assigned for geometry '" + geometry_name +
-        "' of body '" + body_name + "'.";
-    return message;
-  };
-
-  const double kInf = std::numeric_limits<double>::infinity();
-  const geometry::ProximityProperties* properties =
-      inspector.GetProximityProperties(id);
-  if (properties == nullptr) {
-    throw std::runtime_error(make_error_message());
-  }
-
-  const T elastic_modulus =
-      properties->GetPropertyOrDefault("material", "elastic_modulus", kInf);
-  DRAKE_DEMAND(elastic_modulus > 0);
-  return elastic_modulus;
 }
 
 template <typename T>

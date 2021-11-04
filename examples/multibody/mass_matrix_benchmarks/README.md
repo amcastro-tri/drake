@@ -52,6 +52,20 @@ To run the test:
 
     $ bazel run examples/multibody/mass_matrix_benchmarks:featherstone_ltdl_test
 
+Mass Matrix Sparsity
+--------------------
+
+| Sparisty Pattern for the Anchored Allegro Hand |
+| :---: |
+| ![AnchoredAllegroMassMatrix](images/anchored_allegro_mass_matrix_spy.png)    |
+|  |
+
+
+| Sparisty Pattern for the Floating Allegro Hand |
+| :---: |
+| ![FloatingAllegroMassMatrix](images/floating_allegro_mass_matrix_spy.png)    |
+|  |
+
 References
 ----------
 

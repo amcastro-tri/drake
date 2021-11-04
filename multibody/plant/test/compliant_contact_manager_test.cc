@@ -409,7 +409,7 @@ TEST_F(CompliantContactManagerTest, EvalContactJacobianCache) {
 
   PRINT_VAR(Jc.rows());
 
-    // Arbitrary velocity of sphere 1.
+  // Arbitrary velocity of sphere 1.
   const Vector3d v_WS1(1, 2, 3);
   const Vector3d w_WS1(4, 5, 6);
   const SpatialVelocity<double> V_WS1(w_WS1, v_WS1);
@@ -423,11 +423,14 @@ TEST_F(CompliantContactManagerTest, EvalContactJacobianCache) {
   plant_->SetFreeBodySpatialVelocity(plant_context_, *sphere2_, V_WS2);
   const VectorXd v = plant_->GetVelocities(*plant_context_);
 
+  const GeometryId sphere1_geometry =
+      plant_->GetCollisionGeometriesForBody(*sphere1_)[0];
+
   // Verify contact Jacobian for the point pair.
   // For this model we know the first entry corresponds to the single point pair
   // between sphere 1 and sphere 2.
   {
-    // For the default setaup both spheres are equally compliant and therefore
+    // For the default setup both spheres are equally compliant and therefore
     // the contact point C lies right in the middle.
     const Vector3d p_S1C_W(0, 0, radius - penetration_distance_ / 2.0);
     const Vector3d p_S2C_W(0, 0, -(radius - penetration_distance_ / 2.0));
@@ -436,13 +439,11 @@ TEST_F(CompliantContactManagerTest, EvalContactJacobianCache) {
     const Vector3d v_WS1c = V_WS1.Shift(p_S1C_W).translational();
     const Vector3d v_WS2c = V_WS2.Shift(p_S2C_W).translational();
     const Vector3d expected_v_S1cS2c_W = v_WS2c - v_WS1c;
-
-    const GeometryId sphere1_geometry =
-        plant_->GetCollisionGeometriesForBody(*sphere1_)[0];
+    
     const int sign = pairs[0].id_A == sphere1_geometry ? 1 : -1;
-    const MatrixXd J_S1S2_C = sign * Jc.topRows(3);
+    const MatrixXd J_S1cS2c_C = sign * Jc.topRows(3);
     const RotationMatrixd& R_WC = cache.R_WC_list[0];
-    const MatrixXd J_S1cS2c_W = R_WC.matrix() * J_S1S2_C;
+    const MatrixXd J_S1cS2c_W = R_WC.matrix() * J_S1cS2c_C;
     const Vector3d v_S1cS2c_W = J_S1cS2c_W * v;
     PRINT_VAR(v_S1cS2c_W.transpose());
     PRINT_VARn(J_S1cS2c_W);
@@ -450,7 +451,31 @@ TEST_F(CompliantContactManagerTest, EvalContactJacobianCache) {
                                 MatrixCompareType::relative));
   }
 
-  // Test that Jc*v gives v_WB1 and v_B1B2_W
+  // Verify contact Jacobian for hydroelastic pairs.
+  // We know hydroelastic pairs come after point pairs.
+  {
+    // const std::vector<geometry::ContactSurface<double>>& surfaces =
+    //    EvalContactSurfaces(*plant_context_);
+    // ASSERT_EQ(surfaces.size(), 1u);
+    // const geometry::SurfaceMesh<double>& mesh = surfaces[0].mesh_W();
+    // const int num_hydro_pairs = mesh.num_faces();
+    const Vector3d p_WS1(0, 0, radius - penetration_distance_);
+    for (size_t q = 1; q < pairs.size(); ++q) {
+      const Vector3d& p_WC = pairs[q].p_WC;
+      const Vector3d p_S1C_W = p_WC - p_WS1;
+      const Vector3d expected_v_WS1c = V_WS1.Shift(p_S1C_W).translational();
+      const int sign = pairs[q].id_B == sphere1_geometry ? 1 : -1;
+      const MatrixXd J_WS1c_C =
+          sign * Jc.block(3 * q, 0, 3, plant_->num_velocities());
+      const RotationMatrixd& R_WC = cache.R_WC_list[q];          
+      const MatrixXd J_WS1c_W = R_WC.matrix() * J_WS1c_C;
+      const Vector3d v_WS1c_W = J_WS1c_W * v;
+      PRINT_VAR(v_WS1c_W.transpose());
+      // PRINT_VARn(J_S1cS2c_W);
+      EXPECT_TRUE(CompareMatrices(v_WS1c_W, expected_v_WS1c, kTolerance,
+                                  MatrixCompareType::relative));
+    }
+  }
 }
 
 }  // namespace internal

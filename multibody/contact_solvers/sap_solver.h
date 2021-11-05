@@ -17,13 +17,6 @@ namespace contact_solvers {
 namespace internal {
 
 struct SapSolverParameters {
-  enum class LineSearchMethod {
-    // Inexact line search satisfying the Armijo rule.
-    kArmijo,
-    // Line search exact to machine precision.
-    kExact
-  };
-
   // Theta method parameter.
   double theta{1.0};
 
@@ -33,15 +26,9 @@ struct SapSolverParameters {
   int max_iterations{100};       // Maximum number of Newton iterations.
 
   // Line-search parameters.
-  LineSearchMethod ls_method{LineSearchMethod::kExact};
   double ls_alpha_max{1.5};  // Maximum line-search parameter allowed.
-  // The line search terminates if between two iterates the condition
-  // |αᵏ⁺¹−αᵏ| < ls_tolerance is satisfied.
-  // When ls_tolerance < 0 the line search is performed to machine precision.
-  double ls_tolerance{-1};
   // Maximum number of line-search iterations. Only used for inexact methods.
   int ls_max_iterations{40};
-
   // Arimijo's method parameters.
   double ls_c{1.0e-4};  // Armijo's reduction parameter.
   double ls_rho{0.8};
@@ -358,13 +345,6 @@ class SapSolver final : public ConvexSolverBase<T> {
       State* state_alpha, T* ellM = nullptr, T* dellM_dalpha = nullptr,
       T* d2ellM_dalpha2 = nullptr, T* ellR = nullptr, T* dellR_dalpha = nullptr,
       T* d2ellR_dalpha2 = nullptr) const;
-
-  // Given velocities v and search direction dv stored in `state` this method
-  // computes the optimum alpha (α) such that ℓ(α) = ℓ(v+αΔv) is minimum. This
-  // search is performed to machine precision to avoid having additional
-  // parameters. Convergence to machine precision only cost a couple extra
-  // iterations and therefore is well worth the price.
-  int CalcLineSearchParameter(const State& state, T* alpha) const;
 
   // Approximation to the 1D minimization problem α = argmin ℓ(α)= ℓ(v + αΔv)
   // over α. We define ϕ(α) = ℓ₀ + α c ℓ₀', where ℓ₀ = ℓ(0) and ℓ₀' = dℓ/dα(0).

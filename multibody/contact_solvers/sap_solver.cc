@@ -248,16 +248,8 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
       bool converged = false;
       if (!converged) {
         // If not converged, we know dvc !=0 and therefore we have a valid
-        // search direction for line search.
-        if (parameters_.ls_method ==
-            SapSolverParameters::LineSearchMethod::kExact) {
-          num_ls_iters = CalcLineSearchParameter(state, &alpha);
-        } else {
-          // double alpha_exact;
-          // CalcLineSearchParameter(state, &alpha_exact);
-          // PRINT_VAR(alpha_exact);
-          num_ls_iters = CalcInexactLineSearchParameter(state, &alpha);
-        }
+        // search direction for line search.        
+        num_ls_iters = CalcInexactLineSearchParameter(state, &alpha);        
       }
 
       // Update state.
@@ -492,7 +484,6 @@ int SapSolver<T>::CalcInexactLineSearchParameter(
   // Parameters.
   const double rho = parameters_.ls_rho;
   const double c = parameters_.ls_c;
-  const double tolerance = parameters_.ls_tolerance;
   const int max_iterations = parameters_.ls_max_iterations;
 
   // Update quantities that depend on dv used for
@@ -552,147 +543,6 @@ int SapSolver<T>::CalcInexactLineSearchParameter(
     satisfies_armijo_prev = satisfies_armijo;
   }
   throw std::runtime_error("Line search reached max iterations.");
-  DRAKE_UNREACHABLE();
-}
-
-template <typename T>
-int SapSolver<T>::CalcLineSearchParameter(const State& state,
-                                                          T* alpha) const {
-  using std::abs;
-  using std::max;
-  using std::min;
-  // test::LimitMalloc guard({.max_num_allocations = 0});
-
-  DRAKE_DEMAND(state.cache().valid_search_direction);
-
-  // Update quantities that depend on dv used for
-  // line-search.
-  auto& cache = state.mutable_cache();
-  const auto& Aop = data_.dynamics_data->get_A();
-  Aop.Multiply(cache.dv, &cache.dp);  // M * cache.dv;
-  cache.d2ellM_dalpha2 = cache.dv.dot(cache.dp);
-  // TODO: consider removing since only used here?
-  cache.valid_line_search_quantities = true;
-
-  // For debugging.
-  auto debug_print = [&]() {
-    // State state_alpha(state);
-    State state_alt(state);
-    for (double alpha = 0; alpha <= parameters_.ls_alpha_max; alpha += 0.01) {
-      // Computation by alternative method for verification.
-      T d2ell_dalpha2_alt;
-      T dell_dalpha_alt;
-      T ellM, dellM_dalpha, d2ellM_dalpha2;
-      T ellR, dellR_dalpha, d2ellR_dalpha2;
-      const T ell_alt = CalcLineSearchCostAndDerivatives(
-          state, alpha, &dell_dalpha_alt, &d2ell_dalpha2_alt, &state_alt, &ellM,
-          &dellM_dalpha, &d2ellM_dalpha2, &ellR, &dellR_dalpha,
-          &d2ellR_dalpha2);
-      std::cout << alpha << " " << ell_alt << " " << dell_dalpha_alt << " "
-                << d2ell_dalpha2_alt << " " << ellM << " " << dellM_dalpha
-                << " " << d2ellM_dalpha2 << " " << ellR << " " << dellR_dalpha
-                << " " << d2ellR_dalpha2 << " "
-                << state_alt.cache().regions.transpose() << std::endl;
-    }
-
-    DRAKE_DEMAND(state.cache().valid_contact_velocity_and_impulses);
-    DRAKE_DEMAND(state.cache().valid_search_direction);
-    const auto& Rinv = data_.Rinv;
-    const VectorX<T> dy = -state.cache().dvc.array() * Rinv.array();
-    const auto& vc = state.cache().vc;
-    const auto& vc_stab = data_.vc_stab;
-    const VectorX<T> y = Rinv.asDiagonal() * (vc_stab - vc);
-
-    const std::vector<T> intervals = FindAllContinuousIntervals(state, y, dy);
-    std::vector<T> costs(intervals.size());
-    PRINT_VARn(
-        Eigen::Map<const VectorX<T>>(intervals.data(), intervals.size()));
-  };
-
-  // Evaluate cost and gradient at alpha = alpha_max.
-  T aux;
-  const T alpha_max = parameters_.ls_alpha_max;
-  T dell_dalpha_end;
-  const T ell_end = CalcLineSearchCostAndDerivatives(
-      state, alpha_max, &dell_dalpha_end, &aux, &aux_state_);
-  if (dell_dalpha_end <= 0) {
-    *alpha = parameters_.ls_alpha_max;
-    return 0;
-  }
-
-  // Evaluate cost and gradient at alpha = 0.
-  // We use this value to normalize the cost to be somewhere in [0, 1] to reduce
-  // round-off errors.
-  T dell_dalpha0;
-  const T ell_start = CalcLineSearchCostAndDerivatives(
-      state, 0.0, &dell_dalpha0, &aux, &aux_state_);
-  // Sanity check. Something went terribly wrong if dell_dalpha(0) is not
-  // negative.
-  DRAKE_DEMAND(dell_dalpha0 < 0);
-
-  // Compute cost at the middle to estimate a scale.
-  const T alpha_mid = alpha_max / 2.0;
-  T dell_dalpha_mid;
-  T dell2_dalpha2_mid;
-  const T ell_mid = CalcLineSearchCostAndDerivatives(
-      state, alpha_mid, &dell_dalpha_mid, &dell2_dalpha2_mid, &aux_state_);
-
-  const T ell_min = min(min(ell_start, ell_mid), ell_end);
-  const T ell_max = max(max(ell_start, ell_mid), ell_end);
-  const T ell_delta = ell_max - ell_min;
-
-  // If this is zero something went terribly wrong.
-  DRAKE_DEMAND(ell_delta > 0);
-
-  // N.B. We place the data needed to evaluate cost and gradients into a single
-  // struct so that cost_and_gradient only needs to capture a single pointer.
-  // This avoid heap allocation when calling RtSafe.
-  struct EvalData {
-    const SapSolver<T>* solver;
-    const State& state;
-    State& cost_state;
-    T ell_delta;
-  };
-  EvalData data{this, state, aux_state_, ell_delta};
-
-  auto cost_and_gradient = [&data](const T& x, std::optional<T*> dfdx) {
-    // We normalize as:
-    // ell_tilde = (ell-ell_min)/ell_delta
-
-    // x == alpha
-    // f == dell_dalpha
-    // dfdx == d2ell_dalpha2
-    T dell_dalpha;
-    T d2ell_dalpha2;
-    const T ell = data.solver->CalcLineSearchCostAndDerivatives(
-        data.state, x, &dell_dalpha, &d2ell_dalpha2, &data.cost_state);
-
-    // std::cout << fmt::format(
-    //    "{:18.12g} {:18.12g} {:18.12g} {:18.12g}\n", x,
-    //   (ell - ell_start) / ell_delta, dell_dalpha / ell_delta,
-    //    d2ell_dalpha2 / ell_delta);
-
-    if (dfdx) *dfdx.value() = d2ell_dalpha2 / data.ell_delta;
-    return dell_dalpha / data.ell_delta;
-  };
-
-  const double tolerance = parameters_.ls_tolerance < 0
-                               ? 50 * std::numeric_limits<double>::epsilon()
-                               : parameters_.ls_tolerance;
-  try {
-    int num_iters = 0;
-    // The most likely solution close to the optimal solution.
-    const T alpha_guess = 1.0;
-    const bool check_interval = false;
-    *alpha = RtSafe<T>(cost_and_gradient, 0, parameters_.ls_alpha_max,
-                       tolerance, alpha_guess, check_interval, &num_iters);
-    return num_iters;
-  } catch (std::exception& e) {
-    debug_print();
-    throw e;
-  }
-  PRINT_VAR(alpha);
-
   DRAKE_UNREACHABLE();
 }
 

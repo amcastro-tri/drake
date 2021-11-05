@@ -213,27 +213,6 @@ class SapSolver final : public ConvexSolverBase<T> {
     parameters_ = parameters;
   }
 
-  // Retrieves solver statistics since the last call to SolveWithGuess().
-  const SapSolverStats& get_iteration_stats() const {
-    return stats_;
-  }
-
-  // Retrieves the history of statistics during the lifetime of this solver for
-  // each call to SolveWithGuess().
-  const std::vector<SapSolverStats>& get_stats_history() const {
-    return stats_history_;
-  }
-
-  const std::vector<SolutionData<T>>& solution_history() const {
-    return solution_history_;
-  }  
-
-  void LogIterationsHistory(const std::string& file_name) const final;
-
-  void LogPerStepIterationsHistory(const std::string& file_name) const;
-
-  void LogSolutionHistory(const std::string& file_name) const;
-
  private:
   // This is not a real cache in the CS sense (i.e. there is no tracking of
   // dependencies nor automatic validity check) but in the sense that this
@@ -413,11 +392,7 @@ class SapSolver final : public ConvexSolverBase<T> {
   void CallDenseSolver(const State& s, VectorX<T>* dv);
 
   using ConvexSolverBase<T>::data_;
-  SapSolverParameters parameters_;
-  SapSolverStats stats_;
-  double total_time_{0};
-  std::vector<SapSolverStats> stats_history_;
-  std::vector<SolutionData<T>> solution_history_;
+  SapSolverParameters parameters_;  
 
   struct Workspace {
     void Resize(int nv, int nc) {

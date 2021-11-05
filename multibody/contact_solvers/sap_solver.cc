@@ -17,7 +17,6 @@
 #include "drake/multibody/contact_solvers/geodesic_interior_point_method.h"
 #include "drake/multibody/contact_solvers/rtsafe.h"
 #include "drake/multibody/contact_solvers/supernodal_solver.h"
-#include "drake/multibody/contact_solvers/timer.h"
 
 #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
 #define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
@@ -55,9 +54,6 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
     const VectorX<double>& v_guess, ContactSolverResults<double>* results) {
   using std::abs;
   using std::max;
-
-  // Starts a timer for the overall execution time of the solver.
-  Timer global_timer;
 
   const auto& dynamics_data = *data.dynamics_data;
   const auto& contact_data = *data.contact_data;
@@ -115,14 +111,6 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   // Previous iteration state, for error computation and reporting.
   State state_kp = state;
 
-  // Reset stats.
-  stats_ = {};
-  stats_.num_contacts = nc;
-  // Log the time it took to pre-process data.
-  stats_.preproc_time = this->pre_process_time();
-
-  SapSolverIterationMetrics metrics;
-
   const bool use_geodesic_solver = parameters_.use_geodesic_solver;
   if (use_geodesic_solver) {
     GeodesicSolverSolution sol;
@@ -169,19 +157,6 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
     metrics.id_rel_error = (cache.gamma - gamma_id).norm() /
                            max(cache.gamma.norm(), gamma_id.norm());
 
-    stats_.num_iters = solution_geo.info.iterations;
-    stats_.iteration_metrics.push_back(metrics);
-    stats_.total_time = global_timer.Elapsed();
-
-    // Update stats history.
-    stats_history_.push_back(stats_);
-
-    // Debug: solution history.
-    solution_history_.emplace_back(SolutionData<double>{
-        nc, cache.vc, cache.gamma, data_.contact_data->get_mu(), data_.R});
-
-    total_time_ += global_timer.Elapsed();
-
     return ContactSolverStatus::kSuccess;
 
   } else {
@@ -202,24 +177,26 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
         std::cout << "Iteration: " << k << std::endl;
       }
 
-      metrics =
-          CalcIterationMetrics(state, state_kp, num_ls_iters, alpha, &xc_work1);
+ 
+    // N.B. This is update vc and gamma in the cache!
+    // Therefore the call must not be removed!
+    // TODO: replace by proper call to only do what we need.
+    CalcIterationMetrics(state, state_kp, num_ls_iters, alpha, &xc_work1);
+      
       double scaled_momentum_error, momentum_scale;
-      CalcScaledMomentumAndScales(data, state.v(), cache.gamma,
-                                  &scaled_momentum_error, &momentum_scale,
-                                  &metrics.Ek, &metrics.costM, &metrics.costR,
-                                  &metrics.cost, &v_work1, &v_work2, &v_work3);
-      // Note: only update the useful stats. Remove things like mom_rel_max.
-      metrics.mom_rel_l2 = scaled_momentum_error / momentum_scale;
-      if (parameters_.log_stats) {
-        stats_.iteration_metrics.push_back(metrics);
+      {
+        double Ek, costM, costR, cost;
+        CalcScaledMomentumAndScales(
+            data, state.v(), cache.gamma, &scaled_momentum_error,
+            &momentum_scale, &Ek, &costM, &costR,
+            &cost, &v_work1, &v_work2, &v_work3);
       }
+      // Note: only update the useful stats. Remove things like mom_rel_max.
       if (scaled_momentum_error <= parameters_.rel_tolerance * momentum_scale) {
         // TODO: refactor into PrintConvergedIterationStats().
         if (parameters_.verbosity_level >= 1) {
           std::cout << "Iteration converged at: " << k << std::endl;
           std::cout << "ell: " << cache.ell << std::endl;
-          PRINT_VAR(metrics.vc_error_max_norm);
           PRINT_VAR(cache.vc.norm());
           std::cout << std::string(80, '=') << std::endl;
         }
@@ -231,10 +208,8 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
         // Prepare supernodal solver on first iteration only when needed.
         // That is, if converged, avoid this work.
         if (parameters_.use_supernodal_solver && k == 0) {
-          Timer timer;
           solver = std::make_unique<conex::SuperNodalSolver>(
               data_.Jblock.block_rows(), data_.Jblock.get_blocks(), data_.Mt);
-          stats_.supernodal_construction_time = timer.Elapsed();
         }
       }
       state_kp = state;
@@ -274,7 +249,6 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
       if (!converged) {
         // If not converged, we know dvc !=0 and therefore we have a valid
         // search direction for line search.
-        Timer timer;
         if (parameters_.ls_method ==
             SapSolverParameters::LineSearchMethod::kExact) {
           num_ls_iters = CalcLineSearchParameter(state, &alpha);
@@ -284,7 +258,6 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
           // PRINT_VAR(alpha_exact);
           num_ls_iters = CalcInexactLineSearchParameter(state, &alpha);
         }
-        stats_.line_search_time += timer.Elapsed();
       }
 
       // Update state.
@@ -298,52 +271,12 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
         PRINT_VAR(state_kp.cache().ell);
         PRINT_VAR(converged);
         PRINT_VAR(alpha);
-        PRINT_VAR(metrics.v_error_max_norm);
-        PRINT_VAR(metrics.vc_error_max_norm);
       }
     }
 
     if (k == parameters_.max_iterations) return ContactSolverStatus::kFailure;
 
-    // Compute more expensive momentum metrics for the last iteration.
-    // We always at least log the last metrics.
-    auto& last_metrics =
-        parameters_.log_stats ? stats_.iteration_metrics.back() : metrics;
-    std::tie(last_metrics.mom_l2, last_metrics.mom_max) =
-        this->CalcScaledMomentumError(data, state.v(), cache.gamma);
-    std::tie(last_metrics.mom_rel_l2, last_metrics.mom_rel_max) =
-        this->CalcRelativeMomentumError(data, state.v(), cache.gamma);
-    this->CalcEnergyMetrics(data, state.v(), cache.gamma, &last_metrics.Ek,
-                            &last_metrics.costM, &last_metrics.costR,
-                            &last_metrics.cost);
-    this->CalcSlipMetrics(data, cache.vc, &last_metrics.vt_mean,
-                          &last_metrics.vt_rms);
-    if (num_iterations != 0 && parameters_.log_condition_number) {
-      // We need to set G again because the solver cannot return the full matrix
-      // after a factorization was done.
-      solver->SetWeightMatrix(cache.G);
-      //Eigen::JacobiSVD<MatrixX<double>> svd(solver->FullMatrix());
-      //last_metrics.cond_number =
-      //    svd.singularValues().maxCoeff() / svd.singularValues().minCoeff();
-
-      // Significantly faster than the SVD method, and verified it is accurate
-      // enough.
-      last_metrics.cond_number = 1.0 / solver->FullMatrix().ldlt().rcond();
-    }
-
-    if (!parameters_.log_stats) stats_.iteration_metrics.push_back(metrics);
-    stats_.num_iters = num_iterations;
-
     PackContactResults(data_, state.v(), cache.vc, cache.gamma, results);
-    stats_.total_time = global_timer.Elapsed();
-
-    //solution_history_.emplace_back(SolutionData<double>{
-    //    nc, cache.vc, cache.gamma, data_.contact_data->get_mu(), data_.R});
-
-    // Update stats history.
-    stats_history_.push_back(stats_);
-
-    total_time_ += global_timer.Elapsed();
 
     return ContactSolverStatus::kSuccess;
   }
@@ -891,19 +824,13 @@ SapSolver<T>::CalcIterationMetrics(const State& s,
 template <typename T>
 void SapSolver<T>::CallSupernodalSolver(
     const State& s, VectorX<T>* dv, conex::SuperNodalSolver* solver) {
-  Timer local_timer;
-
   auto& cache = s.mutable_cache();
 
-  // Start timer to measure assembly time.
-  local_timer.Reset();
   cache.ell = CalcCostAndGradients(s, &cache.ell_grad_v, &cache.G, &cache.ellM,
                                    &cache.ellR, &cache.ell_hessian_v);
 
   // This call does the actual assembly H = A + J G Jᵀ.
   solver->SetWeightMatrix(cache.G);
-
-  stats_.assembly_time += local_timer.Elapsed();
 
   // Build full matrix for debugging.
   if (parameters_.compare_with_dense) {
@@ -915,23 +842,18 @@ void SapSolver<T>::CallSupernodalSolver(
     }
   }
 
-  local_timer.Reset();
   // Factor() overwrites the assembled matrix with its LLT decomposition.
   // We'll count it as part of the linear solver time.
   solver->Factor();
   *dv = -cache.ell_grad_v;  // we solve dv in place.
   solver->SolveInPlace(dv);
-  stats_.linear_solver_time += local_timer.Elapsed();
 }
 
 template <typename T>
 void SapSolver<T>::CallDenseSolver(const State& state,
                                                    VectorX<T>* dv) {
-  Timer local_timer;
   const int nv = data_.nv;
 
-  // Reset timer to measure assembly of gradient and Hessian.
-  local_timer.Reset();
   auto& cache = state.mutable_cache();
   cache.ell =
       CalcCostAndGradients(state, &cache.ell_grad_v, &cache.G, &cache.ellM,
@@ -946,10 +868,6 @@ void SapSolver<T>::CallDenseSolver(const State& state,
   const VectorXd rhs = -(D.asDiagonal() * cache.ell_grad_v);
   const MatrixXd lhs = D.asDiagonal() * cache.ell_hessian_v * D.asDiagonal();
 
-  stats_.assembly_time += local_timer.Elapsed();
-
-  // Reset timer to measure factorization and linear solve.
-  local_timer.Reset();
   // Factorize Hessian.
   Eigen::LDLT<MatrixXd> Hldlt(lhs);
   if (Hldlt.info() != Eigen::Success) {
@@ -962,159 +880,6 @@ void SapSolver<T>::CallDenseSolver(const State& state,
 
   // Compute search direction.
   *dv = D.asDiagonal() * Hldlt.solve(rhs);
-
-  stats_.linear_solver_time += local_timer.Elapsed();
-}
-
-template <typename T>
-void SapSolver<T>::LogIterationsHistory(
-    const std::string& file_name) const {
-  const std::vector<SapSolverStats>& stats_hist =
-      this->get_stats_history();
-  std::ofstream file(file_name);
-  file << fmt::format(
-      "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} "
-      "{} {} {} {} {} {} {} {} {} {} {}\n",
-      // Problem size.
-      "num_contacts",
-      // Number of iterations.
-      "num_iters",
-      // Error metrics.
-      "vc_error_max_norm", "v_error_max_norm", "gamma_error_max_norm", "mom_l2",
-      "mom_max", "mom_rel_l2", "mom_rel_max","opt_cond", "id_rel_err",
-      // Some norms. We can use them as reference scales.
-      "vc_norm", "gamma_norm",
-      // Line search metrics.
-      "total_ls_iters", "max_ls_iters", "last_alpha", "mean_alpha", "alpha_min",
-      "alpha_max",
-      // Gradient and Hessian metrics.
-      "grad_ell_max_norm", "dv_max_norm", "cond_number",
-      // Timing metrics.
-      "total_time", "preproc_time", "assembly_time", "linear_solve_time",
-      "ls_time", "supernodal_construction",
-      // Energy metrics.
-      "Ek", "ellM", "ellR", "ell",
-      // Slip velocity metrics.
-      "vt_mean", "vt_rms");
-
-
-  for (const auto& s : stats_hist) {
-    const auto& metrics = s.iteration_metrics.back();
-    // const int iters = s.iteration_metrics.size();
-    const int iters = s.num_iters;
-    int total_ls_iters = 0;
-    int max_ls_iters = 0;
-    double ls_alpha_min = 100;
-    double ls_alpha_max = 0;
-    double ls_alpha_mean = 0.0;
-    // Compute some totals and averages.
-    for (const auto& m : s.iteration_metrics) {
-      total_ls_iters += m.ls_iters;
-      ls_alpha_mean += m.ls_alpha;
-      max_ls_iters = std::max(max_ls_iters, m.ls_iters);
-      ls_alpha_min = std::min(ls_alpha_min, m.ls_alpha);
-      ls_alpha_max = std::max(ls_alpha_max, m.ls_alpha);
-    }
-    ls_alpha_mean /= iters;
-
-    file << fmt::format(
-        "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} "
-        "{} {} {} {} {} {} {} {} {} {} {}\n",
-        // Problem size.
-        s.num_contacts,
-        // Number of iterations.
-        iters,
-        // Error metrics.
-        metrics.vc_error_max_norm, metrics.v_error_max_norm,
-        metrics.gamma_error_max_norm, metrics.mom_l2, metrics.mom_max,
-        metrics.mom_rel_l2, metrics.mom_rel_max, metrics.opt_cond,
-        metrics.id_rel_error,
-        // Some norms.
-        metrics.vc_norm, metrics.gamma_norm,
-        // Line search metrics.
-        total_ls_iters, max_ls_iters, metrics.ls_alpha, ls_alpha_mean,
-        ls_alpha_min, ls_alpha_max,
-        // Gradient and Hessian metrics.
-        metrics.grad_ell_max_norm, metrics.search_direction_max_norm,
-        metrics.cond_number,
-        // Timing metrics.
-        s.total_time, s.preproc_time, s.assembly_time, s.linear_solver_time,
-        s.line_search_time, s.supernodal_construction_time,
-        // Energy metrics.
-        metrics.Ek, metrics.costM, metrics.costR, metrics.cost,
-        // Slip velocity metrics.
-        metrics.vt_mean, metrics.vt_rms);
-  }
-  file.close();
-}
-
-template <typename T>
-void SapSolver<T>::LogPerStepIterationsHistory(
-    const std::string& file_name) const {
-  const std::vector<SapSolverStats>& stats_hist =
-      this->get_stats_history();
-  std::ofstream file(file_name);
-  file << fmt::format(
-      "{} {} {} {} {} {}\n",
-      // Problem size.
-      "num_contacts",
-      // Number of iterations.
-      "num_iters",
-      // Error metrics.
-      "mom_rel_l2",
-      // Line search metrics.
-      "ls_iters", "alpha",
-      // Energy metrics.
-      "ell");
-
-  for (const auto& s : stats_hist) {
-    const int num_iters = s.iteration_metrics.size();
-    for (const auto& m : s.iteration_metrics) {
-      file << fmt::format("{} {} {} {} {} {}\n",
-                          // Problem size.
-                          s.num_contacts,
-                          // Number of iterations.
-                          num_iters,
-                          // Error metrics.
-                          m.mom_rel_l2,
-                          // Line search metrics.
-                          m.ls_iters, m.ls_alpha,
-                          // Energy metrics.
-                          m.cost);
-    }
-  }
-  file.close();
-}
-
-template <typename T>
-void SapSolver<T>::LogSolutionHistory(
-    const std::string& file_name) const {
-  const std::vector<SolutionData<T>>& sol = this->solution_history();
-  std::ofstream file(file_name);
-
-  file << fmt::format("{} {} {} {} {} {} {} {} {} {} {} {}\n", "sol_num", "nc",
-                      "vc_x", "vc_y", "vc_z", "gamma_x", "gamma_y", "gamma_z",
-                      "mu", "Rx", "Ry", "Rz");
-
-  auto format_vec = [](const Eigen::Ref<const Vector3<T>>& x) {
-    return fmt::format("{} {} {}", x(0), x(1), x(2));
-  };
-
-  for (int k = 0; k < static_cast<int>(sol.size()); ++k) {
-    const auto& s = sol[k];
-    const int nc = s.nc;
-    for (int i = 0; i < nc; ++i) {
-      const int i3 = 3 * i;
-      const auto vc = s.vc.template segment<3>(i3);
-      const auto gamma = s.gamma.template segment<3>(i3);
-      const T mu = s.mu(i);
-      const auto R = s.R.template segment<3>(i3);
-      file << k << " " << nc << " " << format_vec(vc) << " "
-           << format_vec(gamma) << " " << mu << " " << format_vec(R)
-           << std::endl;
-    }
-  }
-  file.close();
 }
 
 }  // namespace internal

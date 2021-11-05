@@ -63,74 +63,6 @@ struct SapSolverParameters {
   //  2: Prints sparsity structure.
   //  3: Prints stats at each iteration.
   int verbosity_level{0};
-
-  bool log_stats{true};
-
-  bool log_condition_number{false};
-};
-
-struct SapSolverIterationMetrics {
-  // vc_max_norm_error = ‖vcᵏ⁺¹ − vcᵏ‖∞.
-  // Max norm of the contact velocity error. It is nice in that all components
-  // have the same units.
-  double vc_error_max_norm{0.0};
-
-  // Max norm of the generalized velocities error.
-  // v_max_norm_error = ‖vᵏ⁺¹ − vᵏ‖∞.
-  double v_error_max_norm{0.0};
-
-  // Max norm of the contact forces error.
-  // gamma_max_norm_error = ‖γᵏ⁺¹−γᵏ‖∞.
-  double gamma_error_max_norm{0.0};
-
-  // L2 norm of the scaled momentum equation (first optimality condition)
-  double mom_l2{0};
-  // Max norm of the scaled momentum equation (first optimality condition)
-  double mom_max{0};
-
-  double mom_rel_l2{0};
-  double mom_rel_max{0};
-
-  // Optimality condition between g and gamma.
-  double opt_cond{0.0};
-
-  // Some norms.
-  double vc_norm{0.0};
-  double gamma_norm{0.0};
-
-  // Regularization cost ℓᵣ(v).
-  double ellR{0.0};
-
-  // Total cost ℓ(v).
-  double ell{0.0};
-
-  // The gradient of the cost, ∇ℓ(v).
-  double grad_ell_max_norm{0.0};
-
-  // The search direction is dv = H⁻¹∇ℓ(v).
-  double search_direction_max_norm{0.0};
-
-  // Estimation of the reverse condition number.
-  double rcond{-1};
-
-  // Line search parameter.
-  double ls_alpha;
-
-  int ls_iters{0};
-
-  // Energy metrics.
-  double Ek{0}, costM{0}, costR{0}, cost{0};
-
-  // Inverse dynamics realtive error.
-  double id_rel_error{0};
-
-  // Mean and rms value of the tangential velocities.
-  double vt_mean{0.0};
-  double vt_rms{0.0};
-
-  // An estimate of the condition number. Zero if not logged, see
-  // log_condition_number in the parameters.
-  double cond_number{0.0};
 };
 
 // Intended for debugging only. Remove.
@@ -150,27 +82,6 @@ struct SolutionData {
   VectorX<T> gamma;
   VectorX<T> mu;
   VectorX<T> R;
-};
-
-struct SapSolverStats {
-  int num_contacts{0};
-  int num_iters;  // matches iteration_metrics.size() unless we use Geodesic.
-  std::vector<SapSolverIterationMetrics> iteration_metrics;
-
-  // Performance statistics. All these times are in seconds.
-
-  // Total time for the last call to SolveWithGuess().
-  double total_time{0};
-  double supernodal_construction_time{0};
-  // Time used in pre-processing the data: forming the Delassus operator,
-  // computing regularization parameters, etc.
-  double preproc_time{0};
-  // Time used to assembly the Hessian.
-  double assembly_time{0};
-  // Time used by the underlying linear solver.
-  double linear_solver_time{0};
-  // Time used in line search.
-  double line_search_time{0};
 };
 
 // This solver uses the regularized convex formulation from [Todorov 2014].
@@ -354,12 +265,6 @@ class SapSolver final : public ConvexSolverBase<T> {
   //       αᵣ = ρʳαₘₐₓ
   //       s.t. ℓ(α) < ϕ(α), Armijo's condition.
   int CalcInexactLineSearchParameter(const State& state, T* alpha) const;
-
-  // Computes iteration metrics between iterations k and k-1 at states s_k and
-  // s_kp respectively.
-  SapSolverIterationMetrics CalcIterationMetrics(
-      const State& s_k, const State& s_kp, int num_ls_iterations,
-      double alpha, VectorX<T>* xc_work1) const;
 
   // Solves for dv using supernodal algebra.
   void CallSupernodalSolver(const State& s, VectorX<T>* dv,

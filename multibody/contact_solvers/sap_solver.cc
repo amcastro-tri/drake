@@ -125,11 +125,9 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
       std::cout << std::string(80, '=') << std::endl;
       std::cout << "Iteration: " << k << std::endl;
     }
-
-    // N.B. This is update vc and gamma in the cache!
-    // Therefore the call must not be removed!
-    // TODO: replace by proper call to only do what we need.
-    CalcIterationMetrics(state, state_kp, num_ls_iters, alpha, &xc_work1);
+    
+    // N.B. This update is important and must be here!
+    CalcVelocityAndImpulses(state, &cache.vc, &cache.gamma);
 
     double scaled_momentum_error, momentum_scale;
     {
@@ -575,44 +573,6 @@ std::vector<T> SapSolver<T>::FindAllContinuousIntervals(
   }
 
   return cone_crossings;
-}
-
-template <typename T>
-SapSolverIterationMetrics SapSolver<T>::CalcIterationMetrics(
-    const State& s, const State& s0, int num_ls_iterations, double alpha,
-    VectorX<T>* xc_work1) const {
-  using std::max;
-
-  // Update velocity and impulses for reporting.
-  auto& cache = s.mutable_cache();
-  CalcVelocityAndImpulses(s, &cache.vc, &cache.gamma);
-
-  SapSolverIterationMetrics metrics;
-  metrics.vc_error_max_norm =
-      (s.cache().vc - s0.cache().vc).template lpNorm<Eigen::Infinity>();
-  metrics.v_error_max_norm =
-      (s.v() - s0.v()).template lpNorm<Eigen::Infinity>();
-  metrics.gamma_error_max_norm =
-      (s.cache().gamma - s0.cache().gamma).template lpNorm<Eigen::Infinity>();
-  // For this primal solver, the inverse dynamics relative error reduces to the
-  // computation of the relative error between successive iterations.
-  metrics.id_rel_error = (s.cache().gamma - s0.cache().gamma).norm() /
-                         max(s.cache().gamma.norm(), s0.cache().gamma.norm());
-  metrics.ellR = s.cache().ellR;
-  metrics.ell = s.cache().ell;
-  metrics.grad_ell_max_norm =
-      s.cache().ell_grad_v.template lpNorm<Eigen::Infinity>();
-  metrics.search_direction_max_norm =
-      s.cache().dv.template lpNorm<Eigen::Infinity>();
-  metrics.ls_iters = num_ls_iterations;
-  metrics.ls_alpha = alpha;
-  metrics.rcond = s.cache().condition_number;
-  metrics.opt_cond =
-      this->CalcOptimalityCondition(data_, s.v(), cache.gamma, xc_work1);
-  metrics.gamma_norm = cache.gamma.norm();
-  metrics.vc_norm = cache.vc.norm();
-
-  return metrics;
 }
 
 template <typename T>

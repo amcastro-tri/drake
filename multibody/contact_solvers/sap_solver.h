@@ -204,7 +204,7 @@ class SapSolver final : public ConvexSolverBase<T> {
 
   virtual ~SapSolver() = default;
 
-  void set_parameters(SapSolverParameters& parameters) {
+  void set_parameters(const SapSolverParameters& parameters) {
     ConvexSolverBaseParameters base_parameters{parameters.theta,
                                                parameters.Rt_factor,
                                                parameters.alpha,

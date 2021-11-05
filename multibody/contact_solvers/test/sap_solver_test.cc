@@ -8,7 +8,7 @@
 #include "drake/multibody/contact_solvers/block_sparse_linear_operator.h"
 #include "drake/multibody/contact_solvers/block_sparse_matrix.h"
 #include "drake/multibody/contact_solvers/system_dynamics_data.h"
-#include "drake/multibody/contact_solvers/unconstrained_primal_solver.h"
+#include "drake/multibody/contact_solvers/sap_solver.h"
 #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
 #define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
 
@@ -284,10 +284,10 @@ GTEST_TEST(PizzaSaver, NoAppliedTorque) {
   const VectorXd v0 = VectorXd::Zero(problem.num_velocities);
   const auto data = problem.MakeProblemData(v0, Mz);
 
-  UnconstrainedPrimalSolverParameters params;
+  SapSolverParameters params;
   params.rel_tolerance = 1e-6;
   params.alpha = 0;  // Force SAP to use user stiffness.
-  UnconstrainedPrimalSolver<double> sap;
+  SapSolver<double> sap;
   sap.set_parameters(params);
   ContactSolverResults<double> result;
   // Arbitrary guess.
@@ -336,13 +336,13 @@ GTEST_TEST(PizzaSaver, Stiction) {
   const VectorXd v0 = VectorXd::Zero(problem.num_velocities);
   const auto data = problem.MakeProblemData(v0, Mz);
 
-  UnconstrainedPrimalSolverParameters params;
+  SapSolverParameters params;
   params.rel_tolerance = 1e-6;
   params.alpha = 0;  // Force SAP to use user stiffness.
   // We ask for very tight stiction. This also help the system to reach steady
   // state in a single step.
   params.sigma = 1.0e-6;
-  UnconstrainedPrimalSolver<double> sap;
+  SapSolver<double> sap;
   sap.set_parameters(params);
   ContactSolverResults<double> result;
   // Arbitrary guess.
@@ -394,10 +394,10 @@ GTEST_TEST(PizzaSaver, NoFriction) {
   const VectorXd v0 = VectorXd::Zero(problem.num_velocities);
   const auto data = problem.MakeProblemData(v0, fx, Mz);
 
-  UnconstrainedPrimalSolverParameters params;
+  SapSolverParameters params;
   params.rel_tolerance = 1e-6;
   params.alpha = 0;  // Force SAP to use user stiffness.
-  UnconstrainedPrimalSolver<double> sap;
+  SapSolver<double> sap;
   sap.set_parameters(params);
   ContactSolverResults<double> result;
   // Arbitrary guess.
@@ -461,10 +461,10 @@ GTEST_TEST(PizzaSaver, Sliding) {
 
   const auto data = problem.MakeProblemData(q0, v0, tau);
 
-  UnconstrainedPrimalSolverParameters params;
+  SapSolverParameters params;
   params.rel_tolerance = 1e-6;
   params.alpha = 0;  // Force SAP to use user stiffness.
-  UnconstrainedPrimalSolver<double> sap;
+  SapSolver<double> sap;
   sap.set_parameters(params);
   ContactSolverResults<double> result;
   // Arbitrary guess.

@@ -162,6 +162,33 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "sap_solver",
+    srcs = ["sap_solver.cc"],
+    hdrs = ["sap_solver.h"],
+    copts = ["-Wno-error=unused-parameter", "-Wno-error=unused-variable", "-w",
+    "-O3",
+    "-ffast-math",
+    "-g"],
+    deps = [
+        ":block_sparse_matrix",
+        ":cone_ray_intersect",
+        ":contact_solver",
+        ":convex_solver_base",
+        ":contact_solver_utils",
+        ":point_contact_data",
+        ":system_dynamics_data",
+        ":geodesic_interior_point_method",
+        ":rtsafe",
+        ":timer",
+        "//common:default_scalars",
+        "//common:essential",
+        "//common/test_utilities:limit_malloc",
+        ":supernodal_solver",
+        "@conex//conex:supernodal_solver",
+    ],
+)
+
+drake_cc_library(
     name = "timer",
     hdrs = ["timer.h"],
     deps = [
@@ -493,7 +520,7 @@ drake_cc_googletest(
         ":block_sparse_linear_operator",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_no_throw",
-        "//multibody/contact_solvers:unconstrained_primal_solver",
+        "//multibody/contact_solvers:sap_solver",
     ],
 )
 

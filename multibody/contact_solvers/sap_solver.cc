@@ -14,7 +14,6 @@
 #include "drake/common/test_utilities/limit_malloc.h"
 #include "drake/multibody/contact_solvers/cone_ray_intersect.h"
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
-#include "drake/multibody/contact_solvers/geodesic_interior_point_method.h"
 #include "drake/multibody/contact_solvers/rtsafe.h"
 #include "drake/multibody/contact_solvers/supernodal_solver.h"
 
@@ -36,10 +35,9 @@ using Eigen::SparseVector;
 
 template <typename T>
 SapSolver<T>::SapSolver()
-    : ConvexSolverBase<T>({SapSolverParameters().theta,
-                           SapSolverParameters().Rt_factor,
-                           SapSolverParameters().alpha,
-                           SapSolverParameters().sigma}) {}
+    : ConvexSolverBase<T>(
+          {SapSolverParameters().theta, SapSolverParameters().Rt_factor,
+           SapSolverParameters().alpha, SapSolverParameters().sigma}) {}
 
 template <typename T>
 ContactSolverStatus SapSolver<T>::DoSolveWithGuess(
@@ -111,167 +109,115 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   // Previous iteration state, for error computation and reporting.
   State state_kp = state;
 
-  const bool use_geodesic_solver = parameters_.use_geodesic_solver;
-  if (use_geodesic_solver) {
-    GeodesicSolverSolution sol;
-    GeodesicSolverOptions options;
-    options.target_mu = 1e-5;
-    options.maximum_iterations = 500;
-    options.verbosity = parameters_.verbosity_level;
+  // Super nodal solver is constructed once per time-step to reuse structure
+  // of M and J.
+  std::unique_ptr<conex::SuperNodalSolver> solver;
 
-    sol.v = state.mutable_v();
-    sol.lambda = cache.gamma;
+  double alpha = 1.0;
+  int num_ls_iters = 0;  // Count line-search iterations.
 
-    const auto& vc_stab = data_.vc_stab;
-    const auto& v_star = data_.dynamics_data->get_v_star();
+  // Start Newton iterations.
+  int k = 0;
+  int num_iterations = 0;
+  for (; k < parameters_.max_iterations; ++k) {
+    if (parameters_.verbosity_level >= 3) {
+      std::cout << std::string(80, '=') << std::endl;
+      std::cout << std::string(80, '=') << std::endl;
+      std::cout << "Iteration: " << k << std::endl;
+    }
 
-    // solution_geo.v contains optimal velocity
-    // solution_geo.info.iterations contains executed iterations.
-    // TODO(amcastro-tri): expose solver parameters controlling the accuracy of
-    // the solution.
-    auto solution_geo =
-        GeodesicSolver(sol, contact_data.get_mu(),
-                       data_.Jblock.get_blocks(), data_.Mt, data_.R,
-                       data_.Jblock.block_rows(), data_.nc, v_star, vc_stab, options);
-
-    if (solution_geo.info.failed) return ContactSolverStatus::kFailure;
-
-    state.mutable_v() = solution_geo.v;
-    const auto& Jop = contact_data.get_Jc();
-    Jop.Multiply(state.v(), &cache.vc);
-
-    cache.gamma = solution_geo.lambda;
-    PackContactResults(data_, state.v(), cache.vc, cache.gamma, results);
-
-    // Most of the metrics are garbage for geodesic solver.
-    SapSolverIterationMetrics metrics;
-    std::tie(metrics.mom_rel_l2, metrics.mom_rel_max) =
-        this->CalcRelativeMomentumError(data, state.v(), cache.gamma);
-    this->CalcEnergyMetrics(data, state.v(), cache.gamma, &metrics.Ek,
-                            &metrics.costM, &metrics.costR, &metrics.cost);
-    this->CalcSlipMetrics(data, cache.vc, &metrics.vt_mean, &metrics.vt_rms);
-    metrics.opt_cond =
-        this->CalcOptimalityCondition(data_, state.v(), cache.gamma, &xc_work1);
-    this->CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache.vc,
-                                        &gamma_id);
-    metrics.id_rel_error = (cache.gamma - gamma_id).norm() /
-                           max(cache.gamma.norm(), gamma_id.norm());
-
-    return ContactSolverStatus::kSuccess;
-
-  } else {
-    // Super nodal solver is constructed once per time-step to reuse structure
-    // of M and J.
-    std::unique_ptr<conex::SuperNodalSolver> solver;    
-
-    double alpha = 1.0;
-    int num_ls_iters = 0;  // Count line-search iterations.
-
-    // Start Newton iterations.
-    int k = 0;
-    int num_iterations = 0;
-    for (; k < parameters_.max_iterations; ++k) {
-      if (parameters_.verbosity_level >= 3) {
-        std::cout << std::string(80, '=') << std::endl;
-        std::cout << std::string(80, '=') << std::endl;
-        std::cout << "Iteration: " << k << std::endl;
-      }
-
- 
     // N.B. This is update vc and gamma in the cache!
     // Therefore the call must not be removed!
     // TODO: replace by proper call to only do what we need.
     CalcIterationMetrics(state, state_kp, num_ls_iters, alpha, &xc_work1);
-      
-      double scaled_momentum_error, momentum_scale;
-      {
-        double Ek, costM, costR, cost;
-        CalcScaledMomentumAndScales(
-            data, state.v(), cache.gamma, &scaled_momentum_error,
-            &momentum_scale, &Ek, &costM, &costR,
-            &cost, &v_work1, &v_work2, &v_work3);
+
+    double scaled_momentum_error, momentum_scale;
+    {
+      double Ek, costM, costR, cost;
+      CalcScaledMomentumAndScales(
+          data, state.v(), cache.gamma, &scaled_momentum_error, &momentum_scale,
+          &Ek, &costM, &costR, &cost, &v_work1, &v_work2, &v_work3);
+    }
+    // Note: only update the useful stats. Remove things like mom_rel_max.
+    if (scaled_momentum_error <= parameters_.rel_tolerance * momentum_scale) {
+      // TODO: refactor into PrintConvergedIterationStats().
+      if (parameters_.verbosity_level >= 1) {
+        std::cout << "Iteration converged at: " << k << std::endl;
+        std::cout << "ell: " << cache.ell << std::endl;
+        PRINT_VAR(cache.vc.norm());
+        std::cout << std::string(80, '=') << std::endl;
       }
-      // Note: only update the useful stats. Remove things like mom_rel_max.
-      if (scaled_momentum_error <= parameters_.rel_tolerance * momentum_scale) {
-        // TODO: refactor into PrintConvergedIterationStats().
-        if (parameters_.verbosity_level >= 1) {
-          std::cout << "Iteration converged at: " << k << std::endl;
-          std::cout << "ell: " << cache.ell << std::endl;
-          PRINT_VAR(cache.vc.norm());
-          std::cout << std::string(80, '=') << std::endl;
-        }
-        break;
-      } else {
-        ++num_iterations;  // For statistics, we only count those iterations
-                           // that actually do work, i.e. solve a system of
-                           // linear equations.
-        // Prepare supernodal solver on first iteration only when needed.
-        // That is, if converged, avoid this work.
-        if (parameters_.use_supernodal_solver && k == 0) {
-          solver = std::make_unique<conex::SuperNodalSolver>(
-              data_.Jblock.block_rows(), data_.Jblock.get_blocks(), data_.Mt);
-        }
-      }
-      state_kp = state;
-
-      // Assembly happens withing these calls to CallSupernodalSolver() and
-      // CallDenseSolver() so that we can factor the assembly effort of the
-      // supernodal solver in the same timer.
-      // TODO: get rid of CallDenseSolver(). Only here for debbuging.
-      if (parameters_.use_supernodal_solver) {
-        CallSupernodalSolver(state, &cache.dv, solver.get());
-      } else {
-        CallDenseSolver(state, &cache.dv);
-      }
-      // The cost must always go down.
-      if (k > 0) {
-        DRAKE_DEMAND(cache.ell < state_kp.cache().ell);
-      }
-
-      // Update change in contact velocities.
-      const auto& Jop = contact_data.get_Jc();
-      Jop.Multiply(cache.dv, &cache.dvc);
-      cache.valid_search_direction = true;  // both dv and dvc are now valid.
-
-      // TODO: add convergence check, even if only for statistics on the scaled
-      // moementum balance, i.e. r = D * (M(v-v*)-Jᵀγ), with D = 1/
-      // sqrt(diag(M)).
-      // TODO: consider updating vc and gamma here for convergece criterias.
-      // Cheap if no dgamma_dy is computed.      
-
-      // Perform line-search.
-      // N.B. If converged, we allow one last update with alpha = 1.0.
-      alpha = 1.0;
-      num_ls_iters = 0;  // Count line-search iterations.
-      // remove this when you fully swap to the optimality condition for
-      // convergence criteria.
-      bool converged = false;
-      if (!converged) {
-        // If not converged, we know dvc !=0 and therefore we have a valid
-        // search direction for line search.        
-        num_ls_iters = CalcInexactLineSearchParameter(state, &alpha);        
-      }
-
-      // Update state.
-      state.mutable_v() += alpha * cache.dv;
-
-      // TODO: refactor into PrintNewtonStats().
-      if (parameters_.verbosity_level >= 3) {
-        PRINT_VAR(cache.ellM);
-        PRINT_VAR(cache.ell);
-        PRINT_VAR(cache.dv.norm());
-        PRINT_VAR(state_kp.cache().ell);
-        PRINT_VAR(converged);
-        PRINT_VAR(alpha);
+      break;
+    } else {
+      ++num_iterations;  // For statistics, we only count those iterations
+                         // that actually do work, i.e. solve a system of
+                         // linear equations.
+      // Prepare supernodal solver on first iteration only when needed.
+      // That is, if converged, avoid this work.
+      if (parameters_.use_supernodal_solver && k == 0) {
+        solver = std::make_unique<conex::SuperNodalSolver>(
+            data_.Jblock.block_rows(), data_.Jblock.get_blocks(), data_.Mt);
       }
     }
+    state_kp = state;
 
-    if (k == parameters_.max_iterations) return ContactSolverStatus::kFailure;
+    // Assembly happens withing these calls to CallSupernodalSolver() and
+    // CallDenseSolver() so that we can factor the assembly effort of the
+    // supernodal solver in the same timer.
+    // TODO: get rid of CallDenseSolver(). Only here for debbuging.
+    if (parameters_.use_supernodal_solver) {
+      CallSupernodalSolver(state, &cache.dv, solver.get());
+    } else {
+      CallDenseSolver(state, &cache.dv);
+    }
+    // The cost must always go down.
+    if (k > 0) {
+      DRAKE_DEMAND(cache.ell < state_kp.cache().ell);
+    }
 
-    PackContactResults(data_, state.v(), cache.vc, cache.gamma, results);
+    // Update change in contact velocities.
+    const auto& Jop = contact_data.get_Jc();
+    Jop.Multiply(cache.dv, &cache.dvc);
+    cache.valid_search_direction = true;  // both dv and dvc are now valid.
 
-    return ContactSolverStatus::kSuccess;
+    // TODO: add convergence check, even if only for statistics on the scaled
+    // moementum balance, i.e. r = D * (M(v-v*)-Jᵀγ), with D = 1/
+    // sqrt(diag(M)).
+    // TODO: consider updating vc and gamma here for convergece criterias.
+    // Cheap if no dgamma_dy is computed.
+
+    // Perform line-search.
+    // N.B. If converged, we allow one last update with alpha = 1.0.
+    alpha = 1.0;
+    num_ls_iters = 0;  // Count line-search iterations.
+    // remove this when you fully swap to the optimality condition for
+    // convergence criteria.
+    bool converged = false;
+    if (!converged) {
+      // If not converged, we know dvc !=0 and therefore we have a valid
+      // search direction for line search.
+      num_ls_iters = CalcInexactLineSearchParameter(state, &alpha);
+    }
+
+    // Update state.
+    state.mutable_v() += alpha * cache.dv;
+
+    // TODO: refactor into PrintNewtonStats().
+    if (parameters_.verbosity_level >= 3) {
+      PRINT_VAR(cache.ellM);
+      PRINT_VAR(cache.ell);
+      PRINT_VAR(cache.dv.norm());
+      PRINT_VAR(state_kp.cache().ell);
+      PRINT_VAR(converged);
+      PRINT_VAR(alpha);
+    }
   }
+
+  if (k == parameters_.max_iterations) return ContactSolverStatus::kFailure;
+
+  PackContactResults(data_, state.v(), cache.vc, cache.gamma, results);
+
+  return ContactSolverStatus::kSuccess;
 }
 
 template <typename T>
@@ -295,9 +241,10 @@ void SapSolver<T>::CalcVelocityAndImpulses(
 }
 
 template <typename T>
-T SapSolver<T>::CalcCostAndGradients(
-    const State& state, VectorX<T>* ell_grad_v, std::vector<MatrixX<T>>* G,
-    T* ellM_out, T* ellR_out, MatrixX<T>* ell_hessian_v) const {
+T SapSolver<T>::CalcCostAndGradients(const State& state, VectorX<T>* ell_grad_v,
+                                     std::vector<MatrixX<T>>* G, T* ellM_out,
+                                     T* ellR_out,
+                                     MatrixX<T>* ell_hessian_v) const {
   DRAKE_DEMAND(ell_grad_v != nullptr);
   DRAKE_DEMAND(G != nullptr);
   if (state.cache().valid_cost_and_gradients) return state.cache().ell;
@@ -470,8 +417,8 @@ T SapSolver<T>::CalcLineSearchCostAndDerivatives(
 }
 
 template <typename T>
-int SapSolver<T>::CalcInexactLineSearchParameter(
-    const State& state, T* alpha_out) const {
+int SapSolver<T>::CalcInexactLineSearchParameter(const State& state,
+                                                 T* alpha_out) const {
   DRAKE_DEMAND(state.cache().valid_cost_and_gradients);
 
   // Quantities at alpha = 0.
@@ -631,12 +578,9 @@ std::vector<T> SapSolver<T>::FindAllContinuousIntervals(
 }
 
 template <typename T>
-SapSolverIterationMetrics
-SapSolver<T>::CalcIterationMetrics(const State& s,
-                                                   const State& s0,
-                                                   int num_ls_iterations,
-                                                   double alpha,
-                                                   VectorX<T>* xc_work1) const {
+SapSolverIterationMetrics SapSolver<T>::CalcIterationMetrics(
+    const State& s, const State& s0, int num_ls_iterations, double alpha,
+    VectorX<T>* xc_work1) const {
   using std::max;
 
   // Update velocity and impulses for reporting.
@@ -672,8 +616,8 @@ SapSolver<T>::CalcIterationMetrics(const State& s,
 }
 
 template <typename T>
-void SapSolver<T>::CallSupernodalSolver(
-    const State& s, VectorX<T>* dv, conex::SuperNodalSolver* solver) {
+void SapSolver<T>::CallSupernodalSolver(const State& s, VectorX<T>* dv,
+                                        conex::SuperNodalSolver* solver) {
   auto& cache = s.mutable_cache();
 
   cache.ell = CalcCostAndGradients(s, &cache.ell_grad_v, &cache.G, &cache.ellM,
@@ -700,8 +644,7 @@ void SapSolver<T>::CallSupernodalSolver(
 }
 
 template <typename T>
-void SapSolver<T>::CallDenseSolver(const State& state,
-                                                   VectorX<T>* dv) {
+void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) {
   const int nv = data_.nv;
 
   auto& cache = state.mutable_cache();
@@ -737,5 +680,4 @@ void SapSolver<T>::CallDenseSolver(const State& state,
 }  // namespace multibody
 }  // namespace drake
 
-template class ::drake::multibody::contact_solvers::internal::
-    SapSolver<double>;
+template class ::drake::multibody::contact_solvers::internal::SapSolver<double>;

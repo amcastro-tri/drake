@@ -52,9 +52,6 @@ struct SapSolverParameters {
   // Use supernodal algebra for the linear solver.
   bool use_supernodal_solver{true};
 
-  // (Temporary hack). Use the Geodesic solver.
-  bool use_geodesic_solver{false};
-
   // For debugging. Compare supernodal reconstructed Hessian with dense algebra
   // Hessian.
   bool compare_with_dense{false};

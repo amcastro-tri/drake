@@ -177,7 +177,6 @@ drake_cc_library(
         ":contact_solver_utils",
         ":point_contact_data",
         ":system_dynamics_data",
-        ":geodesic_interior_point_method",
         ":rtsafe",
         ":timer",
         "//common:default_scalars",

@@ -16,9 +16,6 @@ namespace contact_solvers {
 namespace internal {
 
 struct SapSolverParameters {
-  // Theta method parameter.
-  double theta{1.0};
-
   // We monitor convergence of the contact velocities.
   double abs_tolerance{1.0e-6};  // m/s
   double rel_tolerance{1.0e-6};  // Unitless.
@@ -36,9 +33,6 @@ struct SapSolverParameters {
   // TODO(amcastro-tri): Consider this to have units of N and scale by time
   // step.
   double soft_tolerance{1.0e-7};
-
-  // Tangential regularization factor. We make Rt = Rt_factor * Rn.
-  double Rt_factor{1.0e-3};
 
   // Rigid approximation contant: Rₙ = α⋅Wᵢ when the contact frequency ωₙ is
   // below the limit ωₙ⋅dt ≤ 2π. That is, the period is Tₙ = α⋅dt.
@@ -276,7 +270,7 @@ class SapSolver final : public ContactSolver<T> {
   PreProcessedData PreProcessData(const T& time_step,
                                   const SystemDynamicsData<T>& dynamics_data,
                                   const PointContactData<T>& contact_data,
-                                  double theta, double Rt_factor, double alpha,
+                                  double alpha,
                                   double sigma);
 
   // Utility to compute the "soft norm" ‖x‖ₛ defined by ‖x‖ₛ² = ‖x‖² + ε², where

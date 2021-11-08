@@ -44,7 +44,6 @@ ContactSolverStatus SapSolver<T>::SolveWithGuess(
   // Therefore make this look like:
   //   ProcessedData data = MakePreProcessedData(...);
   data_ = PreProcessData(time_step, dynamics_data, contact_data,
-                         parameters_.theta, parameters_.Rt_factor,
                          parameters_.alpha, parameters_.sigma);
   return DoSolveWithGuess(data_, v_guess, results);
 }
@@ -143,13 +142,11 @@ void SapSolver<T>::CalcDelassusDiagonalApproximation(
 template <typename T>
 typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
     const T& time_step, const SystemDynamicsData<T>& dynamics_data,
-    const PointContactData<T>& contact_data, double theta, double Rt_factor,
+    const PointContactData<T>& contact_data,
     double alpha, double sigma) {
   using std::max;
   using std::min;
   using std::sqrt;
-
-  unused(Rt_factor);
 
   PreProcessedData data;
 
@@ -210,7 +207,7 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
     const T& Wi = Wdiag(ic);
     const T taud = c / k;  // Damping rate.
     T Rn = max(alpha_factor * Wi,
-               1.0 / (theta * time_step * k * (time_step + taud)));
+               1.0 / (time_step * k * (time_step + taud)));
     // We'll also bound the maximum value of Rn. Geodesic IMP seems to dislike
     // large values of Rn. We are not sure about SAP...
     const double phi_max = 1.0;  // We estimate a maximum penetration of 1 m.
@@ -229,9 +226,7 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
     Ric = Vector3<T>(Rt, Rt, Rn);
 
     // Stabilization velocity.
-    const T factor = (1.0 - theta) / theta;
-    const T vn_hat =
-        -phi0(ic) / (theta * (time_step + taud)) - factor * vc0(ic3 + 2);
+    const T vn_hat = -phi0(ic) / (time_step + taud);
     vc_stab.template segment<3>(ic3) = Vector3<T>(0, 0, vn_hat);
   }
   data.Rinv = R.cwiseInverse();

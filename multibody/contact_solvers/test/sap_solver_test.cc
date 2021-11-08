@@ -309,7 +309,7 @@ GTEST_TEST(PizzaSaver, NoAppliedTorque) {
 
   SapSolverParameters params;
   params.rel_tolerance = 1.0e-6;
-  params.alpha = 0;  // Force SAP to use user stiffness.
+  params.beta = 0;  // Force SAP to use user stiffness.
   params.ls_max_iterations = 40;
 
   const Vector4d tau(0.0, 0.0, -problem.mass() * problem.g(), 0.0);
@@ -357,7 +357,7 @@ GTEST_TEST(PizzaSaver, Stiction) {
 
   SapSolverParameters params;
   params.rel_tolerance = 1.0e-6;
-  params.alpha = 0;  // Force SAP to use user stiffness.
+  params.beta = 0;  // Force SAP to use user stiffness.
   params.ls_max_iterations = 40;
 
   const double Mz = 3.0;
@@ -404,7 +404,7 @@ GTEST_TEST(PizzaSaver, NoFriction) {
 
   SapSolverParameters params;
   params.rel_tolerance = 1.0e-6;
-  params.alpha = 0;  // Force SAP to use user stiffness.
+  params.beta = 0;  // Force SAP to use user stiffness.
   params.ls_max_iterations = 40;
 
   const double fx = 1.0;
@@ -449,7 +449,7 @@ GTEST_TEST(PizzaSaver, Sliding) {
 
   SapSolverParameters params;
   params.rel_tolerance = 1.0e-6;
-  params.alpha = 0;  // Force SAP to use user stiffness.
+  params.beta = 0;  // Force SAP to use user stiffness.
   params.ls_max_iterations = 40;
 
   const double Mz = 6.0;

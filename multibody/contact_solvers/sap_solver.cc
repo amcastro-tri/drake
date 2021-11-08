@@ -206,13 +206,13 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
   // We use the Delassus scaling computed above to estimate regularization
   // parameters in the matrix R.
   const VectorX<T>& Wdiag = data.Wdiag;
-  const double alpha = parameters_.alpha;
+  const double beta = parameters_.beta;
   const double sigma = parameters_.sigma;
 
   // Regularization for near-rigid bodies is computed as Rₙ = α²/(4π²)⋅Wᵢ when
   // the contact frequency ωₙ is below the limit ωₙ⋅dt ≤ 2π. That is, the period
   // is Tₙ = α⋅dt.
-  const T alpha_factor = alpha * alpha / (4.0 * M_PI * M_PI);
+  const T beta_factor = beta * beta / (4.0 * M_PI * M_PI);
   for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
     const T& k = stiffness(ic);
     const T& c = dissipation(ic);
@@ -220,7 +220,7 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
     const T& Wi = Wdiag(ic);
     const T taud = c / k;  // Damping time scale.
     const T Rn =
-        max(alpha_factor * Wi, 1.0 / (time_step * k * (time_step + taud)));
+        max(beta_factor * Wi, 1.0 / (time_step * k * (time_step + taud)));
     const T Rt = sigma * Wi;
     R.template segment<3>(ic3) = Vector3<T>(Rt, Rt, Rn);
 

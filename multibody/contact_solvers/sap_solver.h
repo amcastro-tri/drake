@@ -34,10 +34,10 @@ struct SapSolverParameters {
   // step.
   double soft_tolerance{1.0e-7};
 
-  // Rigid approximation contant: Rₙ = α²/(4π²)⋅Wᵢ when the contact frequency ωₙ
-  // is below the limit ωₙ⋅dt ≤ 2π. That is, the period is Tₙ = α⋅dt.
+  // Rigid approximation contant: Rₙ = β²/(4π²)⋅Wᵢ when the contact frequency ωₙ
+  // is below the limit ωₙ⋅δt ≤ 2π. That is, the period is Tₙ = β⋅δt.
   // See [Castro et al., 2021] for details.
-  double alpha{1.0};
+  double beta{1.0};
 
   // Dimensionless parameterization of the regularization of friction.
   // An approximation for the bound on the slip velocity is vₛ ≈ ε⋅δt⋅g.

@@ -40,9 +40,8 @@ ContactSolverStatus SapSolver<T>::SolveWithGuess(
     const T& time_step, const SystemDynamicsData<T>& dynamics_data,
     const PointContactData<T>& contact_data, const VectorX<T>& v_guess,
     ContactSolverResults<T>* results) {
-  // TODO: notice that data_ only is valid withing this scope.
-  // Therefore make this look like:
-  //   ProcessedData data = MakePreProcessedData(...);
+  // The primal method needs the inverse dynamics data.
+  DRAKE_DEMAND(dynamics_data.has_inverse_dynamics());      
   data_ = PreProcessData(time_step, dynamics_data, contact_data);
   return DoSolveWithGuess(data_, v_guess, results);
 }
@@ -155,13 +154,7 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
   using std::sqrt;
 
   PreProcessedData data(dynamics_data.num_velocities(),
-                        contact_data.num_contacts());
-
-  // Keep references to the original data.
-  // TODO: maybe remove this references? are they needed?
-  data.time_step = time_step;
-  data.dynamics_data = &dynamics_data;
-  data.contact_data = &contact_data;
+                        contact_data.num_contacts());  
 
   // Aliases to data.
   const VectorX<T>& mu = contact_data.get_mu();
@@ -174,7 +167,9 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
   VectorX<T>& vhat = data.vhat;
   VectorX<T>& inv_sqrt_M = data.inv_sqrt_M;
 
-  // Store matrices as BlockSparseMatrix.
+  data.time_step = time_step;
+
+  // Store operators as block-sparse matrices.
   dynamics_data.get_A().AssembleMatrix(&data.Mblock);
   contact_data.get_Jc().AssembleMatrix(&data.Jblock);
 
@@ -232,8 +227,9 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
   }
 
   data.Rinv = R.cwiseInverse();
-  const auto& v_star = data.dynamics_data->get_v_star();
-  data.Mblock.Multiply(v_star, &data.p_star);
+  data.v_star = dynamics_data.get_v_star();
+  data.mu = mu;
+  data.Mblock.Multiply(data.v_star, &data.p_star);
 
   return data;
 }
@@ -252,7 +248,7 @@ void SapSolver<T>::CalcAnalyticalInverseDynamics(
   const auto& vhat = data_.vhat;
 
   // Problem data.
-  const auto& mu_all = data_.contact_data->get_mu();
+  const auto& mu_all = data_.mu;
 
   if (dgamma_dy != nullptr) DRAKE_DEMAND(regions != nullptr);
 
@@ -297,7 +293,7 @@ void SapSolver<T>::PackContactResults(const PreProcessedData& data,
   // forces.
   results->fn /= data.time_step;
   results->ft /= data.time_step;
-  const auto& Jop = data.contact_data->get_Jc();
+  const auto& Jop = data.Jblock;
   Jop.MultiplyByTranspose(gamma, &results->tau_contact);
   results->tau_contact /= data.time_step;
 }
@@ -311,7 +307,7 @@ void SapSolver<T>::CalcScaledMomentumAndScales(
   using std::max;
 
   const int nv = data.nv;
-  const auto& v_star = data.dynamics_data->get_v_star();
+  const auto& v_star = data.v_star;
   const auto& p_star = data.p_star;
   const auto& inv_sqrt_M = data.inv_sqrt_M;
   const auto& R = data.R;
@@ -363,15 +359,9 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   using std::abs;
   using std::max;
 
-  const auto& dynamics_data = *data.dynamics_data;
-  const auto& contact_data = *data.contact_data;
-
-  const int nv = dynamics_data.num_velocities();
-  const int nc = contact_data.num_contacts();
+  const int nv = data_.nv;
+  const int nc = data_.nc;
   const int nc3 = 3 * nc;
-
-  // The primal method needs the inverse dynamics data.
-  DRAKE_DEMAND(dynamics_data.has_inverse_dynamics());
 
   // We should not attempt solving zero sized problems for no reason since the
   // solution is trivially v = v*.
@@ -484,7 +474,7 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
     }
 
     // Update change in contact velocities.
-    const auto& Jop = contact_data.get_Jc();
+    const auto& Jop = data_.Jblock;
     Jop.Multiply(cache.dv, &cache.dvc);
     cache.valid_search_direction = true;  // both dv and dvc are now valid.
 
@@ -538,7 +528,7 @@ void SapSolver<T>::CalcVelocityAndImpulses(
     return;
 
   // Update contact velocity.
-  const auto& Jc = data_.contact_data->get_Jc();
+  const auto& Jc = data_.Jblock;
   Jc.Multiply(state.v(), &*vc);
 
   // Update impulse (and gradients if G != nullptr).
@@ -564,11 +554,11 @@ T SapSolver<T>::CalcCostAndGradients(const State& state, VectorX<T>* ell_grad_v,
   // Aliases to data.
   const int nv = data_.nv;
   const int nc = data_.nc;
-  const auto& Aop = data_.dynamics_data->get_A();
-  const auto& Jop = data_.contact_data->get_Jc();
+  const auto& Aop = data_.Mblock;
+  const auto& Jop = data_.Jblock;
   const auto& R = data_.R;
   const auto& vhat = data_.vhat;
-  const auto& v_star = data_.dynamics_data->get_v_star();
+  const auto& v_star = data_.v_star;
 
   // Workspace.
   VectorX<T>& Mv = workspace_.aux_v1;
@@ -609,9 +599,9 @@ T SapSolver<T>::CalcCostAndGradients(const State& state, VectorX<T>* ell_grad_v,
       (!parameters_.use_supernodal_solver ||
        (parameters_.use_supernodal_solver && parameters_.compare_with_dense))) {
     MatrixX<T> Jdense(3 * nc, nv);
-    Jop.AssembleMatrix(&Jdense);
+    Jdense = Jop.MakeDenseMatrix();
     MatrixX<T> Adense(nv, nv);
-    Aop.AssembleMatrix(&Adense);
+    Adense = Aop.MakeDenseMatrix();
 
     MatrixX<T> GJ(3 * nc, nv);
     for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
@@ -639,7 +629,7 @@ T SapSolver<T>::CalcLineSearchCostAndDerivatives(
   const int nc = data_.nc;
   const auto& R = data_.R;
   const auto& Rinv = data_.Rinv;
-  const auto& v_star = data_.dynamics_data->get_v_star();
+  const auto& v_star = data_.v_star;
 
   // Quantities at state v.
   const auto& dv = state_v.cache().dv;
@@ -744,7 +734,7 @@ int SapSolver<T>::CalcInexactLineSearchParameter(const State& state,
   // Update quantities that depend on dv used for
   // line-search.
   auto& cache = state.mutable_cache();
-  const auto& Aop = data_.dynamics_data->get_A();
+  const auto& Aop = data_.Mblock;
   Aop.Multiply(cache.dv, &cache.dp);  // M * cache.dv;
   cache.d2ellM_dalpha2 = cache.dv.dot(cache.dp);
   cache.valid_line_search_quantities = true;

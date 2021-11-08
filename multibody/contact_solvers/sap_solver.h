@@ -172,19 +172,20 @@ class SapSolver final : public ContactSolver<T> {
       R.resize(nc3);
       Rinv.resize(nc3);
       vhat.resize(nc3);
+      mu.resize(nc);
       inv_sqrt_M.resize(nv);
+      v_star.resize(nv);
       p_star.resize(nv);
       Wdiag.resize(nc);
     }
 
-    T time_step;
-    const SystemDynamicsData<T>* dynamics_data{nullptr};
-    const PointContactData<T>* contact_data{nullptr};
+    T time_step;    
     int nv;  // Numver of generalized velocities.
     int nc;  // Numver of contacts.
     VectorX<T> R;     // (Diagonal) Regularization matrix, of size 3nc.
     VectorX<T> Rinv;  // Inverse of regularization matrix, of size 3nc.
     VectorX<T> vhat;  // Constraints stabilization velocity, of size 3nc.
+    VectorX<T> mu;    // Friction coefficients, of size nc.
     BlockSparseMatrix<T> Jblock;  // Jacobian as block-structured matrix.
     BlockSparseMatrix<T> Mblock;  // Mass mastrix as block-structured matrix.
     std::vector<MatrixX<T>> Mt;   // Per-tree blocks of the mass matrix.
@@ -195,6 +196,7 @@ class SapSolver final : public ContactSolver<T> {
     // criteria.
     VectorX<T> inv_sqrt_M;
 
+    VectorX<T> v_star;  // Free-motion generalized velocities.
     VectorX<T> p_star;  // Free motion generalized impulse, i.e. p* = M⋅v*.
     VectorX<T> Wdiag;   // Delassus operator diagonal approximation.
   };

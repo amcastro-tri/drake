@@ -41,7 +41,10 @@ ContactSolverStatus SapSolver<T>::SolveWithGuess(
     const PointContactData<T>& contact_data, const VectorX<T>& v_guess,
     ContactSolverResults<T>* results) {
   // The primal method needs the inverse dynamics data.
-  DRAKE_DEMAND(dynamics_data.has_inverse_dynamics());      
+  DRAKE_DEMAND(dynamics_data.has_inverse_dynamics());
+  // User code should only call the solver for problems with constraints.
+  // Otherwise the solution is trivially v = v*.
+  DRAKE_DEMAND(contact_data.num_contacts() != 0);
   data_ = PreProcessData(time_step, dynamics_data, contact_data);
   return DoSolveWithGuess(data_, v_guess, results);
 }
@@ -154,7 +157,7 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
   using std::sqrt;
 
   PreProcessedData data(dynamics_data.num_velocities(),
-                        contact_data.num_contacts());  
+                        contact_data.num_contacts());
 
   // Aliases to data.
   const VectorX<T>& mu = contact_data.get_mu();
@@ -363,33 +366,8 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   const int nc = data_.nc;
   const int nc3 = 3 * nc;
 
-  // We should not attempt solving zero sized problems for no reason since the
-  // solution is trivially v = v*.
-  DRAKE_DEMAND(nc != 0);
-
-  // Print stuff for debugging.
-  // TODO: refactor into PrintProblemSize().
-  if (parameters_.verbosity_level >= 1) {
-    PRINT_VAR(nv);
-    PRINT_VAR(nc);
-    PRINT_VAR(data_.Mt.size());
-    PRINT_VAR(data_.Mblock.rows());
-    PRINT_VAR(data_.Mblock.cols());
-    PRINT_VAR(data_.Mblock.num_blocks());
-
-    PRINT_VAR(data_.Jblock.block_rows());
-    PRINT_VAR(data_.Jblock.block_cols());
-    PRINT_VAR(data_.Jblock.rows());
-    PRINT_VAR(data_.Jblock.cols());
-    PRINT_VAR(data_.Jblock.num_blocks());
-  }
-  // TODO: refactor into PrintProblemStructure().
-  if (parameters_.verbosity_level >= 2) {
-    for (const auto& [p, t, Jb] : data_.Jblock.get_blocks()) {
-      std::cout << fmt::format("(p,t) = ({:d},{:d}). {:d}x{:d}.\n", p, t,
-                               Jb.rows(), Jb.cols());
-    }
-  }
+  if (parameters_.verbosity_level >= 1) PrintProblemSizes();
+  if (parameters_.verbosity_level >= 2) PrintJacobianSparsity();
 
   State state(nv, nc, parameters_.compare_with_dense);
   aux_state_.Resize(nv, nc, parameters_.compare_with_dense);
@@ -849,6 +827,32 @@ void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) {
 
   // Compute search direction.
   *dv = D.asDiagonal() * Hldlt.solve(rhs);
+}
+
+template <typename T>
+void SapSolver<T>::PrintProblemSizes() const {
+  const int nv = data_.nv;
+  const int nc = data_.nc;
+  PRINT_VAR(nv);
+  PRINT_VAR(nc);
+  PRINT_VAR(data_.Mt.size());
+  PRINT_VAR(data_.Mblock.rows());
+  PRINT_VAR(data_.Mblock.cols());
+  PRINT_VAR(data_.Mblock.num_blocks());
+
+  PRINT_VAR(data_.Jblock.block_rows());
+  PRINT_VAR(data_.Jblock.block_cols());
+  PRINT_VAR(data_.Jblock.rows());
+  PRINT_VAR(data_.Jblock.cols());
+  PRINT_VAR(data_.Jblock.num_blocks());
+}
+
+template <typename T>
+void SapSolver<T>::PrintJacobianSparsity() const {
+  for (const auto& [p, t, Jb] : data_.Jblock.get_blocks()) {
+    std::cout << fmt::format("(p,t) = ({:d},{:d}). {:d}x{:d}.\n", p, t,
+                             Jb.rows(), Jb.cols());
+  }
 }
 
 }  // namespace internal

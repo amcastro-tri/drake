@@ -179,9 +179,9 @@ class SapSolver final : public ContactSolver<T> {
       Wdiag.resize(nc);
     }
 
-    T time_step;    
-    int nv;  // Numver of generalized velocities.
-    int nc;  // Numver of contacts.
+    T time_step;
+    int nv;           // Numver of generalized velocities.
+    int nc;           // Numver of contacts.
     VectorX<T> R;     // (Diagonal) Regularization matrix, of size 3nc.
     VectorX<T> Rinv;  // Inverse of regularization matrix, of size 3nc.
     VectorX<T> vhat;  // Constraints stabilization velocity, of size 3nc.
@@ -356,6 +356,9 @@ class SapSolver final : public ContactSolver<T> {
 
   // Solves for dv usind dense algebra, for debugging.
   void CallDenseSolver(const State& s, VectorX<T>* dv);
+
+  void PrintProblemSizes() const;
+  void PrintJacobianSparsity() const;
 
   SapSolverParameters parameters_;
 

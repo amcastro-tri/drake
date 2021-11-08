@@ -43,8 +43,7 @@ ContactSolverStatus SapSolver<T>::SolveWithGuess(
   // TODO: notice that data_ only is valid withing this scope.
   // Therefore make this look like:
   //   ProcessedData data = MakePreProcessedData(...);
-  data_ = PreProcessData(time_step, dynamics_data, contact_data,
-                         parameters_.alpha, parameters_.sigma);
+  data_ = PreProcessData(time_step, dynamics_data, contact_data);
   return DoSolveWithGuess(data_, v_guess, results);
 }
 
@@ -142,8 +141,7 @@ void SapSolver<T>::CalcDelassusDiagonalApproximation(
 template <typename T>
 typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
     const T& time_step, const SystemDynamicsData<T>& dynamics_data,
-    const PointContactData<T>& contact_data,
-    double alpha, double sigma) {
+    const PointContactData<T>& contact_data) const {
   using std::max;
   using std::min;
   using std::sqrt;
@@ -197,6 +195,8 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
   CalcDelassusDiagonalApproximation(nc, data.Mt, data.Jblock, &data.Wdiag);
 
   const auto& Wdiag = data.Wdiag;
+  const double alpha = parameters_.alpha;
+  const double sigma = parameters_.sigma;
   const T alpha_factor = alpha * alpha / (4.0 * M_PI * M_PI);
   for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
     // Regularization.
@@ -216,13 +216,7 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
     const double beta = phi_max / g / (time_step * time_step);
     Rn = min(Rn, beta * Wi);
     DRAKE_DEMAND(Rn > 0);
-    const T Rt = parameters_.sigma * Wi;
-    // PRINT_VAR(Wi);
-    // PRINT_VAR(Rt);
-    // PRINT_VAR(Rn);
-    // PRINT_VAR(Rt / Rn);
-    // PRINT_VAR(Rt / Wi);
-    // PRINT_VAR(Rn / Wi);
+    const T Rt = sigma * Wi;
     Ric = Vector3<T>(Rt, Rt, Rn);
 
     // Stabilization velocity.

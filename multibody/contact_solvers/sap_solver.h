@@ -250,9 +250,7 @@ class SapSolver final : public ContactSolver<T> {
   // TODO: make ti return data instead and remove member data from here.
   PreProcessedData PreProcessData(const T& time_step,
                                   const SystemDynamicsData<T>& dynamics_data,
-                                  const PointContactData<T>& contact_data,
-                                  double alpha,
-                                  double sigma);
+                                  const PointContactData<T>& contact_data) const;
 
   // Utility to compute the "soft norm" ‖x‖ₛ defined by ‖x‖ₛ² = ‖x‖² + ε², where
   // ε = soft_tolerance.

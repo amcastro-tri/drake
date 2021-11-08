@@ -8,7 +8,6 @@
 #include "drake/multibody/contact_solvers/block_sparse_matrix.h"
 #include "drake/multibody/contact_solvers/contact_solver.h"
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
-#include "drake/multibody/contact_solvers/convex_solver_base.h"
 #include "drake/multibody/contact_solvers/supernodal_solver.h"
 
 namespace drake {
@@ -39,7 +38,7 @@ struct SapSolverParameters {
   double soft_tolerance{1.0e-7};
 
   // Tangential regularization factor. We make Rt = Rt_factor * Rn.
-  double Rt_factor{1.0e-3};  
+  double Rt_factor{1.0e-3};
 
   // Rigid approximation contant: Rₙ = α⋅Wᵢ when the contact frequency ωₙ is
   // below the limit ωₙ⋅dt ≤ 2π. That is, the period is Tₙ = α⋅dt.
@@ -76,7 +75,7 @@ struct SolutionData {
     mu.resize(nc);
     R.resize(nc3);
   }
-#endif 
+#endif
   int nc;
   VectorX<T> vc;
   VectorX<T> gamma;
@@ -93,18 +92,19 @@ struct SolutionData {
 // In 2014 IEEE International Conference on Robotics and Automation (ICRA) (pp.
 // 6054-6061). IEEE.
 template <typename T>
-class SapSolver final : public ConvexSolverBase<T> {
+class SapSolver final : public ContactSolver<T> {
  public:
   SapSolver();
 
   virtual ~SapSolver() = default;
 
+  ContactSolverStatus SolveWithGuess(const T& time_step,
+                                     const SystemDynamicsData<T>& dynamics_data,
+                                     const PointContactData<T>& contact_data,
+                                     const VectorX<T>& v_guess,
+                                     ContactSolverResults<T>* result) final;
+
   void set_parameters(const SapSolverParameters& parameters) {
-    ConvexSolverBaseParameters base_parameters{parameters.theta,
-                                               parameters.Rt_factor,
-                                               parameters.alpha,
-                                               parameters.sigma};
-    ConvexSolverBase<T>::set_parameters(base_parameters);
     parameters_ = parameters;
   }
 
@@ -184,6 +184,37 @@ class SapSolver final : public ConvexSolverBase<T> {
     T d2ellM_dalpha2;  // d2ellM_dalpha2 = Δvᵀ⋅M⋅Δv
   };
 
+  // TODO: make into a proper class.
+  struct PreProcessedData {
+    void Resize(int nv_in, int nc_in) {
+      nv = nv_in;
+      nc = nc_in;
+      const int nc3 = 3 * nc;
+      R.resize(nc3);
+      Rinv.resize(nc3);
+      vc_stab.resize(nc3);
+      Djac.resize(nv);
+      p_star.resize(nv);
+      Wdiag.resize(nc);
+    }
+    T time_step;
+    const SystemDynamicsData<T>* dynamics_data{nullptr};
+    const PointContactData<T>* contact_data{nullptr};
+    int nv;
+    int nc;
+    VectorX<T> R;        // Regularization parameters, of size 3nc.
+    VectorX<T> Rinv;     // Inverse of regularization parameters, of size 3nc.
+    VectorX<T> vc_stab;  // Constraints stabilization velocity, see paper.
+    BlockSparseMatrix<T> Jblock;  // Jacobian as block-structured matrix.
+    BlockSparseMatrix<T> Mblock;  // Mass mastrix as block-structured matrix.
+    std::vector<MatrixX<T>> Mt;  // Per-tree diagonal blocks of the mass matrix.
+    // Jacobi pre-conditioner for the mass matrix.
+    // Djac = diag(M)^(-0.5)
+    VectorX<T> Djac;
+    VectorX<T> p_star;
+    VectorX<T> Wdiag;  // Delassus operator diagonal approximation.
+  };
+
   // Everything in this solver is a function of the generalized velocities v.
   // State stores generalized velocities v and cached quantities that are
   // function of v.
@@ -216,11 +247,78 @@ class SapSolver final : public ConvexSolverBase<T> {
     mutable Cache cache_;
   };
 
+  // Parameters that define the projection gamma = P(y) on the friction cone ℱ
+  // using the R norm.
+  struct ProjectionParams {
+    // Friction coefficient. It defines the friction cone ℱ.
+    T mu;
+    // Regularization parameters. Define the R norm.
+    T Rt;  // Tangential direction.
+    T Rn;  // Normal direction.
+  };
+
+  // Computes gamma = P(y) and its gradient dPdy (if requested).
+  // In addition to passing y as an argument we also pass the triplet {yr,
+  // yn, that}. This allow us to reuse these quantities if already computed.
+  // TODO: make static?
+  Vector3<T> CalcProjection(const ProjectionParams& params,
+                            const Eigen::Ref<const Vector3<T>>& y, const T& yr,
+                            const T& yn,
+                            const Eigen::Ref<const Vector2<T>>& that,
+                            int* region, Matrix3<T>* dPdy = nullptr) const;
+
+  void CalcDelassusDiagonalApproximation(int nc,
+                                         const std::vector<MatrixX<T>>& Mt,
+                                         const BlockSparseMatrix<T>& Jblock,
+                                         VectorX<T>* Wdiag) const;
+
+  // TODO: make ti return data instead and remove member data from here.
+  PreProcessedData PreProcessData(const T& time_step,
+                                  const SystemDynamicsData<T>& dynamics_data,
+                                  const PointContactData<T>& contact_data,
+                                  double theta, double Rt_factor, double alpha,
+                                  double sigma);
+
+  // Utility to compute the "soft norm" ‖x‖ₛ defined by ‖x‖ₛ² = ‖x‖² + ε², where
+  // ε = soft_tolerance.
+  T SoftNorm(const Eigen::Ref<const VectorX<T>>& x,
+             double soft_tolerance) const {
+    using std::sqrt;
+    return sqrt(x.squaredNorm() + soft_tolerance * soft_tolerance);
+  }
+
+  // Compute the analytical inverse dynamics γ = γ(vc).
+  // @param[in] soft_norm_tolerance tolerance used to compute the norm of the
+  // tangential unprojected impulse yt, with units of Ns.
+  // @param[in] vc contact velocities. On input vc.segment<3>(3*i) contains
+  // velocity for the i-th contact point.
+  // @param[out] gamma contact impulses. On output gamma.segment<3>(3*i)
+  // contains the impulse for the i-th contact point.
+  // @param[out] dgamma_dy Gradient of gamma wrt y. Not computed if nullptr.
+  // @param[out] regions not computed if dgamma_dy = nullptr. Must be
+  // non-nullptr if dgamma_dy is not nullptr.
+  void CalcAnalyticalInverseDynamics(
+      double soft_norm_tolerance, const VectorX<T>& vc, VectorX<T>* gamma,
+      std::vector<Matrix3<T>>* dgamma_dy = nullptr,
+      VectorX<int>* regions = nullptr) const;
+
+  // Pack solution into ContactSolverResults.
+  void PackContactResults(const PreProcessedData& data, const VectorX<T>& v,
+                          const VectorX<T>& vc, const VectorX<T>& gamma,
+                          ContactSolverResults<T>* result) const;
+
+  void CalcScaledMomentumAndScales(const PreProcessedData& data,
+                                   const VectorX<T>& v, const VectorX<T>& gamma,
+                                   T* scaled_momentum_error, T* momentum_scale,
+                                   T* Ek, T* ellM, T* ellR, T* ell,
+                                   VectorX<T>* v_work1, VectorX<T>* v_work2,
+                                   VectorX<T>* v_work3) const;
+
   // This is the one and only API from ContactSolver that must be implemented.
   // Refere to ContactSolverBase's documentation for details.
-  ContactSolverStatus DoSolveWithGuess(
-      const typename ConvexSolverBase<T>::PreProcessedData& data,
-      const VectorX<T>& v_guess, ContactSolverResults<T>* result) final;
+  ContactSolverStatus DoSolveWithGuess(const PreProcessedData& data,
+                                       const VectorX<T>& v_guess,
+                                       ContactSolverResults<T>* result);
 
   // Update:
   //  - Contact velocities vc(v).
@@ -266,8 +364,7 @@ class SapSolver final : public ConvexSolverBase<T> {
   // Solves for dv usind dense algebra, for debugging.
   void CallDenseSolver(const State& s, VectorX<T>* dv);
 
-  using ConvexSolverBase<T>::data_;
-  SapSolverParameters parameters_;  
+  SapSolverParameters parameters_;
 
   struct Workspace {
     void Resize(int nv, int nc) {
@@ -282,11 +379,12 @@ class SapSolver final : public ConvexSolverBase<T> {
   // Auxiliary state used by CalcLineSearchParameter().
   // TODO: either remove or make it an argument to CalcLineSearchParameter().
   mutable State aux_state_;
+  mutable PreProcessedData data_;
 };
 
 template <>
 ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
-    const ConvexSolverBase<double>::PreProcessedData&, const VectorX<double>&,
+    const SapSolver<double>::PreProcessedData&, const VectorX<double>&,
     ContactSolverResults<double>*);
 
 }  // namespace internal
@@ -294,5 +392,5 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
 }  // namespace multibody
 }  // namespace drake
 
-extern template class ::drake::multibody::contact_solvers::internal::
-    SapSolver<double>;
+extern template class ::drake::multibody::contact_solvers::internal::SapSolver<
+    double>;

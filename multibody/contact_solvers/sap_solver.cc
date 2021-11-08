@@ -12,6 +12,7 @@
 #include "fmt/format.h"
 
 #include "drake/common/test_utilities/limit_malloc.h"
+#include "drake/common/unused.h"
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
 #include "drake/multibody/contact_solvers/supernodal_solver.h"
 
@@ -32,22 +33,337 @@ using Eigen::SparseMatrix;
 using Eigen::SparseVector;
 
 template <typename T>
-SapSolver<T>::SapSolver()
-    : ConvexSolverBase<T>(
-          {SapSolverParameters().theta, SapSolverParameters().Rt_factor,
-           SapSolverParameters().alpha, SapSolverParameters().sigma}) {}
+SapSolver<T>::SapSolver() {}
+
+template <typename T>
+ContactSolverStatus SapSolver<T>::SolveWithGuess(
+    const T& time_step, const SystemDynamicsData<T>& dynamics_data,
+    const PointContactData<T>& contact_data, const VectorX<T>& v_guess,
+    ContactSolverResults<T>* results) {
+  // TODO: notice that data_ only is valid withing this scope.
+  // Therefore make this look like:
+  //   ProcessedData data = MakePreProcessedData(...);
+  data_ = PreProcessData(time_step, dynamics_data, contact_data,
+                         parameters_.theta, parameters_.Rt_factor,
+                         parameters_.alpha, parameters_.sigma);
+  return DoSolveWithGuess(data_, v_guess, results);
+}
+
+template <typename T>
+Vector3<T> SapSolver<T>::CalcProjection(
+    const ProjectionParams& params, const Eigen::Ref<const Vector3<T>>& y,
+    const T& yr, const T& yn, const Eigen::Ref<const Vector2<T>>& that,
+    int* region, Matrix3<T>* dPdy) const {
+  const T& mu = params.mu;
+  const T& Rt = params.Rt;
+  const T& Rn = params.Rn;
+  const T mu_hat = mu * Rt / Rn;
+
+  Vector3<T> gamma;
+  // Analytical projection of y onto the friction cone ℱ using the R norm.
+  if (yr < mu * yn) {  // Region I, stiction.
+    *region = 1;
+    gamma = y;
+    if (dPdy) dPdy->setIdentity();
+  } else if (-mu_hat * yr < yn && yn <= yr / mu) {  // Region II, sliding.
+    *region = 2;
+    // Common terms:
+    const T mu_tilde2 = mu * mu_hat;  // mu_tilde = mu * sqrt(Rt/Rn).
+    const T factor = 1.0 / (1.0 + mu_tilde2);
+
+    // Projection P(y).
+    const T gn = (yn + mu_hat * yr) * factor;
+    const Vector2<T> gt = mu * gn * that;
+    gamma.template head<2>() = gt;
+    gamma(2) = gn;
+
+    // Gradient:
+    if (dPdy) {
+      const Matrix2<T> P = that * that.transpose();
+      const Matrix2<T> Pperp = Matrix2<T>::Identity() - P;
+
+      // We split dPdy into separate blocks:
+      //
+      // dPdy = |dgt_dyt dgt_dyn|
+      //        |dgn_dyt dgn_dyn|
+      // where dgt_dyt ∈ ℝ²ˣ², dgt_dyn ∈ ℝ², dgn_dyt ∈ ℝ²ˣ¹ and dgn_dyn ∈ ℝ.
+      const Matrix2<T> dgt_dyt = mu * (gn / yr * Pperp + mu_hat * factor * P);
+      const Vector2<T> dgt_dyn = mu * factor * that;
+      const RowVector2<T> dgn_dyt = mu_hat * factor * that.transpose();
+      const T dgn_dyn = factor;
+
+      dPdy->template topLeftCorner<2, 2>() = dgt_dyt;
+      dPdy->template topRightCorner<2, 1>() = dgt_dyn;
+      dPdy->template bottomLeftCorner<1, 2>() = dgn_dyt;
+      (*dPdy)(2, 2) = dgn_dyn;
+    }
+  } else {  // yn <= -mu_hat * yr
+    *region = 3;
+    // Region III, no contact.
+    gamma.setZero();
+    if (dPdy) dPdy->setZero();
+  }
+
+  return gamma;
+}
+
+template <typename T>
+void SapSolver<T>::CalcDelassusDiagonalApproximation(
+    int nc, const std::vector<MatrixX<T>>& Mt,
+    const BlockSparseMatrix<T>& Jblock, VectorX<T>* Wdiag) const {
+  DRAKE_DEMAND(Wdiag != nullptr);
+  DRAKE_DEMAND(Wdiag->size() == nc);
+  const int nt = Mt.size();
+  std::vector<Eigen::LLT<MatrixX<T>>> M_ldlt;
+  M_ldlt.resize(nt);
+  std::vector<Matrix3<T>> W(nc, Matrix3<T>::Zero());
+
+  for (int t = 0; t < nt; ++t) {
+    const auto& Mt_local = Mt[t];
+    M_ldlt[t] = Mt_local.llt();
+  }
+
+  for (auto [p, t, Jpt] : Jblock.get_blocks()) {
+    // ic_start is the first contact point of patch p.
+    const int ic_start = Jblock.row_start(p) / 3;
+    // k-th contact within patch p.
+    for (int k = 0; k < Jpt.rows() / 3; k++) {
+      const int ic = ic_start + k;
+      const auto& Jkt = Jpt.block(3 * k, 0, 3, Jpt.cols());
+      W[ic] += Jkt * M_ldlt[t].solve(Jkt.transpose());
+    }
+  }
+
+  // Compute Wdiag as the rms norm of k-th diagonal block.
+  for (int ic = 0; ic < nc; ++ic) {
+    (*Wdiag)[ic] = W[ic].norm() / 3;
+  }
+}
+
+template <typename T>
+typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
+    const T& time_step, const SystemDynamicsData<T>& dynamics_data,
+    const PointContactData<T>& contact_data, double theta, double Rt_factor,
+    double alpha, double sigma) {
+  using std::max;
+  using std::min;
+  using std::sqrt;
+
+  unused(Rt_factor);
+
+  PreProcessedData data;
+
+  // Keep references to data.
+  data.time_step = time_step;
+  data.dynamics_data = &dynamics_data;
+  data.contact_data = &contact_data;
+  data.Resize(dynamics_data.num_velocities(), contact_data.num_contacts());
+
+  // Aliases to data.
+  const auto& mu = contact_data.get_mu();
+  const auto& phi0 = contact_data.get_phi0();
+  const auto& vc0 = contact_data.get_vc0();
+  const auto& stiffness = contact_data.get_stiffness();
+  const auto& dissipation = contact_data.get_dissipation();
+
+  // Aliases to mutable pre-processed data workspace.
+  auto& R = data.R;
+  auto& vc_stab = data.vc_stab;
+  auto& Djac = data.Djac;
+
+  dynamics_data.get_A().AssembleMatrix(&data.Mblock);
+  contact_data.get_Jc().AssembleMatrix(&data.Jblock);
+
+  // Extract M's per-tree diagonal blocks.
+  // Compute Jacobi pre-conditioner Djac.
+  data.Mt.clear();
+  data.Mt.reserve(data.Mblock.num_blocks());
+  for (const auto& block : data.Mblock.get_blocks()) {
+    const int t1 = std::get<0>(block);
+    const int t2 = std::get<1>(block);
+    const MatrixX<T>& Mij = std::get<2>(block);
+    DRAKE_DEMAND(t1 == t2);
+    data.Mt.push_back(Mij);
+
+    DRAKE_DEMAND(Mij.rows() == Mij.cols());
+    const int nt = Mij.rows();  // == cols(), the block is squared.
+
+    const int start = data.Mblock.row_start(t1);
+    DRAKE_DEMAND(start == data.Mblock.col_start(t2));
+
+    Djac.template segment(start, nt) =
+        Mij.diagonal().cwiseInverse().cwiseSqrt();
+  }
+
+  // We need Wdiag first to compute R below.
+  const int nc = phi0.size();
+  CalcDelassusDiagonalApproximation(nc, data.Mt, data.Jblock, &data.Wdiag);
+
+  const auto& Wdiag = data.Wdiag;
+  const T alpha_factor = alpha * alpha / (4.0 * M_PI * M_PI);
+  for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
+    // Regularization.
+    auto Ric = R.template segment<3>(ic3);
+    const T& k = stiffness(ic);
+    DRAKE_DEMAND(k > 0);
+    const T& c = dissipation(ic);
+    const T& Wi = Wdiag(ic);
+    const T taud = c / k;  // Damping rate.
+    T Rn = max(alpha_factor * Wi,
+               1.0 / (theta * time_step * k * (time_step + taud)));
+    // We'll also bound the maximum value of Rn. Geodesic IMP seems to dislike
+    // large values of Rn. We are not sure about SAP...
+    const double phi_max = 1.0;  // We estimate a maximum penetration of 1 m.
+    const double g = 10.0;  // An estimate of acceleration in m/s², gravity.
+    // Beta is the dimensionless factor β = αₘₐₓ²/(4π²) = (ϕₘₐₓ/g)/δt².
+    const double beta = phi_max / g / (time_step * time_step);
+    Rn = min(Rn, beta * Wi);
+    DRAKE_DEMAND(Rn > 0);
+    const T Rt = parameters_.sigma * Wi;
+    // PRINT_VAR(Wi);
+    // PRINT_VAR(Rt);
+    // PRINT_VAR(Rn);
+    // PRINT_VAR(Rt / Rn);
+    // PRINT_VAR(Rt / Wi);
+    // PRINT_VAR(Rn / Wi);
+    Ric = Vector3<T>(Rt, Rt, Rn);
+
+    // Stabilization velocity.
+    const T factor = (1.0 - theta) / theta;
+    const T vn_hat =
+        -phi0(ic) / (theta * (time_step + taud)) - factor * vc0(ic3 + 2);
+    vc_stab.template segment<3>(ic3) = Vector3<T>(0, 0, vn_hat);
+  }
+  data.Rinv = R.cwiseInverse();
+
+  const auto& v_star = data.dynamics_data->get_v_star();
+  data.Mblock.Multiply(v_star, &data.p_star);
+
+  return data;
+}
+
+template <typename T>
+void SapSolver<T>::CalcAnalyticalInverseDynamics(
+    double soft_norm_tolerance, const VectorX<T>& vc, VectorX<T>* gamma,
+    std::vector<Matrix3<T>>* dgamma_dy, VectorX<int>* regions) const {
+  const int nc = data_.nc;
+  const int nc3 = 3 * nc;
+  DRAKE_DEMAND(vc.size() == nc3);
+  DRAKE_DEMAND(gamma->size() == nc3);
+
+  // Pre-processed data.
+  const auto& R = data_.R;
+  const auto& vc_stab = data_.vc_stab;
+
+  // Problem data.
+  const auto& mu_all = data_.contact_data->get_mu();
+
+  if (dgamma_dy != nullptr) DRAKE_DEMAND(regions != nullptr);
+
+  for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
+    const auto& vc_ic = vc.template segment<3>(ic3);
+    const auto& vc_stab_ic = vc_stab.template segment<3>(ic3);
+    const auto& R_ic = R.template segment<3>(ic3);
+    const T& mu = mu_all(ic);
+    const T& Rt = R_ic(0);
+    const T& Rn = R_ic(2);
+    const Vector3<T> y_ic = (vc_stab_ic - vc_ic).array() / R_ic.array();
+    const auto yt = y_ic.template head<2>();
+    const T yr = SoftNorm(yt, soft_norm_tolerance);
+    const T yn = y_ic[2];
+    const Vector2<T> that = yt / yr;
+
+    // Analytical projection of y onto the friction cone ℱ using the R norm.
+    auto gamma_ic = gamma->template segment<3>(ic3);
+    if (dgamma_dy != nullptr) {
+      auto& dgamma_dy_ic = (*dgamma_dy)[ic];
+      gamma_ic = CalcProjection({mu, Rt, Rn}, y_ic, yr, yn, that,
+                                &(*regions)(ic), &dgamma_dy_ic);
+    } else {
+      int region_ic{-1};
+      gamma_ic = CalcProjection({mu, Rt, Rn}, y_ic, yr, yn, that, &region_ic);
+    }
+  }
+}
+
+template <typename T>
+void SapSolver<T>::PackContactResults(const PreProcessedData& data,
+                                      const VectorX<T>& v, const VectorX<T>& vc,
+                                      const VectorX<T>& gamma,
+                                      ContactSolverResults<T>* results) const {
+  results->Resize(data.nv, data.nc);
+  results->v_next = v;
+  ExtractNormal(vc, &results->vn);
+  ExtractTangent(vc, &results->vt);
+  ExtractNormal(gamma, &results->fn);
+  ExtractTangent(gamma, &results->ft);
+  // N.B. While contact solver works with impulses, results are reported as
+  // forces.
+  results->fn /= data.time_step;
+  results->ft /= data.time_step;
+  const auto& Jop = data.contact_data->get_Jc();
+  Jop.MultiplyByTranspose(gamma, &results->tau_contact);
+  results->tau_contact /= data.time_step;
+}
+
+template <typename T>
+void SapSolver<T>::CalcScaledMomentumAndScales(
+    const PreProcessedData& data, const VectorX<T>& v, const VectorX<T>& gamma,
+    T* scaled_momentum_error, T* momentum_scale, T* Ek, T* ellM, T* ellR,
+    T* ell, VectorX<T>* v_work1, VectorX<T>* v_work2,
+    VectorX<T>* v_work3) const {
+  using std::max;
+
+  const int nv = data.nv;
+  const auto& v_star = data.dynamics_data->get_v_star();
+  const auto& p_star = data.p_star;
+  const auto& Djac = data.Djac;
+  const auto& R = data.R;
+  const auto& M = data.Mblock;
+  const auto& J = data.Jblock;
+
+  VectorX<T>& p = *v_work1;
+  M.Multiply(v, &p);
+
+  VectorX<T>& j = *v_work2;
+  J.MultiplyByTranspose(gamma, &j);
+
+  VectorX<T>& grad_ell = *v_work3;
+  grad_ell = p - p_star - j;
+
+  // Energy metrics.
+  *Ek = 0.5 * v.dot(p);
+  const T Ek_star = 0.5 * v_star.dot(p_star);  // TODO: move to pre-proc data.
+  *ellM = *Ek + Ek_star - v.dot(p_star);
+  if (*ellM < 0) {
+    PRINT_VAR(*ellM);
+  }
+  DRAKE_DEMAND(*ellM >= 0);
+  *ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
+  *ell = *ellM + *ellR;
+
+  // Scale momentum balance using the mass matrix's Jacobi preconditioner so
+  // that all entries have the same units and we can compute a fair error
+  // metric.
+  grad_ell = Djac.asDiagonal() * grad_ell;
+  p = Djac.asDiagonal() * p;
+  j = Djac.asDiagonal() * j;
+
+  *scaled_momentum_error = grad_ell.norm();
+  *momentum_scale = max(p.norm(), j.norm());
+}
 
 template <typename T>
 ContactSolverStatus SapSolver<T>::DoSolveWithGuess(
-    const typename ConvexSolverBase<T>::PreProcessedData& data,
-    const VectorX<T>& v_guess, ContactSolverResults<T>* result) {
+    const PreProcessedData& data, const VectorX<T>& v_guess,
+    ContactSolverResults<T>* result) {
   throw std::logic_error("Only T = double is supported.");
 }
 
 template <>
 ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
-    const ConvexSolverBase<double>::PreProcessedData& data,
-    const VectorX<double>& v_guess, ContactSolverResults<double>* results) {
+    const PreProcessedData& data, const VectorX<double>& v_guess,
+    ContactSolverResults<double>* results) {
   using std::abs;
   using std::max;
 
@@ -123,7 +439,7 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
       std::cout << std::string(80, '=') << std::endl;
       std::cout << "Iteration: " << k << std::endl;
     }
-    
+
     // N.B. This update is important and must be here!
     CalcVelocityAndImpulses(state, &cache.vc, &cache.gamma);
 

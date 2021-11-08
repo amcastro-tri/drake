@@ -172,7 +172,6 @@ drake_cc_library(
     deps = [
         ":block_sparse_matrix",
         ":contact_solver",
-        ":convex_solver_base",
         ":contact_solver_utils",
         ":point_contact_data",
         ":system_dynamics_data",

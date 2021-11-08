@@ -284,7 +284,7 @@ ContactSolverResults<double> AdvanceNumSteps(
   ContactSolverResults<double> result;
   // Arbitrary non-zero guess to stress the solver.
   VectorXd v_guess(problem.num_velocities);
-  v_guess << 1.0, 2.0, 3.0;
+  v_guess << 1.0, 2.0, 3.0, 4.0;
 
   const double theta = M_PI / 5;  // Arbitrary orientation.
   VectorXd q = Vector4d(0.0, 0.0, 0.0, theta);

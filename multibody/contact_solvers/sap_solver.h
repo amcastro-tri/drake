@@ -238,13 +238,6 @@ class SapSolver final : public ConvexSolverBase<T> {
                          T* ellR = nullptr,
                          MatrixX<T>* ell_hessian_v = nullptr) const;
 
-  // Helper used for debugging. Given un-projected impulse y and search
-  // direction dy, it detects all cone crossings along that direction.
-  // N.B. This might not make it into production code, even when super useful.
-  std::vector<T> FindAllContinuousIntervals(const State& state,
-                                            const VectorX<T>& y,
-                                            const VectorX<T>& dy) const;
-
   // Given velocities v and search direction dv stored in `state`, this method
   // computes ℓ(α) = ℓ(v+αΔv), for a given alpha (α), and first and second
   // derivatives dℓ/dα and d²ℓ/dα².

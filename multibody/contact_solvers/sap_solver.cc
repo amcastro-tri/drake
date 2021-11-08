@@ -12,9 +12,7 @@
 #include "fmt/format.h"
 
 #include "drake/common/test_utilities/limit_malloc.h"
-#include "drake/multibody/contact_solvers/cone_ray_intersect.h"
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
-#include "drake/multibody/contact_solvers/rtsafe.h"
 #include "drake/multibody/contact_solvers/supernodal_solver.h"
 
 #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
@@ -489,90 +487,6 @@ int SapSolver<T>::CalcInexactLineSearchParameter(const State& state,
   }
   throw std::runtime_error("Line search reached max iterations.");
   DRAKE_UNREACHABLE();
-}
-
-template <typename T>
-std::vector<T> SapSolver<T>::FindAllContinuousIntervals(
-    const State& state, const VectorX<T>& y, const VectorX<T>& dy) const {
-  // Pre-processed data.
-  const int nc = data_.nc;
-  const auto& R = data_.R;
-
-  // Problem data.
-  const auto& mu_all = data_.contact_data->get_mu();
-
-  const double soft_tolerance = parameters_.soft_tolerance;
-  const double alpha_max = parameters_.ls_alpha_max;
-
-  std::vector<T> cone_crossings;
-
-  // We want the first interval to start at 0. We add it.
-  cone_crossings.push_back(0.0);
-
-  // We reserve the maximum number of possible crossings to avoid heap
-  // allocation in the loop.
-  // There can be up to two intersections per cone. Therefore if a ray
-  // intersects both the cone and its dual twice, we have a maximum of four
-  // intersections per contact.
-  cone_crossings.reserve(4 * nc);
-  int num_alphas;
-  Vector2<T> alphas;
-  for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
-    const auto& y_ic = y.template segment<3>(ic3);
-    const auto& dy_ic = dy.template segment<3>(ic3);
-    const auto& R_ic = R.template segment<3>(ic3);
-    const T& mu = mu_all(ic);
-    const T& Rt = R_ic(0);
-    const T& Rn = R_ic(2);
-    const T mu_hat = mu * Rt / Rn;
-
-    // Intersection with the friction cone s(y) = mu*yn - yr >= 0.
-    num_alphas =
-        CalcRayConeIntersection(mu, soft_tolerance, y_ic, dy_ic, &alphas);
-    if (num_alphas >= 1 && alphas[0] < alpha_max)
-      cone_crossings.push_back(alphas[0]);
-    if (num_alphas == 2 && alphas[1] < alpha_max)
-      cone_crossings.push_back(alphas[1]);
-
-    // Intersection with the polar cone. yn < -mu_hat*yr. Since the polar cone
-    // is in the negative z half space and CalcRayConeIntersection() only works
-    // with cones on the positive z half space, we mirror y to y_minus and find
-    // the intersection with the (now positive) polar cone
-    // s(y) = yn/mu_hat - yr >= 0.
-    const Vector3<T> y_minus(y_ic(0), y_ic(1), -y_ic(2));
-    const Vector3<T> dy_minus(dy_ic(0), dy_ic(1), -dy_ic(2));
-    num_alphas = CalcRayConeIntersection(1.0 / mu_hat, soft_tolerance, y_minus,
-                                         dy_minus, &alphas);
-    if (num_alphas >= 1 && alphas[0] < alpha_max)
-      cone_crossings.push_back(alphas[0]);
-    if (num_alphas == 2 && alphas[1] < alpha_max)
-      cone_crossings.push_back(alphas[1]);
-  }
-
-  // We want the last interval to end at alpha_max. We add it.
-  cone_crossings.push_back(parameters_.ls_alpha_max);
-
-  // std::unique eliminates all except the first element from every consecutive
-  // group of equivalent elements. Therefore to remove all repeated elements, we
-  // must first sort the vector.
-  std::sort(cone_crossings.begin(), cone_crossings.end());
-
-  // Remove repeated entries (within a given tolerance.)
-  auto pred = [](const T& a, const T& b) -> bool {
-    constexpr double kEqualityTolerance = 1.0e-10;
-    using std::abs;
-    return (abs(a - b) < kEqualityTolerance);
-  };
-  auto last = std::unique(cone_crossings.begin(), cone_crossings.end(), pred);
-
-  // Erases unspecified values to reduces the physical size of cone_crossings.
-  cone_crossings.erase(last, cone_crossings.end());
-
-  for (double alpha_cross : cone_crossings) {
-    PRINT_VAR(alpha_cross);
-  }
-
-  return cone_crossings;
 }
 
 template <typename T>

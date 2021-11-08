@@ -171,13 +171,11 @@ drake_cc_library(
     "-g"],
     deps = [
         ":block_sparse_matrix",
-        ":cone_ray_intersect",
         ":contact_solver",
         ":convex_solver_base",
         ":contact_solver_utils",
         ":point_contact_data",
         ":system_dynamics_data",
-        ":rtsafe",
         ":timer",
         "//common:default_scalars",
         "//common:essential",

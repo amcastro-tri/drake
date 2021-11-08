@@ -53,11 +53,9 @@ class PizzaSaverProblem {
 
   struct ProblemData {
     ProblemData(int nv, int nc) {
-      const int nc3 = 3 * nc;
       M.resize(nv, nv);
       v_star.resize(nv);
       phi0.resize(nc);
-      vc0.resize(nc3);
       stiffness.resize(nc);
       dissipation.resize(nc);
       mu.resize(nc);
@@ -78,7 +76,6 @@ class PizzaSaverProblem {
 
     // Contact data.
     VectorXd phi0;
-    VectorXd vc0;
     VectorXd stiffness;
     VectorXd dissipation;
     VectorXd mu;
@@ -207,13 +204,12 @@ class PizzaSaverProblem {
         std::make_unique<BlockSparseLinearOperator<double>>("J", &data->Jblock);
 
     data->phi0.setConstant(num_contacts, q0(2));
-    data->vc0.setConstant(3 * num_contacts, v0(2));  // TODO: needed?
     data->stiffness.setConstant(num_contacts, stiffness_);
     data->dissipation.setConstant(num_contacts, taud_ * stiffness_);
     data->mu.setConstant(num_contacts, mu_);
 
     data->contact_data = std::make_unique<PointContactData<double>>(
-        &data->phi0, &data->vc0, data->Jop.get(), &data->stiffness,
+        &data->phi0, data->Jop.get(), &data->stiffness,
         &data->dissipation, &data->mu);
 
     return data;

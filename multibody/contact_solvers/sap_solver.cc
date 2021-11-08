@@ -144,20 +144,21 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
     const PointContactData<T>& contact_data) const {
   using std::max;
   using std::min;
-  using std::sqrt;
+  using std::sqrt;  
 
   PreProcessedData data;
 
-  // Keep references to data.
+  // Keep references to the original data.
+  // TODO: maybe remove this references? are they needed?
   data.time_step = time_step;
   data.dynamics_data = &dynamics_data;
   data.contact_data = &contact_data;
+  
   data.Resize(dynamics_data.num_velocities(), contact_data.num_contacts());
 
   // Aliases to data.
   const auto& mu = contact_data.get_mu();
   const auto& phi0 = contact_data.get_phi0();
-  const auto& vc0 = contact_data.get_vc0();
   const auto& stiffness = contact_data.get_stiffness();
   const auto& dissipation = contact_data.get_dissipation();
 

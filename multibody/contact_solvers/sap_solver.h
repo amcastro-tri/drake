@@ -247,10 +247,13 @@ class SapSolver final : public ContactSolver<T> {
                                          const BlockSparseMatrix<T>& Jblock,
                                          VectorX<T>* Wdiag) const;
 
-  // TODO: make ti return data instead and remove member data from here.
-  PreProcessedData PreProcessData(const T& time_step,
-                                  const SystemDynamicsData<T>& dynamics_data,
-                                  const PointContactData<T>& contact_data) const;
+  // This method extracts and pre-processes input data into a format that is
+  // more convenient for computation. In particular, it computes quantities
+  // directly appearing in the optimization problem such as R, v̂, W, among
+  // others.
+  PreProcessedData PreProcessData(
+      const T& time_step, const SystemDynamicsData<T>& dynamics_data,
+      const PointContactData<T>& contact_data) const;
 
   // Utility to compute the "soft norm" ‖x‖ₛ defined by ‖x‖ₛ² = ‖x‖² + ε², where
   // ε = soft_tolerance.

@@ -34,8 +34,9 @@ struct SapSolverParameters {
   // step.
   double soft_tolerance{1.0e-7};
 
-  // Rigid approximation contant: Rₙ = α⋅Wᵢ when the contact frequency ωₙ is
-  // below the limit ωₙ⋅dt ≤ 2π. That is, the period is Tₙ = α⋅dt.
+  // Rigid approximation contant: Rₙ = α²/(4π²)⋅Wᵢ when the contact frequency ωₙ
+  // is below the limit ωₙ⋅dt ≤ 2π. That is, the period is Tₙ = α⋅dt.
+  // See [Castro et al., 2021] for details.
   double alpha{1.0};
 
   // Dimensionless parameterization of the regularization of friction.
@@ -159,35 +160,43 @@ class SapSolver final : public ContactSolver<T> {
     T d2ellM_dalpha2;  // d2ellM_dalpha2 = Δvᵀ⋅M⋅Δv
   };
 
-  // TODO: make into a proper class.
+  // Structure used to store input data pre-processed for computation.
   struct PreProcessedData {
-    void Resize(int nv_in, int nc_in) {
-      nv = nv_in;
-      nc = nc_in;
+    // Constructs and empty data.
+    PreProcessedData() = default;
+
+    // @param nv_in Number of generalized velocities.
+    // @param nc_in Number of contact constraints.
+    PreProcessedData(int nv_in, int nc_in) : nv(nv_in), nc(nc_in) {
       const int nc3 = 3 * nc;
       R.resize(nc3);
       Rinv.resize(nc3);
-      vc_stab.resize(nc3);
-      Djac.resize(nv);
+      vhat.resize(nc3);
+      inv_sqrt_M.resize(nv);
       p_star.resize(nv);
       Wdiag.resize(nc);
     }
+
     T time_step;
     const SystemDynamicsData<T>* dynamics_data{nullptr};
     const PointContactData<T>* contact_data{nullptr};
-    int nv;
-    int nc;
-    VectorX<T> R;        // Regularization parameters, of size 3nc.
-    VectorX<T> Rinv;     // Inverse of regularization parameters, of size 3nc.
-    VectorX<T> vc_stab;  // Constraints stabilization velocity, see paper.
+    int nv;  // Numver of generalized velocities.
+    int nc;  // Numver of contacts.
+    VectorX<T> R;     // (Diagonal) Regularization matrix, of size 3nc.
+    VectorX<T> Rinv;  // Inverse of regularization matrix, of size 3nc.
+    VectorX<T> vhat;  // Constraints stabilization velocity, of size 3nc.
     BlockSparseMatrix<T> Jblock;  // Jacobian as block-structured matrix.
     BlockSparseMatrix<T> Mblock;  // Mass mastrix as block-structured matrix.
-    std::vector<MatrixX<T>> Mt;  // Per-tree diagonal blocks of the mass matrix.
-    // Jacobi pre-conditioner for the mass matrix.
-    // Djac = diag(M)^(-0.5)
-    VectorX<T> Djac;
-    VectorX<T> p_star;
-    VectorX<T> Wdiag;  // Delassus operator diagonal approximation.
+    std::vector<MatrixX<T>> Mt;   // Per-tree blocks of the mass matrix.
+
+    // Inverse of the diagonal matrix formed with the square root of the
+    // diagonal entries of the mass matrix, i.e. inv_sqrt_M = diag(M)^{-1/2}.
+    // This matrix is used to compute a dimensionless residual for the stopping
+    // criteria.
+    VectorX<T> inv_sqrt_M;
+
+    VectorX<T> p_star;  // Free motion generalized impulse, i.e. p* = M⋅v*.
+    VectorX<T> Wdiag;   // Delassus operator diagonal approximation.
   };
 
   // Everything in this solver is a function of the generalized velocities v.
@@ -242,6 +251,12 @@ class SapSolver final : public ContactSolver<T> {
                             const Eigen::Ref<const Vector2<T>>& that,
                             int* region, Matrix3<T>* dPdy = nullptr) const;
 
+  // Computes a diagonal approximation of the Delassus operator used to compute
+  // a per constrataint diagonal scaling into Wdiag.
+  // Given an approximation Wₖₖ of the block diagonal element corresponding to
+  // the k-th constraint, the scaling is computed as
+  // Wdiag[k] = ‖Wₖₖ‖ᵣₘₛ = ‖Wₖₖ‖/3.
+  // See [Castro et al. 2021] for details.
   void CalcDelassusDiagonalApproximation(int nc,
                                          const std::vector<MatrixX<T>>& Mt,
                                          const BlockSparseMatrix<T>& Jblock,

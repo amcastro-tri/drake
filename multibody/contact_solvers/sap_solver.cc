@@ -111,30 +111,38 @@ void SapSolver<T>::CalcDelassusDiagonalApproximation(
     const BlockSparseMatrix<T>& Jblock, VectorX<T>* Wdiag) const {
   DRAKE_DEMAND(Wdiag != nullptr);
   DRAKE_DEMAND(Wdiag->size() == nc);
-  const int nt = Mt.size();
+  const int nt = Mt.size();  // Number of trees.
+
+  // We compute a factorization of M once so we can re-use it multiple times
+  // below.
   std::vector<Eigen::LLT<MatrixX<T>>> M_ldlt;
   M_ldlt.resize(nt);
-  std::vector<Matrix3<T>> W(nc, Matrix3<T>::Zero());
-
   for (int t = 0; t < nt; ++t) {
     const auto& Mt_local = Mt[t];
     M_ldlt[t] = Mt_local.llt();
   }
 
+  // We compute a diagonal approximation to the Delassus operator W. We
+  // initialize it to zero and progressively add contributions in an O(n) pass.
+  std::vector<Matrix3<T>> W(nc, Matrix3<T>::Zero());
   for (auto [p, t, Jpt] : Jblock.get_blocks()) {
+    // Verify assumption that this indeed is a contact Jacobian.
+    DRAKE_DEMAND(Jblock.row_start(p) % 3 == 0);
+    DRAKE_DEMAND(Jpt.rows() % 3 == 0);
     // ic_start is the first contact point of patch p.
     const int ic_start = Jblock.row_start(p) / 3;
     // k-th contact within patch p.
     for (int k = 0; k < Jpt.rows() / 3; k++) {
       const int ic = ic_start + k;
       const auto& Jkt = Jpt.block(3 * k, 0, 3, Jpt.cols());
+      // This effectively computes Jₖₜ⋅M⁻¹⋅Jₖₜᵀ.
       W[ic] += Jkt * M_ldlt[t].solve(Jkt.transpose());
     }
   }
 
   // Compute Wdiag as the rms norm of k-th diagonal block.
-  for (int ic = 0; ic < nc; ++ic) {
-    (*Wdiag)[ic] = W[ic].norm() / 3;
+  for (int k = 0; k < nc; ++k) {
+    (*Wdiag)[k] = W[k].norm() / 3;
   }
 }
 
@@ -144,88 +152,86 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
     const PointContactData<T>& contact_data) const {
   using std::max;
   using std::min;
-  using std::sqrt;  
+  using std::sqrt;
 
-  PreProcessedData data;
+  PreProcessedData data(dynamics_data.num_velocities(),
+                        contact_data.num_contacts());
 
   // Keep references to the original data.
   // TODO: maybe remove this references? are they needed?
   data.time_step = time_step;
   data.dynamics_data = &dynamics_data;
   data.contact_data = &contact_data;
-  
-  data.Resize(dynamics_data.num_velocities(), contact_data.num_contacts());
 
   // Aliases to data.
-  const auto& mu = contact_data.get_mu();
-  const auto& phi0 = contact_data.get_phi0();
-  const auto& stiffness = contact_data.get_stiffness();
-  const auto& dissipation = contact_data.get_dissipation();
+  const VectorX<T>& mu = contact_data.get_mu();
+  const VectorX<T>& phi0 = contact_data.get_phi0();
+  const VectorX<T>& stiffness = contact_data.get_stiffness();
+  const VectorX<T>& dissipation = contact_data.get_dissipation();
 
-  // Aliases to mutable pre-processed data workspace.
-  auto& R = data.R;
-  auto& vc_stab = data.vc_stab;
-  auto& Djac = data.Djac;
+  // Aliases to mutable pre-processed data.
+  VectorX<T>& R = data.R;
+  VectorX<T>& vhat = data.vhat;
+  VectorX<T>& inv_sqrt_M = data.inv_sqrt_M;
 
+  // Store matrices as BlockSparseMatrix.
   dynamics_data.get_A().AssembleMatrix(&data.Mblock);
   contact_data.get_Jc().AssembleMatrix(&data.Jblock);
 
-  // Extract M's per-tree diagonal blocks.
-  // Compute Jacobi pre-conditioner Djac.
+  // Extract mass matrix's per-tree diagonal blocks.
+  // Compute diagonal scaling inv_sqrt_M.
   data.Mt.clear();
   data.Mt.reserve(data.Mblock.num_blocks());
   for (const auto& block : data.Mblock.get_blocks()) {
     const int t1 = std::get<0>(block);
     const int t2 = std::get<1>(block);
     const MatrixX<T>& Mij = std::get<2>(block);
+    // We verify the assumption that M is block diagonal.
     DRAKE_DEMAND(t1 == t2);
-    data.Mt.push_back(Mij);
-
+    // Each block must be squared.
     DRAKE_DEMAND(Mij.rows() == Mij.cols());
-    const int nt = Mij.rows();  // == cols(), the block is squared.
+
+    const int nt = Mij.rows();  // Number of DOFs in the tree.
+    data.Mt.push_back(Mij);
 
     const int start = data.Mblock.row_start(t1);
     DRAKE_DEMAND(start == data.Mblock.col_start(t2));
-
-    Djac.template segment(start, nt) =
+    inv_sqrt_M.template segment(start, nt) =
         Mij.diagonal().cwiseInverse().cwiseSqrt();
   }
 
-  // We need Wdiag first to compute R below.
+  // Computation of a diagonal approximation to the Delassus operator.
+  // N.B. This must happen before the computation of the regularization R below.
   const int nc = phi0.size();
   CalcDelassusDiagonalApproximation(nc, data.Mt, data.Jblock, &data.Wdiag);
 
-  const auto& Wdiag = data.Wdiag;
+  // We use the Delassus scaling computed above to estimate regularization
+  // parameters in the matrix R.
+  const VectorX<T>& Wdiag = data.Wdiag;
   const double alpha = parameters_.alpha;
   const double sigma = parameters_.sigma;
+
+  // Regularization for near-rigid bodies is computed as Rₙ = α²/(4π²)⋅Wᵢ when
+  // the contact frequency ωₙ is below the limit ωₙ⋅dt ≤ 2π. That is, the period
+  // is Tₙ = α⋅dt.
   const T alpha_factor = alpha * alpha / (4.0 * M_PI * M_PI);
   for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
-    // Regularization.
-    auto Ric = R.template segment<3>(ic3);
     const T& k = stiffness(ic);
-    DRAKE_DEMAND(k > 0);
     const T& c = dissipation(ic);
+    DRAKE_DEMAND(k > 0 && c >= 0);
     const T& Wi = Wdiag(ic);
-    const T taud = c / k;  // Damping rate.
-    T Rn = max(alpha_factor * Wi,
-               1.0 / (time_step * k * (time_step + taud)));
-    // We'll also bound the maximum value of Rn. Geodesic IMP seems to dislike
-    // large values of Rn. We are not sure about SAP...
-    const double phi_max = 1.0;  // We estimate a maximum penetration of 1 m.
-    const double g = 10.0;  // An estimate of acceleration in m/s², gravity.
-    // Beta is the dimensionless factor β = αₘₐₓ²/(4π²) = (ϕₘₐₓ/g)/δt².
-    const double beta = phi_max / g / (time_step * time_step);
-    Rn = min(Rn, beta * Wi);
-    DRAKE_DEMAND(Rn > 0);
+    const T taud = c / k;  // Damping time scale.
+    const T Rn =
+        max(alpha_factor * Wi, 1.0 / (time_step * k * (time_step + taud)));
     const T Rt = sigma * Wi;
-    Ric = Vector3<T>(Rt, Rt, Rn);
+    R.template segment<3>(ic3) = Vector3<T>(Rt, Rt, Rn);
 
     // Stabilization velocity.
     const T vn_hat = -phi0(ic) / (time_step + taud);
-    vc_stab.template segment<3>(ic3) = Vector3<T>(0, 0, vn_hat);
+    vhat.template segment<3>(ic3) = Vector3<T>(0, 0, vn_hat);
   }
-  data.Rinv = R.cwiseInverse();
 
+  data.Rinv = R.cwiseInverse();
   const auto& v_star = data.dynamics_data->get_v_star();
   data.Mblock.Multiply(v_star, &data.p_star);
 
@@ -243,7 +249,7 @@ void SapSolver<T>::CalcAnalyticalInverseDynamics(
 
   // Pre-processed data.
   const auto& R = data_.R;
-  const auto& vc_stab = data_.vc_stab;
+  const auto& vhat = data_.vhat;
 
   // Problem data.
   const auto& mu_all = data_.contact_data->get_mu();
@@ -252,12 +258,12 @@ void SapSolver<T>::CalcAnalyticalInverseDynamics(
 
   for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
     const auto& vc_ic = vc.template segment<3>(ic3);
-    const auto& vc_stab_ic = vc_stab.template segment<3>(ic3);
+    const auto& vhat_ic = vhat.template segment<3>(ic3);
     const auto& R_ic = R.template segment<3>(ic3);
     const T& mu = mu_all(ic);
     const T& Rt = R_ic(0);
     const T& Rn = R_ic(2);
-    const Vector3<T> y_ic = (vc_stab_ic - vc_ic).array() / R_ic.array();
+    const Vector3<T> y_ic = (vhat_ic - vc_ic).array() / R_ic.array();
     const auto yt = y_ic.template head<2>();
     const T yr = SoftNorm(yt, soft_norm_tolerance);
     const T yn = y_ic[2];
@@ -307,7 +313,7 @@ void SapSolver<T>::CalcScaledMomentumAndScales(
   const int nv = data.nv;
   const auto& v_star = data.dynamics_data->get_v_star();
   const auto& p_star = data.p_star;
-  const auto& Djac = data.Djac;
+  const auto& inv_sqrt_M = data.inv_sqrt_M;
   const auto& R = data.R;
   const auto& M = data.Mblock;
   const auto& J = data.Jblock;
@@ -335,9 +341,9 @@ void SapSolver<T>::CalcScaledMomentumAndScales(
   // Scale momentum balance using the mass matrix's Jacobi preconditioner so
   // that all entries have the same units and we can compute a fair error
   // metric.
-  grad_ell = Djac.asDiagonal() * grad_ell;
-  p = Djac.asDiagonal() * p;
-  j = Djac.asDiagonal() * j;
+  grad_ell = inv_sqrt_M.asDiagonal() * grad_ell;
+  p = inv_sqrt_M.asDiagonal() * p;
+  j = inv_sqrt_M.asDiagonal() * j;
 
   *scaled_momentum_error = grad_ell.norm();
   *momentum_scale = max(p.norm(), j.norm());
@@ -561,7 +567,7 @@ T SapSolver<T>::CalcCostAndGradients(const State& state, VectorX<T>* ell_grad_v,
   const auto& Aop = data_.dynamics_data->get_A();
   const auto& Jop = data_.contact_data->get_Jc();
   const auto& R = data_.R;
-  const auto& vc_stab = data_.vc_stab;
+  const auto& vhat = data_.vhat;
   const auto& v_star = data_.dynamics_data->get_v_star();
 
   // Workspace.

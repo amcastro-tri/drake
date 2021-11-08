@@ -58,25 +58,6 @@ struct SapSolverParameters {
   int verbosity_level{0};
 };
 
-// Intended for debugging only. Remove.
-template <typename T>
-struct SolutionData {
-#if 0  
-  SolutionData(int nv_, int nc_) : nc(nc_) {
-    const int nc3 = 3 * nc;
-    vc.resize(nc3);
-    gamma.resize(nc3);
-    mu.resize(nc);
-    R.resize(nc3);
-  }
-#endif
-  int nc;
-  VectorX<T> vc;
-  VectorX<T> gamma;
-  VectorX<T> mu;
-  VectorX<T> R;
-};
-
 // This solver uses the regularized convex formulation from [Todorov 2014].
 // This class must only implement the API ContactSolver::SolveWithGuess(),
 // please refer to the documentation in ContactSolver for details.

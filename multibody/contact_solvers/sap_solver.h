@@ -46,10 +46,6 @@ struct SapSolverParameters {
   // Use supernodal algebra for the linear solver.
   bool use_supernodal_solver{true};
 
-  // For debugging. Compare supernodal reconstructed Hessian with dense algebra
-  // Hessian.
-  bool compare_with_dense{false};
-
   // The verbosity level determines how much information to print into stdout.
   // These levels are additive. E.g.: level 2 also prints level 0 and 1 info.
   //  0: Nothing gets printed.
@@ -210,7 +206,7 @@ class SapSolver final : public ContactSolver<T> {
 
     State() = default;
 
-    State(int nv, int nc, bool dense) { Resize(nv, nc, dense); }
+    State(int nv, int nc, bool dense = true) { Resize(nv, nc, dense); }
 
     void Resize(int nv, int nc, bool dense) {
       v_.resize(nv);
@@ -348,7 +344,7 @@ class SapSolver final : public ContactSolver<T> {
   //   α = argmin ℓ(α)= ℓ(v + αᵣΔv)
   //       αᵣ = ρʳαₘₐₓ
   //       s.t. ℓ(α) < ϕ(α), Armijo's condition.
-  int CalcInexactLineSearchParameter(const State& state, T* alpha) const;
+  int PerformBackTrackingLineSearch(const State& state, T* alpha) const;
 
   // Solves for dv using supernodal algebra.
   void CallSupernodalSolver(const State& s, VectorX<T>* dv,
@@ -370,11 +366,7 @@ class SapSolver final : public ContactSolver<T> {
     VectorX<T> aux_v1;
     VectorX<T> aux_v2;
   };
-  mutable Workspace workspace_;
-
-  // Auxiliary state used by CalcLineSearchParameter().
-  // TODO: either remove or make it an argument to CalcLineSearchParameter().
-  mutable State aux_state_;
+  mutable Workspace workspace_;  
   mutable PreProcessedData data_;
 };
 

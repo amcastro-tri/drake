@@ -369,8 +369,7 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   if (parameters_.verbosity_level >= 1) PrintProblemSizes();
   if (parameters_.verbosity_level >= 2) PrintJacobianSparsity();
 
-  State state(nv, nc, parameters_.compare_with_dense);
-  aux_state_.Resize(nv, nc, parameters_.compare_with_dense);
+  State state(nv, nc);
   workspace_.Resize(nv, nc);
   VectorX<double> gamma_id(3 * nc);
   VectorX<double> v_work1(nv);
@@ -389,6 +388,8 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
 
   // Super nodal solver is constructed once per time-step to reuse structure
   // of M and J.
+  // TODO: Move solver to the cache, so that the factorization is effectively
+  // cached. Think of computing gradients later.
   std::unique_ptr<conex::SuperNodalSolver> solver;
 
   double alpha = 1.0;
@@ -465,15 +466,9 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
     // Perform line-search.
     // N.B. If converged, we allow one last update with alpha = 1.0.
     alpha = 1.0;
-    num_ls_iters = 0;  // Count line-search iterations.
-    // remove this when you fully swap to the optimality condition for
-    // convergence criteria.
-    bool converged = false;
-    if (!converged) {
-      // If not converged, we know dvc !=0 and therefore we have a valid
-      // search direction for line search.
-      num_ls_iters = CalcInexactLineSearchParameter(state, &alpha);
-    }
+    num_ls_iters = 0;  // Count line-search iterations.    
+    num_ls_iters = PerformBackTrackingLineSearch(state, &alpha);
+    
 
     // Update state.
     state.mutable_v() += alpha * cache.dv;
@@ -484,7 +479,6 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
       PRINT_VAR(cache.ell);
       PRINT_VAR(cache.dv.norm());
       PRINT_VAR(state_kp.cache().ell);
-      PRINT_VAR(converged);
       PRINT_VAR(alpha);
     }
   }
@@ -573,9 +567,7 @@ T SapSolver<T>::CalcCostAndGradients(const State& state, VectorX<T>* ell_grad_v,
 
   // We don't build the Hessian here anymore.
   // This is only for debugging.
-  if (ell_hessian_v &&
-      (!parameters_.use_supernodal_solver ||
-       (parameters_.use_supernodal_solver && parameters_.compare_with_dense))) {
+  if (ell_hessian_v && !parameters_.use_supernodal_solver) {
     MatrixX<T> Jdense(3 * nc, nv);
     Jdense = Jop.MakeDenseMatrix();
     MatrixX<T> Adense(nv, nv);
@@ -693,7 +685,7 @@ T SapSolver<T>::CalcLineSearchCostAndDerivatives(
 }
 
 template <typename T>
-int SapSolver<T>::CalcInexactLineSearchParameter(const State& state,
+int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
                                                  T* alpha_out) const {
   DRAKE_DEMAND(state.cache().valid_cost_and_gradients);
 
@@ -723,7 +715,11 @@ int SapSolver<T>::CalcInexactLineSearchParameter(const State& state,
   // Save dot product between dv and ell_grad_v.
   const T dell_dalpha0 = ell_grad_v0.dot(dv);
 
-  // If dell_dalpha at v is not negative, something went terribly wrong.
+  // dℓ/dα(α = 0) is guaranteed to be strictly negative given the the Hessian of
+  // the cost is positive definite. Only round-off errors in the factorization
+  // of the Hessian for ill-conditioned systems (small regularization) can
+  // destroy this property. If so, we abort given that'd mean the model must be
+  // revisited.
   DRAKE_DEMAND(dell_dalpha0 < 0);
 
   T alpha = parameters_.ls_alpha_max;
@@ -749,6 +745,9 @@ int SapSolver<T>::CalcInexactLineSearchParameter(const State& state,
     // until ell starts increasing.
     if (ell_alpha > ell_prev) {
       if (satisfies_armijo) {
+        // TODO: move expensive computation of gradients into this scope since I
+        // only need them here!  
+
         // We don't go back one because we do know that the current alpha
         // satisfies the Armijo condition.
         // If the previous iterate satisfies the Armijo condition, it is better
@@ -765,6 +764,17 @@ int SapSolver<T>::CalcInexactLineSearchParameter(const State& state,
     ell_prev = ell_alpha;
     satisfies_armijo_prev = satisfies_armijo;
   }
+
+  // TODO: it might be we have a real shapre cost near alpha=0 that the
+  // backtracking line search could not resolve and therefore the cost never
+  // went up. However, if Armijo's condition is satisfied, we still are game.
+  // You should check that here!
+  const bool satisfies_armijo = ell_alpha < ell0 + c * alpha * dell_dalpha0;
+  if (satisfies_armijo) {
+    *alpha_out = alpha;
+    return num_iters;
+  }
+
   throw std::runtime_error("Line search reached max iterations.");
   DRAKE_UNREACHABLE();
 }
@@ -780,7 +790,11 @@ void SapSolver<T>::CallSupernodalSolver(const State& s, VectorX<T>* dv,
   // This call does the actual assembly H = A + J G Jᵀ.
   solver->SetWeightMatrix(cache.G);
 
-  // Build full matrix for debugging.
+  // Build full matrix for debugging. TODO: use this code for first PR. Place
+  // Hessian in cache. Since supernodal carries state, we'll place it in the
+  // cache (effectively replacing the hessian cache entry with a factorization.
+  // Consider the case of computing gradients later on.)
+#if 0
   if (parameters_.compare_with_dense) {
     const MatrixXd H = solver->FullMatrix();
     PRINT_VAR((cache.ell_hessian_v - H).norm());
@@ -789,6 +803,7 @@ void SapSolver<T>::CallSupernodalSolver(const State& s, VectorX<T>* dv,
           "Supernodal Hessian differs from dense algebra Hessian.");
     }
   }
+#endif  
 
   // Factor() overwrites the assembled matrix with its LLT decomposition.
   // We'll count it as part of the linear solver time.

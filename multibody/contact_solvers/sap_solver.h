@@ -95,8 +95,6 @@ class SapSolver final : public ContactSolver<T> {
       const int nc3 = 3 * nc;
       vc.resize(nc3);
       gamma.resize(nc3);
-      ellR_grad_y.resize(nc3);
-      ellR_hessian_y.resize(nc);
       ell_grad_v.resize(nv);
       if (dense) ell_hessian_v.resize(nv, nv);
       dv.resize(nv);
@@ -132,10 +130,6 @@ class SapSolver final : public ContactSolver<T> {
     std::vector<MatrixX<T>> G;          // G = -∂γ/∂vc.
     VectorX<T> ell_grad_v;              // Gradient of the cost in v.
     VectorX<int> regions;
-
-    // TODO: needed?
-    VectorX<T> ellR_grad_y;                  // Gradient of regularizer in y.
-    std::vector<Matrix3<T>> ellR_hessian_y;  // Hessian of regularizer in y.
 
     // TODO: only for debugging. Remove these.
     bool valid_dense_gradients{false};

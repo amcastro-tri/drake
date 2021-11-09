@@ -518,65 +518,6 @@ void SapSolver<T>::CalcVelocityAndImpulses(
 }
 
 template <typename T>
-T SapSolver<T>::CalcCostAndGradients(const State& state, VectorX<T>* ell_grad_v,
-                                     std::vector<MatrixX<T>>* G, T* ellM_out,
-                                     T* ellR_out) const {
-  DRAKE_DEMAND(ell_grad_v != nullptr);
-  DRAKE_DEMAND(G != nullptr);
-  if (state.cache().valid_cost_and_gradients) return state.cache().ell;
-
-  // Evaluate velocity cache.
-  auto& cache = state.mutable_cache();
-  CalcVelocityAndImpulses(state, &cache.vc, &cache.gamma, &cache.dgamma_dy);
-
-  // Aliases to data.
-  const int nv = data_.nv;
-  const int nc = data_.nc;
-  const auto& Aop = data_.Mblock;
-  const auto& Jop = data_.Jblock;
-  const auto& R = data_.R;
-  const auto& vhat = data_.vhat;
-  const auto& v_star = data_.v_star;
-
-  // Workspace.
-  VectorX<T>& Mv = workspace_.aux_v1;
-  VectorX<T>& dv = workspace_.aux_v2;
-
-  // Cost:
-  // ℓ(v) = 0.5⋅(v−v*)ᵀM(v−v*) + 0.5⋅γ(v)ᵀ R γ(v).
-  const auto& gamma = cache.gamma;
-  const T ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
-  dv = state.v() - v_star;
-  Aop.Multiply(dv, &Mv);
-  const T ellM = 0.5 * dv.dot(Mv);
-  const T ell = ellM + ellR;
-  if (ellM_out) *ellM_out = ellM;
-  if (ellR_out) *ellR_out = ellR;
-
-  // Gradient:
-  // ∇ℓ(v) = M(v−v*) − Jᵀγ.
-  if (ell_grad_v) {
-    ell_grad_v->setZero();
-    Jop.MultiplyByTranspose(gamma, ell_grad_v);  // ell_grad_v= J^T * gamma.
-    (*ell_grad_v) = -(*ell_grad_v);
-    (*ell_grad_v) += Mv;
-  }
-
-  const auto& dgamma_dy = cache.dgamma_dy;
-  for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
-    const auto& R_ic = R.template segment<3>(ic3);
-    const Vector3<T> Rinv = R_ic.cwiseInverse();
-    const Matrix3<T>& dgamma_dy_ic = dgamma_dy[ic];
-    MatrixX<T>& G_ic = (*G)[ic];
-    G_ic = dgamma_dy_ic * Rinv.asDiagonal();
-  }
-
-  cache.valid_cost_and_gradients = true;
-
-  return ell;
-}
-
-template <typename T>
 T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
                                    State* state_alpha) const {
   DRAKE_DEMAND(state_v.cache().valid_line_search_quantities);
@@ -622,7 +563,7 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
 template <typename T>
 int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
                                                 T* alpha_out) const {
-  DRAKE_DEMAND(state.cache().valid_cost_and_gradients);
+  DRAKE_DEMAND(state.cache().gradients_updated);
 
   // Quantities at alpha = 0.
   const T ell0 = state.cache().ell;
@@ -716,8 +657,7 @@ void SapSolver<T>::CallSupernodalSolver(const State& s, VectorX<T>* dv,
                                         conex::SuperNodalSolver* solver) {
   auto& cache = s.mutable_cache();
 
-  cache.ell = CalcCostAndGradients(s, &cache.ell_grad_v, &cache.G, &cache.ellM,
-                                   &cache.ellR);
+  UpdateCostAndGradientsCache(s, &cache);
 
   // This call does the actual assembly H = A + J G Jᵀ.
   solver->SetWeightMatrix(cache.G);
@@ -749,9 +689,7 @@ void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) {
   const int nv = data_.nv;
 
   auto& cache = state.mutable_cache();
-  cache.ell =
-      CalcCostAndGradients(state, &cache.ell_grad_v, &cache.G, &cache.ellM,
-                           &cache.ellR);
+  UpdateCostAndGradientsCache(state, &cache);
 
   {
     int nc = data_.nc;
@@ -866,8 +804,8 @@ void SapSolver<T>::UpdateCostCache(const State& state, Cache* cache) const {
 }
 
 template <typename T>
-void SapSolver<T>::UpdateImpulsesAndGradientsCache(const State& state,
-                                                   Cache* cache) const {
+void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
+                                               Cache* cache) const {
   if (cache->gradients_updated) return;
   UpdateMomentumChangeCache(state, cache);
   UpdateVelocitiesCache(state, cache);
@@ -878,6 +816,9 @@ void SapSolver<T>::UpdateImpulsesAndGradientsCache(const State& state,
   CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache->get_vc(),
                                 &cache->gamma, &cache->dgamma_dy,
                                 &cache->regions);
+  cache->impulses_updated = true;
+
+  UpdateCostCache(state, cache);
 
   // Update ∇ᵥℓ.
   const VectorX<T>& gamma = cache->get_gamma();

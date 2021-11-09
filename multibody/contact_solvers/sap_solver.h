@@ -132,6 +132,12 @@ class SapSolver final : public ContactSolver<T> {
     void mark_invalid() {
       stage = Stage::kOutOfDate;
 
+      velocities_updated = false;
+      momentum_change_updated = false;
+      impulses_updated = false;
+      gradients_updated = false;
+      cost_updated = false;
+      search_direction_updated = {false};
 
       // TODO: remove these.
       valid_contact_velocity_and_impulses = false;
@@ -351,7 +357,7 @@ class SapSolver final : public ContactSolver<T> {
   // Updates impulses stage in `cache`.
   void UpdateImpulsesCache(const State& state, Cache* cache) const;
 
-  void UpdateImpulsesAndGradientsCache(const State& state, Cache* cache) const;
+  void UpdateCostAndGradientsCache(const State& state, Cache* cache) const;
 
   void UpdateCostCache(const State& state, Cache* cache) const;
 
@@ -364,13 +370,6 @@ class SapSolver final : public ContactSolver<T> {
   void CalcVelocityAndImpulses(
       const State& state, VectorX<T>* vc, VectorX<T>* gamma,
       std::vector<Matrix3<T>>* dgamma_dy = nullptr) const;
-
-  // Computes the cost ℓ(v) and gradients with respect to v.
-  // If ell_hessian_v == nullptr we skip the expensive computation of the
-  // Hessian.
-  T CalcCostAndGradients(const State& state, VectorX<T>* ell_grad_v,
-                         std::vector<MatrixX<T>>* G, T* ellM = nullptr,
-                         T* ellR = nullptr) const;
 
   // Given velocities v and search direction dv stored in `state`, this method
   // computes ℓ(α) = ℓ(v+αΔv), for a given alpha (α), and first and second

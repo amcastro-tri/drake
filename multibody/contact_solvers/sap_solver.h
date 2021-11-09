@@ -346,16 +346,16 @@ class SapSolver final : public ContactSolver<T> {
 
 
   // Updates the velocity stage in `cache`.
-  void UpdateVelocityStage(const State& state, Cache* cache) const;
+  void UpdateVelocitiesCache(const State& state, Cache* cache) const;
 
   // Updates impulses stage in `cache`.
-  void UpdateImpulsesStage(const State& state, Cache* cache) const;
+  void UpdateImpulsesCache(const State& state, Cache* cache) const;
 
-  void UpdateImpulsesAndGradientsStages(const State& state, Cache* cache) const;
+  void UpdateImpulsesAndGradientsCache(const State& state, Cache* cache) const;
 
-  void UpdateCostStage(const State& state, Cache* cache) const;
+  void UpdateCostCache(const State& state, Cache* cache) const;
 
-  void UpdateMomentumChange(const State& state, Cache* cache) const;
+  void UpdateMomentumChangeCache(const State& state, Cache* cache) const;
 
   // Update:
   //  - Contact velocities vc(v).

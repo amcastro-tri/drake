@@ -389,7 +389,7 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   // Compute velocity and impulses here to use in the computation of convergence
   // metrics later for the very first iteration.
   auto& cache = state.mutable_cache();
-  CalcVelocityAndImpulses(state, &cache.vc, &cache.gamma);
+  UpdateImpulsesCache(state, &cache);
 
   // Previous iteration state, for error computation and reporting.
   State state_kp = state;
@@ -414,7 +414,7 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
     }
 
     // N.B. This update is important and must be here!
-    CalcVelocityAndImpulses(state, &cache.vc, &cache.gamma);
+    UpdateImpulsesCache(state, &cache);
 
     double scaled_momentum_error, momentum_scale;
     {
@@ -474,9 +474,8 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
     // Perform line-search.
     // N.B. If converged, we allow one last update with alpha = 1.0.
     alpha = 1.0;
-    num_ls_iters = 0;  // Count line-search iterations.    
+    num_ls_iters = 0;  // Count line-search iterations.
     num_ls_iters = PerformBackTrackingLineSearch(state, &alpha);
-    
 
     // Update state.
     state.mutable_v() += alpha * cache.dv;
@@ -613,15 +612,19 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
   const auto& dvc = state_v.cache().dvc;
 
   // State at v(alpha).
-  state_alpha->mutable_v() = state_v.v() + alpha * dv;
-  const auto& v = state_alpha->v();
-  const auto& gamma = state_alpha->cache().gamma;  // We'll update below.
-  const auto& dgamma_dy = state_alpha->cache().dgamma_dy;
+  state_alpha->mutable_v() = state_v.v() + alpha * dv;  
 
   // Update velocities and impulses at v(alpha).
+  //UpdateImpulsesCache(*state_alpha, &state_alpha->mutable_cache());
+  // TODO: call UpdateImpulsesCache() instead.
+  // Right now if I call UpdateImpulsesCache() the unit tests do not pass.
+  // It might be that someone relies on dgamma_dy being updated below.
   CalcVelocityAndImpulses(*state_alpha, &state_alpha->mutable_cache().vc,
                           &state_alpha->mutable_cache().gamma,
                           &state_alpha->mutable_cache().dgamma_dy);
+
+  const auto& v = state_alpha->v();
+  const auto& gamma = state_alpha->cache().gamma;
 
   // Cost ellR.
   const T ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
@@ -637,7 +640,7 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
 
 template <typename T>
 int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
-                                                 T* alpha_out) const {
+                                                T* alpha_out) const {
   DRAKE_DEMAND(state.cache().valid_cost_and_gradients);
 
   // Quantities at alpha = 0.
@@ -658,7 +661,7 @@ int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
   const auto& Aop = data_.Mblock;
   Aop.Multiply(cache.dv, &cache.dp);  // M * cache.dv;
   cache.d2ellM_dalpha2 = cache.dv.dot(cache.dp);
-  cache.valid_line_search_quantities = true;  
+  cache.valid_line_search_quantities = true;
 
   // Save dot product between dv and ell_grad_v.
   const T dell_dalpha0 = ell_grad_v0.dot(dv);
@@ -670,7 +673,7 @@ int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
   // revisited.
   DRAKE_DEMAND(dell_dalpha0 < 0);
 
-  T alpha = parameters_.ls_alpha_max;  
+  T alpha = parameters_.ls_alpha_max;
   State state_aux(state);  // Auxiliary workspace.
   T ell_alpha = CalcLineSearchCost(state, alpha, &state_aux);
 
@@ -694,7 +697,7 @@ int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
     if (ell_alpha > ell_prev) {
       if (satisfies_armijo) {
         // TODO: move expensive computation of gradients into this scope since I
-        // only need them here!  
+        // only need them here!
 
         // We don't go back one because we do know that the current alpha
         // satisfies the Armijo condition.
@@ -751,7 +754,7 @@ void SapSolver<T>::CallSupernodalSolver(const State& s, VectorX<T>* dv,
           "Supernodal Hessian differs from dense algebra Hessian.");
     }
   }
-#endif  
+#endif
 
   // Factor() overwrites the assembled matrix with its LLT decomposition.
   // We'll count it as part of the linear solver time.
@@ -819,7 +822,8 @@ void SapSolver<T>::PrintJacobianSparsity() const {
 }
 
 template <typename T>
-void SapSolver<T>::UpdateVelocityStage(const State& state, Cache* cache) const {
+void SapSolver<T>::UpdateVelocitiesCache(const State& state,
+                                         Cache* cache) const {
   if (cache->velocities_updated) return;
   const auto& Jc = data_.Jblock;
   Jc.Multiply(state.v(), &cache->vc);
@@ -827,17 +831,17 @@ void SapSolver<T>::UpdateVelocityStage(const State& state, Cache* cache) const {
 }
 
 template <typename T>
-void SapSolver<T>::UpdateImpulsesStage(const State& state, Cache* cache) const {
+void SapSolver<T>::UpdateImpulsesCache(const State& state, Cache* cache) const {
   if (cache->impulses_updated) return;
-  UpdateVelocityStage(state, cache);
+  UpdateVelocitiesCache(state, cache);
   CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache->vc,
                                 &cache->gamma);
   cache->impulses_updated = true;
 }
 
 template <typename T>
-void SapSolver<T>::UpdateMomentumChange(const State& state,
-                                        Cache* cache) const {
+void SapSolver<T>::UpdateMomentumChangeCache(const State& state,
+                                             Cache* cache) const {
   if (cache->momentum_change_updated) return;
   data_.Mblock.Multiply(state.v(), &cache->momentum_change);  // p = A⋅v.
   cache->momentum_change -= data_.p_star;  // = p - p* = A⋅(v−v*).
@@ -845,10 +849,10 @@ void SapSolver<T>::UpdateMomentumChange(const State& state,
 }
 
 template <typename T>
-void SapSolver<T>::UpdateCostStage(const State& state, Cache* cache) const {
+void SapSolver<T>::UpdateCostCache(const State& state, Cache* cache) const {
   if (cache->cost_updated) return;
-  UpdateImpulsesStage(state, cache);
-  UpdateMomentumChange(state, cache);
+  UpdateImpulsesCache(state, cache);
+  UpdateMomentumChangeCache(state, cache);
   const auto& R = data_.R;
   const auto& v_star = data_.v_star;
   const auto& Adv = cache->get_momentum_change();
@@ -861,11 +865,11 @@ void SapSolver<T>::UpdateCostStage(const State& state, Cache* cache) const {
 }
 
 template <typename T>
-void SapSolver<T>::UpdateImpulsesAndGradientsStages(const State& state,
-                                                    Cache* cache) const {
+void SapSolver<T>::UpdateImpulsesAndGradientsCache(const State& state,
+                                                   Cache* cache) const {
   if (cache->gradients_updated) return;
-  UpdateMomentumChange(state, cache);
-  UpdateVelocityStage(state, cache);
+  UpdateMomentumChangeCache(state, cache);
+  UpdateVelocitiesCache(state, cache);
 
   // Update γ(v) and dγ/dy(v).
   // N.B. We update impulses and gradients together so that the we can reuse
@@ -878,7 +882,7 @@ void SapSolver<T>::UpdateImpulsesAndGradientsStages(const State& state,
   const VectorX<T>& gamma = cache->get_gamma();
   const VectorX<T>& Adv = cache->get_momentum_change();
   data_.Jblock.MultiplyByTranspose(gamma, &cache->ell_grad_v);  // = Jᵀγ
-  cache->ell_grad_v = -cache->ell_grad_v;                      // = -Jᵀγ
+  cache->ell_grad_v = -cache->ell_grad_v;                       // = -Jᵀγ
   cache->ell_grad_v += Adv;  // = A⋅(v−v*) - Jᵀγ
 
   // Update G.
@@ -895,7 +899,6 @@ void SapSolver<T>::UpdateImpulsesAndGradientsStages(const State& state,
 
   cache->gradients_updated = true;
 }
-
 
 }  // namespace internal
 }  // namespace contact_solvers

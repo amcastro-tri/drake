@@ -171,9 +171,6 @@ class SapSolver final : public ContactSolver<T> {
     bool valid_search_direction{false};
     bool valid_line_search_quantities{false};
 
-    // Direct algebraic funtions of velocity.
-    // CalcVelocityAndImpulses() updates these entries.
-
     bool velocities_updated{false};
     VectorX<T> vc;     // Constraint velocities.
 
@@ -361,15 +358,7 @@ class SapSolver final : public ContactSolver<T> {
 
   void UpdateCostCache(const State& state, Cache* cache) const;
 
-  void UpdateMomentumChangeCache(const State& state, Cache* cache) const;
-
-  // Update:
-  //  - Contact velocities vc(v).
-  //  - Contact impulses gamma(v).
-  //  - Gradient ∂γ/∂y.
-  void CalcVelocityAndImpulses(
-      const State& state, VectorX<T>* vc, VectorX<T>* gamma,
-      std::vector<Matrix3<T>>* dgamma_dy = nullptr) const;
+  void UpdateMomentumChangeCache(const State& state, Cache* cache) const;  
 
   // Given velocities v and search direction dv stored in `state`, this method
   // computes ℓ(α) = ℓ(v+αΔv), for a given alpha (α), and first and second

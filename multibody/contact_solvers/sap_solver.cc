@@ -498,26 +498,6 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
 }
 
 template <typename T>
-void SapSolver<T>::CalcVelocityAndImpulses(
-    const State& state, VectorX<T>* vc, VectorX<T>* gamma,
-    std::vector<Matrix3<T>>* dgamma_dy) const {
-  // If dgamma_dy != nullptr, is because we are trying to compute gradients.
-  // We'll therefore proceed with the computation.
-  if (state.cache().valid_contact_velocity_and_impulses && dgamma_dy == nullptr)
-    return;
-
-  // Update contact velocity.
-  const auto& Jc = data_.Jblock;
-  Jc.Multiply(state.v(), &*vc);
-
-  // Update impulse (and gradients if G != nullptr).
-  this->CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, *vc, gamma,
-                                      dgamma_dy,
-                                      &state.mutable_cache().regions);
-  state.mutable_cache().valid_contact_velocity_and_impulses = true;
-}
-
-template <typename T>
 T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
                                    State* state_alpha) const {
   DRAKE_DEMAND(state_v.cache().valid_line_search_quantities);
@@ -537,13 +517,7 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
   state_alpha->mutable_v() = state_v.v() + alpha * dv;  
 
   // Update velocities and impulses at v(alpha).
-  //UpdateImpulsesCache(*state_alpha, &state_alpha->mutable_cache());
-  // TODO: call UpdateImpulsesCache() instead.
-  // Right now if I call UpdateImpulsesCache() the unit tests do not pass.
-  // It might be that someone relies on dgamma_dy being updated below.
-  CalcVelocityAndImpulses(*state_alpha, &state_alpha->mutable_cache().vc,
-                          &state_alpha->mutable_cache().gamma,
-                          &state_alpha->mutable_cache().dgamma_dy);
+  UpdateImpulsesCache(*state_alpha, &state_alpha->mutable_cache());  
 
   const auto& v = state_alpha->v();
   const auto& gamma = state_alpha->cache().gamma;

@@ -520,8 +520,7 @@ void SapSolver<T>::CalcVelocityAndImpulses(
 template <typename T>
 T SapSolver<T>::CalcCostAndGradients(const State& state, VectorX<T>* ell_grad_v,
                                      std::vector<MatrixX<T>>* G, T* ellM_out,
-                                     T* ellR_out,
-                                     MatrixX<T>* ell_hessian_v) const {
+                                     T* ellR_out) const {
   DRAKE_DEMAND(ell_grad_v != nullptr);
   DRAKE_DEMAND(G != nullptr);
   if (state.cache().valid_cost_and_gradients) return state.cache().ell;
@@ -570,24 +569,6 @@ T SapSolver<T>::CalcCostAndGradients(const State& state, VectorX<T>* ell_grad_v,
     const Matrix3<T>& dgamma_dy_ic = dgamma_dy[ic];
     MatrixX<T>& G_ic = (*G)[ic];
     G_ic = dgamma_dy_ic * Rinv.asDiagonal();
-  }
-
-  // We don't build the Hessian here anymore.
-  // This is only for debugging.
-  if (ell_hessian_v && !parameters_.use_supernodal_solver) {
-    MatrixX<T> Jdense(3 * nc, nv);
-    Jdense = Jop.MakeDenseMatrix();
-    MatrixX<T> Adense(nv, nv);
-    Adense = Aop.MakeDenseMatrix();
-
-    MatrixX<T> GJ(3 * nc, nv);
-    for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
-      const MatrixX<T>& G_ic = (*G)[ic];
-      GJ.block(ic3, 0, 3, nv) = G_ic * Jdense.block(ic3, 0, 3, nv);
-    }
-    *ell_hessian_v = Adense + Jdense.transpose() * GJ;
-
-    cache.valid_dense_gradients = true;
   }
 
   cache.valid_cost_and_gradients = true;
@@ -736,7 +717,7 @@ void SapSolver<T>::CallSupernodalSolver(const State& s, VectorX<T>* dv,
   auto& cache = s.mutable_cache();
 
   cache.ell = CalcCostAndGradients(s, &cache.ell_grad_v, &cache.G, &cache.ellM,
-                                   &cache.ellR, &cache.ell_hessian_v);
+                                   &cache.ellR);
 
   // This call does the actual assembly H = A + J G Jᵀ.
   solver->SetWeightMatrix(cache.G);
@@ -770,7 +751,27 @@ void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) {
   auto& cache = state.mutable_cache();
   cache.ell =
       CalcCostAndGradients(state, &cache.ell_grad_v, &cache.G, &cache.ellM,
-                           &cache.ellR, &cache.ell_hessian_v);
+                           &cache.ellR);
+
+  {
+    int nc = data_.nc;
+    const auto& A = data_.Mblock;
+    const auto& J = data_.Jblock;
+    const auto& G = cache.G;    
+
+    MatrixX<T> Jdense(3 * nc, nv);
+    Jdense = J.MakeDenseMatrix();
+    MatrixX<T> Adense(nv, nv);
+    Adense = A.MakeDenseMatrix();
+
+    MatrixX<T> GJ(3 * nc, nv);
+    for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
+      const MatrixX<T>& G_ic = G[ic];
+      GJ.block(ic3, 0, 3, nv) = G_ic * Jdense.block(ic3, 0, 3, nv);
+    }
+    cache.ell_hessian_v = Adense + Jdense.transpose() * GJ;
+    cache.valid_dense_gradients = true;
+  }
 
   // We'll use Jacobi preconditioning to improve H's condition number. This
   // greatly reduces round-off errors even when using direct solvers.

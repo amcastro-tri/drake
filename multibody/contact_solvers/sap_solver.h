@@ -370,8 +370,7 @@ class SapSolver final : public ContactSolver<T> {
   // Hessian.
   T CalcCostAndGradients(const State& state, VectorX<T>* ell_grad_v,
                          std::vector<MatrixX<T>>* G, T* ellM = nullptr,
-                         T* ellR = nullptr,
-                         MatrixX<T>* ell_hessian_v = nullptr) const;
+                         T* ellR = nullptr) const;
 
   // Given velocities v and search direction dv stored in `state`, this method
   // computes ℓ(α) = ℓ(v+αΔv), for a given alpha (α), and first and second

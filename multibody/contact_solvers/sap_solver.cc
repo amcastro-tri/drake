@@ -246,6 +246,14 @@ void SapSolver<T>::CalcAnalyticalInverseDynamics(
   DRAKE_DEMAND(vc.size() == nc3);
   DRAKE_DEMAND(gamma->size() == nc3);
 
+  // Computes the "soft norm" ‖x‖ₛ defined by ‖x‖ₛ² = ‖x‖² + ε², where
+  // ε = soft_tolerance.
+  auto soft_norm = [](const Eigen::Ref<const VectorX<T>>& x,
+                      double soft_tolerance) -> T {
+    using std::sqrt;
+    return sqrt(x.squaredNorm() + soft_tolerance * soft_tolerance);
+  };
+
   // Pre-processed data.
   const auto& R = data_.R;
   const auto& vhat = data_.vhat;
@@ -264,7 +272,7 @@ void SapSolver<T>::CalcAnalyticalInverseDynamics(
     const T& Rn = R_ic(2);
     const Vector3<T> y_ic = (vhat_ic - vc_ic).array() / R_ic.array();
     const auto yt = y_ic.template head<2>();
-    const T yr = SoftNorm(yt, soft_norm_tolerance);
+    const T yr = soft_norm(yt, soft_norm_tolerance);
     const T yn = y_ic[2];
     const Vector2<T> that = yt / yr;
 
@@ -809,6 +817,85 @@ void SapSolver<T>::PrintJacobianSparsity() const {
                              Jb.rows(), Jb.cols());
   }
 }
+
+template <typename T>
+void SapSolver<T>::UpdateVelocityStage(const State& state, Cache* cache) const {
+  if (cache->velocities_updated) return;
+  const auto& Jc = data_.Jblock;
+  Jc.Multiply(state.v(), &cache->vc);
+  cache->velocities_updated = true;
+}
+
+template <typename T>
+void SapSolver<T>::UpdateImpulsesStage(const State& state, Cache* cache) const {
+  if (cache->impulses_updated) return;
+  UpdateVelocityStage(state, cache);
+  CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache->vc,
+                                &cache->gamma);
+  cache->impulses_updated = true;
+}
+
+template <typename T>
+void SapSolver<T>::UpdateMomentumChange(const State& state,
+                                        Cache* cache) const {
+  if (cache->momentum_change_updated) return;
+  data_.Mblock.Multiply(state.v(), &cache->momentum_change);  // p = A⋅v.
+  cache->momentum_change -= data_.p_star;  // = p - p* = A⋅(v−v*).
+  cache->momentum_change_updated = true;
+}
+
+template <typename T>
+void SapSolver<T>::UpdateCostStage(const State& state, Cache* cache) const {
+  if (cache->cost_updated) return;
+  UpdateImpulsesStage(state, cache);
+  UpdateMomentumChange(state, cache);
+  const auto& R = data_.R;
+  const auto& v_star = data_.v_star;
+  const auto& Adv = cache->get_momentum_change();
+  const VectorX<T>& v = state.v();
+  const VectorX<T>& gamma = cache->get_gamma();
+  cache->ellM = 0.5 * Adv.dot(v - v_star);
+  cache->ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
+  cache->ell = cache->ellM + cache->ellR;
+  cache->cost_updated = true;
+}
+
+template <typename T>
+void SapSolver<T>::UpdateImpulsesAndGradientsStages(const State& state,
+                                                    Cache* cache) const {
+  if (cache->gradients_updated) return;
+  UpdateMomentumChange(state, cache);
+  UpdateVelocityStage(state, cache);
+
+  // Update γ(v) and dγ/dy(v).
+  // N.B. We update impulses and gradients together so that the we can reuse
+  // common terms in the analytical inverse dynamics.
+  CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache->get_vc(),
+                                &cache->gamma, &cache->dgamma_dy,
+                                &cache->regions);
+
+  // Update ∇ᵥℓ.
+  const VectorX<T>& gamma = cache->get_gamma();
+  const VectorX<T>& Adv = cache->get_momentum_change();
+  data_.Jblock.MultiplyByTranspose(gamma, &cache->ell_grad_v);  // = Jᵀγ
+  cache->ell_grad_v = -cache->ell_grad_v;                      // = -Jᵀγ
+  cache->ell_grad_v += Adv;  // = A⋅(v−v*) - Jᵀγ
+
+  // Update G.
+  const int nc = data_.nc;
+  const auto& R = data_.R;
+  const auto& dgamma_dy = cache->dgamma_dy;
+  for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
+    const auto& R_ic = R.template segment<3>(ic3);
+    const Vector3<T> Rinv = R_ic.cwiseInverse();
+    const Matrix3<T>& dgamma_dy_ic = dgamma_dy[ic];
+    MatrixX<T>& G_ic = cache->G[ic];
+    G_ic = dgamma_dy_ic * Rinv.asDiagonal();
+  }
+
+  cache->gradients_updated = true;
+}
+
 
 }  // namespace internal
 }  // namespace contact_solvers

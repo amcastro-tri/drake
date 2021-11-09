@@ -89,12 +89,35 @@ class SapSolver final : public ContactSolver<T> {
   struct Cache {
     DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Cache);
 
+    // Enum used to indicate the stage of the cache. Each stage in this enum
+    // depends on the previous one and, by recursive preconditions, on all
+    // previous stages. That is, kSearchDirectionStage depends on
+    // kGradientsStage but also on all previous stages down to
+    // kVelocityStage.
+    enum class Stage {
+      kOutOfDate = 0,  // All stages are dirty.
+      // The velocity stage includes the constraint velocities, vc.
+      kVelocityStage,
+      // The impulses states includes the analytical inverse dynamics γ(v).
+      kImpulsesStage,
+      // The cost stage includes:
+      //   cost(v), cost_M(v), cost_R(v), M_dv = M⋅(v−v*).
+      kCostState,
+      // The gradients stage includes:
+      //   dγ/dy, G, ∇ᵥℓ, and factorization of the Hessian.
+      kGradientsStage,
+      // The search direction stage includes:
+      //   dv, dvc, dp, d²cost_M/dα² = dv⋅dp.
+      kSearchDirectionStage
+    };
+
     Cache() = default;
 
     void Resize(int nv, int nc, bool dense = true) {
       const int nc3 = 3 * nc;
       vc.resize(nc3);
       gamma.resize(nc3);
+      momentum_change.resize(nv);
       ell_grad_v.resize(nv);
       if (dense) ell_hessian_v.resize(nv, nv);
       dv.resize(nv);
@@ -107,6 +130,10 @@ class SapSolver final : public ContactSolver<T> {
     }
 
     void mark_invalid() {
+      stage = Stage::kOutOfDate;
+
+
+      // TODO: remove these.
       valid_contact_velocity_and_impulses = false;
       valid_cost_and_gradients = false;
       valid_dense_gradients = false;
@@ -114,40 +141,94 @@ class SapSolver final : public ContactSolver<T> {
       valid_line_search_quantities = false;
     }
 
+    Stage stage{Stage::kOutOfDate};
+
+    const VectorX<T>& get_vc() const {
+      DRAKE_DEMAND(velocities_updated);
+      return vc;
+    }
+
+    const VectorX<T>& get_gamma() const {
+      DRAKE_DEMAND(impulses_updated);
+      return gamma;
+    }
+
+    const VectorX<T>& get_momentum_change() const {
+      DRAKE_DEMAND(momentum_change_updated);
+      return momentum_change;
+    }
+
+    // TODO: Remove these.
+    bool valid_contact_velocity_and_impulses{false};
+    bool valid_cost_and_gradients{false};
+    bool valid_dense_gradients{false};
+    bool valid_search_direction{false};
+    bool valid_line_search_quantities{false};
+
     // Direct algebraic funtions of velocity.
     // CalcVelocityAndImpulses() updates these entries.
-    bool valid_contact_velocity_and_impulses{false};
-    VectorX<T> vc;     // Contact velocities.
+
+    bool velocities_updated{false};
+    VectorX<T> vc;     // Constraint velocities.
+
+    bool momentum_change_updated{false};
+    VectorX<T> momentum_change;  // M⋅(v−v*)
+
+    bool impulses_updated{false};
     VectorX<T> gamma;  // Impulses.
 
-    bool valid_cost_and_gradients{false};
-    T ell;   // The total cost.
-    T ellM;  // Mass matrix cost.
-    T ellR;  // The regularizer cost.
-    // N.B. The supernodal solver consumes G as a vector MatrixX instead of
-    // Matrix3. That is why dgamma_dy uses Matrix3 and G uses MatrixX.
+    bool gradients_updated{false};
     std::vector<Matrix3<T>> dgamma_dy;  // ∂γ/∂y.
     std::vector<MatrixX<T>> G;          // G = -∂γ/∂vc.
     VectorX<T> ell_grad_v;              // Gradient of the cost in v.
     VectorX<int> regions;
 
-    // TODO: only for debugging. Remove these.
-    bool valid_dense_gradients{false};
-    MatrixX<T> ell_hessian_v;  // Hessian in v.
+    bool cost_updated{false};
+    T ell;   // The total cost.
+    T ellM;  // Mass matrix cost.
+    T ellR;  // The regularizer cost.
 
-    // Search directions are also a function of state. Gradients (i.e.
-    // valid_cost_and_gradients) must be valid in order for the computation to
-    // be correct.
-    bool valid_search_direction{false};
+    bool search_direction_updated{false};
     VectorX<T> dv;       // search direction.
     VectorX<T> dvc;      // Search direction in contact velocities.
-    T condition_number;  // An estimate of the Hessian's condition number.
-
-    // One-dimensional quantities used in line-search.
-    // These depend on Δv (i.e. on valid_search_direction).
-    bool valid_line_search_quantities{false};
     VectorX<T> dp;     // Δp = M⋅Δv
     T d2ellM_dalpha2;  // d2ellM_dalpha2 = Δvᵀ⋅M⋅Δv
+
+    // TODO: only for debugging. Remove these.    
+    MatrixX<T> ell_hessian_v;  // Hessian in v.      
+    T condition_number;  // An estimate of the Hessian's condition number.    
+  };  
+
+  // Everything in this solver is a function of the generalized velocities v.
+  // State stores generalized velocities v and cached quantities that are
+  // function of v.
+  class State {
+   public:
+    DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(State);
+
+    State() = default;
+
+    State(int nv, int nc, bool dense = true) { Resize(nv, nc, dense); }
+
+    void Resize(int nv, int nc, bool dense) {
+      v_.resize(nv);
+      cache_.Resize(nv, nc, dense);
+    }
+
+    const VectorX<T>& v() const { return v_; }
+    VectorX<T>& mutable_v() {
+      // Mark all cache quantities as invalid since they all are a function of
+      // velocity.
+      cache_.mark_invalid();
+      return v_;
+    }
+
+    const Cache& cache() const { return cache_; }
+    Cache& mutable_cache() const { return cache_; }
+
+   private:
+    VectorX<T> v_;
+    mutable Cache cache_;
   };
 
   // Structure used to store input data pre-processed for computation.
@@ -191,38 +272,6 @@ class SapSolver final : public ContactSolver<T> {
     VectorX<T> Wdiag;   // Delassus operator diagonal approximation.
   };
 
-  // Everything in this solver is a function of the generalized velocities v.
-  // State stores generalized velocities v and cached quantities that are
-  // function of v.
-  class State {
-   public:
-    DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(State);
-
-    State() = default;
-
-    State(int nv, int nc, bool dense = true) { Resize(nv, nc, dense); }
-
-    void Resize(int nv, int nc, bool dense) {
-      v_.resize(nv);
-      cache_.Resize(nv, nc, dense);
-    }
-
-    const VectorX<T>& v() const { return v_; }
-    VectorX<T>& mutable_v() {
-      // Mark all cache quantities as invalid since they all are a function of
-      // velocity.
-      cache_.mark_invalid();
-      return v_;
-    }
-
-    const Cache& cache() const { return cache_; }
-    Cache& mutable_cache() const { return cache_; }
-
-   private:
-    VectorX<T> v_;
-    mutable Cache cache_;
-  };
-
   // Parameters that define the projection gamma = P(y) on the friction cone ℱ
   // using the R norm.
   struct ProjectionParams {
@@ -262,14 +311,6 @@ class SapSolver final : public ContactSolver<T> {
       const T& time_step, const SystemDynamicsData<T>& dynamics_data,
       const PointContactData<T>& contact_data) const;
 
-  // Utility to compute the "soft norm" ‖x‖ₛ defined by ‖x‖ₛ² = ‖x‖² + ε², where
-  // ε = soft_tolerance.
-  T SoftNorm(const Eigen::Ref<const VectorX<T>>& x,
-             double soft_tolerance) const {
-    using std::sqrt;
-    return sqrt(x.squaredNorm() + soft_tolerance * soft_tolerance);
-  }
-
   // Compute the analytical inverse dynamics γ = γ(vc).
   // @param[in] soft_norm_tolerance tolerance used to compute the norm of the
   // tangential unprojected impulse yt, with units of Ns.
@@ -302,6 +343,19 @@ class SapSolver final : public ContactSolver<T> {
   ContactSolverStatus DoSolveWithGuess(const PreProcessedData& data,
                                        const VectorX<T>& v_guess,
                                        ContactSolverResults<T>* result);
+
+
+  // Updates the velocity stage in `cache`.
+  void UpdateVelocityStage(const State& state, Cache* cache) const;
+
+  // Updates impulses stage in `cache`.
+  void UpdateImpulsesStage(const State& state, Cache* cache) const;
+
+  void UpdateImpulsesAndGradientsStages(const State& state, Cache* cache) const;
+
+  void UpdateCostStage(const State& state, Cache* cache) const;
+
+  void UpdateMomentumChange(const State& state, Cache* cache) const;
 
   // Update:
   //  - Contact velocities vc(v).

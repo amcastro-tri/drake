@@ -328,11 +328,8 @@ class SapSolver final : public ContactSolver<T> {
   // Given velocities v and search direction dv stored in `state`, this method
   // computes ℓ(α) = ℓ(v+αΔv), for a given alpha (α), and first and second
   // derivatives dℓ/dα and d²ℓ/dα².
-  T CalcLineSearchCostAndDerivatives(
-      const State& state_v, const T& alpha, T* dell_dalpha, T* d2ell_dalpha2,
-      State* state_alpha, T* ellM = nullptr, T* dellM_dalpha = nullptr,
-      T* d2ellM_dalpha2 = nullptr, T* ellR = nullptr, T* dellR_dalpha = nullptr,
-      T* d2ellR_dalpha2 = nullptr) const;
+  T CalcLineSearchCost(const State& state_v, const T& alpha,
+                                     State* state_alpha) const;
 
   // Approximation to the 1D minimization problem α = argmin ℓ(α)= ℓ(v + αΔv)
   // over α. We define ϕ(α) = ℓ₀ + α c ℓ₀', where ℓ₀ = ℓ(0) and ℓ₀' = dℓ/dα(0).

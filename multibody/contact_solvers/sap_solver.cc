@@ -589,10 +589,8 @@ T SapSolver<T>::CalcCostAndGradients(const State& state, VectorX<T>* ell_grad_v,
 }
 
 template <typename T>
-T SapSolver<T>::CalcLineSearchCostAndDerivatives(
-    const State& state_v, const T& alpha, T* dell_dalpha, T* d2ell_dalpha2,
-    State* state_alpha, T* ellM_out, T* dellM_dalpha_out, T* d2ellM_dalpha2_out,
-    T* ellR_out, T* dellR_dalpha_out, T* d2ellR_dalpha2_out) const {
+T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
+                                   State* state_alpha) const {
   DRAKE_DEMAND(state_v.cache().valid_line_search_quantities);
 
   // Data.
@@ -626,61 +624,6 @@ T SapSolver<T>::CalcLineSearchCostAndDerivatives(
   ellM += 0.5 * alpha * alpha * state_v.cache().d2ellM_dalpha2;
   const T ell = ellM + ellR;
 
-  // If dell_dalpha == nullptr, it is because we are only requesting the cost.
-  // We are done and return.
-  if (dell_dalpha == nullptr) return ell;
-
-  if (ellM_out) *ellM_out = ellM;
-  if (ellM_out) *ellR_out = ellR;
-
-  // First derivative.
-  const T dellM_dalpha = dp.dot(v - v_star);
-  const T dellR_dalpha = -dvc.dot(gamma);
-  *dell_dalpha = dellM_dalpha + dellR_dalpha;
-
-  if (dellM_dalpha_out) *dellM_dalpha_out = dellM_dalpha;
-  if (dellR_dalpha_out) *dellR_dalpha_out = dellR_dalpha;
-
-  // Second derivative.
-  const T d2ellM_dalpha2 = state_v.cache().d2ellM_dalpha2;
-  DRAKE_DEMAND(d2ellM_dalpha2 > 0.0);
-
-  T d2ellR_dalpha2 = 0;  // = −∇vcᵀ⋅dγ/dvc⋅∇vc
-  for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
-    // const Vector3<T> Rinv = R.cwiseInverse();
-    const auto Rinv_ic = Rinv.template segment<3>(ic3);
-    const Matrix3<T>& dgamma_dy_ic = dgamma_dy[ic];
-    const auto dvc_ic = dvc.template segment<3>(ic3);
-
-    const Matrix3<T> dgamma_dvc = -dgamma_dy_ic * Rinv_ic.asDiagonal();
-
-    const T d2ellR_dalpha2_ic = -dvc_ic.transpose() * dgamma_dvc * dvc_ic;
-    // Allow certain slop for the condition d2ellR_dalpha2 >= 0.
-    if (d2ellR_dalpha2_ic < -1.0e-15) {
-      Eigen::IOFormat OctaveFmt(Eigen::FullPrecision, 0, ", ", ";\n", "", "",
-                                "[", "]");
-      PRINT_VAR(d2ellR_dalpha2_ic);
-      PRINT_VARn(dgamma_dvc);
-      std::cout << "OctaveFmt\n";
-      std::cout << dgamma_dvc.format(OctaveFmt) << std::endl;
-      PRINT_VAR(dvc_ic.transpose());
-      throw std::runtime_error("d2ellR_dalpha2_ic<0");
-    }
-
-    // clip any machine epsilon number smaller than zero to avoid accumulation
-    // of small negative numbers. This is ok since we checked above that
-    // d2ellR_dalpha2_ic is positive within a slop tolerance.
-    using std::max;
-    d2ellR_dalpha2 += max(0.0, d2ellR_dalpha2_ic);
-  }
-  DRAKE_DEMAND(d2ellR_dalpha2 >= 0.0);
-
-  *d2ell_dalpha2 = d2ellM_dalpha2 + d2ellR_dalpha2;
-  DRAKE_DEMAND(*d2ell_dalpha2);
-
-  if (d2ellM_dalpha2_out) *d2ellM_dalpha2_out = d2ellM_dalpha2;
-  if (d2ellR_dalpha2_out) *d2ellR_dalpha2_out = d2ellR_dalpha2;
-
   return ell;
 }
 
@@ -707,10 +650,7 @@ int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
   const auto& Aop = data_.Mblock;
   Aop.Multiply(cache.dv, &cache.dp);  // M * cache.dv;
   cache.d2ellM_dalpha2 = cache.dv.dot(cache.dp);
-  cache.valid_line_search_quantities = true;
-
-  // State at v_alpha = v + alpha * dv.
-  State state_alpha(state);
+  cache.valid_line_search_quantities = true;  
 
   // Save dot product between dv and ell_grad_v.
   const T dell_dalpha0 = ell_grad_v0.dot(dv);
@@ -722,9 +662,10 @@ int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
   // revisited.
   DRAKE_DEMAND(dell_dalpha0 < 0);
 
-  T alpha = parameters_.ls_alpha_max;
-  T ell_alpha = CalcLineSearchCostAndDerivatives(state, alpha, nullptr, nullptr,
-                                                 &state_alpha);
+  T alpha = parameters_.ls_alpha_max;  
+  State state_aux(state);  // Auxiliary workspace.
+  T ell_alpha = CalcLineSearchCost(state, alpha, &state_aux);
+
   T alpha_prev = alpha;
   T ell_prev = ell_alpha;
 
@@ -735,8 +676,7 @@ int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
   for (int iter = 0; iter < max_iterations; ++iter) {
     ++num_iters;
     alpha *= rho;
-    ell_alpha = CalcLineSearchCostAndDerivatives(state, alpha, nullptr, nullptr,
-                                                 &state_alpha);
+    ell_alpha = CalcLineSearchCost(state, alpha, &state_aux);
     const bool satisfies_armijo = ell_alpha < ell0 + c * alpha * dell_dalpha0;
     // std::cout << alpha << " " << ell_alpha - ell0 << " " << satisfies_armijo
     //          << std::endl;

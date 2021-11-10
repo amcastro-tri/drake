@@ -209,9 +209,9 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
   const double beta = parameters_.beta;
   const double sigma = parameters_.sigma;
 
-  // Regularization for near-rigid bodies is computed as Rₙ = α²/(4π²)⋅Wᵢ when
-  // the contact frequency ωₙ is below the limit ωₙ⋅dt ≤ 2π. That is, the period
-  // is Tₙ = α⋅dt.
+  // Rigid approximation contant: Rₙ = β²/(4π²)⋅Wᵢ when the contact frequency ωₙ
+  // is below the limit ωₙ⋅δt ≤ 2π. That is, the period is Tₙ = β⋅δt.
+  // See [Castro et al., 2021] for details.
   const T beta_factor = beta * beta / (4.0 * M_PI * M_PI);
   for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
     const T& k = stiffness(ic);
@@ -310,50 +310,23 @@ void SapSolver<T>::PackContactResults(const PreProcessedData& data,
 }
 
 template <typename T>
-void SapSolver<T>::CalcScaledMomentumAndScales(
-    const PreProcessedData& data, const VectorX<T>& v, const VectorX<T>& gamma,
-    T* scaled_momentum_error, T* momentum_scale, T* Ek, T* ellM, T* ellR,
-    T* ell, VectorX<T>* v_work1, VectorX<T>* v_work2,
-    VectorX<T>* v_work3) const {
+void SapSolver<T>::CalcStoppingCriteriaResidual(const State& state,
+                                                T* momentum_residual,
+                                                T* momentum_scale) const {
   using std::max;
+  const auto& inv_sqrt_M = data_.inv_sqrt_M;
+  const VectorX<T>& p = state.cache().momentum_cache().p;
+  const VectorX<T>& j = state.cache().momentum_cache().j;
+  const VectorX<T>& ell_grad = state.cache().gradients_cache().ell_grad_v;
 
-  const int nv = data.nv;
-  const auto& v_star = data.v_star;
-  const auto& p_star = data.p_star;
-  const auto& inv_sqrt_M = data.inv_sqrt_M;
-  const auto& R = data.R;
-  const auto& M = data.Mblock;
-  const auto& J = data.Jblock;
+  // Scale generalized momentum quantities using inv_sqrt_M so that all entries
+  // have the same units and we can weigh them equally.
+  const VectorX<T> ell_grad_tilde = inv_sqrt_M.asDiagonal() * ell_grad;
+  const VectorX<T> p_tilde = inv_sqrt_M.asDiagonal() * p;
+  const VectorX<T> j_tilde = inv_sqrt_M.asDiagonal() * j;
 
-  VectorX<T>& p = *v_work1;
-  M.Multiply(v, &p);
-
-  VectorX<T>& j = *v_work2;
-  J.MultiplyByTranspose(gamma, &j);
-
-  VectorX<T>& grad_ell = *v_work3;
-  grad_ell = p - p_star - j;
-
-  // Energy metrics.
-  *Ek = 0.5 * v.dot(p);
-  const T Ek_star = 0.5 * v_star.dot(p_star);  // TODO: move to pre-proc data.
-  *ellM = *Ek + Ek_star - v.dot(p_star);
-  if (*ellM < 0) {
-    PRINT_VAR(*ellM);
-  }
-  DRAKE_DEMAND(*ellM >= 0);
-  *ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
-  *ell = *ellM + *ellR;
-
-  // Scale momentum balance using the mass matrix's Jacobi preconditioner so
-  // that all entries have the same units and we can compute a fair error
-  // metric.
-  grad_ell = inv_sqrt_M.asDiagonal() * grad_ell;
-  p = inv_sqrt_M.asDiagonal() * p;
-  j = inv_sqrt_M.asDiagonal() * j;
-
-  *scaled_momentum_error = grad_ell.norm();
-  *momentum_scale = max(p.norm(), j.norm());
+  *momentum_residual = ell_grad_tilde.norm();
+  *momentum_scale = max(p_tilde.norm(), j_tilde.norm());
 }
 
 template <typename T>
@@ -413,21 +386,16 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
       std::cout << "Iteration: " << k << std::endl;
     }
 
-    // N.B. This update is important and must be here!
-    UpdateImpulsesCache(state, &cache);
+    // Updating all cache entries here has the advantage that the first
+    // computation of the impulses is performed along with the computation of
+    // its gradients. Computing γ and dγ/dy can be performed in a single pass.
+    UpdateCostAndGradientsCache(state, &cache);
 
-    double scaled_momentum_error, momentum_scale;
-    {
-      double Ek, costM, costR, cost;
-      // TODO: Reconciliate. consider not computing costs nor Ek here since we
-      // dont use them and for the solver we cache them.
-      CalcScaledMomentumAndScales(data, state.v(), cache.gamma(),
-                                  &scaled_momentum_error, &momentum_scale, &Ek,
-                                  &costM, &costR, &cost, &v_work1, &v_work2,
-                                  &v_work3);
-    }
+    double momentum_residual, momentum_scale;
+    CalcStoppingCriteriaResidual(state, &momentum_residual, &momentum_scale);
+
     // Note: only update the useful stats. Remove things like mom_rel_max.
-    if (scaled_momentum_error <= parameters_.rel_tolerance * momentum_scale) {
+    if (momentum_residual <= parameters_.rel_tolerance * momentum_scale) {
       if (parameters_.verbosity_level >= 1)
         PrintConvergedIterationStats(k, state);
       break;
@@ -709,8 +677,10 @@ void SapSolver<T>::UpdateImpulsesCache(const State& state, Cache* cache) const {
 template <typename T>
 void SapSolver<T>::UpdateMomentumCache(const State& state, Cache* cache) const {
   if (cache->valid_momentum_cache()) return;
+  UpdateImpulsesCache(state, cache);
   auto& momentum_cache = cache->mutable_momentum_cache();
   data_.Mblock.Multiply(state.v(), &momentum_cache.p);  // p = A⋅v.
+  data_.Jblock.MultiplyByTranspose(state.cache().gamma(), &momentum_cache.j);
   // = p - p* = A⋅(v−v*).
   momentum_cache.momentum_change = momentum_cache.p - data_.p_star;
   momentum_cache.valid = true;
@@ -740,19 +710,23 @@ template <typename T>
 void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
                                                Cache* cache) const {
   if (cache->valid_gradients_cache()) return;
-  UpdateMomentumCache(state, cache);
-  UpdateVelocitiesCache(state, cache);
 
   // Update γ(v) and dγ/dy(v).
   // N.B. We update impulses and gradients together so that the we can reuse
   // common terms in the analytical inverse dynamics.
+  // N.B. We make this update before updating the momentum or cost cache so that
+  // impulses are valid for them. Do not swap the order.
   auto& impulses_cache = cache->mutable_impulses_cache();
   auto& gradients_cache = cache->mutable_gradients_cache();
+  UpdateVelocitiesCache(state, cache);
   CalcAnalyticalInverseDynamics(
       parameters_.soft_tolerance, cache->vc(), &impulses_cache.gamma,
       &gradients_cache.dgamma_dy, &gradients_cache.regions);
   impulses_cache.valid = true;
 
+  // N.B. Since impulses were updated above along with dγ/dy, these updates will
+  // not need to recompute impulses.
+  UpdateMomentumCache(state, cache);
   UpdateCostCache(state, cache);
 
   // Update ∇ᵥℓ.

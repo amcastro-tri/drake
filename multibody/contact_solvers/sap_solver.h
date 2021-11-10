@@ -101,10 +101,12 @@ class SapSolver final : public ContactSolver<T> {
     struct MomentumCache {
       void Resize(int nv) {
         p.resize(nv);
+        j.resize(nv);
         momentum_change.resize(nv);
       }
       bool valid{false};
-      VectorX<T> p;                // = M⋅v
+      VectorX<T> p;                // Generalized momentum p = M⋅v
+      VectorX<T> j;                // Generalized impulse j = Jᵀ⋅γ
       VectorX<T> momentum_change;  // = M⋅(v−v*)
     };
 
@@ -388,12 +390,8 @@ class SapSolver final : public ContactSolver<T> {
                           const VectorX<T>& vc, const VectorX<T>& gamma,
                           ContactSolverResults<T>* result) const;
 
-  void CalcScaledMomentumAndScales(const PreProcessedData& data,
-                                   const VectorX<T>& v, const VectorX<T>& gamma,
-                                   T* scaled_momentum_error, T* momentum_scale,
-                                   T* Ek, T* ellM, T* ellR, T* ell,
-                                   VectorX<T>* v_work1, VectorX<T>* v_work2,
-                                   VectorX<T>* v_work3) const;
+  void CalcStoppingCriteriaResidual(const State& state, T* momentum_residual,
+                                    T* momentum_scale) const;
 
   // This is the one and only API from ContactSolver that must be implemented.
   // Refere to ContactSolverBase's documentation for details.

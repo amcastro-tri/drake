@@ -86,7 +86,8 @@ class SapSolver final : public ContactSolver<T> {
   // objects stores computations that are function of the solver's state. It is
   // the responsability of the solver to keep these computations
   // properly in sync.
-  struct Cache {
+  class Cache {
+   public:
     DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Cache);
 
     Cache() = default;
@@ -125,7 +126,7 @@ class SapSolver final : public ContactSolver<T> {
       std::vector<Matrix3<T>> dgamma_dy;  // ∂γ/∂y.
       std::vector<MatrixX<T>> G;          // G = -∂γ/∂vc.
       VectorX<int> regions;
-    };    
+    };
 
     struct CostCache {
       bool valid{false};
@@ -141,14 +142,13 @@ class SapSolver final : public ContactSolver<T> {
         dvc.resize(3 * nc);
       }
       bool valid{false};
-      VectorX<T> dv;     // Search direction.      
+      VectorX<T> dv;     // Search direction.
       VectorX<T> dp;     // Momentum update Δp = M⋅Δv
       VectorX<T> dvc;    // Constraints velocities update.
       T d2ellM_dalpha2;  // d²ellM/dα² = Δvᵀ⋅M⋅Δv
     };
 
-    void Resize(int nv, int nc, bool dense = true) {
-      const int nc3 = 3 * nc;
+    void Resize(int nv, int nc) {
       velocities_cache_.Resize(nc);
       momentum_cache_.Resize(nv);
       impulses_cache_.Resize(nc);
@@ -265,11 +265,11 @@ class SapSolver final : public ContactSolver<T> {
 
     State() = default;
 
-    State(int nv, int nc, bool dense = true) { Resize(nv, nc, dense); }
+    State(int nv, int nc) { Resize(nv, nc); }
 
-    void Resize(int nv, int nc, bool dense) {
+    void Resize(int nv, int nc) {
       v_.resize(nv);
-      cache_.Resize(nv, nc, dense);
+      cache_.Resize(nv, nc);
     }
 
     const VectorX<T>& v() const { return v_; }

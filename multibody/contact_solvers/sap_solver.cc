@@ -506,7 +506,7 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
 
   // We can compute ellM in terms of precomputed terms.
   T ellM = state_v.cache().cost_cache().ellM;
-  ellM += alpha * dp.dot(state_v.v() - v_star);  
+  ellM += alpha * dp.dot(state_v.v() - v_star);
   ellM += 0.5 * alpha * alpha * d2ellM_dalpha2;
   const T ell = ellM + ellR;
 
@@ -637,7 +637,7 @@ void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) const {
       GJ.block(ic3, 0, 3, nv) = G_ic * Jdense.block(ic3, 0, 3, nv);
     }
     H = Adense + Jdense.transpose() * GJ;
-  }  
+  }
 
   // Factorize Hessian.
   Eigen::LDLT<MatrixXd> Hldlt(H);

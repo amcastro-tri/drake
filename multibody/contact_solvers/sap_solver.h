@@ -103,7 +103,7 @@ class SapSolver final : public ContactSolver<T> {
         momentum_change.resize(nv);
       }
       bool valid{false};
-      VectorX<T> p;  // = M⋅v
+      VectorX<T> p;                // = M⋅v
       VectorX<T> momentum_change;  // = M⋅(v−v*)
     };
 
@@ -127,6 +127,13 @@ class SapSolver final : public ContactSolver<T> {
       VectorX<int> regions;
     };
 
+    struct CostCache {
+      bool valid{false};
+      T ell{0.0};   // Total primal cost.
+      T ellM{0.0};  // Velocities cost.
+      T ellR{0.0};  // Regularizer cost.
+    };
+
     void Resize(int nv, int nc, bool dense = true) {
       const int nc3 = 3 * nc;
       velocities_cache_.Resize(nc);
@@ -134,11 +141,10 @@ class SapSolver final : public ContactSolver<T> {
       impulses_cache_.Resize(nc);
       gradients_cache_.Resize(nv, nc);
 
-      
       if (dense) ell_hessian_v.resize(nv, nv);
       dv.resize(nv);
       dp.resize(nv);
-      dvc.resize(nc3);      
+      dvc.resize(nc3);
     }
 
     void mark_invalid() {
@@ -146,9 +152,8 @@ class SapSolver final : public ContactSolver<T> {
       momentum_cache_.valid = false;
       impulses_cache_.valid = false;
       gradients_cache_.valid = false;
+      cost_cache_.valid = false;
 
-
-      cost_updated = false;
       search_direction_updated = {false};
 
       // TODO: remove these.
@@ -173,9 +178,9 @@ class SapSolver final : public ContactSolver<T> {
 
     bool valid_momentum_cache() const { return momentum_cache_.valid; }
 
-    const MomentumCache& momentum_cache() const { 
+    const MomentumCache& momentum_cache() const {
       DRAKE_DEMAND(momentum_cache_.valid);
-      return momentum_cache_; 
+      return momentum_cache_;
     }
 
     MomentumCache& mutable_momentum_cache() {
@@ -207,49 +212,49 @@ class SapSolver final : public ContactSolver<T> {
       return gradients_cache_;
     }
 
+    bool valid_cost_cache() const { return cost_cache_.valid; }
 
-
-    const VectorX<T>& vc() const {
-      return velocities_cache().vc;
+    const CostCache& cost_cache() const {
+      DRAKE_DEMAND(cost_cache_.valid);
+      return cost_cache_;
     }
+
+    CostCache& mutable_cost_cache() {
+      cost_cache_.valid = false;
+      return cost_cache_;
+    }
+
+    const VectorX<T>& vc() const { return velocities_cache().vc; }
 
     const VectorX<T>& momentum_change() const {
       return momentum_cache().momentum_change;
     }
 
-    const VectorX<T>& gamma() const {
-      return impulses_cache().gamma;
-    }
-
+    const VectorX<T>& gamma() const { return impulses_cache().gamma; }
 
     // TODO: Remove these.
     bool valid_contact_velocity_and_impulses{false};
     bool valid_cost_and_gradients{false};
     bool valid_dense_gradients{false};
     bool valid_search_direction{false};
-    bool valid_line_search_quantities{false};    
-
-    
-    bool cost_updated{false};
-    T ell;   // The total cost.
-    T ellM;  // Mass matrix cost.
-    T ellR;  // The regularizer cost.
+    bool valid_line_search_quantities{false};
 
     bool search_direction_updated{false};
-    VectorX<T> dv;       // search direction.
-    VectorX<T> dvc;      // Search direction in contact velocities.
+    VectorX<T> dv;     // search direction.
+    VectorX<T> dvc;    // Search direction in contact velocities.
     VectorX<T> dp;     // Δp = M⋅Δv
     T d2ellM_dalpha2;  // d2ellM_dalpha2 = Δvᵀ⋅M⋅Δv
 
-    // TODO: only for debugging. Remove these.    
-    MatrixX<T> ell_hessian_v;  // Hessian in v.      
-    T condition_number;  // An estimate of the Hessian's condition number.    
+    // TODO: only for debugging. Remove these.
+    MatrixX<T> ell_hessian_v;  // Hessian in v.
+    T condition_number;        // An estimate of the Hessian's condition number.
 
-    private:
-     VelocitiesCache velocities_cache_;
-     MomentumCache momentum_cache_;
-     ImpulsesCache impulses_cache_;
-     GradientsCache gradients_cache_;
+   private:
+    VelocitiesCache velocities_cache_;
+    MomentumCache momentum_cache_;
+    ImpulsesCache impulses_cache_;
+    GradientsCache gradients_cache_;
+    CostCache cost_cache_;
   };
 
   // Everything in this solver is a function of the generalized velocities v.
@@ -397,7 +402,6 @@ class SapSolver final : public ContactSolver<T> {
                                        const VectorX<T>& v_guess,
                                        ContactSolverResults<T>* result);
 
-
   // Updates the velocity stage in `cache`.
   void UpdateVelocitiesCache(const State& state, Cache* cache) const;
 
@@ -416,7 +420,7 @@ class SapSolver final : public ContactSolver<T> {
   // computes ℓ(α) = ℓ(v+αΔv), for a given alpha (α), and first and second
   // derivatives dℓ/dα and d²ℓ/dα².
   T CalcLineSearchCost(const State& state_v, const T& alpha,
-                                     State* state_alpha) const;
+                       State* state_alpha) const;
 
   // Approximation to the 1D minimization problem α = argmin ℓ(α)= ℓ(v + αΔv)
   // over α. We define ϕ(α) = ℓ₀ + α c ℓ₀', where ℓ₀ = ℓ(0) and ℓ₀' = dℓ/dα(0).
@@ -453,7 +457,7 @@ class SapSolver final : public ContactSolver<T> {
   };
 
   // TODO: put these into a struct NonThreadSafeData.
-  mutable Workspace workspace_;  
+  mutable Workspace workspace_;
   mutable PreProcessedData data_;
   std::unique_ptr<conex::SuperNodalSolver> solver_;
 };

@@ -421,9 +421,10 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
       double Ek, costM, costR, cost;
       // TODO: Reconciliate. consider not computing costs nor Ek here since we
       // dont use them and for the solver we cache them.
-      CalcScaledMomentumAndScales(
-          data, state.v(), cache.gamma(), &scaled_momentum_error, &momentum_scale,
-          &Ek, &costM, &costR, &cost, &v_work1, &v_work2, &v_work3);
+      CalcScaledMomentumAndScales(data, state.v(), cache.gamma(),
+                                  &scaled_momentum_error, &momentum_scale, &Ek,
+                                  &costM, &costR, &cost, &v_work1, &v_work2,
+                                  &v_work3);
     }
     // Note: only update the useful stats. Remove things like mom_rel_max.
     if (scaled_momentum_error <= parameters_.rel_tolerance * momentum_scale) {
@@ -441,9 +442,12 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
             data_.Jblock.block_rows(), data_.Jblock.get_blocks(), data_.Mt);
       }
     }
-    state_kp = state;
 
     UpdateSearchDirectionCache(state, &cache);
+    if (k > 0) {  // The primal cost must decreaste at each iteration.
+      DRAKE_DEMAND(state.cache().cost_cache().ell <
+                   state_kp.cache().cost_cache().ell);
+    }
 
     // Perform line-search.
     // N.B. If converged, we allow one last update with alpha = 1.0.
@@ -452,14 +456,15 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
     num_ls_iters = PerformBackTrackingLineSearch(state, &alpha);
 
     // Update state.
+    state_kp = state;
     state.mutable_v() += alpha * cache.dv;
 
     // TODO: refactor into PrintNewtonStats().
     if (parameters_.verbosity_level >= 3) {
-      PRINT_VAR(cache.ellM);
-      PRINT_VAR(cache.ell);
+      PRINT_VAR(cache.cost_cache().ellM);
+      PRINT_VAR(cache.cost_cache().ell);
       PRINT_VAR(cache.dv.norm());
-      PRINT_VAR(state_kp.cache().ell);
+      PRINT_VAR(state_kp.cache().cost_cache().ell);
       PRINT_VAR(alpha);
     }
   }
@@ -488,10 +493,10 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
   const auto& dvc = state_v.cache().dvc;
 
   // State at v(alpha).
-  state_alpha->mutable_v() = state_v.v() + alpha * dv;  
+  state_alpha->mutable_v() = state_v.v() + alpha * dv;
 
   // Update velocities and impulses at v(alpha).
-  UpdateImpulsesCache(*state_alpha, &state_alpha->mutable_cache());  
+  UpdateImpulsesCache(*state_alpha, &state_alpha->mutable_cache());
 
   const auto& v = state_alpha->v();
   const auto& gamma = state_alpha->cache().gamma();
@@ -500,7 +505,7 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
   const T ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
 
   // We can compute ellM in terms of precomputed terms.
-  T ellM = state_v.cache().ellM;
+  T ellM = state_v.cache().cost_cache().ellM;
   ellM += alpha * dp.dot(state_v.v() - v_star);
   ellM += 0.5 * alpha * alpha * state_v.cache().d2ellM_dalpha2;
   const T ell = ellM + ellR;
@@ -512,7 +517,7 @@ template <typename T>
 int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
                                                 T* alpha_out) const {
   // Quantities at alpha = 0.
-  const T ell0 = state.cache().ell;
+  const T ell0 = state.cache().cost_cache().ell;
   const auto& ell_grad_v0 = state.cache().gradients_cache().ell_grad_v;
 
   // Search direction.
@@ -626,7 +631,7 @@ void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) const {
     int nc = data_.nc;
     const auto& A = data_.Mblock;
     const auto& J = data_.Jblock;
-    const auto& G = cache.gradients_cache().G;    
+    const auto& G = cache.gradients_cache().G;
 
     MatrixX<T> Jdense(3 * nc, nv);
     Jdense = J.MakeDenseMatrix();
@@ -695,7 +700,7 @@ template <typename T>
 void SapSolver<T>::PrintConvergedIterationStats(int k, const State& s) const {
   const auto& cache = s.cache();
   std::cout << "Iteration converged at: " << k << std::endl;
-  std::cout << "ell: " << cache.ell << std::endl;
+  std::cout << "ell: " << cache.cost_cache().ell << std::endl;
   PRINT_VAR(cache.vc().norm());
   std::cout << std::string(80, '=') << std::endl;
 }
@@ -733,7 +738,7 @@ void SapSolver<T>::UpdateMomentumCache(const State& state, Cache* cache) const {
 // Dependencies: impulses_updated, momentum_change_updated.
 template <typename T>
 void SapSolver<T>::UpdateCostCache(const State& state, Cache* cache) const {
-  if (cache->cost_updated) return;
+  if (cache->valid_cost_cache()) return;
   UpdateImpulsesCache(state, cache);
   UpdateMomentumCache(state, cache);
   const auto& R = data_.R;
@@ -741,10 +746,11 @@ void SapSolver<T>::UpdateCostCache(const State& state, Cache* cache) const {
   const auto& Adv = cache->momentum_cache().momentum_change;
   const VectorX<T>& v = state.v();
   const VectorX<T>& gamma = cache->gamma();
-  cache->ellM = 0.5 * Adv.dot(v - v_star);
-  cache->ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
-  cache->ell = cache->ellM + cache->ellR;
-  cache->cost_updated = true;
+  auto& cost_cache = cache->mutable_cost_cache();
+  cost_cache.ellM = 0.5 * Adv.dot(v - v_star);
+  cost_cache.ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
+  cost_cache.ell = cost_cache.ellM + cost_cache.ellR;
+  cost_cache.valid = true;
 }
 
 // Dependencies: velocities_updated, impulses_updated.

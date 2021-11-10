@@ -91,9 +91,15 @@ class SapSolver final : public ContactSolver<T> {
 
     Cache() = default;
 
+    struct VelocitiesCache {
+      void Resize(int nc) { vc.resize(3 * nc); }
+      bool valid{false};
+      VectorX<T> vc;
+    };
+
     void Resize(int nv, int nc, bool dense = true) {
       const int nc3 = 3 * nc;
-      vc.resize(nc3);
+      velocities_cache_.Resize(nc);
       gamma.resize(nc3);
       momentum_change.resize(nv);
       ell_grad_v.resize(nv);
@@ -108,7 +114,7 @@ class SapSolver final : public ContactSolver<T> {
     }
 
     void mark_invalid() {
-      velocities_updated = false;
+      velocities_cache_.valid = false;
       momentum_change_updated = false;
       impulses_updated = false;
       gradients_updated = false;
@@ -123,9 +129,18 @@ class SapSolver final : public ContactSolver<T> {
       valid_line_search_quantities = false;
     }
 
-    const VectorX<T>& get_vc() const {
-      DRAKE_DEMAND(velocities_updated);
-      return vc;
+    const VelocitiesCache& velocities_cache() const {
+      return velocities_cache_;
+    }
+
+    VelocitiesCache& mutable_velocities_cache() {
+      velocities_cache_.valid = false;
+      return velocities_cache_;
+    }
+
+    const VectorX<T>& vc() const {
+      DRAKE_DEMAND(velocities_cache_.valid);
+      return velocities_cache_.vc;
     }
 
     const VectorX<T>& get_gamma() const {
@@ -145,8 +160,10 @@ class SapSolver final : public ContactSolver<T> {
     bool valid_search_direction{false};
     bool valid_line_search_quantities{false};
 
-    bool velocities_updated{false};
-    VectorX<T> vc;     // Constraint velocities.
+    
+
+    //bool velocities_updated{false};
+    //VectorX<T> vc;     // Constraint velocities.
 
     bool momentum_change_updated{false};
     VectorX<T> momentum_change;  // M⋅(v−v*)
@@ -174,7 +191,10 @@ class SapSolver final : public ContactSolver<T> {
     // TODO: only for debugging. Remove these.    
     MatrixX<T> ell_hessian_v;  // Hessian in v.      
     T condition_number;  // An estimate of the Hessian's condition number.    
-  };  
+
+    private:
+     VelocitiesCache velocities_cache_;
+  };
 
   // Everything in this solver is a function of the generalized velocities v.
   // State stores generalized velocities v and cached quantities that are

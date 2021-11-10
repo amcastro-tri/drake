@@ -466,7 +466,7 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
 
   if (k == parameters_.max_iterations) return ContactSolverStatus::kFailure;
 
-  PackContactResults(data_, state.v(), cache.vc, cache.gamma, results);
+  PackContactResults(data_, state.v(), cache.vc(), cache.gamma, results);
 
   return ContactSolverStatus::kSuccess;
 }
@@ -698,24 +698,25 @@ void SapSolver<T>::PrintConvergedIterationStats(int k, const State& s) const {
   const auto& cache = s.cache();
   std::cout << "Iteration converged at: " << k << std::endl;
   std::cout << "ell: " << cache.ell << std::endl;
-  PRINT_VAR(cache.vc.norm());
+  PRINT_VAR(cache.vc().norm());
   std::cout << std::string(80, '=') << std::endl;
 }
 
 template <typename T>
 void SapSolver<T>::UpdateVelocitiesCache(const State& state,
                                          Cache* cache) const {
-  if (cache->velocities_updated) return;
+  if (cache->velocities_cache().valid) return;
+  auto& velocities_cache = cache->mutable_velocities_cache();
   const auto& Jc = data_.Jblock;
-  Jc.Multiply(state.v(), &cache->vc);
-  cache->velocities_updated = true;
+  Jc.Multiply(state.v(), &velocities_cache.vc);
+  velocities_cache.valid = true;
 }
 
 template <typename T>
 void SapSolver<T>::UpdateImpulsesCache(const State& state, Cache* cache) const {
   if (cache->impulses_updated) return;
   UpdateVelocitiesCache(state, cache);
-  CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache->vc,
+  CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache->vc(),
                                 &cache->gamma);
   cache->impulses_updated = true;
 }
@@ -758,7 +759,7 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
   // Update γ(v) and dγ/dy(v).
   // N.B. We update impulses and gradients together so that the we can reuse
   // common terms in the analytical inverse dynamics.
-  CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache->get_vc(),
+  CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache->vc(),
                                 &cache->gamma, &cache->dgamma_dy,
                                 &cache->regions);
   cache->impulses_updated = true;

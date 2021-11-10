@@ -125,7 +125,7 @@ class SapSolver final : public ContactSolver<T> {
       std::vector<Matrix3<T>> dgamma_dy;  // ∂γ/∂y.
       std::vector<MatrixX<T>> G;          // G = -∂γ/∂vc.
       VectorX<int> regions;
-    };
+    };    
 
     struct CostCache {
       bool valid{false};
@@ -134,17 +134,28 @@ class SapSolver final : public ContactSolver<T> {
       T ellR{0.0};  // Regularizer cost.
     };
 
+    struct SearchDirectionCache {
+      void Resize(int nv, int nc) {
+        dv.resize(nv);
+        dp.resize(nv);
+        dvc.resize(3 * nc);
+      }
+      bool valid{false};
+      VectorX<T> dv;     // Search direction.      
+      VectorX<T> dp;     // Momentum update Δp = M⋅Δv
+      VectorX<T> dvc;    // Constraints velocities update.
+      T d2ellM_dalpha2;  // d²ellM/dα² = Δvᵀ⋅M⋅Δv
+    };
+
     void Resize(int nv, int nc, bool dense = true) {
       const int nc3 = 3 * nc;
       velocities_cache_.Resize(nc);
       momentum_cache_.Resize(nv);
       impulses_cache_.Resize(nc);
       gradients_cache_.Resize(nv, nc);
+      search_direction_cache_.Resize(nv, nc);
 
       if (dense) ell_hessian_v.resize(nv, nv);
-      dv.resize(nv);
-      dp.resize(nv);
-      dvc.resize(nc3);
     }
 
     void mark_invalid() {
@@ -153,8 +164,7 @@ class SapSolver final : public ContactSolver<T> {
       impulses_cache_.valid = false;
       gradients_cache_.valid = false;
       cost_cache_.valid = false;
-
-      search_direction_updated = {false};
+      search_direction_cache_.valid = {false};
 
       // TODO: remove these.
       valid_contact_velocity_and_impulses = false;
@@ -224,6 +234,20 @@ class SapSolver final : public ContactSolver<T> {
       return cost_cache_;
     }
 
+    bool valid_search_direction_cache() const {
+      return search_direction_cache_.valid;
+    }
+
+    const SearchDirectionCache& search_direction_cache() const {
+      DRAKE_DEMAND(search_direction_cache_.valid);
+      return search_direction_cache_;
+    }
+
+    SearchDirectionCache& mutable_search_direction_cache() {
+      search_direction_cache_.valid = false;
+      return search_direction_cache_;
+    }
+
     const VectorX<T>& vc() const { return velocities_cache().vc; }
 
     const VectorX<T>& momentum_change() const {
@@ -237,13 +261,7 @@ class SapSolver final : public ContactSolver<T> {
     bool valid_cost_and_gradients{false};
     bool valid_dense_gradients{false};
     bool valid_search_direction{false};
-    bool valid_line_search_quantities{false};
-
-    bool search_direction_updated{false};
-    VectorX<T> dv;     // search direction.
-    VectorX<T> dvc;    // Search direction in contact velocities.
-    VectorX<T> dp;     // Δp = M⋅Δv
-    T d2ellM_dalpha2;  // d2ellM_dalpha2 = Δvᵀ⋅M⋅Δv
+    bool valid_line_search_quantities{false};    
 
     // TODO: only for debugging. Remove these.
     MatrixX<T> ell_hessian_v;  // Hessian in v.
@@ -255,6 +273,7 @@ class SapSolver final : public ContactSolver<T> {
     ImpulsesCache impulses_cache_;
     GradientsCache gradients_cache_;
     CostCache cost_cache_;
+    SearchDirectionCache search_direction_cache_;
   };
 
   // Everything in this solver is a function of the generalized velocities v.

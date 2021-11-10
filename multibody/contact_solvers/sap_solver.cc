@@ -457,13 +457,13 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
 
     // Update state.
     state_kp = state;
-    state.mutable_v() += alpha * cache.dv;
+    state.mutable_v() += alpha * cache.search_direction_cache().dv;
 
     // TODO: refactor into PrintNewtonStats().
     if (parameters_.verbosity_level >= 3) {
       PRINT_VAR(cache.cost_cache().ellM);
       PRINT_VAR(cache.cost_cache().ell);
-      PRINT_VAR(cache.dv.norm());
+      PRINT_VAR(cache.search_direction_cache().dv.norm());
       PRINT_VAR(state_kp.cache().cost_cache().ell);
       PRINT_VAR(alpha);
     }
@@ -479,8 +479,6 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
 template <typename T>
 T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
                                    State* state_alpha) const {
-  DRAKE_DEMAND(state_v.cache().valid_line_search_quantities);
-
   // Data.
   const int nc = data_.nc;
   const auto& R = data_.R;
@@ -488,9 +486,11 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
   const auto& v_star = data_.v_star;
 
   // Quantities at state v.
-  const auto& dv = state_v.cache().dv;
-  const auto& dp = state_v.cache().dp;
-  const auto& dvc = state_v.cache().dvc;
+  const auto& search_direction_cache = state_v.cache().search_direction_cache();
+  const auto& dv = search_direction_cache.dv;
+  const auto& dp = search_direction_cache.dp;
+  const auto& dvc = search_direction_cache.dvc;
+  const T& d2ellM_dalpha2 = search_direction_cache.d2ellM_dalpha2;
 
   // State at v(alpha).
   state_alpha->mutable_v() = state_v.v() + alpha * dv;
@@ -506,8 +506,8 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
 
   // We can compute ellM in terms of precomputed terms.
   T ellM = state_v.cache().cost_cache().ellM;
-  ellM += alpha * dp.dot(state_v.v() - v_star);
-  ellM += 0.5 * alpha * alpha * state_v.cache().d2ellM_dalpha2;
+  ellM += alpha * dp.dot(state_v.v() - v_star);  
+  ellM += 0.5 * alpha * alpha * d2ellM_dalpha2;
   const T ell = ellM + ellR;
 
   return ell;
@@ -521,20 +521,12 @@ int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
   const auto& ell_grad_v0 = state.cache().gradients_cache().ell_grad_v;
 
   // Search direction.
-  const VectorX<T>& dv = state.cache().dv;
+  const VectorX<T>& dv = state.cache().search_direction_cache().dv;
 
   // Parameters.
   const double rho = parameters_.ls_rho;
   const double c = parameters_.ls_c;
   const int max_iterations = parameters_.ls_max_iterations;
-
-  // Update quantities that depend on dv used for
-  // line-search.
-  auto& cache = state.mutable_cache();
-  const auto& Aop = data_.Mblock;
-  Aop.Multiply(cache.dv, &cache.dp);  // M * cache.dv;
-  cache.d2ellM_dalpha2 = cache.dv.dot(cache.dp);
-  cache.valid_line_search_quantities = true;
 
   // Save dot product between dv and ell_grad_v.
   const T dell_dalpha0 = ell_grad_v0.dot(dv);
@@ -800,31 +792,26 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
 template <typename T>
 void SapSolver<T>::UpdateSearchDirectionCache(const State& state,
                                               Cache* cache) const {
-  if (cache->search_direction_updated) return;
+  if (cache->valid_search_direction_cache()) return;
 
-#if 0 
-  VectorX<T> dv;       // search direction.
-    VectorX<T> dvc;      // Search direction in contact velocities.
-    VectorX<T> dp;     // Δp = M⋅Δv
-    T d2ellM_dalpha2;  // d2ellM_dalpha2 = Δvᵀ⋅M⋅Δv = Δvᵀ⋅Δp
-#endif
+  auto& search_direction_cache = cache->mutable_search_direction_cache();
 
   // Update search direction dv.
   // TODO: get rid of CallDenseSolver(). Only here for debbuging.
   if (parameters_.use_supernodal_solver) {
-    CallSupernodalSolver(state, &cache->dv, solver_.get());
+    CallSupernodalSolver(state, &search_direction_cache.dv, solver_.get());
   } else {
-    CallDenseSolver(state, &cache->dv);
+    CallDenseSolver(state, &search_direction_cache.dv);
   }
 
-  // Update change in contact velocities.
+  // Update Δp, Δvc and d²ellM/dα².
   const auto& Jop = data_.Jblock;
-  Jop.Multiply(cache->dv, &cache->dvc);
+  Jop.Multiply(search_direction_cache.dv, &search_direction_cache.dvc);
+  data_.Mblock.Multiply(search_direction_cache.dv, &search_direction_cache.dp);
+  search_direction_cache.d2ellM_dalpha2 =
+      search_direction_cache.dv.dot(search_direction_cache.dp);
 
-  data_.Mblock.Multiply(cache->dv, &cache->dp);
-  cache->d2ellM_dalpha2 = cache->dv.dot(cache->dp);
-
-  cache->search_direction_updated = true;
+  search_direction_cache.valid = true;
 }
 
 }  // namespace internal

@@ -113,28 +113,41 @@ class SapSolver final : public ContactSolver<T> {
       VectorX<T> gamma;
     };
 
+    struct GradientsCache {
+      void Resize(int nv, int nc) {
+        ell_grad_v.resize(nv);
+        dgamma_dy.resize(nc);
+        G.resize(nc, Matrix3<T>::Zero());
+        regions.resize(nc);
+      }
+      bool valid{false};
+      VectorX<T> ell_grad_v;              // Gradient of the cost in v.
+      std::vector<Matrix3<T>> dgamma_dy;  // ∂γ/∂y.
+      std::vector<MatrixX<T>> G;          // G = -∂γ/∂vc.
+      VectorX<int> regions;
+    };
+
     void Resize(int nv, int nc, bool dense = true) {
       const int nc3 = 3 * nc;
       velocities_cache_.Resize(nc);
       momentum_cache_.Resize(nv);
       impulses_cache_.Resize(nc);
-      ell_grad_v.resize(nv);
+      gradients_cache_.Resize(nv, nc);
+
+      
       if (dense) ell_hessian_v.resize(nv, nv);
       dv.resize(nv);
       dp.resize(nv);
-      dvc.resize(nc3);
-      regions.resize(nc);
-      dgamma_dy.resize(nc);
-      // N.B. The supernodal solver needs MatrixX instead of Matrix3.
-      G.resize(nc, Matrix3<T>::Zero());
+      dvc.resize(nc3);      
     }
 
     void mark_invalid() {
       velocities_cache_.valid = false;
       momentum_cache_.valid = false;
       impulses_cache_.valid = false;
+      gradients_cache_.valid = false;
 
-      gradients_updated = false;
+
       cost_updated = false;
       search_direction_updated = {false};
 
@@ -182,6 +195,20 @@ class SapSolver final : public ContactSolver<T> {
       return impulses_cache_;
     }
 
+    bool valid_gradients_cache() const { return gradients_cache_.valid; }
+
+    const GradientsCache& gradients_cache() const {
+      DRAKE_DEMAND(gradients_cache_.valid);
+      return gradients_cache_;
+    }
+
+    GradientsCache& mutable_gradients_cache() {
+      gradients_cache_.valid = false;
+      return gradients_cache_;
+    }
+
+
+
     const VectorX<T>& vc() const {
       return velocities_cache().vc;
     }
@@ -202,12 +229,7 @@ class SapSolver final : public ContactSolver<T> {
     bool valid_search_direction{false};
     bool valid_line_search_quantities{false};    
 
-    bool gradients_updated{false};
-    std::vector<Matrix3<T>> dgamma_dy;  // ∂γ/∂y.
-    std::vector<MatrixX<T>> G;          // G = -∂γ/∂vc.
-    VectorX<T> ell_grad_v;              // Gradient of the cost in v.
-    VectorX<int> regions;
-
+    
     bool cost_updated{false};
     T ell;   // The total cost.
     T ellM;  // Mass matrix cost.
@@ -227,6 +249,7 @@ class SapSolver final : public ContactSolver<T> {
      VelocitiesCache velocities_cache_;
      MomentumCache momentum_cache_;
      ImpulsesCache impulses_cache_;
+     GradientsCache gradients_cache_;
   };
 
   // Everything in this solver is a function of the generalized velocities v.

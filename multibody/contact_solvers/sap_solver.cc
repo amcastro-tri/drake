@@ -511,11 +511,9 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
 template <typename T>
 int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
                                                 T* alpha_out) const {
-  DRAKE_DEMAND(state.cache().gradients_updated);
-
   // Quantities at alpha = 0.
   const T ell0 = state.cache().ell;
-  const auto& ell_grad_v0 = state.cache().ell_grad_v;
+  const auto& ell_grad_v0 = state.cache().gradients_cache().ell_grad_v;
 
   // Search direction.
   const VectorX<T>& dv = state.cache().dv;
@@ -608,12 +606,12 @@ void SapSolver<T>::CallSupernodalSolver(const State& s, VectorX<T>* dv,
   UpdateCostAndGradientsCache(s, &cache);
 
   // This call does the actual assembly H = A + J G Jᵀ.
-  solver->SetWeightMatrix(cache.G);
+  solver->SetWeightMatrix(cache.gradients_cache().G);
 
   // Factor() overwrites the assembled matrix with its LLT decomposition.
   // We'll count it as part of the linear solver time.
   solver->Factor();
-  *dv = -cache.ell_grad_v;  // we solve dv in place.
+  *dv = -cache.gradients_cache().ell_grad_v;  // we solve dv in place.
   solver->SolveInPlace(dv);
 }
 
@@ -628,7 +626,7 @@ void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) const {
     int nc = data_.nc;
     const auto& A = data_.Mblock;
     const auto& J = data_.Jblock;
-    const auto& G = cache.G;    
+    const auto& G = cache.gradients_cache().G;    
 
     MatrixX<T> Jdense(3 * nc, nv);
     Jdense = J.MakeDenseMatrix();
@@ -650,7 +648,7 @@ void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) const {
   // const VectorXd D =
   //    cache.ell_hessian_v.diagonal().cwiseSqrt().cwiseInverse();
   const VectorXd D = VectorXd::Ones(nv);
-  const VectorXd rhs = -(D.asDiagonal() * cache.ell_grad_v);
+  const VectorXd rhs = -(D.asDiagonal() * cache.gradients_cache().ell_grad_v);
   const MatrixXd lhs = D.asDiagonal() * cache.ell_hessian_v * D.asDiagonal();
 
   // Factorize Hessian.
@@ -754,7 +752,7 @@ void SapSolver<T>::UpdateCostCache(const State& state, Cache* cache) const {
 template <typename T>
 void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
                                                Cache* cache) const {
-  if (cache->gradients_updated) return;
+  if (cache->valid_gradients_cache()) return;
   UpdateMomentumCache(state, cache);
   UpdateVelocitiesCache(state, cache);
 
@@ -762,9 +760,10 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
   // N.B. We update impulses and gradients together so that the we can reuse
   // common terms in the analytical inverse dynamics.
   auto& impulses_cache = cache->mutable_impulses_cache();
-  CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache->vc(),
-                                &impulses_cache.gamma, &cache->dgamma_dy,
-                                &cache->regions);
+  auto& gradients_cache = cache->mutable_gradients_cache();
+  CalcAnalyticalInverseDynamics(
+      parameters_.soft_tolerance, cache->vc(), &impulses_cache.gamma,
+      &gradients_cache.dgamma_dy, &gradients_cache.regions);
   impulses_cache.valid = true;
 
   UpdateCostCache(state, cache);
@@ -772,23 +771,24 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
   // Update ∇ᵥℓ.
   const VectorX<T>& gamma = cache->gamma();
   const VectorX<T>& Adv = cache->momentum_cache().momentum_change;
-  data_.Jblock.MultiplyByTranspose(gamma, &cache->ell_grad_v);  // = Jᵀγ
-  cache->ell_grad_v = -cache->ell_grad_v;                       // = -Jᵀγ
-  cache->ell_grad_v += Adv;  // = A⋅(v−v*) - Jᵀγ
+  data_.Jblock.MultiplyByTranspose(gamma,
+                                   &gradients_cache.ell_grad_v);  // = Jᵀγ
+  gradients_cache.ell_grad_v = -gradients_cache.ell_grad_v;       // = -Jᵀγ
+  gradients_cache.ell_grad_v += Adv;  // = A⋅(v−v*) - Jᵀγ
 
   // Update G.
   const int nc = data_.nc;
   const auto& R = data_.R;
-  const auto& dgamma_dy = cache->dgamma_dy;
+  const auto& dgamma_dy = gradients_cache.dgamma_dy;
   for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
     const auto& R_ic = R.template segment<3>(ic3);
     const Vector3<T> Rinv = R_ic.cwiseInverse();
     const Matrix3<T>& dgamma_dy_ic = dgamma_dy[ic];
-    MatrixX<T>& G_ic = cache->G[ic];
+    MatrixX<T>& G_ic = gradients_cache.G[ic];
     G_ic = dgamma_dy_ic * Rinv.asDiagonal();
   }
 
-  cache->gradients_updated = true;
+  gradients_cache.valid = true;
 }
 
 template <typename T>

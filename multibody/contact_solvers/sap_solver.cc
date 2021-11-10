@@ -437,36 +437,13 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
       // Prepare supernodal solver on first iteration only when needed.
       // That is, if converged, avoid this work.
       if (parameters_.use_supernodal_solver && k == 0) {
-        solver = std::make_unique<conex::SuperNodalSolver>(
+        solver_ = std::make_unique<conex::SuperNodalSolver>(
             data_.Jblock.block_rows(), data_.Jblock.get_blocks(), data_.Mt);
       }
     }
     state_kp = state;
 
-    // Assembly happens withing these calls to CallSupernodalSolver() and
-    // CallDenseSolver() so that we can factor the assembly effort of the
-    // supernodal solver in the same timer.
-    // TODO: get rid of CallDenseSolver(). Only here for debbuging.
-    if (parameters_.use_supernodal_solver) {
-      CallSupernodalSolver(state, &cache.dv, solver.get());
-    } else {
-      CallDenseSolver(state, &cache.dv);
-    }
-    // The cost must decrease at each iteration.
-    if (k > 0) {
-      DRAKE_DEMAND(cache.ell < state_kp.cache().ell);
-    }
-
-    // Update change in contact velocities.
-    const auto& Jop = data_.Jblock;
-    Jop.Multiply(cache.dv, &cache.dvc);
-    cache.valid_search_direction = true;  // both dv and dvc are now valid.
-
-    // TODO: add convergence check, even if only for statistics on the scaled
-    // moementum balance, i.e. r = D * (M(v-v*)-Jᵀγ), with D = 1/
-    // sqrt(diag(M)).
-    // TODO: consider updating vc and gamma here for convergece criterias.
-    // Cheap if no dgamma_dy is computed.
+    UpdateSearchDirectionCache(state, &cache);
 
     // Perform line-search.
     // N.B. If converged, we allow one last update with alpha = 1.0.
@@ -625,28 +602,13 @@ int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
 
 template <typename T>
 void SapSolver<T>::CallSupernodalSolver(const State& s, VectorX<T>* dv,
-                                        conex::SuperNodalSolver* solver) {
+                                        conex::SuperNodalSolver* solver) const {
   auto& cache = s.mutable_cache();
 
   UpdateCostAndGradientsCache(s, &cache);
 
   // This call does the actual assembly H = A + J G Jᵀ.
   solver->SetWeightMatrix(cache.G);
-
-  // Build full matrix for debugging. TODO: use this code for first PR. Place
-  // Hessian in cache. Since supernodal carries state, we'll place it in the
-  // cache (effectively replacing the hessian cache entry with a factorization.
-  // Consider the case of computing gradients later on.)
-#if 0
-  if (parameters_.compare_with_dense) {
-    const MatrixXd H = solver->FullMatrix();
-    PRINT_VAR((cache.ell_hessian_v - H).norm());
-    if ((cache.ell_hessian_v - H).norm() > 1.0e-2) {
-      throw std::runtime_error(
-          "Supernodal Hessian differs from dense algebra Hessian.");
-    }
-  }
-#endif
 
   // Factor() overwrites the assembled matrix with its LLT decomposition.
   // We'll count it as part of the linear solver time.
@@ -656,7 +618,7 @@ void SapSolver<T>::CallSupernodalSolver(const State& s, VectorX<T>* dv,
 }
 
 template <typename T>
-void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) {
+void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) const {
   const int nv = data_.nv;
 
   auto& cache = state.mutable_cache();
@@ -830,7 +792,27 @@ void SapSolver<T>::UpdateSearchDirectionCache(const State& state,
                                               Cache* cache) const {
   if (cache->search_direction_updated) return;
 
-  
+#if 0 
+  VectorX<T> dv;       // search direction.
+    VectorX<T> dvc;      // Search direction in contact velocities.
+    VectorX<T> dp;     // Δp = M⋅Δv
+    T d2ellM_dalpha2;  // d2ellM_dalpha2 = Δvᵀ⋅M⋅Δv = Δvᵀ⋅Δp
+#endif
+
+  // Update search direction dv.
+  // TODO: get rid of CallDenseSolver(). Only here for debbuging.
+  if (parameters_.use_supernodal_solver) {
+    CallSupernodalSolver(state, &cache->dv, solver_.get());
+  } else {
+    CallDenseSolver(state, &cache->dv);
+  }
+
+  // Update change in contact velocities.
+  const auto& Jop = data_.Jblock;
+  Jop.Multiply(cache->dv, &cache->dvc);
+
+  data_.Mblock.Multiply(cache->dv, &cache->dp);
+  cache->d2ellM_dalpha2 = cache->dv.dot(cache->dp);
 
   cache->search_direction_updated = true;
 }

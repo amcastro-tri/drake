@@ -332,7 +332,9 @@ class SapSolver final : public ContactSolver<T> {
 
   void UpdateCostCache(const State& state, Cache* cache) const;
 
-  void UpdateMomentumChangeCache(const State& state, Cache* cache) const;  
+  void UpdateMomentumChangeCache(const State& state, Cache* cache) const;
+
+  void UpdateSearchDirectionCache(const State& state, Cache* cache) const;
 
   // Given velocities v and search direction dv stored in `state`, this method
   // computes ℓ(α) = ℓ(v+αΔv), for a given alpha (α), and first and second
@@ -354,10 +356,10 @@ class SapSolver final : public ContactSolver<T> {
 
   // Solves for dv using supernodal algebra.
   void CallSupernodalSolver(const State& s, VectorX<T>* dv,
-                            conex::SuperNodalSolver* solver);
+                            conex::SuperNodalSolver* solver) const;
 
   // Solves for dv usind dense algebra, for debugging.
-  void CallDenseSolver(const State& s, VectorX<T>* dv);
+  void CallDenseSolver(const State& s, VectorX<T>* dv) const;
 
   void PrintProblemSizes() const;
   void PrintJacobianSparsity() const;
@@ -373,8 +375,11 @@ class SapSolver final : public ContactSolver<T> {
     VectorX<T> aux_v1;
     VectorX<T> aux_v2;
   };
+
+  // TODO: put these into a struct NonThreadSafeData.
   mutable Workspace workspace_;  
   mutable PreProcessedData data_;
+  std::unique_ptr<conex::SuperNodalSolver> solver_;
 };
 
 template <>

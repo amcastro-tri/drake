@@ -705,7 +705,7 @@ void SapSolver<T>::PrintConvergedIterationStats(int k, const State& s) const {
 template <typename T>
 void SapSolver<T>::UpdateVelocitiesCache(const State& state,
                                          Cache* cache) const {
-  if (cache->velocities_cache().valid) return;
+  if (cache->valid_velocities_cache()) return;
   auto& velocities_cache = cache->mutable_velocities_cache();
   const auto& Jc = data_.Jblock;
   Jc.Multiply(state.v(), &velocities_cache.vc);
@@ -722,12 +722,13 @@ void SapSolver<T>::UpdateImpulsesCache(const State& state, Cache* cache) const {
 }
 
 template <typename T>
-void SapSolver<T>::UpdateMomentumChangeCache(const State& state,
-                                             Cache* cache) const {
-  if (cache->momentum_change_updated) return;
-  data_.Mblock.Multiply(state.v(), &cache->momentum_change);  // p = A⋅v.
-  cache->momentum_change -= data_.p_star;  // = p - p* = A⋅(v−v*).
-  cache->momentum_change_updated = true;
+void SapSolver<T>::UpdateMomentumCache(const State& state, Cache* cache) const {
+  if (cache->valid_momentum_cache()) return;
+  auto& momentum_cache = cache->mutable_momentum_cache();
+  data_.Mblock.Multiply(state.v(), &momentum_cache.p);  // p = A⋅v.
+  // = p - p* = A⋅(v−v*).
+  momentum_cache.momentum_change = momentum_cache.p - data_.p_star;
+  momentum_cache.valid = true;
 }
 
 // Dependencies: impulses_updated, momentum_change_updated.
@@ -735,10 +736,10 @@ template <typename T>
 void SapSolver<T>::UpdateCostCache(const State& state, Cache* cache) const {
   if (cache->cost_updated) return;
   UpdateImpulsesCache(state, cache);
-  UpdateMomentumChangeCache(state, cache);
+  UpdateMomentumCache(state, cache);
   const auto& R = data_.R;
   const auto& v_star = data_.v_star;
-  const auto& Adv = cache->get_momentum_change();
+  const auto& Adv = cache->momentum_cache().momentum_change;
   const VectorX<T>& v = state.v();
   const VectorX<T>& gamma = cache->get_gamma();
   cache->ellM = 0.5 * Adv.dot(v - v_star);
@@ -753,7 +754,7 @@ template <typename T>
 void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
                                                Cache* cache) const {
   if (cache->gradients_updated) return;
-  UpdateMomentumChangeCache(state, cache);
+  UpdateMomentumCache(state, cache);
   UpdateVelocitiesCache(state, cache);
 
   // Update γ(v) and dγ/dy(v).
@@ -768,7 +769,7 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
 
   // Update ∇ᵥℓ.
   const VectorX<T>& gamma = cache->get_gamma();
-  const VectorX<T>& Adv = cache->get_momentum_change();
+  const VectorX<T>& Adv = cache->momentum_cache().momentum_change;
   data_.Jblock.MultiplyByTranspose(gamma, &cache->ell_grad_v);  // = Jᵀγ
   cache->ell_grad_v = -cache->ell_grad_v;                       // = -Jᵀγ
   cache->ell_grad_v += Adv;  // = A⋅(v−v*) - Jᵀγ

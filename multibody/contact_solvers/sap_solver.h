@@ -97,11 +97,21 @@ class SapSolver final : public ContactSolver<T> {
       VectorX<T> vc;
     };
 
+    struct MomentumCache {
+      void Resize(int nv) {
+        p.resize(nv);
+        momentum_change.resize(nv);
+      }
+      bool valid{false};
+      VectorX<T> p;  // = M⋅v
+      VectorX<T> momentum_change;  // = M⋅(v−v*)
+    };
+
     void Resize(int nv, int nc, bool dense = true) {
       const int nc3 = 3 * nc;
       velocities_cache_.Resize(nc);
+      momentum_cache_.Resize(nv);
       gamma.resize(nc3);
-      momentum_change.resize(nv);
       ell_grad_v.resize(nv);
       if (dense) ell_hessian_v.resize(nv, nv);
       dv.resize(nv);
@@ -115,7 +125,8 @@ class SapSolver final : public ContactSolver<T> {
 
     void mark_invalid() {
       velocities_cache_.valid = false;
-      momentum_change_updated = false;
+      momentum_cache_.valid = false;
+
       impulses_updated = false;
       gradients_updated = false;
       cost_updated = false;
@@ -129,7 +140,10 @@ class SapSolver final : public ContactSolver<T> {
       valid_line_search_quantities = false;
     }
 
+    bool valid_velocities_cache() const { return velocities_cache_.valid; }
+
     const VelocitiesCache& velocities_cache() const {
+      DRAKE_DEMAND(velocities_cache_.valid);
       return velocities_cache_;
     }
 
@@ -138,9 +152,24 @@ class SapSolver final : public ContactSolver<T> {
       return velocities_cache_;
     }
 
+    bool valid_momentum_cache() const { return momentum_cache_.valid; }
+
+    const MomentumCache& momentum_cache() const { 
+      DRAKE_DEMAND(momentum_cache_.valid);
+      return momentum_cache_; 
+    }
+
+    MomentumCache& mutable_momentum_cache() {
+      momentum_cache_.valid = false;
+      return momentum_cache_;
+    }
+
     const VectorX<T>& vc() const {
-      DRAKE_DEMAND(velocities_cache_.valid);
-      return velocities_cache_.vc;
+      return velocities_cache().vc;
+    }
+
+    const VectorX<T>& momentum_change() const {
+      return momentum_cache().momentum_change;
     }
 
     const VectorX<T>& get_gamma() const {
@@ -148,25 +177,13 @@ class SapSolver final : public ContactSolver<T> {
       return gamma;
     }
 
-    const VectorX<T>& get_momentum_change() const {
-      DRAKE_DEMAND(momentum_change_updated);
-      return momentum_change;
-    }
 
     // TODO: Remove these.
     bool valid_contact_velocity_and_impulses{false};
     bool valid_cost_and_gradients{false};
     bool valid_dense_gradients{false};
     bool valid_search_direction{false};
-    bool valid_line_search_quantities{false};
-
-    
-
-    //bool velocities_updated{false};
-    //VectorX<T> vc;     // Constraint velocities.
-
-    bool momentum_change_updated{false};
-    VectorX<T> momentum_change;  // M⋅(v−v*)
+    bool valid_line_search_quantities{false};    
 
     bool impulses_updated{false};
     VectorX<T> gamma;  // Impulses.
@@ -194,6 +211,7 @@ class SapSolver final : public ContactSolver<T> {
 
     private:
      VelocitiesCache velocities_cache_;
+     MomentumCache momentum_cache_;
   };
 
   // Everything in this solver is a function of the generalized velocities v.
@@ -352,7 +370,7 @@ class SapSolver final : public ContactSolver<T> {
 
   void UpdateCostCache(const State& state, Cache* cache) const;
 
-  void UpdateMomentumChangeCache(const State& state, Cache* cache) const;
+  void UpdateMomentumCache(const State& state, Cache* cache) const;
 
   void UpdateSearchDirectionCache(const State& state, Cache* cache) const;
 

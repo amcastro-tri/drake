@@ -349,7 +349,9 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   if (parameters_.verbosity_level >= 1) PrintProblemSizes();
   if (parameters_.verbosity_level >= 2) PrintJacobianSparsity();
 
-  State state(nv, nc);
+  state_.Resize(nv, nc);
+  State& state = state_;
+  stats_.Reset();
 
   state.mutable_v() = v_guess;
   // Compute velocity and impulses here to use in the computation of convergence
@@ -366,7 +368,6 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   std::unique_ptr<conex::SuperNodalSolver> solver;
 
   double alpha = 1.0;
-  int num_ls_iters = 0;  // Count line-search iterations.
 
   // Start Newton iterations.
   int k = 0;
@@ -412,8 +413,8 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
     // Perform line-search. N.B. If converged, we allow one last update with
     // alpha = 1.0.
     alpha = 1.0;
-    num_ls_iters = 0;  // Count line-search iterations.
-    num_ls_iters = PerformBackTrackingLineSearch(state, &alpha);
+    stats_.num_line_search_iters +=
+        PerformBackTrackingLineSearch(state, &alpha);
 
     // Update state.
     state_kp = state;
@@ -432,6 +433,8 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   if (k == parameters_.max_iterations) return ContactSolverStatus::kFailure;
 
   PackContactResults(data_, state.v(), cache.vc(), cache.gamma(), results);
+
+  stats_.num_iters = num_iterations;
 
   return ContactSolverStatus::kSuccess;
 }
@@ -661,6 +664,7 @@ void SapSolver<T>::UpdateImpulsesCache(const State& state, Cache* cache) const {
   auto& impulses_cache = cache->mutable_impulses_cache();
   CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache->vc(),
                                 &impulses_cache.gamma);
+  ++stats_.num_impulses_cache_updates;
   impulses_cache.valid = true;
 }
 
@@ -711,6 +715,7 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
   CalcAnalyticalInverseDynamics(
       parameters_.soft_tolerance, cache->vc(), &impulses_cache.gamma,
       &gradients_cache.dgamma_dy, &gradients_cache.regions);
+  ++stats_.num_impulses_cache_updates;
   impulses_cache.valid = true;
 
   // N.B. Since impulses were updated above along with dγ/dy, these updates will
@@ -738,6 +743,7 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
     G_ic = dgamma_dy_ic * Rinv.asDiagonal();
   }
 
+  ++stats_.num_gradients_cache_updates;
   gradients_cache.valid = true;
 }
 

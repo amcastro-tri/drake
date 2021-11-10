@@ -272,6 +272,21 @@ class PizzaSaverProblem {
   const double g_{10.0};
 };
 
+class SapSolverTester {
+ public:
+  using State = SapSolver<double>::State;
+  using Stats = SapSolver<double>::SolverStats;
+  static const State& get_state(
+      const SapSolver<double>& solver) {
+    return solver.state_;
+  }
+
+  static const Stats& get_stats(
+      const SapSolver<double>& solver) {
+    return solver.stats_;
+  }
+};
+
 ContactSolverResults<double> AdvanceNumSteps(
     const PizzaSaverProblem& problem, const VectorXd& tau, int num_steps,
     const SapSolverParameters& params) {
@@ -295,7 +310,34 @@ ContactSolverResults<double> AdvanceNumSteps(
     // ASSERT_EQ(status, ContactSolverStatus::kSuccess);
     v = result.v_next;
     q += problem.time_step() * v;
-  }
+
+    // Verify the number of times cache entries were updated.
+    const SapSolverTester::State& state = SapSolverTester::get_state(sap);
+    const SapSolverTester::Stats& stats = SapSolverTester::get_stats(sap);
+    (void)state;    
+
+    // N.B. We only count iterations that perform factorizations. Since impulses
+    // need to be computed in order to evaluate the termination criteria (before
+    // a factorization might be carried out), the expected number of gradients
+    // update equals the number of iterations plus one.
+    EXPECT_EQ(stats.num_gradients_cache_updates, stats.num_iters + 1);
+
+    // PRINT_VAR((num_iters + 1));
+    // PRINT_VAR(num_gradient_cache_updates);
+
+    // Impulses are evaluated:
+    //  - At the very beggining of an iteration, to evaluate stopping criteria
+    //    (num_iters+1 since the last iteration does not perform factorization.)
+    //  - At the very beggining of line search iterations.
+    //  - Once per line search iteration.
+    //    Therefore we expect impulses to be evaluated
+    //    2*(num_iters+1)+num_line_search_iters
+    EXPECT_EQ(stats.num_impulses_cache_updates,
+              stats.num_line_search_iters + 2 * (stats.num_iters + 1));
+
+    //PRINT_VAR(stats.num_line_search_iters);
+    //PRINT_VAR(num_impulses_updates);
+  }  
 
   return result;
 }
@@ -340,7 +382,7 @@ GTEST_TEST(PizzaSaver, NoAppliedTorque) {
                               VectorXd::Zero(2 * problem.num_contacts),
                               params.rel_tolerance));
   EXPECT_TRUE(CompareMatrices(result.vn, VectorXd::Zero(problem.num_contacts),
-                              params.rel_tolerance));
+                              params.rel_tolerance));  
 }
 
 // This tests the solver when we apply a moment Mz about COM to the pizza

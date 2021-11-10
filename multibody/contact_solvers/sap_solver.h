@@ -79,6 +79,8 @@ class SapSolver final : public ContactSolver<T> {
   }
 
  private:
+  friend class SapSolverTester;
+
   // This is not a real cache in the CS sense (i.e. there is no tracking of
   // dependencies nor automatic validity check) but in the sense that this
   // objects stores computations that are function of the solver's state. It is
@@ -92,9 +94,8 @@ class SapSolver final : public ContactSolver<T> {
 
     struct VelocitiesCache {
       void Resize(int nc) { vc.resize(3 * nc); }
-      bool valid{false};      
+      bool valid{false};
       VectorX<T> vc;
-      int num_updates{0};
     };
 
     struct MomentumCache {
@@ -110,10 +111,9 @@ class SapSolver final : public ContactSolver<T> {
     };
 
     struct ImpulsesCache {
-      void Resize(int nc) { gamma.resize(3 * nc); }      
-      bool valid{false};      
+      void Resize(int nc) { gamma.resize(3 * nc); }
+      bool valid{false};
       VectorX<T> gamma;
-      int num_updates{0};
     };
 
     struct GradientsCache {
@@ -128,7 +128,6 @@ class SapSolver final : public ContactSolver<T> {
       std::vector<Matrix3<T>> dgamma_dy;  // ∂γ/∂y.
       std::vector<MatrixX<T>> G;          // G = -∂γ/∂vc.
       VectorX<int> regions;
-      int num_updates{0};
     };
 
     struct CostCache {
@@ -201,7 +200,6 @@ class SapSolver final : public ContactSolver<T> {
 
     ImpulsesCache& mutable_impulses_cache() {
       impulses_cache_.valid = false;
-      ++impulses_cache_.num_updates;
       return impulses_cache_;
     }
 
@@ -214,7 +212,6 @@ class SapSolver final : public ContactSolver<T> {
 
     GradientsCache& mutable_gradients_cache() {
       gradients_cache_.valid = false;
-      ++gradients_cache_.num_updates;
       return gradients_cache_;
     }
 
@@ -445,7 +442,27 @@ class SapSolver final : public ContactSolver<T> {
 
   // TODO: put these into a struct NonThreadSafeData.
   mutable PreProcessedData data_;
+  mutable State state_;
   std::unique_ptr<conex::SuperNodalSolver> solver_;
+
+  struct SolverStats {
+    void Reset() {
+      num_iters = 0;
+      num_line_search_iters = 0;
+      num_impulses_cache_updates = 0;
+      num_gradients_cache_updates = 0;
+    }
+    int num_iters{0};
+    int num_line_search_iters{0};
+
+    // This also includes also includes dγ/dy updates, when gradients are
+    // updated.
+    int num_impulses_cache_updates{0};
+
+    // Number of times the gradients cache is updated.
+    int num_gradients_cache_updates{0};
+  };
+  mutable SolverStats stats_;
 };
 
 template <>

@@ -89,28 +89,6 @@ class SapSolver final : public ContactSolver<T> {
   struct Cache {
     DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Cache);
 
-    // Enum used to indicate the stage of the cache. Each stage in this enum
-    // depends on the previous one and, by recursive preconditions, on all
-    // previous stages. That is, kSearchDirectionStage depends on
-    // kGradientsStage but also on all previous stages down to
-    // kVelocityStage.
-    enum class Stage {
-      kOutOfDate = 0,  // All stages are dirty.
-      // The velocity stage includes the constraint velocities, vc.
-      kVelocityStage,
-      // The impulses states includes the analytical inverse dynamics γ(v).
-      kImpulsesStage,
-      // The cost stage includes:
-      //   cost(v), cost_M(v), cost_R(v), M_dv = M⋅(v−v*).
-      kCostState,
-      // The gradients stage includes:
-      //   dγ/dy, G, ∇ᵥℓ, and factorization of the Hessian.
-      kGradientsStage,
-      // The search direction stage includes:
-      //   dv, dvc, dp, d²cost_M/dα² = dv⋅dp.
-      kSearchDirectionStage
-    };
-
     Cache() = default;
 
     void Resize(int nv, int nc, bool dense = true) {
@@ -130,8 +108,6 @@ class SapSolver final : public ContactSolver<T> {
     }
 
     void mark_invalid() {
-      stage = Stage::kOutOfDate;
-
       velocities_updated = false;
       momentum_change_updated = false;
       impulses_updated = false;
@@ -146,8 +122,6 @@ class SapSolver final : public ContactSolver<T> {
       valid_search_direction = false;
       valid_line_search_quantities = false;
     }
-
-    Stage stage{Stage::kOutOfDate};
 
     const VectorX<T>& get_vc() const {
       DRAKE_DEMAND(velocities_updated);
@@ -387,6 +361,7 @@ class SapSolver final : public ContactSolver<T> {
 
   void PrintProblemSizes() const;
   void PrintJacobianSparsity() const;
+  void PrintConvergedIterationStats(int k, const State& s) const;
 
   SapSolverParameters parameters_;
 

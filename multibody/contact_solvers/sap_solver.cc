@@ -419,19 +419,16 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
     double scaled_momentum_error, momentum_scale;
     {
       double Ek, costM, costR, cost;
+      // TODO: Reconciliate. consider not computing costs nor Ek here since we
+      // dont use them and for the solver we cache them.
       CalcScaledMomentumAndScales(
           data, state.v(), cache.gamma, &scaled_momentum_error, &momentum_scale,
           &Ek, &costM, &costR, &cost, &v_work1, &v_work2, &v_work3);
     }
     // Note: only update the useful stats. Remove things like mom_rel_max.
     if (scaled_momentum_error <= parameters_.rel_tolerance * momentum_scale) {
-      // TODO: refactor into PrintConvergedIterationStats().
-      if (parameters_.verbosity_level >= 1) {
-        std::cout << "Iteration converged at: " << k << std::endl;
-        std::cout << "ell: " << cache.ell << std::endl;
-        PRINT_VAR(cache.vc.norm());
-        std::cout << std::string(80, '=') << std::endl;
-      }
+      if (parameters_.verbosity_level >= 1)
+        PrintConvergedIterationStats(k, state);
       break;
     } else {
       ++num_iterations;  // For statistics, we only count those iterations
@@ -455,7 +452,7 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
     } else {
       CallDenseSolver(state, &cache.dv);
     }
-    // The cost must always go down.
+    // The cost must decrease at each iteration.
     if (k > 0) {
       DRAKE_DEMAND(cache.ell < state_kp.cache().ell);
     }
@@ -735,6 +732,15 @@ void SapSolver<T>::PrintJacobianSparsity() const {
 }
 
 template <typename T>
+void SapSolver<T>::PrintConvergedIterationStats(int k, const State& s) const {
+  const auto& cache = s.cache();
+  std::cout << "Iteration converged at: " << k << std::endl;
+  std::cout << "ell: " << cache.ell << std::endl;
+  PRINT_VAR(cache.vc.norm());
+  std::cout << std::string(80, '=') << std::endl;
+}
+
+template <typename T>
 void SapSolver<T>::UpdateVelocitiesCache(const State& state,
                                          Cache* cache) const {
   if (cache->velocities_updated) return;
@@ -761,6 +767,7 @@ void SapSolver<T>::UpdateMomentumChangeCache(const State& state,
   cache->momentum_change_updated = true;
 }
 
+// Dependencies: impulses_updated, momentum_change_updated.
 template <typename T>
 void SapSolver<T>::UpdateCostCache(const State& state, Cache* cache) const {
   if (cache->cost_updated) return;
@@ -777,6 +784,8 @@ void SapSolver<T>::UpdateCostCache(const State& state, Cache* cache) const {
   cache->cost_updated = true;
 }
 
+// Dependencies: velocities_updated, impulses_updated.
+// Updates: impulses_updated, gradients_updated, cost_updated.
 template <typename T>
 void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
                                                Cache* cache) const {
@@ -814,6 +823,16 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
   }
 
   cache->gradients_updated = true;
+}
+
+template <typename T>
+void SapSolver<T>::UpdateSearchDirectionCache(const State& state,
+                                              Cache* cache) const {
+  if (cache->search_direction_updated) return;
+
+  
+
+  cache->search_direction_updated = true;
 }
 
 }  // namespace internal

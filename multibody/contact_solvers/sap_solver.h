@@ -35,34 +35,32 @@ struct SapSolverParameters {
   double soft_tolerance{1.0e-7};
 
   // Rigid approximation contant: Rₙ = β²/(4π²)⋅Wᵢ when the contact frequency ωₙ
-  // is below the limit ωₙ⋅δt ≤ 2π. That is, the period is Tₙ = β⋅δt.
-  // See [Castro et al., 2021] for details.
+  // is below the limit ωₙ⋅δt ≤ 2π. That is, the period is Tₙ = β⋅δt. See
+  // [Castro et al., 2021] for details.
   double beta{1.0};
 
-  // Dimensionless parameterization of the regularization of friction.
-  // An approximation for the bound on the slip velocity is vₛ ≈ ε⋅δt⋅g.
+  // Dimensionless parameterization of the regularization of friction. An
+  // approximation for the bound on the slip velocity is vₛ ≈ ε⋅δt⋅g.
   double sigma{1.0e-3};
 
   // Use supernodal algebra for the linear solver.
   bool use_supernodal_solver{true};
 
   // The verbosity level determines how much information to print into stdout.
-  // These levels are additive. E.g.: level 2 also prints level 0 and 1 info.
-  //  0: Nothing gets printed.
-  //  1: Prints problem size and error at convergence.
-  //  2: Prints sparsity structure.
-  //  3: Prints stats at each iteration.
+  // These levels are additive. E.g.: level 2 also prints level 0 and 1 info. 0:
+  // Nothing gets printed. 1: Prints problem size and error at convergence. 2:
+  // Prints sparsity structure. 3: Prints stats at each iteration.
   int verbosity_level{0};
 };
 
-// This solver uses the regularized convex formulation from [Todorov 2014].
-// This class must only implement the API ContactSolver::SolveWithGuess(),
-// please refer to the documentation in ContactSolver for details.
+// This solver uses the regularized convex formulation from [Todorov 2014]. This
+// class must only implement the API ContactSolver::SolveWithGuess(), please
+// refer to the documentation in ContactSolver for details.
 //
 // - [Todorov, 2014] Todorov, E., 2014, May. Convex and analytically-invertible
-// dynamics with contacts and constraints: Theory and implementation in MuJoCo.
-// In 2014 IEEE International Conference on Robotics and Automation (ICRA) (pp.
-// 6054-6061). IEEE.
+//   dynamics with contacts and constraints: Theory and implementation in
+//   MuJoCo. In 2014 IEEE International Conference on Robotics and Automation
+//   (ICRA) (pp. 6054-6061). IEEE.
 template <typename T>
 class SapSolver final : public ContactSolver<T> {
  public:
@@ -84,8 +82,8 @@ class SapSolver final : public ContactSolver<T> {
   // This is not a real cache in the CS sense (i.e. there is no tracking of
   // dependencies nor automatic validity check) but in the sense that this
   // objects stores computations that are function of the solver's state. It is
-  // the responsability of the solver to keep these computations
-  // properly in sync.
+  // the responsability of the solver to keep these computations properly in
+  // sync.
   class Cache {
    public:
     DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Cache);
@@ -94,8 +92,9 @@ class SapSolver final : public ContactSolver<T> {
 
     struct VelocitiesCache {
       void Resize(int nc) { vc.resize(3 * nc); }
-      bool valid{false};
+      bool valid{false};      
       VectorX<T> vc;
+      int num_updates{0};
     };
 
     struct MomentumCache {
@@ -111,9 +110,10 @@ class SapSolver final : public ContactSolver<T> {
     };
 
     struct ImpulsesCache {
-      void Resize(int nc) { gamma.resize(3 * nc); }
-      bool valid{false};
+      void Resize(int nc) { gamma.resize(3 * nc); }      
+      bool valid{false};      
       VectorX<T> gamma;
+      int num_updates{0};
     };
 
     struct GradientsCache {
@@ -128,6 +128,7 @@ class SapSolver final : public ContactSolver<T> {
       std::vector<Matrix3<T>> dgamma_dy;  // ∂γ/∂y.
       std::vector<MatrixX<T>> G;          // G = -∂γ/∂vc.
       VectorX<int> regions;
+      int num_updates{0};
     };
 
     struct CostCache {
@@ -200,6 +201,7 @@ class SapSolver final : public ContactSolver<T> {
 
     ImpulsesCache& mutable_impulses_cache() {
       impulses_cache_.valid = false;
+      ++impulses_cache_.num_updates;
       return impulses_cache_;
     }
 
@@ -212,6 +214,7 @@ class SapSolver final : public ContactSolver<T> {
 
     GradientsCache& mutable_gradients_cache() {
       gradients_cache_.valid = false;
+      ++gradients_cache_.num_updates;
       return gradients_cache_;
     }
 
@@ -341,10 +344,9 @@ class SapSolver final : public ContactSolver<T> {
     T Rn;  // Normal direction.
   };
 
-  // Computes gamma = P(y) and its gradient dPdy (if requested).
-  // In addition to passing y as an argument we also pass the triplet {yr,
-  // yn, that}. This allow us to reuse these quantities if already computed.
-  // TODO: make static?
+  // Computes gamma = P(y) and its gradient dPdy (if requested). In addition to
+  // passing y as an argument we also pass the triplet {yr, yn, that}. This
+  // allow us to reuse these quantities if already computed. TODO: make static?
   Vector3<T> CalcProjection(const ProjectionParams& params,
                             const Eigen::Ref<const Vector3<T>>& y, const T& yr,
                             const T& yn,
@@ -352,11 +354,10 @@ class SapSolver final : public ContactSolver<T> {
                             int* region, Matrix3<T>* dPdy = nullptr) const;
 
   // Computes a diagonal approximation of the Delassus operator used to compute
-  // a per constrataint diagonal scaling into Wdiag.
-  // Given an approximation Wₖₖ of the block diagonal element corresponding to
-  // the k-th constraint, the scaling is computed as
-  // Wdiag[k] = ‖Wₖₖ‖ᵣₘₛ = ‖Wₖₖ‖/3.
-  // See [Castro et al. 2021] for details.
+  // a per constrataint diagonal scaling into Wdiag. Given an approximation Wₖₖ
+  // of the block diagonal element corresponding to the k-th constraint, the
+  // scaling is computed as Wdiag[k] = ‖Wₖₖ‖ᵣₘₛ = ‖Wₖₖ‖/3. See [Castro et al.
+  // 2021] for details.
   void CalcDelassusDiagonalApproximation(int nc,
                                          const std::vector<MatrixX<T>>& Mt,
                                          const BlockSparseMatrix<T>& Jblock,
@@ -421,14 +422,12 @@ class SapSolver final : public ContactSolver<T> {
 
   // Approximation to the 1D minimization problem α = argmin ℓ(α)= ℓ(v + αΔv)
   // over α. We define ϕ(α) = ℓ₀ + α c ℓ₀', where ℓ₀ = ℓ(0) and ℓ₀' = dℓ/dα(0).
-  // With this definition the Armijo condition reads ℓ(α) < ϕ(α).
-  // This approximate method seeks to minimize ℓ(α) over a discrete set of
-  // values given by the geometric progression αᵣ = ρʳαₘₐₓ with r an integer,
-  // 0 < ρ < 1 and αₘₐₓ the maximum value of α allowed. That is, the exact
-  // problem is replaced by
-  //   α = argmin ℓ(α)= ℓ(v + αᵣΔv)
-  //       αᵣ = ρʳαₘₐₓ
-  //       s.t. ℓ(α) < ϕ(α), Armijo's condition.
+  // With this definition the Armijo condition reads ℓ(α) < ϕ(α). This
+  // approximate method seeks to minimize ℓ(α) over a discrete set of values
+  // given by the geometric progression αᵣ = ρʳαₘₐₓ with r an integer, 0 < ρ < 1
+  // and αₘₐₓ the maximum value of α allowed. That is, the exact problem is
+  // replaced by α = argmin ℓ(α)= ℓ(v + αᵣΔv) αᵣ = ρʳαₘₐₓ s.t. ℓ(α) < ϕ(α),
+  // Armijo's condition.
   int PerformBackTrackingLineSearch(const State& state, T* alpha) const;
 
   // Solves for dv using supernodal algebra.
@@ -444,17 +443,7 @@ class SapSolver final : public ContactSolver<T> {
 
   SapSolverParameters parameters_;
 
-  struct Workspace {
-    void Resize(int nv, int nc) {
-      aux_v1.resize(nv);
-      aux_v2.resize(nv);
-    }
-    VectorX<T> aux_v1;
-    VectorX<T> aux_v2;
-  };
-
   // TODO: put these into a struct NonThreadSafeData.
-  mutable Workspace workspace_;
   mutable PreProcessedData data_;
   std::unique_ptr<conex::SuperNodalSolver> solver_;
 };

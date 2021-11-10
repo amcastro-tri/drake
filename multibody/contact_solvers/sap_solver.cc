@@ -84,9 +84,8 @@ Vector3<T> SapSolver<T>::CalcProjection(
 
       // We split dPdy into separate blocks:
       //
-      // dPdy = |dgt_dyt dgt_dyn|
-      //        |dgn_dyt dgn_dyn|
-      // where dgt_dyt ∈ ℝ²ˣ², dgt_dyn ∈ ℝ², dgn_dyt ∈ ℝ²ˣ¹ and dgn_dyn ∈ ℝ.
+      // dPdy = |dgt_dyt dgt_dyn| |dgn_dyt dgn_dyn| where dgt_dyt ∈ ℝ²ˣ²,
+      //        dgt_dyn ∈ ℝ², dgn_dyt ∈ ℝ²ˣ¹ and dgn_dyn ∈ ℝ.
       const Matrix2<T> dgt_dyt = mu * (gn / yr * Pperp + mu_hat * factor * P);
       const Vector2<T> dgt_dyn = mu * factor * that;
       const RowVector2<T> dgn_dyt = mu_hat * factor * that.transpose();
@@ -176,8 +175,8 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
   dynamics_data.get_A().AssembleMatrix(&data.Mblock);
   contact_data.get_Jc().AssembleMatrix(&data.Jblock);
 
-  // Extract mass matrix's per-tree diagonal blocks.
-  // Compute diagonal scaling inv_sqrt_M.
+  // Extract mass matrix's per-tree diagonal blocks. Compute diagonal scaling
+  // inv_sqrt_M.
   data.Mt.clear();
   data.Mt.reserve(data.Mblock.num_blocks());
   for (const auto& block : data.Mblock.get_blocks()) {
@@ -198,8 +197,8 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
         Mij.diagonal().cwiseInverse().cwiseSqrt();
   }
 
-  // Computation of a diagonal approximation to the Delassus operator.
-  // N.B. This must happen before the computation of the regularization R below.
+  // Computation of a diagonal approximation to the Delassus operator. N.B. This
+  // must happen before the computation of the regularization R below.
   const int nc = phi0.size();
   CalcDelassusDiagonalApproximation(nc, data.Mt, data.Jblock, &data.Wdiag);
 
@@ -210,8 +209,8 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
   const double sigma = parameters_.sigma;
 
   // Rigid approximation contant: Rₙ = β²/(4π²)⋅Wᵢ when the contact frequency ωₙ
-  // is below the limit ωₙ⋅δt ≤ 2π. That is, the period is Tₙ = β⋅δt.
-  // See [Castro et al., 2021] for details.
+  // is below the limit ωₙ⋅δt ≤ 2π. That is, the period is Tₙ = β⋅δt. See
+  // [Castro et al., 2021] for details.
   const T beta_factor = beta * beta / (4.0 * M_PI * M_PI);
   for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
     const T& k = stiffness(ic);
@@ -246,8 +245,8 @@ void SapSolver<T>::CalcAnalyticalInverseDynamics(
   DRAKE_DEMAND(vc.size() == nc3);
   DRAKE_DEMAND(gamma->size() == nc3);
 
-  // Computes the "soft norm" ‖x‖ₛ defined by ‖x‖ₛ² = ‖x‖² + ε², where
-  // ε = soft_tolerance.
+  // Computes the "soft norm" ‖x‖ₛ defined by ‖x‖ₛ² = ‖x‖² + ε², where ε =
+  // soft_tolerance.
   auto soft_norm = [](const Eigen::Ref<const VectorX<T>>& x,
                       double soft_tolerance) -> T {
     using std::sqrt;
@@ -351,12 +350,6 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   if (parameters_.verbosity_level >= 2) PrintJacobianSparsity();
 
   State state(nv, nc);
-  workspace_.Resize(nv, nc);
-  VectorX<double> gamma_id(3 * nc);
-  VectorX<double> v_work1(nv);
-  VectorX<double> v_work2(nv);
-  VectorX<double> v_work3(nv);
-  VectorX<double> xc_work1(3 * nc);
 
   state.mutable_v() = v_guess;
   // Compute velocity and impulses here to use in the computation of convergence
@@ -367,10 +360,9 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   // Previous iteration state, for error computation and reporting.
   State state_kp = state;
 
-  // Super nodal solver is constructed once per time-step to reuse structure
-  // of M and J.
-  // TODO: Move solver to the cache, so that the factorization is effectively
-  // cached. Think of computing gradients later.
+  // Super nodal solver is constructed once per time-step to reuse structure of
+  // M and J. TODO: Move solver to the cache, so that the factorization is
+  // effectively cached. Think of computing gradients later.
   std::unique_ptr<conex::SuperNodalSolver> solver;
 
   double alpha = 1.0;
@@ -401,10 +393,10 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
       break;
     } else {
       ++num_iterations;  // For statistics, we only count those iterations
-                         // that actually do work, i.e. solve a system of
-                         // linear equations.
-      // Prepare supernodal solver on first iteration only when needed.
-      // That is, if converged, avoid this work.
+                         // that actually do work, i.e. solve a system of linear
+                         // equations.
+      // Prepare supernodal solver on first iteration only when needed. That is,
+      // if converged, avoid this work.
       if (parameters_.use_supernodal_solver && k == 0) {
         solver_ = std::make_unique<conex::SuperNodalSolver>(
             data_.Jblock.block_rows(), data_.Jblock.get_blocks(), data_.Mt);
@@ -417,8 +409,8 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
                    state_kp.cache().cost_cache().ell);
     }
 
-    // Perform line-search.
-    // N.B. If converged, we allow one last update with alpha = 1.0.
+    // Perform line-search. N.B. If converged, we allow one last update with
+    // alpha = 1.0.
     alpha = 1.0;
     num_ls_iters = 0;  // Count line-search iterations.
     num_ls_iters = PerformBackTrackingLineSearch(state, &alpha);
@@ -523,19 +515,17 @@ int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
     ell_alpha = CalcLineSearchCost(state, alpha, &state_aux);
     const bool satisfies_armijo = ell_alpha < ell0 + c * alpha * dell_dalpha0;
     // std::cout << alpha << " " << ell_alpha - ell0 << " " << satisfies_armijo
-    //          << std::endl;
-    // Armijo's criteria.
-    // Since we know the function is convex, we in addition continue iterating
-    // until ell starts increasing.
+    //          << std::endl; Armijo's criteria. Since we know the function is
+    //          convex, we in addition continue iterating until ell starts
+    //          increasing.
     if (ell_alpha > ell_prev) {
       if (satisfies_armijo) {
         // TODO: move expensive computation of gradients into this scope since I
         // only need them here!
 
         // We don't go back one because we do know that the current alpha
-        // satisfies the Armijo condition.
-        // If the previous iterate satisfies the Armijo condition, it is better
-        // since ell_prev < ell_alpha.
+        // satisfies the Armijo condition. If the previous iterate satisfies the
+        // Armijo condition, it is better since ell_prev < ell_alpha.
         if (satisfies_armijo_prev) alpha /= rho;
         // value.
         *alpha_out = alpha;
@@ -573,8 +563,8 @@ void SapSolver<T>::CallSupernodalSolver(const State& s, VectorX<T>* dv,
   // This call does the actual assembly H = A + J G Jᵀ.
   solver->SetWeightMatrix(cache.gradients_cache().G);
 
-  // Factor() overwrites the assembled matrix with its LLT decomposition.
-  // We'll count it as part of the linear solver time.
+  // Factor() overwrites the assembled matrix with its LLT decomposition. We'll
+  // count it as part of the linear solver time.
   solver->Factor();
   *dv = -cache.gradients_cache().ell_grad_v;  // we solve dv in place.
   solver->SolveInPlace(dv);
@@ -704,17 +694,16 @@ void SapSolver<T>::UpdateCostCache(const State& state, Cache* cache) const {
   cost_cache.valid = true;
 }
 
-// Dependencies: velocities_updated, impulses_updated.
-// Updates: impulses_updated, gradients_updated, cost_updated.
+// Dependencies: velocities_updated, impulses_updated. Updates:
+// impulses_updated, gradients_updated, cost_updated.
 template <typename T>
 void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
                                                Cache* cache) const {
   if (cache->valid_gradients_cache()) return;
 
-  // Update γ(v) and dγ/dy(v).
-  // N.B. We update impulses and gradients together so that the we can reuse
-  // common terms in the analytical inverse dynamics.
-  // N.B. We make this update before updating the momentum or cost cache so that
+  // Update γ(v) and dγ/dy(v). N.B. We update impulses and gradients together so
+  // that the we can reuse common terms in the analytical inverse dynamics. N.B.
+  // We make this update before updating the momentum or cost cache so that
   // impulses are valid for them. Do not swap the order.
   auto& impulses_cache = cache->mutable_impulses_cache();
   auto& gradients_cache = cache->mutable_gradients_cache();
@@ -759,8 +748,8 @@ void SapSolver<T>::UpdateSearchDirectionCache(const State& state,
 
   auto& search_direction_cache = cache->mutable_search_direction_cache();
 
-  // Update search direction dv.
-  // TODO: get rid of CallDenseSolver(). Only here for debbuging.
+  // Update search direction dv. TODO: get rid of CallDenseSolver(). Only here
+  // for debbuging.
   if (parameters_.use_supernodal_solver) {
     CallSupernodalSolver(state, &search_direction_cache.dv, solver_.get());
   } else {

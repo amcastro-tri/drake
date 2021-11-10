@@ -154,8 +154,6 @@ class SapSolver final : public ContactSolver<T> {
       impulses_cache_.Resize(nc);
       gradients_cache_.Resize(nv, nc);
       search_direction_cache_.Resize(nv, nc);
-
-      if (dense) ell_hessian_v.resize(nv, nv);
     }
 
     void mark_invalid() {
@@ -165,13 +163,6 @@ class SapSolver final : public ContactSolver<T> {
       gradients_cache_.valid = false;
       cost_cache_.valid = false;
       search_direction_cache_.valid = {false};
-
-      // TODO: remove these.
-      valid_contact_velocity_and_impulses = false;
-      valid_cost_and_gradients = false;
-      valid_dense_gradients = false;
-      valid_search_direction = false;
-      valid_line_search_quantities = false;
     }
 
     bool valid_velocities_cache() const { return velocities_cache_.valid; }
@@ -255,17 +246,6 @@ class SapSolver final : public ContactSolver<T> {
     }
 
     const VectorX<T>& gamma() const { return impulses_cache().gamma; }
-
-    // TODO: Remove these.
-    bool valid_contact_velocity_and_impulses{false};
-    bool valid_cost_and_gradients{false};
-    bool valid_dense_gradients{false};
-    bool valid_search_direction{false};
-    bool valid_line_search_quantities{false};    
-
-    // TODO: only for debugging. Remove these.
-    MatrixX<T> ell_hessian_v;  // Hessian in v.
-    T condition_number;        // An estimate of the Hessian's condition number.
 
    private:
     VelocitiesCache velocities_cache_;

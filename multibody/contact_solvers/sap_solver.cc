@@ -619,6 +619,7 @@ void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) const {
   auto& cache = state.mutable_cache();
   UpdateCostAndGradientsCache(state, &cache);
 
+  MatrixX<T> H(nv, nv);
   {
     int nc = data_.nc;
     const auto& A = data_.Mblock;
@@ -635,31 +636,19 @@ void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) const {
       const MatrixX<T>& G_ic = G[ic];
       GJ.block(ic3, 0, 3, nv) = G_ic * Jdense.block(ic3, 0, 3, nv);
     }
-    cache.ell_hessian_v = Adense + Jdense.transpose() * GJ;
-    cache.valid_dense_gradients = true;
-  }
-
-  // We'll use Jacobi preconditioning to improve H's condition number. This
-  // greatly reduces round-off errors even when using direct solvers.
-  // const VectorXd D = M.diagonal().cwiseSqrt().cwiseInverse();
-  // const VectorXd D =
-  //    cache.ell_hessian_v.diagonal().cwiseSqrt().cwiseInverse();
-  const VectorXd D = VectorXd::Ones(nv);
-  const VectorXd rhs = -(D.asDiagonal() * cache.gradients_cache().ell_grad_v);
-  const MatrixXd lhs = D.asDiagonal() * cache.ell_hessian_v * D.asDiagonal();
+    H = Adense + Jdense.transpose() * GJ;
+  }  
 
   // Factorize Hessian.
-  Eigen::LDLT<MatrixXd> Hldlt(lhs);
+  Eigen::LDLT<MatrixXd> Hldlt(H);
   if (Hldlt.info() != Eigen::Success) {
     // return ContactSolverStatus::kFailure;
     throw std::runtime_error("LDLT solver failed.");
   }
-  // We track the condition number for our records.
-  cache.condition_number = Hldlt.rcond();
-  PRINT_VAR(cache.condition_number);
 
   // Compute search direction.
-  *dv = D.asDiagonal() * Hldlt.solve(rhs);
+  const VectorX<T> rhs = -cache.gradients_cache().ell_grad_v;
+  *dv = Hldlt.solve(rhs);
 }
 
 template <typename T>

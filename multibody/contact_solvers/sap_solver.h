@@ -107,11 +107,17 @@ class SapSolver final : public ContactSolver<T> {
       VectorX<T> momentum_change;  // = M⋅(v−v*)
     };
 
+    struct ImpulsesCache {
+      void Resize(int nc) { gamma.resize(3 * nc); }
+      bool valid{false};
+      VectorX<T> gamma;
+    };
+
     void Resize(int nv, int nc, bool dense = true) {
       const int nc3 = 3 * nc;
       velocities_cache_.Resize(nc);
       momentum_cache_.Resize(nv);
-      gamma.resize(nc3);
+      impulses_cache_.Resize(nc);
       ell_grad_v.resize(nv);
       if (dense) ell_hessian_v.resize(nv, nv);
       dv.resize(nv);
@@ -126,8 +132,8 @@ class SapSolver final : public ContactSolver<T> {
     void mark_invalid() {
       velocities_cache_.valid = false;
       momentum_cache_.valid = false;
+      impulses_cache_.valid = false;
 
-      impulses_updated = false;
       gradients_updated = false;
       cost_updated = false;
       search_direction_updated = {false};
@@ -164,6 +170,18 @@ class SapSolver final : public ContactSolver<T> {
       return momentum_cache_;
     }
 
+    bool valid_impulses_cache() const { return impulses_cache_.valid; }
+
+    const ImpulsesCache& impulses_cache() const {
+      DRAKE_DEMAND(impulses_cache_.valid);
+      return impulses_cache_;
+    }
+
+    ImpulsesCache& mutable_impulses_cache() {
+      impulses_cache_.valid = false;
+      return impulses_cache_;
+    }
+
     const VectorX<T>& vc() const {
       return velocities_cache().vc;
     }
@@ -172,9 +190,8 @@ class SapSolver final : public ContactSolver<T> {
       return momentum_cache().momentum_change;
     }
 
-    const VectorX<T>& get_gamma() const {
-      DRAKE_DEMAND(impulses_updated);
-      return gamma;
+    const VectorX<T>& gamma() const {
+      return impulses_cache().gamma;
     }
 
 
@@ -184,9 +201,6 @@ class SapSolver final : public ContactSolver<T> {
     bool valid_dense_gradients{false};
     bool valid_search_direction{false};
     bool valid_line_search_quantities{false};    
-
-    bool impulses_updated{false};
-    VectorX<T> gamma;  // Impulses.
 
     bool gradients_updated{false};
     std::vector<Matrix3<T>> dgamma_dy;  // ∂γ/∂y.
@@ -212,6 +226,7 @@ class SapSolver final : public ContactSolver<T> {
     private:
      VelocitiesCache velocities_cache_;
      MomentumCache momentum_cache_;
+     ImpulsesCache impulses_cache_;
   };
 
   // Everything in this solver is a function of the generalized velocities v.

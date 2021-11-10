@@ -422,7 +422,7 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
       // TODO: Reconciliate. consider not computing costs nor Ek here since we
       // dont use them and for the solver we cache them.
       CalcScaledMomentumAndScales(
-          data, state.v(), cache.gamma, &scaled_momentum_error, &momentum_scale,
+          data, state.v(), cache.gamma(), &scaled_momentum_error, &momentum_scale,
           &Ek, &costM, &costR, &cost, &v_work1, &v_work2, &v_work3);
     }
     // Note: only update the useful stats. Remove things like mom_rel_max.
@@ -466,7 +466,7 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
 
   if (k == parameters_.max_iterations) return ContactSolverStatus::kFailure;
 
-  PackContactResults(data_, state.v(), cache.vc(), cache.gamma, results);
+  PackContactResults(data_, state.v(), cache.vc(), cache.gamma(), results);
 
   return ContactSolverStatus::kSuccess;
 }
@@ -494,7 +494,7 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
   UpdateImpulsesCache(*state_alpha, &state_alpha->mutable_cache());  
 
   const auto& v = state_alpha->v();
-  const auto& gamma = state_alpha->cache().gamma;
+  const auto& gamma = state_alpha->cache().gamma();
 
   // Cost ellR.
   const T ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
@@ -714,11 +714,12 @@ void SapSolver<T>::UpdateVelocitiesCache(const State& state,
 
 template <typename T>
 void SapSolver<T>::UpdateImpulsesCache(const State& state, Cache* cache) const {
-  if (cache->impulses_updated) return;
+  if (cache->valid_impulses_cache()) return;
   UpdateVelocitiesCache(state, cache);
+  auto& impulses_cache = cache->mutable_impulses_cache();
   CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache->vc(),
-                                &cache->gamma);
-  cache->impulses_updated = true;
+                                &impulses_cache.gamma);
+  impulses_cache.valid = true;
 }
 
 template <typename T>
@@ -741,7 +742,7 @@ void SapSolver<T>::UpdateCostCache(const State& state, Cache* cache) const {
   const auto& v_star = data_.v_star;
   const auto& Adv = cache->momentum_cache().momentum_change;
   const VectorX<T>& v = state.v();
-  const VectorX<T>& gamma = cache->get_gamma();
+  const VectorX<T>& gamma = cache->gamma();
   cache->ellM = 0.5 * Adv.dot(v - v_star);
   cache->ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
   cache->ell = cache->ellM + cache->ellR;
@@ -760,15 +761,16 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
   // Update γ(v) and dγ/dy(v).
   // N.B. We update impulses and gradients together so that the we can reuse
   // common terms in the analytical inverse dynamics.
+  auto& impulses_cache = cache->mutable_impulses_cache();
   CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache->vc(),
-                                &cache->gamma, &cache->dgamma_dy,
+                                &impulses_cache.gamma, &cache->dgamma_dy,
                                 &cache->regions);
-  cache->impulses_updated = true;
+  impulses_cache.valid = true;
 
   UpdateCostCache(state, cache);
 
   // Update ∇ᵥℓ.
-  const VectorX<T>& gamma = cache->get_gamma();
+  const VectorX<T>& gamma = cache->gamma();
   const VectorX<T>& Adv = cache->momentum_cache().momentum_change;
   data_.Jblock.MultiplyByTranspose(gamma, &cache->ell_grad_v);  // = Jᵀγ
   cache->ell_grad_v = -cache->ell_grad_v;                       // = -Jᵀγ

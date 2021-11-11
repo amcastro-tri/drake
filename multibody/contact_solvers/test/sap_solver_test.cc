@@ -325,6 +325,7 @@ ContactSolverResults<double> AdvanceNumSteps(
     // PRINT_VAR((num_iters + 1));
     // PRINT_VAR(num_gradient_cache_updates);
 
+    // TODO: revisit these numbers as I progress in the PR.
     // Impulses are evaluated:
     //  - At the very beggining of an iteration, to evaluate stopping criteria
     //    (num_iters+1 since the last iteration does not perform factorization.)
@@ -333,7 +334,7 @@ ContactSolverResults<double> AdvanceNumSteps(
     //    Therefore we expect impulses to be evaluated
     //    2*(num_iters+1)+num_line_search_iters
     EXPECT_EQ(stats.num_impulses_cache_updates,
-              stats.num_line_search_iters + 2 * (stats.num_iters + 1));
+              stats.num_line_search_iters + 2 * stats.num_iters + 1);
 
     //PRINT_VAR(stats.num_line_search_iters);
     //PRINT_VAR(num_impulses_updates);

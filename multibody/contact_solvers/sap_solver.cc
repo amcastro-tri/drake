@@ -354,10 +354,7 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   stats_.Reset();
 
   state.mutable_v() = v_guess;
-  // Compute velocity and impulses here to use in the computation of convergence
-  // metrics later for the very first iteration.
   auto& cache = state.mutable_cache();
-  UpdateImpulsesCache(state, &cache);
 
   // Previous iteration state, for error computation and reporting.
   State state_kp = state;
@@ -379,6 +376,11 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
       std::cout << "Iteration: " << k << std::endl;
     }
 
+    // We perform the first update here so that we can evaluate the stopping
+    // criteria before we need an expensive factorization. If the state
+    // satisfies the stopping criteria we exit before a factorization is
+    // performed. In particular, if the initial guess satisfies the stopping
+    // criteria, the solver exits without performing a single factorization.
     // Updating all cache entries here has the advantage that the first
     // computation of the impulses is performed along with the computation of
     // its gradients. Computing γ and dγ/dy can be performed in a single pass.

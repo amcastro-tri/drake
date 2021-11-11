@@ -356,8 +356,16 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   state.mutable_v() = v_guess;
   auto& cache = state.mutable_cache();
 
-  // Previous iteration state, for error computation and reporting.
-  State state_kp = state;
+  // We perform the first update here so that we can evaluate the stopping
+  // criteria before we need an expensive factorization. If the state
+  // satisfies the stopping criteria we exit before a factorization is
+  // performed. In particular, if the initial guess satisfies the stopping
+  // criteria, the solver exits without performing a single factorization.
+  // Updating all cache entries here has the advantage that the first
+  // computation of the impulses is performed along with the computation of
+  // its gradients. Computing γ and dγ/dy can be performed in a single pass.
+  UpdateCostAndGradientsCache(state, &cache);
+  double ell_previous = cache.cost_cache().ell;
 
   // Super nodal solver is constructed once per time-step to reuse structure of
   // M and J. TODO: Move solver to the cache, so that the factorization is
@@ -368,7 +376,6 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
 
   // Start Newton iterations.
   int k = 0;
-  int num_iterations = 0;
   for (; k < parameters_.max_iterations; ++k) {
     if (parameters_.verbosity_level >= 3) {
       std::cout << std::string(80, '=') << std::endl;
@@ -376,41 +383,28 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
       std::cout << "Iteration: " << k << std::endl;
     }
 
-    // We perform the first update here so that we can evaluate the stopping
-    // criteria before we need an expensive factorization. If the state
-    // satisfies the stopping criteria we exit before a factorization is
-    // performed. In particular, if the initial guess satisfies the stopping
-    // criteria, the solver exits without performing a single factorization.
-    // Updating all cache entries here has the advantage that the first
-    // computation of the impulses is performed along with the computation of
-    // its gradients. Computing γ and dγ/dy can be performed in a single pass.
-    UpdateCostAndGradientsCache(state, &cache);
-
+    // We first verify the stopping criteria. If satisfied, we skip expensive
+    // factorizations.
     double momentum_residual, momentum_scale;
     CalcStoppingCriteriaResidual(state, &momentum_residual, &momentum_scale);
-
-    // Note: only update the useful stats. Remove things like mom_rel_max.
+    
     if (momentum_residual <= parameters_.rel_tolerance * momentum_scale) {
       if (parameters_.verbosity_level >= 1)
         PrintConvergedIterationStats(k, state);
       break;
     } else {
-      ++num_iterations;  // For statistics, we only count those iterations
-                         // that actually do work, i.e. solve a system of linear
-                         // equations.
-      // Prepare supernodal solver on first iteration only when needed. That is,
-      // if converged, avoid this work.
+      // Prepare supernodal solver on the first iteration it is needed. If the
+      // stopping criteria is satisfied at k = 0 (good guess), then we skip the
+      // expensive instantiation of the solver.
       if (parameters_.use_supernodal_solver && k == 0) {
         solver_ = std::make_unique<conex::SuperNodalSolver>(
             data_.Jblock.block_rows(), data_.Jblock.get_blocks(), data_.Mt);
       }
     }
 
-    UpdateSearchDirectionCache(state, &cache);
-    if (k > 0) {  // The primal cost must decreaste at each iteration.
-      DRAKE_DEMAND(state.cache().cost_cache().ell <
-                   state_kp.cache().cost_cache().ell);
-    }
+    // This is the most expensive update: it performs the factorization of H to
+    // solve for the search direction dv.
+    UpdateSearchDirectionCache(state, &cache);    
 
     // Perform line-search. N.B. If converged, we allow one last update with
     // alpha = 1.0.
@@ -419,15 +413,22 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
         PerformBackTrackingLineSearch(state, &alpha);
 
     // Update state.
-    state_kp = state;
     state.mutable_v() += alpha * cache.search_direction_cache().dv;
+
+    // We update the cost here so that we can verify it is decreasing on each
+    // iteration.
+    // This call also has the effect of updating the state as needed to verify
+    // the stopping criteria at the begining of the next iteration.
+    UpdateCostAndGradientsCache(state, &cache);
+    DRAKE_DEMAND(state.cache().cost_cache().ell < ell_previous);
+    ell_previous = state.cache().cost_cache().ell;
 
     // TODO: refactor into PrintNewtonStats().
     if (parameters_.verbosity_level >= 3) {
       PRINT_VAR(cache.cost_cache().ellM);
       PRINT_VAR(cache.cost_cache().ell);
       PRINT_VAR(cache.search_direction_cache().dv.norm());
-      PRINT_VAR(state_kp.cache().cost_cache().ell);
+      PRINT_VAR(ell_previous);
       PRINT_VAR(alpha);
     }
   }
@@ -436,7 +437,10 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
 
   PackContactResults(data_, state.v(), cache.vc(), cache.gamma(), results);
 
-  stats_.num_iters = num_iterations;
+  // N.B. If the stopping criteria is satisfied for k = 0, the solver is not
+  // even instantiated and no factorizations are performed (the expensive part
+  // of the computation). We report zero number of iterations.
+  stats_.num_iters = k;
 
   return ContactSolverStatus::kSuccess;
 }

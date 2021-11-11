@@ -33,9 +33,6 @@ using Eigen::SparseMatrix;
 using Eigen::SparseVector;
 
 template <typename T>
-SapSolver<T>::SapSolver() {}
-
-template <typename T>
 ContactSolverStatus SapSolver<T>::SolveWithGuess(
     const T& time_step, const SystemDynamicsData<T>& dynamics_data,
     const PointContactData<T>& contact_data, const VectorX<T>& v_guess,

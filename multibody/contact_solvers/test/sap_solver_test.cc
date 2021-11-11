@@ -272,21 +272,6 @@ class PizzaSaverProblem {
   const double g_{10.0};
 };
 
-class SapSolverTester {
- public:
-  using State = SapSolver<double>::State;
-  using Stats = SapSolver<double>::SolverStats;
-  static const State& get_state(
-      const SapSolver<double>& solver) {
-    return solver.state_;
-  }
-
-  static const Stats& get_stats(
-      const SapSolver<double>& solver) {
-    return solver.stats_;
-  }
-};
-
 ContactSolverResults<double> AdvanceNumSteps(
     const PizzaSaverProblem& problem, const VectorXd& tau, int num_steps,
     const SapSolverParameters& params) {
@@ -312,9 +297,7 @@ ContactSolverResults<double> AdvanceNumSteps(
     q += problem.time_step() * v;
 
     // Verify the number of times cache entries were updated.
-    const SapSolverTester::State& state = SapSolverTester::get_state(sap);
-    const SapSolverTester::Stats& stats = SapSolverTester::get_stats(sap);
-    (void)state;    
+    const SapSolver<double>::SolverStats& stats = sap.get_statistics();
 
     // N.B. We only count iterations that perform factorizations. Since impulses
     // need to be computed in order to evaluate the termination criteria (before

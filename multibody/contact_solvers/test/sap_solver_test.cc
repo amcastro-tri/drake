@@ -1,6 +1,5 @@
 #include "drake/multibody/contact_solvers/sap_solver.h"
 
-#include <iostream>
 #include <memory>
 
 #include <gtest/gtest.h>
@@ -10,8 +9,6 @@
 #include "drake/multibody/contact_solvers/block_sparse_linear_operator.h"
 #include "drake/multibody/contact_solvers/block_sparse_matrix.h"
 #include "drake/multibody/contact_solvers/system_dynamics_data.h"
-#define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
-#define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
 
 using Eigen::Matrix3d;
 using Eigen::Matrix4d;
@@ -26,7 +23,7 @@ namespace multibody {
 namespace contact_solvers {
 namespace internal {
 
-/* Top view of the pizza saver:
+/* Model of a "pizza saver":
 
   ^ y               C
   |                 ◯
@@ -51,6 +48,7 @@ class PizzaSaverProblem {
   static constexpr int num_velocities = 4;
   static constexpr int num_contacts = 3;
 
+  // This struct stores data consumed by the contact solver.
   struct ProblemData {
     ProblemData(int nv, int nc) {
       M.resize(nv, nv);
@@ -85,6 +83,13 @@ class PizzaSaverProblem {
     std::unique_ptr<PointContactData<double>> contact_data;
   };
 
+  // @param dt Discrete time step.
+  // @param mass Total mass of the system, in Kg.
+  // @param radius Radius of the circle circumscribing the triangular pizza
+  // saver, in m.
+  // @param mu Coefficient of dynamic friction.
+  // @param mu Stiffness with the ground, in N/m.
+  // @param taud Dissipation time scale, in seconds.
   PizzaSaverProblem(double dt, double mass, double radius, double mu, double k,
                     double taud)
       : time_step_(dt),
@@ -168,6 +173,8 @@ class PizzaSaverProblem {
     // clang-format on
   }
 
+  // Makes the problem data to advance the dynamics of the pizza saver from
+  // state x0 = [q0, v0], with applied forces tau = (fx, fy, fz, Mz).
   std::unique_ptr<ProblemData> MakeProblemData(const VectorXd& q0,
                                                const VectorXd& v0,
                                                const VectorXd& tau) const {
@@ -209,67 +216,33 @@ class PizzaSaverProblem {
     data->mu.setConstant(num_contacts, mu_);
 
     data->contact_data = std::make_unique<PointContactData<double>>(
-        &data->phi0, data->Jop.get(), &data->stiffness,
-        &data->dissipation, &data->mu);
+        &data->phi0, data->Jop.get(), &data->stiffness, &data->dissipation,
+        &data->mu);
 
     return data;
   }
 
-#if 0
-  // This tests the solver when we apply a moment Mz about COM to the pizza
-  // saver. If Mz < mu * m * g * R, the saver should be in stiction (that is,
-  // the sliding velocity should be smaller than the regularization parameter).
-  // Otherwise the saver will start sliding. For this setup the transition
-  // occurs at M_transition = mu * m * g * R = 5.0
-  std::unique_ptr<ProblemData> MakeStictionProblemData(double dt) const {
-    const double mu = 0.5;
-
-    // External forcing.
-    const double Mz = 3.0;  // M_transition = 5.0
-    const Vector3<double> tau(0.0, 0.0, Mz);
-
-    // Initial velocity.
-    const Vector3<double> v0 = Vector3<double>::Zero();
-
-    return MakeProblemData(dt, mu, tau, v0);
-  }
-#endif
-
-  std::unique_ptr<ProblemData> MakeProblemData(const VectorXd& v0,
-                                               double Mz) const {
-    // Some arbitrary orientation. This particular case has symmetry of
-    // revolution (meaning the result is independent of angle theta).
-    const double theta = M_PI / 5;
-    const Vector4d q0(0.0, 0.0, 0.0, theta);
-    const Vector4d tau(0.0, 0.0, -m_ * g_, Mz);
-    return MakeProblemData(q0, v0, tau);
-  }
-
-  std::unique_ptr<ProblemData> MakeProblemData(const VectorXd& v0, double fx,
-                                               double Mz) const {
-    // Some arbitrary orientation. This particular case has symmetry of
-    // revolution (meaning the result is independent of angle theta).
-    const double theta = M_PI / 5;
-    const Vector4d q0(0.0, 0.0, 0.0, theta);
-    const Vector4d tau(fx, 0.0, -m_ * g_, Mz);
-    return MakeProblemData(q0, v0, tau);
-  }
-
  private:
-  double time_step_{NAN};
+  // Helper method for NaN initialization.
+  static constexpr double nan() {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+
+  // The physical parameters of the model. They are initialized with NaN for a
+  // quick detection of uninitialized values.
+  double time_step_{nan()};  // Discrete time step.
 
   // Pizza saver parameters.
-  double m_{1.0};           // Mass of the pizza saver.
-  double R_{1.0};           // Distance from COM to any contact point.
-  double I_{R_ * R_ * m_};  // = 1.0 in this case.
+  double m_{nan()};  // Mass of the pizza saver.
+  double R_{nan()};  // Distance from COM to any contact point.
+  double I_{nan()};  // Rotational inertia about the z axis.
 
   // Contact parameters:
-  double mu_{0};           // Friction coefficient.
-  double stiffness_{NAN};  // Contact stiffness k.
-  double taud_{NAN};       // Linear dissipation time scale: c = taud * k.
+  double mu_{nan()};         // Friction coefficient.
+  double stiffness_{nan()};  // Contact stiffness k.
+  double taud_{nan()};       // Linear dissipation time scale: c = taud * k.
 
-  // Acceleration of gravity.
-  const double g_{10.0};
+  const double g_{10.0};  // Acceleration of gravity.
 };
 
 ContactSolverResults<double> AdvanceNumSteps(
@@ -291,8 +264,7 @@ ContactSolverResults<double> AdvanceNumSteps(
     const ContactSolverStatus status =
         sap.SolveWithGuess(problem.time_step(), *data->dynamics_data,
                            *data->contact_data, v_guess, &result);
-    (void)status;
-    // ASSERT_EQ(status, ContactSolverStatus::kSuccess);
+    EXPECT_EQ(status, ContactSolverStatus::kSuccess);
     v = result.v_next;
     q += problem.time_step() * v;
 
@@ -305,27 +277,22 @@ ContactSolverResults<double> AdvanceNumSteps(
     // update equals the number of iterations plus one.
     EXPECT_EQ(stats.num_gradients_cache_updates, stats.num_iters + 1);
 
-    // PRINT_VAR((num_iters + 1));
-    // PRINT_VAR(num_gradient_cache_updates);
-
-    // TODO: revisit these numbers as I progress in the PR.
     // Impulses are evaluated:
     //  - At the very beggining of an iteration, to evaluate stopping criteria
     //    (num_iters+1 since the last iteration does not perform factorization.)
-    //  - At the very beggining of line search iterations.
+    //  - At the very beggining of line search iterations, i.e. num_iters.
     //  - Once per line search iteration.
     //    Therefore we expect impulses to be evaluated
-    //    2*(num_iters+1)+num_line_search_iters
+    //    num_line_search_iters+2*num_iters+1 times.
     EXPECT_EQ(stats.num_impulses_cache_updates,
               stats.num_line_search_iters + 2 * stats.num_iters + 1);
-
-    //PRINT_VAR(stats.num_line_search_iters);
-    //PRINT_VAR(num_impulses_updates);
-  }  
+  }
 
   return result;
 }
 
+// Solve a problem with no applied torque. In this case contact forces should
+// balance weight.
 GTEST_TEST(PizzaSaver, NoAppliedTorque) {
   const double dt = 0.01;
   const double mu = 1.0;
@@ -335,7 +302,7 @@ GTEST_TEST(PizzaSaver, NoAppliedTorque) {
 
   SapSolverParameters params;
   params.rel_tolerance = 1.0e-6;
-  params.beta = 0;  // Force SAP to use user stiffness.
+  params.beta = 0;  // No near-rigid regime.
   params.ls_max_iterations = 40;
 
   const Vector4d tau(0.0, 0.0, -problem.mass() * problem.g(), 0.0);
@@ -366,7 +333,7 @@ GTEST_TEST(PizzaSaver, NoAppliedTorque) {
                               VectorXd::Zero(2 * problem.num_contacts),
                               params.rel_tolerance));
   EXPECT_TRUE(CompareMatrices(result.vn, VectorXd::Zero(problem.num_contacts),
-                              params.rel_tolerance));  
+                              params.rel_tolerance));
 }
 
 // This tests the solver when we apply a moment Mz about COM to the pizza
@@ -383,7 +350,7 @@ GTEST_TEST(PizzaSaver, Stiction) {
 
   SapSolverParameters params;
   params.rel_tolerance = 1.0e-6;
-  params.beta = 0;  // Force SAP to use user stiffness.
+  params.beta = 0;  // No near-rigid regime.
   params.ls_max_iterations = 40;
 
   const double Mz = 3.0;
@@ -430,7 +397,7 @@ GTEST_TEST(PizzaSaver, NoFriction) {
 
   SapSolverParameters params;
   params.rel_tolerance = 1.0e-6;
-  params.beta = 0;  // Force SAP to use user stiffness.
+  params.beta = 0;  // No near-rigid regime.
   params.ls_max_iterations = 40;
 
   const double fx = 1.0;
@@ -466,6 +433,9 @@ GTEST_TEST(PizzaSaver, NoFriction) {
   }
 }
 
+// This tests the solver when we apply a moment Mz about COM to the pizza
+// saver. If Mz > mu * m * g * R, the saver will slide.
+// occurs at M_transition = mu * m * g * R = 5.0
 GTEST_TEST(PizzaSaver, Sliding) {
   const double dt = 0.01;
   const double mu = 0.5;
@@ -475,7 +445,7 @@ GTEST_TEST(PizzaSaver, Sliding) {
 
   SapSolverParameters params;
   params.rel_tolerance = 1.0e-6;
-  params.beta = 0;  // Force SAP to use user stiffness.
+  params.beta = 0;  // No near-rigid regime.
   params.ls_max_iterations = 40;
 
   const double Mz = 6.0;
@@ -483,14 +453,7 @@ GTEST_TEST(PizzaSaver, Sliding) {
   const double fn_expected = weight / 3.0;
   const double ft_expected = mu * fn_expected;
   const double friction_torque_expected = 3.0 * ft_expected * problem.radius();
-  const double I = problem.rotational_inertia();
-  const double w_expected = dt * (Mz - friction_torque_expected) / I;
-  const double slip_expected = w_expected * problem.radius();
-  (void)slip_expected;
 
-  // const double phi0 = dt * mu * slip_expected;
-  // const Vector4d q0(0.0, 0.0, phi0, theta);
-  // const VectorXd v0 = VectorXd::Zero(problem.num_velocities);
   const Vector4d tau(0.0, 0.0, -weight, Mz);
 
   const ContactSolverResults<double> result =

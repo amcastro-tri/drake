@@ -726,8 +726,8 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
   const VectorX<T>& gamma = cache->gamma();
   const VectorX<T>& Adv = cache->momentum_cache().momentum_change;
   data().Jblock.MultiplyByTranspose(gamma,
-                                   &gradients_cache.ell_grad_v);  // = Jᵀγ
-  gradients_cache.ell_grad_v = -gradients_cache.ell_grad_v;       // = -Jᵀγ
+                                    &gradients_cache.ell_grad_v);  // = Jᵀγ
+  gradients_cache.ell_grad_v = -gradients_cache.ell_grad_v;        // = -Jᵀγ
   gradients_cache.ell_grad_v += Adv;  // = A⋅(v−v*) - Jᵀγ
 
   // Update G.

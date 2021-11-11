@@ -83,7 +83,7 @@ struct SapSolverParameters {
 template <typename T>
 class SapSolver final : public ContactSolver<T> {
  public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(SapSolver);  
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(SapSolver);
 
   // Struct used to store statistics for each solve by SolveWithGuess().
   struct SolverStats {
@@ -94,7 +94,7 @@ class SapSolver final : public ContactSolver<T> {
       num_impulses_cache_updates = 0;
       num_gradients_cache_updates = 0;
     }
-    int num_iters{0};  // Number of Newton iterations.
+    int num_iters{0};              // Number of Newton iterations.
     int num_line_search_iters{0};  // Total number of line search interations.
 
     // Number of impulse updates. This also includes also includes dγ/dy
@@ -172,7 +172,7 @@ class SapSolver final : public ContactSolver<T> {
         gamma.resize(3 * nc);
       }
       bool valid{false};
-      VectorX<T> y;      // The (unprojected) impulse y = −R⁻¹⋅(vc − v̂).
+      VectorX<T> y;  // The (unprojected) impulse y = −R⁻¹⋅(vc − v̂).
       VectorX<T> gamma;  // Impulse γ = P(y), with P(y) the projection operator.
     };
 
@@ -513,7 +513,7 @@ class SapSolver final : public ContactSolver<T> {
   }
   const PreProcessedData& data() const { return non_thread_safe_data_.data; }
   SolverStats& mutable_stats() const { return non_thread_safe_data_.stats; }
-  
+
   // All data stored by this class.
   mutable NonThreadSafeData non_thread_safe_data_;
   std::unique_ptr<conex::SuperNodalSolver> solver_;

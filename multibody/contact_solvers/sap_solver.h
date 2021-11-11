@@ -111,9 +111,13 @@ class SapSolver final : public ContactSolver<T> {
     };
 
     struct ImpulsesCache {
-      void Resize(int nc) { gamma.resize(3 * nc); }
+      void Resize(int nc) {
+        y.resize(3 * nc);
+        gamma.resize(3 * nc);
+      }
       bool valid{false};
-      VectorX<T> gamma;
+      VectorX<T> y;  // The (unprojected) impulse y = −R⁻¹⋅(vc − v̂).
+      VectorX<T> gamma;  // Impulse γ = P(y), with P(y) the projection operator.
     };
 
     struct GradientsCache {
@@ -121,13 +125,11 @@ class SapSolver final : public ContactSolver<T> {
         ell_grad_v.resize(nv);
         dgamma_dy.resize(nc);
         G.resize(nc, Matrix3<T>::Zero());
-        regions.resize(nc);
       }
       bool valid{false};
       VectorX<T> ell_grad_v;              // Gradient of the cost in v.
       std::vector<Matrix3<T>> dgamma_dy;  // ∂γ/∂y.
       std::vector<MatrixX<T>> G;          // G = -∂γ/∂vc.
-      VectorX<int> regions;
     };
 
     struct CostCache {
@@ -331,24 +333,14 @@ class SapSolver final : public ContactSolver<T> {
     VectorX<T> Wdiag;   // Delassus operator diagonal approximation.
   };
 
-  // Parameters that define the projection gamma = P(y) on the friction cone ℱ
-  // using the R norm.
-  struct ProjectionParams {
-    // Friction coefficient. It defines the friction cone ℱ.
-    T mu;
-    // Regularization parameters. Define the R norm.
-    T Rt;  // Tangential direction.
-    T Rn;  // Normal direction.
-  };
-
-  // Computes gamma = P(y) and its gradient dPdy (if requested). In addition to
-  // passing y as an argument we also pass the triplet {yr, yn, that}. This
-  // allow us to reuse these quantities if already computed. TODO: make static?
-  Vector3<T> CalcProjection(const ProjectionParams& params,
-                            const Eigen::Ref<const Vector3<T>>& y, const T& yr,
-                            const T& yn,
-                            const Eigen::Ref<const Vector2<T>>& that,
-                            int* region, Matrix3<T>* dPdy = nullptr) const;
+  // Computes gamma = P(y) where P(y) is the projection of y onto the friction
+  // cone defined by `mu` using the norm defined by `R`. The gradient dP/dy of
+  // the operator is computed if dPdy != nullptr.
+  // See [Castro et al., 2021] for details on the projection operator and its
+  // gradients.
+  Vector3<T> CalcProjectionOntoFrictionCone(
+      const T& mu, const Eigen::Ref<const Vector3<T>>& R,
+      const Eigen::Ref<const Vector3<T>>& y, Matrix3<T>* dPdy = nullptr) const;
 
   // Computes a diagonal approximation of the Delassus operator used to compute
   // a per constrataint diagonal scaling into Wdiag. Given an approximation Wₖₖ
@@ -368,20 +360,10 @@ class SapSolver final : public ContactSolver<T> {
       const T& time_step, const SystemDynamicsData<T>& dynamics_data,
       const PointContactData<T>& contact_data) const;
 
-  // Compute the analytical inverse dynamics γ = γ(vc).
-  // @param[in] soft_norm_tolerance tolerance used to compute the norm of the
-  // tangential unprojected impulse yt, with units of Ns.
-  // @param[in] vc contact velocities. On input vc.segment<3>(3*i) contains
-  // velocity for the i-th contact point.
-  // @param[out] gamma contact impulses. On output gamma.segment<3>(3*i)
-  // contains the impulse for the i-th contact point.
-  // @param[out] dgamma_dy Gradient of gamma wrt y. Not computed if nullptr.
-  // @param[out] regions not computed if dgamma_dy = nullptr. Must be
-  // non-nullptr if dgamma_dy is not nullptr.
-  void CalcAnalyticalInverseDynamics(
-      double soft_norm_tolerance, const VectorX<T>& vc, VectorX<T>* gamma,
-      std::vector<Matrix3<T>>* dgamma_dy = nullptr,
-      VectorX<int>* regions = nullptr) const;
+  // Computes the projection gamma = P(y) for all impulses and the gradient
+  // dP/dy if dgamma_dy != nullptr.
+  void ProjectImpulses(const VectorX<T>& y, VectorX<T>* gamma,
+                       std::vector<Matrix3<T>>* dgamma_dy = nullptr) const;
 
   // Pack solution into ContactSolverResults.
   void PackContactResults(const PreProcessedData& data, const VectorX<T>& v,

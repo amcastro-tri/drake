@@ -50,24 +50,40 @@ ContactSolverStatus SapSolver<T>::SolveWithGuess(
 }
 
 template <typename T>
-Vector3<T> SapSolver<T>::CalcProjection(
-    const ProjectionParams& params, const Eigen::Ref<const Vector3<T>>& y,
-    const T& yr, const T& yn, const Eigen::Ref<const Vector2<T>>& that,
-    int* region, Matrix3<T>* dPdy) const {
-  const T& mu = params.mu;
-  const T& Rt = params.Rt;
-  const T& Rn = params.Rn;
+Vector3<T> SapSolver<T>::CalcProjectionOntoFrictionCone(
+    const T& mu, const Eigen::Ref<const Vector3<T>>& R,
+    const Eigen::Ref<const Vector3<T>>& y, Matrix3<T>* dPdy) const {
+  // Computes the "soft norm" ‖x‖ₛ defined by ‖x‖ₛ² = ‖x‖² + ε², where ε =
+  // soft_tolerance. Using the soft norm we define the tangent vector as t̂ =
+  // γₜ/‖γₜ‖ₛ, which is well defined event for γₜ = 0. Also gradients are well
+  // defined and follow the same equations presented in [Castro et al., 2021]
+  // where regular norms are simply replaced by soft norms.
+  auto soft_norm = [eps = parameters_.soft_tolerance](
+                       const Eigen::Ref<const VectorX<T>>& x) -> T {
+    using std::sqrt;
+    return sqrt(x.squaredNorm() + eps * eps);
+  };
+
+  // We assume a regularization of the form R = (Rt, Rt, Rn).
+  const T& Rt = R(0);
+  const T& Rn = R(2);
   const T mu_hat = mu * Rt / Rn;
+
+  const auto yt = y.template head<2>();
+  const T yr = soft_norm(yt);
+  const T yn = y(2);
+  const Vector2<T> that = yt / yr;
 
   Vector3<T> gamma;
   // Analytical projection of y onto the friction cone ℱ using the R norm.
-  if (yr < mu * yn) {  // Region I, stiction.
-    *region = 1;
+  if (yr < mu * yn) {
+    // Region I, stiction.
     gamma = y;
     if (dPdy) dPdy->setIdentity();
-  } else if (-mu_hat * yr < yn && yn <= yr / mu) {  // Region II, sliding.
-    *region = 2;
-    // Common terms:
+  } else if (-mu_hat * yr < yn && yn <= yr / mu) {
+    // Region II, sliding.
+
+    // Common terms in both the projection and its gradient.
     const T mu_tilde2 = mu * mu_hat;  // mu_tilde = mu * sqrt(Rt/Rn).
     const T factor = 1.0 / (1.0 + mu_tilde2);
 
@@ -77,15 +93,16 @@ Vector3<T> SapSolver<T>::CalcProjection(
     gamma.template head<2>() = gt;
     gamma(2) = gn;
 
-    // Gradient:
+    // Gradient.
     if (dPdy) {
       const Matrix2<T> P = that * that.transpose();
       const Matrix2<T> Pperp = Matrix2<T>::Identity() - P;
 
       // We split dPdy into separate blocks:
       //
-      // dPdy = |dgt_dyt dgt_dyn| |dgn_dyt dgn_dyn| where dgt_dyt ∈ ℝ²ˣ²,
-      //        dgt_dyn ∈ ℝ², dgn_dyt ∈ ℝ²ˣ¹ and dgn_dyn ∈ ℝ.
+      // dPdy = |dgt_dyt dgt_dyn|
+      //        |dgn_dyt dgn_dyn|
+      // where dgt_dyt ∈ ℝ²ˣ², dgt_dyn ∈ ℝ², dgn_dyt ∈ ℝ²ˣ¹ and dgn_dyn ∈ ℝ.
       const Matrix2<T> dgt_dyt = mu * (gn / yr * Pperp + mu_hat * factor * P);
       const Vector2<T> dgt_dyn = mu * factor * that;
       const RowVector2<T> dgn_dyt = mu_hat * factor * that.transpose();
@@ -97,7 +114,6 @@ Vector3<T> SapSolver<T>::CalcProjection(
       (*dPdy)(2, 2) = dgn_dyn;
     }
   } else {  // yn <= -mu_hat * yr
-    *region = 3;
     // Region III, no contact.
     gamma.setZero();
     if (dPdy) dPdy->setZero();
@@ -237,53 +253,32 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
 }
 
 template <typename T>
-void SapSolver<T>::CalcAnalyticalInverseDynamics(
-    double soft_norm_tolerance, const VectorX<T>& vc, VectorX<T>* gamma,
-    std::vector<Matrix3<T>>* dgamma_dy, VectorX<int>* regions) const {
+void SapSolver<T>::ProjectImpulses(const VectorX<T>& y, VectorX<T>* gamma,
+                                   std::vector<Matrix3<T>>* dgamma_dy) const {
   const int nc = data_.nc;
   const int nc3 = 3 * nc;
-  DRAKE_DEMAND(vc.size() == nc3);
+  DRAKE_DEMAND(y.size() == nc3);
   DRAKE_DEMAND(gamma->size() == nc3);
+  if (dgamma_dy != nullptr) DRAKE_DEMAND(dgamma_dy->size() == nc);
 
-  // Computes the "soft norm" ‖x‖ₛ defined by ‖x‖ₛ² = ‖x‖² + ε², where ε =
-  // soft_tolerance.
-  auto soft_norm = [](const Eigen::Ref<const VectorX<T>>& x,
-                      double soft_tolerance) -> T {
-    using std::sqrt;
-    return sqrt(x.squaredNorm() + soft_tolerance * soft_tolerance);
-  };
-
-  // Pre-processed data.
+  // Data.
   const auto& R = data_.R;
-  const auto& vhat = data_.vhat;
+  const auto& mu = data_.mu;
 
-  // Problem data.
-  const auto& mu_all = data_.mu;
-
-  if (dgamma_dy != nullptr) DRAKE_DEMAND(regions != nullptr);
-
-  for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
-    const auto& vc_ic = vc.template segment<3>(ic3);
-    const auto& vhat_ic = vhat.template segment<3>(ic3);
+  for (int ic = 0; ic < nc; ic++) {
+    const int ic3 = 3 * ic;
     const auto& R_ic = R.template segment<3>(ic3);
-    const T& mu = mu_all(ic);
-    const T& Rt = R_ic(0);
-    const T& Rn = R_ic(2);
-    const Vector3<T> y_ic = (vhat_ic - vc_ic).array() / R_ic.array();
-    const auto yt = y_ic.template head<2>();
-    const T yr = soft_norm(yt, soft_norm_tolerance);
-    const T yn = y_ic[2];
-    const Vector2<T> that = yt / yr;
+    const T& mu_ic = mu(ic);
+    const auto& y_ic = y.template segment<3>(ic3);
 
     // Analytical projection of y onto the friction cone ℱ using the R norm.
     auto gamma_ic = gamma->template segment<3>(ic3);
     if (dgamma_dy != nullptr) {
       auto& dgamma_dy_ic = (*dgamma_dy)[ic];
-      gamma_ic = CalcProjection({mu, Rt, Rn}, y_ic, yr, yn, that,
-                                &(*regions)(ic), &dgamma_dy_ic);
+      gamma_ic =
+          CalcProjectionOntoFrictionCone(mu_ic, R_ic, y_ic, &dgamma_dy_ic);
     } else {
-      int region_ic{-1};
-      gamma_ic = CalcProjection({mu, Rt, Rn}, y_ic, yr, yn, that, &region_ic);
+      gamma_ic = CalcProjectionOntoFrictionCone(mu_ic, R_ic, y_ic);
     }
   }
 }
@@ -668,8 +663,12 @@ void SapSolver<T>::UpdateImpulsesCache(const State& state, Cache* cache) const {
   if (cache->valid_impulses_cache()) return;
   UpdateVelocitiesCache(state, cache);
   auto& impulses_cache = cache->mutable_impulses_cache();
-  CalcAnalyticalInverseDynamics(parameters_.soft_tolerance, cache->vc(),
-                                &impulses_cache.gamma);
+  const VectorX<T>& Rinv = data_.Rinv;
+  const VectorX<T>& vhat = data_.vhat;
+  impulses_cache.y = vhat - cache->vc();
+  // The (unprojected) impulse y=−R⁻¹⋅(vc − v̂).
+  impulses_cache.y.array() *= Rinv.array();
+  ProjectImpulses(impulses_cache.y, &impulses_cache.gamma);
   ++stats_.num_impulses_cache_updates;
   impulses_cache.valid = true;
 }
@@ -716,11 +715,14 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
   // We make this update before updating the momentum or cost cache so that
   // impulses are valid for them. Do not swap the order.
   auto& impulses_cache = cache->mutable_impulses_cache();
-  auto& gradients_cache = cache->mutable_gradients_cache();
+  auto& gradients_cache = cache->mutable_gradients_cache();  
   UpdateVelocitiesCache(state, cache);
-  CalcAnalyticalInverseDynamics(
-      parameters_.soft_tolerance, cache->vc(), &impulses_cache.gamma,
-      &gradients_cache.dgamma_dy, &gradients_cache.regions);
+  const VectorX<T>& Rinv = data_.Rinv;
+  const VectorX<T>& vhat = data_.vhat;
+  impulses_cache.y = vhat - cache->vc();  
+  impulses_cache.y.array() *= Rinv.array();
+  ProjectImpulses(impulses_cache.y, &impulses_cache.gamma,
+                  &gradients_cache.dgamma_dy);
   ++stats_.num_impulses_cache_updates;
   impulses_cache.valid = true;
 

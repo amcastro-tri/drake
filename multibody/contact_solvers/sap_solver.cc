@@ -444,12 +444,10 @@ template <typename T>
 T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
                                    State* state_alpha) const {
   // Data.
-  const int nc = data_.nc;
   const auto& R = data_.R;
-  const auto& Rinv = data_.Rinv;
   const auto& v_star = data_.v_star;
 
-  // Quantities at state v.
+  // Cached quantities at state v.
   const auto& search_direction_cache = state_v.cache().search_direction_cache();
   const auto& dv = search_direction_cache.dv;
   const auto& dp = search_direction_cache.dp;
@@ -462,13 +460,13 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
   // Update velocities and impulses at v(alpha).
   UpdateImpulsesCache(*state_alpha, &state_alpha->mutable_cache());
 
-  const auto& v = state_alpha->v();
-  const auto& gamma = state_alpha->cache().gamma();
+  const VectorX<T>& v = state_alpha->v();
+  const VectorX<T>& gamma = state_alpha->cache().gamma();
 
-  // Cost ellR.
+  // Regularizer cost.
   const T ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
 
-  // We can compute ellM in terms of precomputed terms.
+  // Momentum cost. We use the O(n) strategy described in [Castro et al., 2021].
   T ellM = state_v.cache().cost_cache().ellM;
   ellM += alpha * dp.dot(state_v.v() - v_star);
   ellM += 0.5 * alpha * alpha * d2ellM_dalpha2;
@@ -480,6 +478,11 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
 template <typename T>
 T SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
                                               int* num_iterations) const {
+  // Line search parameters.
+  const double rho = parameters_.ls_rho;
+  const double c = parameters_.ls_c;
+  const int max_iterations = parameters_.ls_max_iterations;
+
   // Quantities at alpha = 0.
   const T ell0 = state.cache().cost_cache().ell;
   const auto& ell_grad_v0 = state.cache().gradients_cache().ell_grad_v;
@@ -487,12 +490,7 @@ T SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
   // Search direction.
   const VectorX<T>& dv = state.cache().search_direction_cache().dv;
 
-  // Parameters.
-  const double rho = parameters_.ls_rho;
-  const double c = parameters_.ls_c;
-  const int max_iterations = parameters_.ls_max_iterations;
-
-  // Save dot product between dv and ell_grad_v.
+  // dℓ/dα(α = 0) = ∇ᵥℓ(α = 0)⋅Δv.
   const T dell_dalpha0 = ell_grad_v0.dot(dv);
 
   // dℓ/dα(α = 0) is guaranteed to be strictly negative given the the Hessian of
@@ -504,56 +502,63 @@ T SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
 
   T alpha = parameters_.ls_alpha_max;
   State state_aux(state);  // Auxiliary workspace.
-  T ell_alpha = CalcLineSearchCost(state, alpha, &state_aux);
+  T ell = CalcLineSearchCost(state, alpha, &state_aux);  
 
+  // Verifies if ell(alpha) satisfies Armijo's criterion.
+  auto satisfies_armijo = [c, ell0, dell_dalpha0](const T& alpha,
+                                                  const T& ell) {
+    return ell < ell0 + c * alpha * dell_dalpha0;
+  };
+
+  // Initialize previous iteration values.
   T alpha_prev = alpha;
-  T ell_prev = ell_alpha;
+  T ell_prev = ell;
 
-  // Record if the previous iteration satisfies the Armijo condition.
-  bool satisfies_armijo_prev = ell_alpha < ell0 + c * alpha * dell_dalpha0;
-
-  int num_iters = 0;
-  for (int iter = 0; iter < max_iterations; ++iter) {
-    ++num_iters;
+  int iteration = 1;
+  for (; iteration <= max_iterations; ++iteration) {
     alpha *= rho;
-    ell_alpha = CalcLineSearchCost(state, alpha, &state_aux);
-    const bool satisfies_armijo = ell_alpha < ell0 + c * alpha * dell_dalpha0;
-    // std::cout << alpha << " " << ell_alpha - ell0 << " " << satisfies_armijo
-    //          << std::endl; Armijo's criteria. Since we know the function is
-    //          convex, we in addition continue iterating until ell starts
-    //          increasing.
-    if (ell_alpha > ell_prev) {
-      if (satisfies_armijo) {
-        // TODO: move expensive computation of gradients into this scope since I
-        // only need them here!
-
-        // We don't go back one because we do know that the current alpha
-        // satisfies the Armijo condition. If the previous iterate satisfies the
-        // Armijo condition, it is better since ell_prev < ell_alpha.
-        if (satisfies_armijo_prev) alpha /= rho;
-        // value.
-        *num_iterations = num_iters;
+    ell = CalcLineSearchCost(state, alpha, &state_aux);        
+    if (ell > ell_prev) {
+      if (satisfies_armijo(alpha, ell)) {
+        // The previous iteration is better if it satisfies Armijo's
+        // criterion since in this scope ell_prev < ell. If so, we
+        // backtrack to the previous iteration.
+        if (satisfies_armijo(alpha_prev, ell_prev)) alpha /= rho;
+        *num_iterations = iteration;
         return alpha;
       } else {
-        throw std::runtime_error("Line search failed.");
+        // This point could only be reached if ℓ(α) is not convex. Since for SAP
+        // the cost ℓ(α) is always convex, this could only mean that the data to
+        // the solver is invalid or somehow the iteration diverged due to
+        // ill-conditioning (SAP's convergence is guaranteed. Only
+        // ill-conditioning and the accumulation of round-off errors can make it
+        // fail.)
+        throw std::runtime_error(
+            "Backtracking line search failed. Either the cost is not convex "
+            "(and thus invalid input data to the solver) or round-off "
+            "errors due to ill-conditioning render the search direction "
+            "useless.");
       }
     }
     alpha_prev = alpha;
-    ell_prev = ell_alpha;
-    satisfies_armijo_prev = satisfies_armijo;
+    ell_prev = ell;
   }
 
-  // TODO: it might be we have a real shapre cost near alpha=0 that the
-  // backtracking line search could not resolve and therefore the cost never
-  // went up. However, if Armijo's condition is satisfied, we still are game.
-  // You should check that here!
-  const bool satisfies_armijo = ell_alpha < ell0 + c * alpha * dell_dalpha0;
-  if (satisfies_armijo) {
-    *num_iterations = num_iters;
+  // For costs with very steep slopes near alpha = 0 we might not reach the
+  // condition ell > ell_prev. However, if the latest value of alpha satisfies
+  // Armijo's criterion, it is a valid search parameter that we can use.
+  if (satisfies_armijo(alpha, ell)) {
+    *num_iterations = iteration;
     return alpha;
   }
 
-  throw std::runtime_error("Line search reached max iterations.");
+  // If we are here, the line-search could not find a valid parameter that
+  // satisfies Armijo's criterion. Either we need to incrase the maximum number
+  // of iterations parameter or condition the problem better.
+  throw std::runtime_error(
+      "Line search reached the maximum number of iterations.");
+
+  // Silence "no-return value" warning from the compiler.
   DRAKE_UNREACHABLE();
 }
 

@@ -414,6 +414,11 @@ class SapSolver final : public ContactSolver<T> {
   // Given velocities v and search direction dv stored in `state`, this method
   // computes ℓ(α) = ℓ(v+αΔv), for a given alpha (α), and first and second
   // derivatives dℓ/dα and d²ℓ/dα².
+
+  // Computes the cost ℓ(α) = ℓ(vᵐ + αΔvᵐ) for line search, where vᵐ and Δvᵐ are
+  // the last Newton iteration values of generalized velocities and search
+  // direction, respectively. This methods uses the O(n) strategy described in
+  // [Castro et al., 2021].
   T CalcLineSearchCost(const State& state_v, const T& alpha,
                        State* state_alpha) const;
 
@@ -423,8 +428,9 @@ class SapSolver final : public ContactSolver<T> {
   // approximate method seeks to minimize ℓ(α) over a discrete set of values
   // given by the geometric progression αᵣ = ρʳαₘₐₓ with r an integer, 0 < ρ < 1
   // and αₘₐₓ the maximum value of α allowed. That is, the exact problem is
-  // replaced by α = argmin ℓ(α)= ℓ(v + αᵣΔv) αᵣ = ρʳαₘₐₓ s.t. ℓ(α) < ϕ(α),
-  // Armijo's condition.
+  // replaced by a search over the discrete values αᵣ until Armijo's criteria is
+  // satisfied. The satisfaction of Armijo's criteria allows to prove the
+  // global convergence of SAP.
   T PerformBackTrackingLineSearch(const State& state,
                                   int* num_iterations) const;
 

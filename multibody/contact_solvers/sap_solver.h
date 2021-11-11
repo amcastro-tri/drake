@@ -119,13 +119,15 @@ class SapSolver final : public ContactSolver<T> {
 
   // New parameters will affect the next call to SolveWithGuess().
   void set_parameters(const SapSolverParameters& parameters) {
-    parameters_ = parameters;
+    non_thread_safe_data_.parameters = parameters;
   }
 
   // Returns solver statistics from the last call to SolveWithGuess().
   // Statistics are reset with SolverStats::Reset() on each new call to
   // SolveWithGuess().
-  const SolverStats& get_statistics() const { return stats_; }
+  const SolverStats& get_statistics() const {
+    return non_thread_safe_data_.stats;
+  }
 
  private:
   // This is not a real cache in the CS sense (i.e. there is no tracking of
@@ -365,9 +367,15 @@ class SapSolver final : public ContactSolver<T> {
     // Constructs an empty data.
     PreProcessedData() = default;
 
-    // @param nv_in Number of generalized velocities.
-    // @param nc_in Number of contact constraints.
-    PreProcessedData(int nv_in, int nc_in) : nv(nv_in), nc(nc_in) {
+    // @param nv Number of generalized velocities.
+    // @param nc Number of contact constraints.
+    PreProcessedData(int nv_in, int nc_in) { Resize(nv_in, nc_in); }
+
+    // @param nv Number of generalized velocities.
+    // @param nc Number of contact constraints.
+    void Resize(int nv_in, int nc_in) {
+      nv = nv_in;
+      nc = nc_in;
       const int nc3 = 3 * nc;
       R.resize(nc3);
       Rinv.resize(nc3);
@@ -401,6 +409,14 @@ class SapSolver final : public ContactSolver<T> {
     VectorX<T> Wdiag;   // Delassus operator diagonal approximation.
   };
 
+  // This class stores mutable data members making it non thread-safe.
+  // We confine all these mutable members within this single struct.
+  struct NonThreadSafeData {
+    SapSolverParameters parameters;
+    PreProcessedData data;
+    SolverStats stats;
+  };
+
   // Computes a diagonal approximation of the Delassus operator used to compute
   // a per constrataint diagonal scaling into Wdiag. Given an approximation Wₖₖ
   // of the block diagonal element corresponding to the k-th constraint, the
@@ -410,14 +426,6 @@ class SapSolver final : public ContactSolver<T> {
                                          const std::vector<MatrixX<T>>& Mt,
                                          const BlockSparseMatrix<T>& Jblock,
                                          VectorX<T>* Wdiag) const;
-
-  // This method extracts and pre-processes input data into a format that is
-  // more convenient for computation. In particular, it computes quantities
-  // directly appearing in the optimization problem such as R, v̂, W, among
-  // others.
-  PreProcessedData PreProcessData(
-      const T& time_step, const SystemDynamicsData<T>& dynamics_data,
-      const PointContactData<T>& contact_data) const;
 
   // Computes gamma = P(y) where P(y) is the projection of y onto the friction
   // cone defined by `mu` using the norm defined by `R`. The gradient dP/dy of
@@ -434,8 +442,8 @@ class SapSolver final : public ContactSolver<T> {
                        std::vector<Matrix3<T>>* dgamma_dy = nullptr) const;
 
   // Pack solution into ContactSolverResults.
-  void PackContactResults(const PreProcessedData& data, const VectorX<T>& v,
-                          const VectorX<T>& vc, const VectorX<T>& gamma,
+  void PackContactResults(const VectorX<T>& v, const VectorX<T>& vc,
+                          const VectorX<T>& gamma,
                           ContactSolverResults<T>* result) const;
 
   // We monitor the optimality condition (for SAP, balance of momentum), i.e.
@@ -448,10 +456,17 @@ class SapSolver final : public ContactSolver<T> {
   void CalcStoppingCriteriaResidual(const State& state, T* momentum_residual,
                                     T* momentum_scale) const;
 
-  // This is the one and only API from ContactSolver that must be implemented.
-  // Refere to ContactSolverBase's documentation for details.
-  ContactSolverStatus DoSolveWithGuess(const PreProcessedData& data,
-                                       const VectorX<T>& v_guess,
+  // This method extracts and pre-processes input data into a format that is
+  // more convenient for computation. In particular, it computes quantities
+  // directly appearing in the optimization problem such as R, v̂, W, among
+  // others.
+  void PreProcessData(const T& time_step,
+                      const SystemDynamicsData<T>& dynamics_data,
+                      const PointContactData<T>& contact_data);
+
+  // Solves the contact problem from initial guess `v_guess` into `result`.
+  // @pre PreProcessData() has already been called.
+  ContactSolverStatus DoSolveWithGuess(const VectorX<T>& v_guess,
                                        ContactSolverResults<T>* result);
 
   // Methods used to update cached quantities.
@@ -490,20 +505,23 @@ class SapSolver final : public ContactSolver<T> {
 
   void PrintProblemSizes() const;
   void PrintJacobianSparsity() const;
-  void PrintConvergedIterationStats(int k, const State& s) const;  
+  void PrintConvergedIterationStats(int k, const State& s) const;
 
-  // TODO: put these into a struct NonThreadSafeData.
-  SapSolverParameters parameters_;
-  mutable PreProcessedData data_;
-  mutable State state_;
-  std::unique_ptr<conex::SuperNodalSolver> solver_;  
-  mutable SolverStats stats_;
+  // Quick access to mutable non thread-safe data.
+  const SapSolverParameters& parameters() const {
+    return non_thread_safe_data_.parameters;
+  }
+  const PreProcessedData& data() const { return non_thread_safe_data_.data; }
+  SolverStats& mutable_stats() const { return non_thread_safe_data_.stats; }
+  
+  // All data stored by this class.
+  mutable NonThreadSafeData non_thread_safe_data_;
+  std::unique_ptr<conex::SuperNodalSolver> solver_;
 };
 
 template <>
 ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
-    const SapSolver<double>::PreProcessedData&, const VectorX<double>&,
-    ContactSolverResults<double>*);
+    const VectorX<double>&, ContactSolverResults<double>*);
 
 }  // namespace internal
 }  // namespace contact_solvers

@@ -42,8 +42,8 @@ ContactSolverStatus SapSolver<T>::SolveWithGuess(
   // User code should only call the solver for problems with constraints.
   // Otherwise the solution is trivially v = v*.
   DRAKE_DEMAND(contact_data.num_contacts() != 0);
-  data_ = PreProcessData(time_step, dynamics_data, contact_data);
-  return DoSolveWithGuess(data_, v_guess, results);
+  PreProcessData(time_step, dynamics_data, contact_data);
+  return DoSolveWithGuess(v_guess, results);
 }
 
 template <typename T>
@@ -55,7 +55,7 @@ Vector3<T> SapSolver<T>::CalcProjectionOntoFrictionCone(
   // γₜ/‖γₜ‖ₛ, which is well defined event for γₜ = 0. Also gradients are well
   // defined and follow the same equations presented in [Castro et al., 2021]
   // where regular norms are simply replaced by soft norms.
-  auto soft_norm = [eps = parameters_.soft_tolerance](
+  auto soft_norm = [eps = parameters().soft_tolerance](
                        const Eigen::Ref<const VectorX<T>>& x) -> T {
     using std::sqrt;
     return sqrt(x.squaredNorm() + eps * eps);
@@ -161,15 +161,15 @@ void SapSolver<T>::CalcDelassusDiagonalApproximation(
 }
 
 template <typename T>
-typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
-    const T& time_step, const SystemDynamicsData<T>& dynamics_data,
-    const PointContactData<T>& contact_data) const {
+void SapSolver<T>::PreProcessData(const T& time_step,
+                                  const SystemDynamicsData<T>& dynamics_data,
+                                  const PointContactData<T>& contact_data) {
   using std::max;
   using std::min;
   using std::sqrt;
 
-  PreProcessedData data(dynamics_data.num_velocities(),
-                        contact_data.num_contacts());
+  PreProcessedData& data = non_thread_safe_data_.data;
+  data.Resize(dynamics_data.num_velocities(), contact_data.num_contacts());
 
   // Aliases to data.
   const VectorX<T>& mu = contact_data.get_mu();
@@ -218,8 +218,8 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
   // We use the Delassus scaling computed above to estimate regularization
   // parameters in the matrix R.
   const VectorX<T>& Wdiag = data.Wdiag;
-  const double beta = parameters_.beta;
-  const double sigma = parameters_.sigma;
+  const double beta = parameters().beta;
+  const double sigma = parameters().sigma;
 
   // Rigid approximation contant: Rₙ = β²/(4π²)⋅Wᵢ when the contact frequency ωₙ
   // is below the limit ωₙ⋅δt ≤ 2π. That is, the period is Tₙ = β⋅δt. See
@@ -245,22 +245,20 @@ typename SapSolver<T>::PreProcessedData SapSolver<T>::PreProcessData(
   data.v_star = dynamics_data.get_v_star();
   data.mu = mu;
   data.Mblock.Multiply(data.v_star, &data.p_star);
-
-  return data;
 }
 
 template <typename T>
 void SapSolver<T>::ProjectImpulses(const VectorX<T>& y, VectorX<T>* gamma,
                                    std::vector<Matrix3<T>>* dgamma_dy) const {
-  const int nc = data_.nc;
+  const int nc = data().nc;
   const int nc3 = 3 * nc;
   DRAKE_DEMAND(y.size() == nc3);
   DRAKE_DEMAND(gamma->size() == nc3);
   if (dgamma_dy != nullptr) DRAKE_DEMAND(dgamma_dy->size() == nc);
 
   // Data.
-  const auto& R = data_.R;
-  const auto& mu = data_.mu;
+  const auto& R = data().R;
+  const auto& mu = data().mu;
 
   for (int ic = 0; ic < nc; ic++) {
     const int ic3 = 3 * ic;
@@ -281,11 +279,10 @@ void SapSolver<T>::ProjectImpulses(const VectorX<T>& y, VectorX<T>* gamma,
 }
 
 template <typename T>
-void SapSolver<T>::PackContactResults(const PreProcessedData& data,
-                                      const VectorX<T>& v, const VectorX<T>& vc,
+void SapSolver<T>::PackContactResults(const VectorX<T>& v, const VectorX<T>& vc,
                                       const VectorX<T>& gamma,
                                       ContactSolverResults<T>* results) const {
-  results->Resize(data.nv, data.nc);
+  results->Resize(data().nv, data().nc);
   results->v_next = v;
   ExtractNormal(vc, &results->vn);
   ExtractTangent(vc, &results->vt);
@@ -293,11 +290,11 @@ void SapSolver<T>::PackContactResults(const PreProcessedData& data,
   ExtractTangent(gamma, &results->ft);
   // N.B. While contact solver works with impulses, results are reported as
   // forces.
-  results->fn /= data.time_step;
-  results->ft /= data.time_step;
-  const auto& Jop = data.Jblock;
+  results->fn /= data().time_step;
+  results->ft /= data().time_step;
+  const auto& Jop = data().Jblock;
   Jop.MultiplyByTranspose(gamma, &results->tau_contact);
-  results->tau_contact /= data.time_step;
+  results->tau_contact /= data().time_step;
 }
 
 template <typename T>
@@ -305,7 +302,7 @@ void SapSolver<T>::CalcStoppingCriteriaResidual(const State& state,
                                                 T* momentum_residual,
                                                 T* momentum_scale) const {
   using std::max;
-  const auto& inv_sqrt_M = data_.inv_sqrt_M;
+  const auto& inv_sqrt_M = data().inv_sqrt_M;
   const VectorX<T>& p = state.cache().momentum_cache().p;
   const VectorX<T>& j = state.cache().momentum_cache().j;
   const VectorX<T>& ell_grad = state.cache().gradients_cache().ell_grad_v;
@@ -322,28 +319,25 @@ void SapSolver<T>::CalcStoppingCriteriaResidual(const State& state,
 
 template <typename T>
 ContactSolverStatus SapSolver<T>::DoSolveWithGuess(
-    const PreProcessedData& data, const VectorX<T>& v_guess,
-    ContactSolverResults<T>* result) {
+    const VectorX<T>& v_guess, ContactSolverResults<T>* result) {
   throw std::logic_error("Only T = double is supported.");
 }
 
 template <>
 ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
-    const PreProcessedData& data, const VectorX<double>& v_guess,
-    ContactSolverResults<double>* results) {
+    const VectorX<double>& v_guess, ContactSolverResults<double>* results) {
   using std::abs;
   using std::max;
 
-  const int nv = data_.nv;
-  const int nc = data_.nc;
+  const int nv = data().nv;
+  const int nc = data().nc;
   const int nc3 = 3 * nc;
 
-  if (parameters_.verbosity_level >= 1) PrintProblemSizes();
-  if (parameters_.verbosity_level >= 2) PrintJacobianSparsity();
+  if (parameters().verbosity_level >= 1) PrintProblemSizes();
+  if (parameters().verbosity_level >= 2) PrintJacobianSparsity();
 
-  state_.Resize(nv, nc);
-  State& state = state_;
-  stats_.Reset();
+  State state(nv, nc);
+  mutable_stats().Reset();
 
   state.mutable_v() = v_guess;
   auto& cache = state.mutable_cache();
@@ -366,8 +360,8 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
 
   // Start Newton iterations.
   int k = 0;
-  for (; k < parameters_.max_iterations; ++k) {
-    if (parameters_.verbosity_level >= 3) {
+  for (; k < parameters().max_iterations; ++k) {
+    if (parameters().verbosity_level >= 3) {
       std::cout << std::string(80, '=') << std::endl;
       std::cout << std::string(80, '=') << std::endl;
       std::cout << "Iteration: " << k << std::endl;
@@ -377,18 +371,18 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
     // factorizations.
     double momentum_residual, momentum_scale;
     CalcStoppingCriteriaResidual(state, &momentum_residual, &momentum_scale);
-    
-    if (momentum_residual <= parameters_.rel_tolerance * momentum_scale) {
-      if (parameters_.verbosity_level >= 1)
+
+    if (momentum_residual <= parameters().rel_tolerance * momentum_scale) {
+      if (parameters().verbosity_level >= 1)
         PrintConvergedIterationStats(k, state);
       break;
     } else {
       // Prepare supernodal solver on the first iteration it is needed. If the
       // stopping criteria is satisfied at k = 0 (good guess), then we skip the
       // expensive instantiation of the solver.
-      if (parameters_.use_supernodal_solver && k == 0) {
+      if (parameters().use_supernodal_solver && k == 0) {
         solver_ = std::make_unique<conex::SuperNodalSolver>(
-            data_.Jblock.block_rows(), data_.Jblock.get_blocks(), data_.Mt);
+            data().Jblock.block_rows(), data().Jblock.get_blocks(), data().Mt);
       }
     }
 
@@ -398,10 +392,10 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
 
     int ls_iters;
     const double alpha = PerformBackTrackingLineSearch(state, &ls_iters);
-    stats_.num_line_search_iters += ls_iters;
+    mutable_stats().num_line_search_iters += ls_iters;
 
     // TODO: refactor into PrintNewtonStats().
-    if (parameters_.verbosity_level >= 3) {
+    if (parameters().verbosity_level >= 3) {
       PRINT_VAR(cache.cost_cache().ellM);
       PRINT_VAR(cache.cost_cache().ell);
       PRINT_VAR(cache.search_direction_cache().dv.norm());
@@ -417,17 +411,17 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
     // the stopping criteria at the begining of the next iteration.
     UpdateCostAndGradientsCache(state, &cache);
     DRAKE_DEMAND(state.cache().cost_cache().ell < ell_previous);
-    ell_previous = state.cache().cost_cache().ell;    
+    ell_previous = state.cache().cost_cache().ell;
   }
 
-  if (k == parameters_.max_iterations) return ContactSolverStatus::kFailure;
+  if (k == parameters().max_iterations) return ContactSolverStatus::kFailure;
 
-  PackContactResults(data_, state.v(), cache.vc(), cache.gamma(), results);
+  PackContactResults(state.v(), cache.vc(), cache.gamma(), results);
 
   // N.B. If the stopping criteria is satisfied for k = 0, the solver is not
   // even instantiated and no factorizations are performed (the expensive part
   // of the computation). We report zero number of iterations.
-  stats_.num_iters = k;
+  mutable_stats().num_iters = k;
 
   return ContactSolverStatus::kSuccess;
 }
@@ -436,8 +430,8 @@ template <typename T>
 T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
                                    State* state_alpha) const {
   // Data.
-  const auto& R = data_.R;
-  const auto& v_star = data_.v_star;
+  const auto& R = data().R;
+  const auto& v_star = data().v_star;
 
   // Cached quantities at state v.
   const auto& search_direction_cache = state_v.cache().search_direction_cache();
@@ -471,9 +465,9 @@ template <typename T>
 T SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
                                               int* num_iterations) const {
   // Line search parameters.
-  const double rho = parameters_.ls_rho;
-  const double c = parameters_.ls_c;
-  const int max_iterations = parameters_.ls_max_iterations;
+  const double rho = parameters().ls_rho;
+  const double c = parameters().ls_c;
+  const int max_iterations = parameters().ls_max_iterations;
 
   // Quantities at alpha = 0.
   const T ell0 = state.cache().cost_cache().ell;
@@ -492,9 +486,9 @@ T SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
   // revisited.
   DRAKE_DEMAND(dell_dalpha0 < 0);
 
-  T alpha = parameters_.ls_alpha_max;
+  T alpha = parameters().ls_alpha_max;
   State state_aux(state);  // Auxiliary workspace.
-  T ell = CalcLineSearchCost(state, alpha, &state_aux);  
+  T ell = CalcLineSearchCost(state, alpha, &state_aux);
 
   // Verifies if ell(alpha) satisfies Armijo's criterion.
   auto satisfies_armijo = [c, ell0, dell_dalpha0](const T& alpha,
@@ -509,7 +503,7 @@ T SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
   int iteration = 1;
   for (; iteration <= max_iterations; ++iteration) {
     alpha *= rho;
-    ell = CalcLineSearchCost(state, alpha, &state_aux);        
+    ell = CalcLineSearchCost(state, alpha, &state_aux);
     if (ell > ell_prev) {
       if (satisfies_armijo(alpha, ell)) {
         // The previous iteration is better if it satisfies Armijo's
@@ -573,16 +567,16 @@ void SapSolver<T>::CallSupernodalSolver(const State& s, VectorX<T>* dv,
 
 template <typename T>
 void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) const {
-  const int nv = data_.nv;
+  const int nv = data().nv;
 
   auto& cache = state.mutable_cache();
   UpdateCostAndGradientsCache(state, &cache);
 
   MatrixX<T> H(nv, nv);
   {
-    int nc = data_.nc;
-    const auto& A = data_.Mblock;
-    const auto& J = data_.Jblock;
+    int nc = data().nc;
+    const auto& A = data().Mblock;
+    const auto& J = data().Jblock;
     const auto& G = cache.gradients_cache().G;
 
     MatrixX<T> Jdense(3 * nc, nv);
@@ -612,25 +606,25 @@ void SapSolver<T>::CallDenseSolver(const State& state, VectorX<T>* dv) const {
 
 template <typename T>
 void SapSolver<T>::PrintProblemSizes() const {
-  const int nv = data_.nv;
-  const int nc = data_.nc;
+  const int nv = data().nv;
+  const int nc = data().nc;
   PRINT_VAR(nv);
   PRINT_VAR(nc);
-  PRINT_VAR(data_.Mt.size());
-  PRINT_VAR(data_.Mblock.rows());
-  PRINT_VAR(data_.Mblock.cols());
-  PRINT_VAR(data_.Mblock.num_blocks());
+  PRINT_VAR(data().Mt.size());
+  PRINT_VAR(data().Mblock.rows());
+  PRINT_VAR(data().Mblock.cols());
+  PRINT_VAR(data().Mblock.num_blocks());
 
-  PRINT_VAR(data_.Jblock.block_rows());
-  PRINT_VAR(data_.Jblock.block_cols());
-  PRINT_VAR(data_.Jblock.rows());
-  PRINT_VAR(data_.Jblock.cols());
-  PRINT_VAR(data_.Jblock.num_blocks());
+  PRINT_VAR(data().Jblock.block_rows());
+  PRINT_VAR(data().Jblock.block_cols());
+  PRINT_VAR(data().Jblock.rows());
+  PRINT_VAR(data().Jblock.cols());
+  PRINT_VAR(data().Jblock.num_blocks());
 }
 
 template <typename T>
 void SapSolver<T>::PrintJacobianSparsity() const {
-  for (const auto& [p, t, Jb] : data_.Jblock.get_blocks()) {
+  for (const auto& [p, t, Jb] : data().Jblock.get_blocks()) {
     std::cout << fmt::format("(p,t) = ({:d},{:d}). {:d}x{:d}.\n", p, t,
                              Jb.rows(), Jb.cols());
   }
@@ -650,7 +644,7 @@ void SapSolver<T>::UpdateVelocitiesCache(const State& state,
                                          Cache* cache) const {
   if (cache->valid_velocities_cache()) return;
   auto& velocities_cache = cache->mutable_velocities_cache();
-  const auto& Jc = data_.Jblock;
+  const auto& Jc = data().Jblock;
   Jc.Multiply(state.v(), &velocities_cache.vc);
   velocities_cache.valid = true;
 }
@@ -660,13 +654,13 @@ void SapSolver<T>::UpdateImpulsesCache(const State& state, Cache* cache) const {
   if (cache->valid_impulses_cache()) return;
   UpdateVelocitiesCache(state, cache);
   auto& impulses_cache = cache->mutable_impulses_cache();
-  const VectorX<T>& Rinv = data_.Rinv;
-  const VectorX<T>& vhat = data_.vhat;
+  const VectorX<T>& Rinv = data().Rinv;
+  const VectorX<T>& vhat = data().vhat;
   impulses_cache.y = vhat - cache->vc();
   // The (unprojected) impulse y=−R⁻¹⋅(vc − v̂).
   impulses_cache.y.array() *= Rinv.array();
   ProjectImpulses(impulses_cache.y, &impulses_cache.gamma);
-  ++stats_.num_impulses_cache_updates;
+  ++mutable_stats().num_impulses_cache_updates;
   impulses_cache.valid = true;
 }
 
@@ -675,10 +669,10 @@ void SapSolver<T>::UpdateMomentumCache(const State& state, Cache* cache) const {
   if (cache->valid_momentum_cache()) return;
   UpdateImpulsesCache(state, cache);
   auto& momentum_cache = cache->mutable_momentum_cache();
-  data_.Mblock.Multiply(state.v(), &momentum_cache.p);  // p = A⋅v.
-  data_.Jblock.MultiplyByTranspose(state.cache().gamma(), &momentum_cache.j);
+  data().Mblock.Multiply(state.v(), &momentum_cache.p);  // p = A⋅v.
+  data().Jblock.MultiplyByTranspose(state.cache().gamma(), &momentum_cache.j);
   // = p - p* = A⋅(v−v*).
-  momentum_cache.momentum_change = momentum_cache.p - data_.p_star;
+  momentum_cache.momentum_change = momentum_cache.p - data().p_star;
   momentum_cache.valid = true;
 }
 
@@ -688,8 +682,8 @@ void SapSolver<T>::UpdateCostCache(const State& state, Cache* cache) const {
   if (cache->valid_cost_cache()) return;
   UpdateImpulsesCache(state, cache);
   UpdateMomentumCache(state, cache);
-  const auto& R = data_.R;
-  const auto& v_star = data_.v_star;
+  const auto& R = data().R;
+  const auto& v_star = data().v_star;
   const auto& Adv = cache->momentum_cache().momentum_change;
   const VectorX<T>& v = state.v();
   const VectorX<T>& gamma = cache->gamma();
@@ -712,15 +706,15 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
   // We make this update before updating the momentum or cost cache so that
   // impulses are valid for them. Do not swap the order.
   auto& impulses_cache = cache->mutable_impulses_cache();
-  auto& gradients_cache = cache->mutable_gradients_cache();  
+  auto& gradients_cache = cache->mutable_gradients_cache();
   UpdateVelocitiesCache(state, cache);
-  const VectorX<T>& Rinv = data_.Rinv;
-  const VectorX<T>& vhat = data_.vhat;
-  impulses_cache.y = vhat - cache->vc();  
+  const VectorX<T>& Rinv = data().Rinv;
+  const VectorX<T>& vhat = data().vhat;
+  impulses_cache.y = vhat - cache->vc();
   impulses_cache.y.array() *= Rinv.array();
   ProjectImpulses(impulses_cache.y, &impulses_cache.gamma,
                   &gradients_cache.dgamma_dy);
-  ++stats_.num_impulses_cache_updates;
+  ++mutable_stats().num_impulses_cache_updates;
   impulses_cache.valid = true;
 
   // N.B. Since impulses were updated above along with dγ/dy, these updates will
@@ -731,14 +725,14 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
   // Update ∇ᵥℓ.
   const VectorX<T>& gamma = cache->gamma();
   const VectorX<T>& Adv = cache->momentum_cache().momentum_change;
-  data_.Jblock.MultiplyByTranspose(gamma,
+  data().Jblock.MultiplyByTranspose(gamma,
                                    &gradients_cache.ell_grad_v);  // = Jᵀγ
   gradients_cache.ell_grad_v = -gradients_cache.ell_grad_v;       // = -Jᵀγ
   gradients_cache.ell_grad_v += Adv;  // = A⋅(v−v*) - Jᵀγ
 
   // Update G.
-  const int nc = data_.nc;
-  const auto& R = data_.R;
+  const int nc = data().nc;
+  const auto& R = data().R;
   const auto& dgamma_dy = gradients_cache.dgamma_dy;
   for (int ic = 0, ic3 = 0; ic < nc; ic++, ic3 += 3) {
     const auto& R_ic = R.template segment<3>(ic3);
@@ -748,7 +742,7 @@ void SapSolver<T>::UpdateCostAndGradientsCache(const State& state,
     G_ic = dgamma_dy_ic * Rinv.asDiagonal();
   }
 
-  ++stats_.num_gradients_cache_updates;
+  ++mutable_stats().num_gradients_cache_updates;
   gradients_cache.valid = true;
 }
 
@@ -761,16 +755,16 @@ void SapSolver<T>::UpdateSearchDirectionCache(const State& state,
 
   // Update search direction dv. TODO: get rid of CallDenseSolver(). Only here
   // for debbuging.
-  if (parameters_.use_supernodal_solver) {
+  if (parameters().use_supernodal_solver) {
     CallSupernodalSolver(state, &search_direction_cache.dv, solver_.get());
   } else {
     CallDenseSolver(state, &search_direction_cache.dv);
   }
 
   // Update Δp, Δvc and d²ellM/dα².
-  const auto& Jop = data_.Jblock;
+  const auto& Jop = data().Jblock;
   Jop.Multiply(search_direction_cache.dv, &search_direction_cache.dvc);
-  data_.Mblock.Multiply(search_direction_cache.dv, &search_direction_cache.dp);
+  data().Mblock.Multiply(search_direction_cache.dv, &search_direction_cache.dp);
   search_direction_cache.d2ellM_dalpha2 =
       search_direction_cache.dv.dot(search_direction_cache.dp);
 

@@ -372,8 +372,6 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
   // effectively cached. Think of computing gradients later.
   std::unique_ptr<conex::SuperNodalSolver> solver;
 
-  double alpha = 1.0;
-
   // Start Newton iterations.
   int k = 0;
   for (; k < parameters_.max_iterations; ++k) {
@@ -404,13 +402,19 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
 
     // This is the most expensive update: it performs the factorization of H to
     // solve for the search direction dv.
-    UpdateSearchDirectionCache(state, &cache);    
+    UpdateSearchDirectionCache(state, &cache);
 
-    // Perform line-search. N.B. If converged, we allow one last update with
-    // alpha = 1.0.
-    alpha = 1.0;
-    stats_.num_line_search_iters +=
-        PerformBackTrackingLineSearch(state, &alpha);
+    int ls_iters;
+    const double alpha = PerformBackTrackingLineSearch(state, &ls_iters);
+    stats_.num_line_search_iters += ls_iters;
+
+    // TODO: refactor into PrintNewtonStats().
+    if (parameters_.verbosity_level >= 3) {
+      PRINT_VAR(cache.cost_cache().ellM);
+      PRINT_VAR(cache.cost_cache().ell);
+      PRINT_VAR(cache.search_direction_cache().dv.norm());
+      PRINT_VAR(alpha);
+    }
 
     // Update state.
     state.mutable_v() += alpha * cache.search_direction_cache().dv;
@@ -421,16 +425,7 @@ ContactSolverStatus SapSolver<double>::DoSolveWithGuess(
     // the stopping criteria at the begining of the next iteration.
     UpdateCostAndGradientsCache(state, &cache);
     DRAKE_DEMAND(state.cache().cost_cache().ell < ell_previous);
-    ell_previous = state.cache().cost_cache().ell;
-
-    // TODO: refactor into PrintNewtonStats().
-    if (parameters_.verbosity_level >= 3) {
-      PRINT_VAR(cache.cost_cache().ellM);
-      PRINT_VAR(cache.cost_cache().ell);
-      PRINT_VAR(cache.search_direction_cache().dv.norm());
-      PRINT_VAR(ell_previous);
-      PRINT_VAR(alpha);
-    }
+    ell_previous = state.cache().cost_cache().ell;    
   }
 
   if (k == parameters_.max_iterations) return ContactSolverStatus::kFailure;
@@ -483,8 +478,8 @@ T SapSolver<T>::CalcLineSearchCost(const State& state_v, const T& alpha,
 }
 
 template <typename T>
-int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
-                                                T* alpha_out) const {
+T SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
+                                              int* num_iterations) const {
   // Quantities at alpha = 0.
   const T ell0 = state.cache().cost_cache().ell;
   const auto& ell_grad_v0 = state.cache().gradients_cache().ell_grad_v;
@@ -537,8 +532,8 @@ int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
         // Armijo condition, it is better since ell_prev < ell_alpha.
         if (satisfies_armijo_prev) alpha /= rho;
         // value.
-        *alpha_out = alpha;
-        return num_iters;
+        *num_iterations = num_iters;
+        return alpha;
       } else {
         throw std::runtime_error("Line search failed.");
       }
@@ -554,8 +549,8 @@ int SapSolver<T>::PerformBackTrackingLineSearch(const State& state,
   // You should check that here!
   const bool satisfies_armijo = ell_alpha < ell0 + c * alpha * dell_dalpha0;
   if (satisfies_armijo) {
-    *alpha_out = alpha;
-    return num_iters;
+    *num_iterations = num_iters;
+    return alpha;
   }
 
   throw std::runtime_error("Line search reached max iterations.");

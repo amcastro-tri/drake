@@ -425,7 +425,8 @@ class SapSolver final : public ContactSolver<T> {
   // and αₘₐₓ the maximum value of α allowed. That is, the exact problem is
   // replaced by α = argmin ℓ(α)= ℓ(v + αᵣΔv) αᵣ = ρʳαₘₐₓ s.t. ℓ(α) < ϕ(α),
   // Armijo's condition.
-  int PerformBackTrackingLineSearch(const State& state, T* alpha) const;
+  T PerformBackTrackingLineSearch(const State& state,
+                                  int* num_iterations) const;
 
   // Solves for dv using supernodal algebra.
   void CallSupernodalSolver(const State& s, VectorX<T>* dv,

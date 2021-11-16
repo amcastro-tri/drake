@@ -6,9 +6,9 @@
 #include "drake/common/default_scalars.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
+#include "drake/geometry/scene_graph_inspector.h"
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/plant/discrete_update_manager.h"
-#include "drake/multibody/plant/multibody_plant.h"
 #include "drake/systems/framework/context.h"
 
 namespace drake {
@@ -21,9 +21,8 @@ namespace internal {
 // This structure is used to cache J_AcBc_C and rotation R_WC.
 template <typename T>
 struct ContactJacobianCache {
-  // Contact Jacobian J_AcBc_C. Jc.block(3*i, 0, 3, nv), where nv is the number
-  // of velocities in the model, corresponds to J_AcBc_C for the i-th contact
-  // pair.
+  // Contact Jacobian J_AcBc_C. Jc.middleRows<3>(3*i), corresponds to J_AcBc_C
+  // for the i-th contact pair.
   MatrixX<T> Jc;
 
   // Rotation matrix to re-express between contact frame C and world frame W.
@@ -35,9 +34,9 @@ struct ContactJacobianCache {
 // contact computations can be consumed by MultibodyPlant.
 //
 // In particular, this manager sets up a contact problem where each of the
-// bodies in the MultibodyPlant model are compliant, i.e. the contact model does
+// bodies in the MultibodyPlant model is compliant, i.e. the contact model does
 // not introduce state. Supported models include point contact with a linear
-// model of compliance, see GetPointContactStiffness() and the Hydroelastic
+// model of compliance, see GetPointContactStiffness() and the hydroelastic
 // contact model, see @ref mbp_hydroelastic_materials_properties in
 // MultibodyPlant's Doxygen documentation.
 // Dissipation is modeled using a linear model. For point contact, given the
@@ -52,6 +51,9 @@ struct ContactJacobianCache {
 // where p₀ is the object-centric virtual pressure field introduced by the
 // hydroelastic model.
 //
+// TODO(amcastro-tri): Retire code from MultibodyPlant as this contact manager
+// replaces all the contact related capabilities, per #16106.
+//
 // @tparam_nonsymbolic_scalar
 template <typename T>
 class CompliantContactManager : public internal::DiscreteUpdateManager<T> {
@@ -61,7 +63,7 @@ class CompliantContactManager : public internal::DiscreteUpdateManager<T> {
   // Constructs a contact manager that takes ownership of the supplied
   // `contact_solver` to solve the underlying contact problem.
   // @pre contact_solver != nullptr.
-  CompliantContactManager(
+  explicit CompliantContactManager(
       std::unique_ptr<contact_solvers::internal::ContactSolver<T>>
           contact_solver);
 
@@ -80,26 +82,26 @@ class CompliantContactManager : public internal::DiscreteUpdateManager<T> {
   // Provide private access for unit testing only.
   friend class CompliantContactManagerTest;
 
+  // TODO(amcastro-tri): Implement these methods in future PRs.
   void DoCalcContactSolverResults(
       const systems::Context<T>&,
       contact_solvers::internal::ContactSolverResults<T>*) const final {}
-
   void DoCalcAccelerationKinematicsCache(
       const systems::Context<T>&,
       multibody::internal::AccelerationKinematicsCache<T>*) const final {}
-
   void DoCalcDiscreteValues(const drake::systems::Context<T>&,
                             drake::systems::DiscreteValues<T>*) const final {}
-
   void DoCalcContactResults(const systems::Context<T>&,
-                            ContactResults<T>*) const final {}
+                            ContactResults<T>*) const final{};
 
   void DeclareCacheEntries() final;
 
   // Returns the point contact stiffness stored in group
   // geometry::internal::kMaterialGroup with property
   // geometry::internal::kPointStiffness for the specified geometry.
-  // If not present, it returns MultibodyPlant's default stiffness.
+  // If the stiffness property is absent, it returns MultibodyPlant's default
+  // stiffness.
+  // GeometryId `id` must exist in the model or an exception is thrown.
   T GetPointContactStiffness(
       geometry::GeometryId id,
       const geometry::SceneGraphInspector<T>& inspector) const;
@@ -112,11 +114,11 @@ class CompliantContactManager : public internal::DiscreteUpdateManager<T> {
       geometry::GeometryId id,
       const geometry::SceneGraphInspector<T>& inspector) const;
 
-  // Utility to combinee compliances k1 and k2 according to the rule:
+  // Utility to combine stiffnesses k1 and k2 according to the rule:
   //   k  = k₁⋅k₂/(k₁+k₂)
   // In other words, the combined compliance (the inverse of stiffness) is the
   // sum of the individual compliances.
-  static T CombineCompliance(const T& k1, const T& k2);
+  static T CombineStiffnesses(const T& k1, const T& k2);
 
   // Utility to combine linear dissipation time constants. Consider two
   // spring-dampers with stiffnesses k₁ and k₂, and dissipation time scales τ₁
@@ -126,14 +128,16 @@ class CompliantContactManager : public internal::DiscreteUpdateManager<T> {
   // This method returns tau1 + tau2.
   static T CombineDissipationTimeConstant(const T& tau1, const T& tau2);
 
-  // Given the configuration stored in `context`, this methods appends discrete
+  // Given the configuration stored in `context`, this method appends discrete
   // pairs corresponding to point contact into `pairs`.
+  // @pre pairs != nullptr.
   void AppendDiscreteContactPairsForPointContact(
       const systems::Context<T>& context,
       std::vector<internal::DiscreteContactPair<T>>* pairs) const;
 
-  // Given the configuration stored in `context`, this methods appends discrete
+  // Given the configuration stored in `context`, this method appends discrete
   // pairs corresponding to hydroelastic contact into `pairs`.
+  // @pre pairs != nullptr.
   void AppendDiscreteContactPairsForHydroelasticContact(
       const systems::Context<T>& context,
       std::vector<internal::DiscreteContactPair<T>>* pairs) const;
@@ -141,18 +145,14 @@ class CompliantContactManager : public internal::DiscreteUpdateManager<T> {
   // Given the configuration stored in `context`, this method computes all
   // discrete contact pairs, including point and hydroelastic contact, into
   // `pairs.`
-  // @pre pairs != nullptr.
+  // Throws an exception if `pairs` is nullptr.
   void CalcDiscreteContactPairs(
       const systems::Context<T>& context,
       std::vector<internal::DiscreteContactPair<T>>* pairs) const;
 
   // Eval version of CalcDiscreteContactPairs().
   const std::vector<internal::DiscreteContactPair<T>>& EvalDiscreteContactPairs(
-      const systems::Context<T>& context) const {
-    return plant()
-        .get_cache_entry(cache_indexes_.discrete_contact_pairs)
-        .template Eval<std::vector<internal::DiscreteContactPair<T>>>(context);
-  }
+      const systems::Context<T>& context) const;
 
   // Given the configuration stored in `context`, this method computes the
   // contact Jacobian cache. See ContactJacobianCache for details.
@@ -161,11 +161,7 @@ class CompliantContactManager : public internal::DiscreteUpdateManager<T> {
 
   // Eval version of CalcContactJacobianCache().
   const internal::ContactJacobianCache<T>& EvalContactJacobianCache(
-      const systems::Context<T>& context) const {
-    return plant()
-        .get_cache_entry(cache_indexes_.contact_jacobian)
-        .template Eval<internal::ContactJacobianCache<T>>(context);
-  }
+      const systems::Context<T>& context) const;
 
   std::unique_ptr<contact_solvers::internal::ContactSolver<T>> contact_solver_;
   CacheIndexes cache_indexes_;
@@ -174,3 +170,6 @@ class CompliantContactManager : public internal::DiscreteUpdateManager<T> {
 }  // namespace internal
 }  // namespace multibody
 }  // namespace drake
+
+DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
+    class ::drake::multibody::internal::CompliantContactManager);

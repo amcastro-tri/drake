@@ -18,9 +18,11 @@ drake_cc_package_library(
     visibility = ["//visibility:public"],
     deps = [
         ":calc_distance_and_time_derivative",
+        ":compliant_contact_manager",
         ":contact_jacobians",
-        ":contact_permutation",
         ":contact_results",
+        ":contact_results_to_meshcat",
+        ":contact_results_to_meshcat_params",
         ":coulomb_friction",
         ":discrete_contact_pair",
         ":externally_applied_spatial_force",
@@ -53,7 +55,7 @@ drake_cc_library(
     srcs = ["compliant_contact_manager.cc"],
     hdrs = ["compliant_contact_manager.h"],
     deps = [
-        ":plant",
+        ":multibody_plant_core",
         "//multibody/contact_solvers:contact_solver",
         "//multibody/triangle_quadrature",
     ],
@@ -198,7 +200,7 @@ drake_cc_library(
         "hydroelastic_quadrature_point_data.h",
     ],
     deps = [
-        "//geometry/proximity:surface_mesh",
+        "//geometry/proximity:triangle_surface_mesh",
     ],
 )
 
@@ -226,7 +228,7 @@ drake_cc_library(
         "contact_results_to_lcm.h",
     ],
     tags = [
-        # Don't add this library into the ":multibody_plant" package library.
+        # Don't add this library into the ":plant" package library.
         # Use of MBP doesn't imply use of contact visualization so this
         # dependency should be invoked explicitly.
         "exclude_from_package",
@@ -239,6 +241,32 @@ drake_cc_library(
         "//lcmtypes:point_pair_contact_info_for_viz",
         "//systems/framework:diagram_builder",
         "//systems/lcm:lcm_pubsub_system",
+    ],
+)
+
+drake_cc_library(
+    name = "contact_results_to_meshcat_params",
+    hdrs = ["contact_results_to_meshcat_params.h"],
+    deps = [
+        "//geometry:rgba",
+    ],
+)
+
+drake_cc_library(
+    name = "contact_results_to_meshcat",
+    srcs = ["contact_results_to_meshcat.cc"],
+    hdrs = [
+        "contact_results_to_meshcat.h",
+    ],
+    deps = [
+        ":contact_results_to_meshcat_params",
+        ":multibody_plant_core",
+        "//common:essential",
+        "//geometry:meshcat",
+        "//math:geometric_transform",
+        "//systems/framework:context",
+        "//systems/framework:diagram_builder",
+        "//systems/framework:leaf_system",
     ],
 )
 
@@ -316,15 +344,6 @@ drake_cc_library(
 )
 
 drake_cc_library(
-    name = "contact_permutation",
-    srcs = ["contact_permutation.cc"],
-    hdrs = ["contact_permutation.h"],
-    deps = [
-        "//multibody/tree:multibody_tree_topology",
-    ],
-)
-
-drake_cc_library(
     name = "multibody_plant_config",
     srcs = ["multibody_plant_config.cc"],
     hdrs = ["multibody_plant_config.h"],
@@ -351,7 +370,6 @@ drake_cc_googletest(
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
         "//multibody/contact_solvers:pgs_solver",
-        "//systems/analysis:simulator",
     ],
 )
 
@@ -675,6 +693,19 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "contact_results_to_meshcat_test",
+    data = [
+        "//examples/manipulation_station:models",
+    ],
+    deps = [
+        ":contact_results_to_meshcat",
+        ":plant",
+        "//common/test_utilities:expect_throws_message",
+        "//multibody/parsing",
+    ],
+)
+
+drake_cc_googletest(
     name = "coulomb_friction_test",
     deps = [
         ":coulomb_friction",
@@ -799,22 +830,6 @@ drake_cc_googletest(
         "//common/test_utilities:expect_throws_message",
         "//systems/analysis:simulator",
         "//systems/framework:abstract_value_cloner",
-    ],
-)
-
-drake_cc_googletest(
-    name = "contact_permutation_test",
-    data = [
-        "//examples/kuka_iiwa_arm/models",
-        "//examples/simple_gripper:simple_gripper_models",
-        "//manipulation/models/allegro_hand_description:models",
-        "//manipulation/models/iiwa_description:models",
-    ],
-    deps = [
-        ":contact_permutation",
-        ":plant",
-        "//common:find_resource",
-        "//multibody/parsing",
     ],
 )
 

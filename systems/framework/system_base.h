@@ -10,7 +10,6 @@
 #include <variant>
 #include <vector>
 
-#include "drake/common/drake_deprecated.h"
 #include "drake/common/drake_throw.h"
 #include "drake/common/unused.h"
 #include "drake/systems/framework/abstract_value_cloner.h"
@@ -96,20 +95,23 @@ class SystemBase : public internal::SystemMessageInterface {
   }
 
   //----------------------------------------------------------------------------
-  /** @name                  Input port evaluation
-  These methods provide scalar type-independent evaluation of a System input
-  port in a particular Context. If necessary, they first cause the port's value
+  /** @name            Input port evaluation (deprecated)
+  These _deprecated_ methods provide scalar type-independent evaluation of a
+  System input port in a particular Context. Instead of these, prefer to use
+  InputPort::Eval(), acquiring the port with `get_input_port(port_index)`.
+
+  If necessary, the methods here first cause the port's value
   to become up to date, then they return a reference to the now-up-to-date value
   in the given Context.
 
   Specified preconditions for these methods operate as follows: The
   preconditions will be checked in Debug builds but some or all might not be
   checked in Release builds for performance reasons. If we do check, and a
-  precondition is violated, an std::logic_error will be thrown with a helpful
+  precondition is violated, an std::exception will be thrown with a helpful
   message.
 
-  @see System::EvalVectorInput(), System::EvalEigenVectorInput() for
-  scalar type-specific input port access. */
+  @see System::get_input_port(), InputPort::Eval() for scalar type-specific
+  input port access. */
   //@{
 
   // TODO(jwnimmer-tri) Deprecate me.
@@ -122,8 +124,7 @@ class SystemBase : public internal::SystemMessageInterface {
 
   @pre `port_index` selects an existing input port of this System.
 
-  @see EvalInputValue(), System::EvalVectorInput(),
-       System::EvalEigenVectorInput() */
+  @see InputPort::Eval() (preferred) */
   const AbstractValue* EvalAbstractInput(const ContextBase& context,
                                          int port_index) const {
     ValidateContext(context);
@@ -146,6 +147,7 @@ class SystemBase : public internal::SystemMessageInterface {
   @pre the port's value must be retrievable from the stored abstract value
        using `AbstractValue::get_value<V>`.
 
+  @see InputPort::Eval() (preferred)
   @tparam V The type of data expected. */
   template <typename V>
   const V* EvalInputValue(const ContextBase& context, int port_index) const {
@@ -742,23 +744,6 @@ class SystemBase : public internal::SystemMessageInterface {
       std::set<DependencyTicket> prerequisites_of_calc = {
           all_sources_ticket()});
 
-  // Declares a cache entry via two member function pointers.
-  template <class MySystem, class MyContext, typename ValueType>
-  DRAKE_DEPRECATED("2021-11-01",
-      "This overload for DeclareCacheEntry is rarely the best choice; it is"
-      " unusual for allocation to actually require a boutique callback rather"
-      " than just a Clone of a model_value. We found that most uses of this"
-      " overload hindered readability, because other overloads would often do"
-      " the job more directly. If no existing overload works, you may wrap a"
-      " ValueProducer around your existing make method and call the primary"
-      " DeclareCacheEntry overload that takes a ValueProducer, instead.")
-  CacheEntry& DeclareCacheEntry(
-      std::string description,
-      ValueType (MySystem::*make)() const,
-      void (MySystem::*calc)(const MyContext&, ValueType*) const,
-      std::set<DependencyTicket> prerequisites_of_calc = {
-          all_sources_ticket()});
-
   /// @anchor DeclareCacheEntry_model_and_calc
   /** Declares a cache entry by specifying a model value of concrete type
   `ValueType` and a calculator function that is a class member function (method)
@@ -776,22 +761,6 @@ class SystemBase : public internal::SystemMessageInterface {
   CacheEntry& DeclareCacheEntry(
       std::string description, const ValueType& model_value,
       void (MySystem::*calc)(const MyContext&, ValueType*) const,
-      std::set<DependencyTicket> prerequisites_of_calc = {
-          all_sources_ticket()});
-
-  // Declares a cache entry via a model value and calc member function pointer.
-  template <class MySystem, class MyContext, typename ValueType>
-  DRAKE_DEPRECATED("2021-11-01",
-      "This overload for DeclareCacheEntry is dispreferred because it might"
-      " not reuse heap storage from one calculation to the next, and so is"
-      " typically less efficient than the other overloads. A better option"
-      " is to change the ValueType returned by-value to be an output pointer"
-      " instead, and return void. If that is not possible, you may wrap a"
-      " ValueProducer around your existing method and call the primary"
-      " DeclareCacheEntry overload that takes a ValueProducer, instead.")
-  CacheEntry& DeclareCacheEntry(
-      std::string description, const ValueType& model_value,
-      ValueType (MySystem::*calc)(const MyContext&) const,
       std::set<DependencyTicket> prerequisites_of_calc = {
           all_sources_ticket()});
 
@@ -821,22 +790,6 @@ class SystemBase : public internal::SystemMessageInterface {
   CacheEntry& DeclareCacheEntry(
       std::string description,
       void (MySystem::*calc)(const MyContext&, ValueType*) const,
-      std::set<DependencyTicket> prerequisites_of_calc = {
-          all_sources_ticket()});
-
-  // Declares a cache entry via a calculator member function pointer only.
-  template <class MySystem, class MyContext, typename ValueType>
-  DRAKE_DEPRECATED("2021-11-01",
-      "This overload for DeclareCacheEntry is dispreferred because it might"
-      " not reuse heap storage from one calculation to the next, and so is"
-      " typically less efficient than the other overloads. A better option"
-      " is to change the ValueType returned by-value to be an output pointer"
-      " instead, and return void. If that is not possible, you may wrap a"
-      " ValueProducer around your existing method and call the primary"
-      " DeclareCacheEntry overload that takes a ValueProducer, instead.")
-  CacheEntry& DeclareCacheEntry(
-      std::string description,
-      ValueType (MySystem::*calc)(const MyContext&) const,
       std::set<DependencyTicket> prerequisites_of_calc = {
           all_sources_ticket()});
   //@}
@@ -1274,37 +1227,6 @@ class SystemBase : public internal::SystemMessageInterface {
 
 // Implementations of templatized DeclareCacheEntry() methods.
 
-// (This overload is deprecated.)
-// Takes make() and calc() member functions.
-template <class MySystem, class MyContext, typename ValueType>
-CacheEntry& SystemBase::DeclareCacheEntry(
-    std::string description,
-    ValueType (MySystem::*make)() const,
-    void (MySystem::*calc)(const MyContext&, ValueType*) const,
-    std::set<DependencyTicket> prerequisites_of_calc) {
-  static_assert(std::is_base_of_v<SystemBase, MySystem>,
-                "Expected to be invoked from a SystemBase-derived System.");
-  static_assert(std::is_base_of_v<ContextBase, MyContext>,
-                "Expected to be invoked with a ContextBase-derived Context.");
-  auto this_ptr = dynamic_cast<const MySystem*>(this);
-  DRAKE_DEMAND(this_ptr != nullptr);
-  auto alloc_callback = [this_ptr, make]() {
-    return AbstractValue::Make((this_ptr->*make)());
-  };
-  auto calc_callback = [this_ptr, calc](const ContextBase& context,
-                                        AbstractValue* result) {
-    const auto& typed_context = dynamic_cast<const MyContext&>(context);
-    ValueType& typed_result = result->get_mutable_value<ValueType>();
-    (this_ptr->*calc)(typed_context, &typed_result);
-  };
-  // Invoke the general signature above.
-  auto& entry = DeclareCacheEntry(
-      std::move(description),
-      ValueProducer(std::move(alloc_callback), std::move(calc_callback)),
-      std::move(prerequisites_of_calc));
-  return entry;
-}
-
 // Takes an initial value and calc() member function that has an output
 // argument.
 template <class MySystem, class MyContext, typename ValueType>
@@ -1318,34 +1240,6 @@ CacheEntry& SystemBase::DeclareCacheEntry(
                 "Expected to be invoked with a ContextBase-derived Context.");
   auto& entry = DeclareCacheEntry(
       std::move(description), ValueProducer(this, model_value, calc),
-      std::move(prerequisites_of_calc));
-  return entry;
-}
-
-// (This overload is deprecated.)
-// Takes an initial value and value-returning calc() member function.
-// See the above output-argument signature for an explanation of the code.
-template <class MySystem, class MyContext, typename ValueType>
-CacheEntry& SystemBase::DeclareCacheEntry(
-    std::string description, const ValueType& model_value,
-    ValueType (MySystem::*calc)(const MyContext&) const,
-    std::set<DependencyTicket> prerequisites_of_calc) {
-  static_assert(std::is_base_of_v<SystemBase, MySystem>,
-                "Expected to be invoked from a SystemBase-derived System.");
-  static_assert(std::is_base_of_v<ContextBase, MyContext>,
-                "Expected to be invoked with a ContextBase-derived Context.");
-  auto this_ptr = dynamic_cast<const MySystem*>(this);
-  DRAKE_DEMAND(this_ptr != nullptr);
-  auto allocate_callback = internal::AbstractValueCloner(model_value);
-  auto calc_callback = [this_ptr, calc](const ContextBase& context,
-                                        AbstractValue* result) {
-    const auto& typed_context = dynamic_cast<const MyContext&>(context);
-    ValueType& typed_result = result->get_mutable_value<ValueType>();
-    typed_result = (this_ptr->*calc)(typed_context);
-  };
-  auto& entry = DeclareCacheEntry(
-      std::move(description),
-      ValueProducer(std::move(allocate_callback), std::move(calc_callback)),
       std::move(prerequisites_of_calc));
   return entry;
 }
@@ -1365,25 +1259,6 @@ CacheEntry& SystemBase::DeclareCacheEntry(
   // is required here.
   return DeclareCacheEntry(std::move(description), ValueType{}, calc,
                            std::move(prerequisites_of_calc));
-}
-
-// (This overload is deprecated.)
-// Takes just a value-returning calc() member function, and
-// value-initializes the entry. See previous method for more information.
-template <class MySystem, class MyContext, typename ValueType>
-CacheEntry& SystemBase::DeclareCacheEntry(
-    std::string description,
-    ValueType (MySystem::*calc)(const MyContext&) const,
-    std::set<DependencyTicket> prerequisites_of_calc) {
-  static_assert(
-      std::is_default_constructible_v<ValueType>,
-      "SystemBase::DeclareCacheEntry(calc): the calc-only overloads of "
-      "this method requires that the output type has a default constructor");
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  return DeclareCacheEntry(std::move(description), ValueType{}, calc,
-                           std::move(prerequisites_of_calc));
-#pragma GCC diagnostic pop
 }
 
 }  // namespace systems

@@ -109,7 +109,7 @@ the main body of the document:
       has nothing still running (modulo the ``*-coverage`` builds, which we can
       ignore)
    3. Open the latest builds from the following builds:
-      1. <https://drake-jenkins.csail.mit.edu/view/Packaging/job/mac-catalina-unprovisioned-clang-bazel-nightly-snopt-packaging/>
+      1. <https://drake-jenkins.csail.mit.edu/view/Packaging/job/mac-big-sur-unprovisioned-clang-bazel-nightly-snopt-packaging/>
       2. <https://drake-jenkins.csail.mit.edu/view/Packaging/job/linux-bionic-unprovisioned-gcc-bazel-nightly-snopt-packaging/>
       3. <https://drake-jenkins.csail.mit.edu/view/Packaging/job/linux-focal-unprovisioned-gcc-bazel-nightly-snopt-packaging/>
    4. Check the logs for those packaging builds and find the URLs they posted
@@ -129,10 +129,14 @@ the main body of the document:
     ``newest_commit`` whose changes are enumerated in the notes.  Some dates
     are YYYYMMDD format, some are YYYY-MM-DD format; be sure to manually fix
     them all.
-11. Merge the release notes PR
-   1. After merge, go to <https://drake-jenkins.csail.mit.edu/view/Documentation/job/linux-bionic-unprovisioned-gcc-bazel-nightly-documentation/> and push "Build now".
+   1. Update the github links within doc/_pages/from_binary.md to reflect the
+      upcoming v0.N.0 and YYYYMMDD.
+11. Re-enable CI by reverting the commit you added in step 3.
+12. Merge the release notes PR
+   1. Take care when squashing not to accept github's auto-generated commit message if it is not appropriate.
+   2. After merge, go to <https://drake-jenkins.csail.mit.edu/view/Documentation/job/linux-bionic-unprovisioned-gcc-bazel-nightly-documentation/> and push "Build now".
       * If you don't have "Build now" click "Log in" first in upper right.
-12. Open <https://github.com/RobotLocomotion/drake/releases> and choose "Draft
+13. Open <https://github.com/RobotLocomotion/drake/releases> and choose "Draft
     a new release".  Note that this page does has neither history nor undo.  Be
     slow and careful!
     1. Tag version is: v0.N.0
@@ -148,7 +152,7 @@ the main body of the document:
        them.", drag and drop the 9 release binary artifacts from above (the 3
        tarballs, and their 6 checksums)
     6. Choose "Save draft" and take a deep breath.
-13. Once the documentation build finishes, release!
+14. Once the documentation build finishes, release!
     1. Check that the link to drake.mit.edu docs from the GitHub release draft
        page actually works.
     2. Click "Publish release"

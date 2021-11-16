@@ -17,11 +17,6 @@ class Meshcat;
 /** An interface for recording/playback animations in Meshcat. Use
 Meshcat::SetAnimation to publish a MeshcatAnimation to the visualizer.
 
-NOTE: There is a significant bug in meshcat/three.js that limits the ability to
-set multiple property types in a single animation.  Your mileage with property
-animations may vary until we can resolve
-https://github.com/rdeits/meshcat/issues/105.
-
 Currently, an animation consists of (only) transforms and properties that are
 set at a particular integer frame number. Although we do not support calls to
 SetObject/Delete in an animation, you can consider using `SetProperty(frame,
@@ -43,10 +38,13 @@ class MeshcatAnimation {
   double frames_per_second() const { return frames_per_second_; }
 
   /** Uses the frame rate to convert from time to the frame number, using
-   * std::round. `time_from_start` must be non-negative. */
-  int frame(double time_from_start) const {
-    DRAKE_DEMAND(time_from_start >= 0.0);
-    return static_cast<int>(std::round(time_from_start * frames_per_second_));
+  std::floor.
+  @pre `time` ≥ start_time().
+  */
+  int frame(double time) const {
+    DRAKE_DEMAND(time >= start_time_);
+    return static_cast<int>(
+        std::floor((time - start_time_) * frames_per_second_));
   }
 
   // The documentation is adapted from
@@ -67,10 +65,18 @@ class MeshcatAnimation {
   };
 
   // Accessors.
+  double start_time() const { return start_time_; }
   bool autoplay() const { return play_; }
   LoopMode loop_mode() const { return loop_mode_; }
   int repetitions() const { return repetitions_; }
   bool clamp_when_finished() const { return clamp_when_finished_; }
+
+  /** Set the start time of the animation.  This is only for convenience; it is
+  used in the frame() method to allow callers to look up the frame number based
+  on the current time, the start time, and the frame rate.  It is not passed to
+  Meshcat. It does not change any frames that have previously been set.  The
+  default is zero.*/
+  void set_start_time(double time) { start_time_ = time; }
 
   /** Set the behavior when the animation is first sent to the visualizer.  The
   animation will play immediately iff `play` is true.  The default is true.*/
@@ -231,6 +237,7 @@ class MeshcatAnimation {
   PathTracks path_tracks_{};
 
   const double frames_per_second_;
+  double start_time_{0.0};
   bool play_{true};
   LoopMode loop_mode_{kLoopRepeat};
   int repetitions_{1};

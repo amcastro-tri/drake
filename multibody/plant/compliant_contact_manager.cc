@@ -1,12 +1,13 @@
 #include "drake/multibody/plant/compliant_contact_manager.h"
 
-#include <algorithm>
 #include <memory>
-#include <numeric>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "drake/common/eigen_types.h"
+#include "drake/geometry/geometry_ids.h"
+#include "drake/geometry/query_results/penetration_as_point_pair.h"
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/contact_solvers/contact_solver.h"
 #include "drake/multibody/plant/multibody_plant.h"
@@ -67,8 +68,7 @@ void CompliantContactManager<T>::CalcContactJacobianCache(
       EvalDiscreteContactPairs(context);
   const int num_contacts = contact_pairs.size();
 
-  // Jn is defined such that vn = Jn * v, with vn of size nc.
-  auto& Jc = cache->Jc;
+  MatrixX<T>& Jc = cache->Jc;
   Jc.resize(3 * num_contacts, plant().num_velocities());
 
   std::vector<drake::math::RotationMatrix<T>>& R_WC_set = cache->R_WC_list;
@@ -107,11 +107,10 @@ void CompliantContactManager<T>::CalcContactJacobianCache(
     this->internal_tree().CalcJacobianTranslationalVelocity(
         context, JacobianWrtVariable::kV, bodyA.body_frame(), frame_W, p_WC,
         frame_W, frame_W, &Jv_WAc_W);
-    Jv_AcBc_W = -Jv_WAc_W;  // Jv_AcBc_W = -Jv_WAc_W.
     this->internal_tree().CalcJacobianTranslationalVelocity(
         context, JacobianWrtVariable::kV, bodyB.body_frame(), frame_W, p_WC,
         frame_W, frame_W, &Jv_WBc_W);
-    Jv_AcBc_W += Jv_WBc_W;  // Jv_AcBc_W = Jv_WBc_W - Jv_WAc_W.
+    Jv_AcBc_W = Jv_WBc_W - Jv_WAc_W;
 
     // Define a contact frame C at the contact point such that the z-axis Cz
     // equals nhat_W. The tangent vectors are arbitrary, with the only
@@ -120,7 +119,7 @@ void CompliantContactManager<T>::CalcContactJacobianCache(
         math::RotationMatrix<T>::MakeFromOneVector(nhat_W, 2);
     R_WC_set.push_back(R_WC);
 
-    Jc.block(3 * icontact, 0, 3, nv).noalias() =
+    Jc.template middleRows<3>(3 * icontact).noalias() =
         R_WC.matrix().transpose() * Jv_AcBc_W;
   }
 }
@@ -132,6 +131,9 @@ T CompliantContactManager<T>::GetPointContactStiffness(
   const geometry::ProximityProperties* prop =
       inspector.GetProximityProperties(id);
   DRAKE_DEMAND(prop != nullptr);
+  // N.B. Here we rely on the resolution of #13289 and #5454 to get properties
+  // with the proper scalar type T. This will not work on scalar converted
+  // models until those issues are resolved.
   return prop->template GetPropertyOrDefault<T>(
       geometry::internal::kMaterialGroup, geometry::internal::kPointStiffness,
       this->default_contact_stiffness());
@@ -144,13 +146,16 @@ T CompliantContactManager<T>::GetDissipationTimeConstant(
   const geometry::ProximityProperties* prop =
       inspector.GetProximityProperties(id);
   DRAKE_DEMAND(prop != nullptr);
+  // N.B. Here we rely on the resolution of #13289 and #5454 to get properties
+  // with the proper scalar type T. This will not work on scalar converted
+  // models until those issues are resolved.
   return prop->template GetPropertyOrDefault<T>(
       geometry::internal::kMaterialGroup, "dissipation_time_constant",
       plant().time_step());
 }
 
 template <typename T>
-T CompliantContactManager<T>::CombineCompliance(const T& k1, const T& k2) {
+T CompliantContactManager<T>::CombineStiffnesses(const T& k1, const T& k2) {
   // Simple utility to detect 0 / 0. As it is used in this method, denom
   // can only be zero if num is also zero, so we'll simply return zero.
   auto safe_divide = [](const T& num, const T& denom) {
@@ -203,8 +208,8 @@ void CompliantContactManager<T>::CalcDiscreteContactPairs(
     const std::vector<geometry::ContactSurface<T>>& surfaces =
         this->EvalContactSurfaces(context);
     for (const auto& s : surfaces) {
-      const geometry::SurfaceMesh<T>& mesh = s.mesh_W();
-      num_quadrature_pairs += num_quad_points * mesh.num_faces();
+      const geometry::TriangleSurfaceMesh<T>& mesh = s.mesh_W();
+      num_quadrature_pairs += num_quad_points * mesh.num_triangles();
     }
   }
   const int num_contact_pairs = num_point_pairs + num_quadrature_pairs;
@@ -224,7 +229,7 @@ void CompliantContactManager<T>::AppendDiscreteContactPairsForPointContact(
     const systems::Context<T>& context,
     std::vector<internal::DiscreteContactPair<T>>* result) const {
   std::vector<internal::DiscreteContactPair<T>>& contact_pairs = *result;
-  
+
   const geometry::QueryObject<T>& query_object =
       this->plant()
           .get_geometry_query_input_port()
@@ -237,7 +242,7 @@ void CompliantContactManager<T>::AppendDiscreteContactPairsForPointContact(
   for (const PenetrationAsPointPair<T>& pair : point_pairs) {
     const T kA = GetPointContactStiffness(pair.id_A, inspector);
     const T kB = GetPointContactStiffness(pair.id_B, inspector);
-    const T k = CombineCompliance(kA, kB);
+    const T k = CombineStiffnesses(kA, kB);
     const T tauA = GetDissipationTimeConstant(pair.id_A, inspector);
     const T tauB = GetDissipationTimeConstant(pair.id_B, inspector);
     const T tau = CombineDissipationTimeConstant(tauA, tauB);
@@ -251,10 +256,7 @@ void CompliantContactManager<T>::AppendDiscreteContactPairsForPointContact(
     const Vector3<T> p_WC = wA * pair.p_WCa + wB * pair.p_WCb;
 
     const T phi0 = -pair.depth;
-    // N.B. Currently, fn0 is only used by TAMSI. Since TAMSI is not a
-    // ContactSolver and this manager only talks to ContactSolver's, we
-    // explicitly mark this value as not used with a NaN.
-    const T fn0 = std::numeric_limits<double>::quiet_NaN();
+    const T fn0 = -k * phi0;
     contact_pairs.push_back(
         {pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W, phi0, fn0, k, d});
   }
@@ -284,12 +286,12 @@ void CompliantContactManager<T>::
   const std::vector<geometry::ContactSurface<T>>& surfaces =
       this->EvalContactSurfaces(context);
   for (const auto& s : surfaces) {
-    const geometry::SurfaceMesh<T>& mesh_W = s.mesh_W();
+    const geometry::TriangleSurfaceMesh<T>& mesh_W = s.mesh_W();
     const T tau_M = GetDissipationTimeConstant(s.id_M(), inspector);
     const T tau_N = GetDissipationTimeConstant(s.id_N(), inspector);
     const T tau = CombineDissipationTimeConstant(tau_M, tau_N);
 
-    for (int face = 0; face < mesh_W.num_faces(); ++face) {
+    for (int face = 0; face < mesh_W.num_triangles(); ++face) {
       const T& Ae = mesh_W.area(face);  // Face element area.
 
       // We found out that the hydroelastic query might report
@@ -341,16 +343,13 @@ void CompliantContactManager<T>::
           // where subindex p denotes a quantity evaluated at quadrature
           // point P and subindex e identifies the e-th contact surface
           // element in which the quadrature is being evaluated.
-          // Notice f₀ only includes the "elastic" contribution. Dissipation
-          // is dealt with by a separate multiplicative factor. Given the
-          // local stiffness for the normal forces contribution, our
-          // discrete TAMSI solver implicitly handles the dissipative Hunt &
-          // Crossley forces.
-          // In point contact, stiffness is related to changes in the normal
-          // force with changes in the penetration distance. In that spirit,
-          // the approximation used here is to define the discrete
-          // hydroelastics stiffness as the directional derivative of the
-          // scalar force f₀ₚ along the normal direction n̂:
+          // Notice f₀ only includes the "elastic" contribution. Dissipation is
+          // dealt with by the contact solver. In point contact, stiffness is
+          // related to changes in the normal force with changes in the
+          // penetration distance. In that spirit, the approximation used here
+          // is to define the discrete hydroelastics stiffness as the
+          // directional derivative of the scalar force f₀ₚ along the normal
+          // direction n̂:
           //   k := ∂f₀ₚ/∂n̂ ≈ ωₚ⋅Aₑ⋅∇pₚ⋅n̂ₚ
           // that is, the variation of the normal force experiences if the
           // quadrature point is pushed inwards in the direction of the
@@ -363,6 +362,12 @@ void CompliantContactManager<T>::
           // does not stretch nor shrink). For triangles close to the
           // boundary of the contact surface, this is only a first order
           // approximation.
+          //
+          // Refer to [Masterjohn, 2021] for details.
+          //
+          // [Masterjohn, 2021] Masterjohn J., Guoy D., Shepherd J. and Castro
+          // A., 2021. Discrete Approximation of Pressure Field Contact Patches.
+          // Available at https://arxiv.org/abs/2110.04157.
           const T k = sign * wq[qp] * Ae * grad_pres_W.dot(nhat_W);
 
           // N.B. The normal is guaranteed to point into M. However, when M
@@ -387,8 +392,7 @@ void CompliantContactManager<T>::
           // phi < 0 when in penetration.
           const T phi0 = -sign * p0 / grad_pres_W.dot(nhat_W);
 
-          using std::abs;
-          if (k > 0 && abs(phi0) < 0.1) {
+          if (k > 0) {
             const T dissipation = tau * k;
             contact_pairs.push_back(
                 {s.id_M(), s.id_N(), p_WQ, nhat_W, phi0, fn0, k, dissipation});
@@ -397,6 +401,24 @@ void CompliantContactManager<T>::
       }
     }
   }
+}
+
+template <typename T>
+const std::vector<internal::DiscreteContactPair<T>>&
+CompliantContactManager<T>::EvalDiscreteContactPairs(
+    const systems::Context<T>& context) const {
+  return plant()
+      .get_cache_entry(cache_indexes_.discrete_contact_pairs)
+      .template Eval<std::vector<internal::DiscreteContactPair<T>>>(context);
+}
+
+template <typename T>
+const internal::ContactJacobianCache<T>&
+CompliantContactManager<T>::EvalContactJacobianCache(
+    const systems::Context<T>& context) const {
+  return plant()
+      .get_cache_entry(cache_indexes_.contact_jacobian)
+      .template Eval<internal::ContactJacobianCache<T>>(context);
 }
 
 }  // namespace internal

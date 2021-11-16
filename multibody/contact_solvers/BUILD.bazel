@@ -257,6 +257,7 @@ drake_cc_library(
         ":block_sparse_matrix",
         "//common:default_scalars",
         "//common:essential",
+        "//common:nice_type_name",
     ],
 )
 

@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include <fmt/ostream.h>
+#include <yaml-cpp/yaml.h>
 
 #include "drake/common/nice_type_name.h"
 
@@ -145,28 +146,105 @@ internal::Node ConvertJbederYamlNodeToDrakeYamlNode(
 
 }  // namespace
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 YamlReadArchive::YamlReadArchive(const YAML::Node& root)
     : YamlReadArchive(root, Options{}) {}
 
 YamlReadArchive::YamlReadArchive(const YAML::Node& root, const Options& options)
-    : owned_root_(ConvertJbederYamlNodeToDrakeYamlNode({}, root)),
+    : YamlReadArchive(ConvertJbederYamlNodeToDrakeYamlNode({}, root), options) {
+}
+
+#pragma GCC diagnostic pop
+
+YamlReadArchive::YamlReadArchive(internal::Node root, const Options& options)
+    : owned_root_(std::move(root)),
       root_(&owned_root_.value()),
       mapish_item_key_(nullptr),
       mapish_item_value_(nullptr),
       options_(options),
       parent_(nullptr) {}
 
+// N.B. This is unit tested via yaml_io_test with calls to LoadYamlFile (and
+// not as part of yaml_read_archive_test as would be typical).  In the future,
+// it might be better to refactor document parsing and merge key handling into
+// a separate file with more specific testing, but for the moment our use of
+// yaml-cpp in our public API makes that difficult.
+internal::Node YamlReadArchive::LoadFileAsNode(
+    const std::string& filename,
+    const std::optional<std::string>& child_name) {
+  YAML::Node root = YAML::LoadFile(filename);
+  if (child_name.has_value()) {
+    YAML::Node child_node = root[*child_name];
+    if (!child_node) {
+      throw std::runtime_error(fmt::format(
+          "When loading '{}', there was no such top-level map entry '{}'",
+          filename, *child_name));
+    }
+    return ConvertJbederYamlNodeToDrakeYamlNode({}, child_node);
+  } else {
+    return ConvertJbederYamlNodeToDrakeYamlNode({}, root);
+  }
+}
+
+// N.B. This is unit tested via yaml_io_test with calls to LoadYamlString (and
+// not as part of yaml_read_archive_test as would be typical).  In the future,
+// it might be better to refactor document parsing and merge key handling into
+// a separate file with more specific testing, but for the moment our use of
+// yaml-cpp in our public API makes that difficult.
+internal::Node YamlReadArchive::LoadStringAsNode(
+    const std::string& data,
+    const std::optional<std::string>& child_name) {
+  YAML::Node root = YAML::Load(data);
+  if (child_name.has_value()) {
+    YAML::Node child_node = root[*child_name];
+    if (!child_node) {
+      throw std::runtime_error(fmt::format(
+          "When loading YAML, there was no such top-level map entry '{}'",
+          *child_name));
+    }
+    return ConvertJbederYamlNodeToDrakeYamlNode({}, child_node);
+  } else {
+    return ConvertJbederYamlNodeToDrakeYamlNode({}, root);
+  }
+}
+
+// TODO(jwnimmer-tri) On 2022-03-01 when the deprecated YAML::Node functions are
+// removed, the header file implementation that calls `convert<>` should move
+// into the cc file here, as an anonymous helper function.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 void YamlReadArchive::ParseScalar(const std::string& value, bool* result) {
   ParseScalar<bool>(value, result);
+}
+
+void YamlReadArchive::ParseScalar(const std::string& value, float* result) {
+  ParseScalar<float>(value, result);
 }
 
 void YamlReadArchive::ParseScalar(const std::string& value, double* result) {
   ParseScalar<double>(value, result);
 }
 
-void YamlReadArchive::ParseScalar(const std::string& value, int* result) {
-  ParseScalar<int>(value, result);
+void YamlReadArchive::ParseScalar(const std::string& value, int32_t* result) {
+  ParseScalar<int32_t>(value, result);
 }
+
+void YamlReadArchive::ParseScalar(const std::string& value, uint32_t* result) {
+  ParseScalar<uint32_t>(value, result);
+}
+
+void YamlReadArchive::ParseScalar(const std::string& value, int64_t* result) {
+  ParseScalar<int64_t>(value, result);
+}
+
+void YamlReadArchive::ParseScalar(const std::string& value, uint64_t* result) {
+  ParseScalar<uint64_t>(value, result);
+}
+
+#pragma GCC diagnostic pop
 
 void YamlReadArchive::ParseScalar(
     const std::string& value, std::string* result) {

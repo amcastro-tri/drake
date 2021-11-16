@@ -80,8 +80,7 @@ class MultibodyPlantDiscreteUpdateManagerAttorney {
   }
 
   static const std::vector<geometry::ContactSurface<T>>& EvalContactSurfaces(
-      const MultibodyPlant<T>& plant,
-      const systems::Context<T>& context) {
+      const MultibodyPlant<T>& plant, const systems::Context<T>& context) {
     return plant.EvalContactSurfaces(context);
   }
 

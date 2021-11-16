@@ -41,7 +41,6 @@ namespace contact_surface {
 
 using Eigen::Vector3d;
 using Eigen::Vector4d;
-using geometry::AddContactMaterial;
 using geometry::AddRigidHydroelasticProperties;
 using geometry::AddSoftHydroelasticProperties;
 using geometry::Box;
@@ -61,7 +60,7 @@ using geometry::Role;
 using geometry::SceneGraph;
 using geometry::SourceId;
 using geometry::Sphere;
-using geometry::SurfaceMesh;
+using geometry::TriangleSurfaceMesh;
 using lcm::DrakeLcm;
 using math::RigidTransformd;
 using std::make_unique;
@@ -119,8 +118,7 @@ class MovingBall final : public LeafSystem<double> {
                                       make_unique<Sphere>(1.0), "ball"));
 
     ProximityProperties prox_props;
-    AddContactMaterial(1e8, {}, {}, &prox_props);
-    AddSoftHydroelasticProperties(FLAGS_length, &prox_props);
+    AddSoftHydroelasticProperties(FLAGS_length, 1e8, &prox_props);
     scene_graph->AssignRole(source_id_, geometry_id_, prox_props);
 
     IllustrationProperties illus_props;
@@ -262,8 +260,8 @@ class ContactResultMaker final : public LeafSystem<double> {
       surface_msg.collision_count2 = inspector.NumGeometriesForFrameWithRole(
           inspector.GetFrameId(id2), Role::kProximity);
 
-      const SurfaceMesh<double>& mesh_W = surfaces[i].mesh_W();
-      surface_msg.num_triangles = mesh_W.num_faces();
+      const TriangleSurfaceMesh<double>& mesh_W = surfaces[i].mesh_W();
+      surface_msg.num_triangles = mesh_W.num_triangles();
       surface_msg.triangles.resize(surface_msg.num_triangles);
       write_double3(mesh_W.centroid(), surface_msg.centroid_W);
       surface_msg.num_quadrature_points = surface_msg.num_triangles;

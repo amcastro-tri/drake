@@ -195,7 +195,7 @@ std::optional<RigidGeometry> MakeRigidRepresentation(
     const Sphere& sphere, const ProximityProperties& props) {
   PositiveDouble validator("Sphere", "rigid");
   const double edge_length = validator.Extract(props, kHydroGroup, kRezHint);
-  auto mesh = make_unique<SurfaceMesh<double>>(
+  auto mesh = make_unique<TriangleSurfaceMesh<double>>(
       MakeSphereSurfaceMesh<double>(sphere, edge_length));
 
   return RigidGeometry(RigidMesh(move(mesh)));
@@ -207,7 +207,7 @@ std::optional<RigidGeometry> MakeRigidRepresentation(
   // Use the coarsest mesh for the box. The safety factor 1.1 guarantees the
   // resolution-hint argument is larger than the box size, so the mesh
   // will have only 8 vertices and 12 triangles.
-  auto mesh = make_unique<SurfaceMesh<double>>(
+  auto mesh = make_unique<TriangleSurfaceMesh<double>>(
       MakeBoxSurfaceMesh<double>(box, 1.1 * box.size().maxCoeff()));
 
   return RigidGeometry(RigidMesh(move(mesh)));
@@ -217,7 +217,7 @@ std::optional<RigidGeometry> MakeRigidRepresentation(
     const Cylinder& cylinder, const ProximityProperties& props) {
   PositiveDouble validator("Cylinder", "rigid");
   const double edge_length = validator.Extract(props, kHydroGroup, kRezHint);
-  auto mesh = make_unique<SurfaceMesh<double>>(
+  auto mesh = make_unique<TriangleSurfaceMesh<double>>(
       MakeCylinderSurfaceMesh<double>(cylinder, edge_length));
 
   return RigidGeometry(RigidMesh(move(mesh)));
@@ -227,7 +227,7 @@ std::optional<RigidGeometry> MakeRigidRepresentation(
     const Capsule& capsule, const ProximityProperties& props) {
   PositiveDouble validator("Capsule", "rigid");
   const double edge_length = validator.Extract(props, kHydroGroup, kRezHint);
-  auto mesh = make_unique<SurfaceMesh<double>>(
+  auto mesh = make_unique<TriangleSurfaceMesh<double>>(
       MakeCapsuleSurfaceMesh<double>(capsule, edge_length));
 
   return RigidGeometry(RigidMesh(move(mesh)));
@@ -237,7 +237,7 @@ std::optional<RigidGeometry> MakeRigidRepresentation(
     const Ellipsoid& ellipsoid, const ProximityProperties& props) {
   PositiveDouble validator("Ellipsoid", "rigid");
   const double edge_length = validator.Extract(props, kHydroGroup, kRezHint);
-  auto mesh = make_unique<SurfaceMesh<double>>(
+  auto mesh = make_unique<TriangleSurfaceMesh<double>>(
       MakeEllipsoidSurfaceMesh<double>(ellipsoid, edge_length));
 
   return RigidGeometry(RigidMesh(move(mesh)));
@@ -246,8 +246,8 @@ std::optional<RigidGeometry> MakeRigidRepresentation(
 std::optional<RigidGeometry> MakeRigidRepresentation(
     const Mesh& mesh_spec, const ProximityProperties&) {
   // Mesh does not use any properties.
-  auto mesh = make_unique<SurfaceMesh<double>>(
-      ReadObjToSurfaceMesh(mesh_spec.filename(), mesh_spec.scale()));
+  auto mesh = make_unique<TriangleSurfaceMesh<double>>(
+      ReadObjToTriangleSurfaceMesh(mesh_spec.filename(), mesh_spec.scale()));
 
   return RigidGeometry(RigidMesh(move(mesh)));
 }
@@ -255,8 +255,9 @@ std::optional<RigidGeometry> MakeRigidRepresentation(
 std::optional<RigidGeometry> MakeRigidRepresentation(
     const Convex& convex_spec, const ProximityProperties&) {
   // Convex does not use any properties.
-  auto mesh = make_unique<SurfaceMesh<double>>(
-      ReadObjToSurfaceMesh(convex_spec.filename(), convex_spec.scale()));
+  auto mesh =
+      make_unique<TriangleSurfaceMesh<double>>(ReadObjToTriangleSurfaceMesh(
+          convex_spec.filename(), convex_spec.scale()));
 
   return RigidGeometry(RigidMesh(move(mesh)));
 }
@@ -274,7 +275,7 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
       MakeSphereVolumeMesh<double>(sphere, edge_length, strategy));
 
   const double hydroelastic_modulus =
-      validator.Extract(props, kMaterialGroup, kElastic);
+      validator.Extract(props, kHydroGroup, kElastic);
 
   auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
       MakeSpherePressureField(sphere, mesh.get(), hydroelastic_modulus));
@@ -290,7 +291,7 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
       make_unique<VolumeMesh<double>>(MakeBoxVolumeMeshWithMa<double>(box));
 
   const double hydroelastic_modulus =
-      validator.Extract(props, kMaterialGroup, kElastic);
+      validator.Extract(props, kHydroGroup, kElastic);
 
   auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
       MakeBoxPressureField(box, mesh.get(), hydroelastic_modulus));
@@ -307,7 +308,7 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
       MakeCylinderVolumeMeshWithMa<double>(cylinder, edge_length));
 
   const double hydroelastic_modulus =
-      validator.Extract(props, kMaterialGroup, kElastic);
+      validator.Extract(props, kHydroGroup, kElastic);
 
   auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
       MakeCylinderPressureField(cylinder, mesh.get(), hydroelastic_modulus));
@@ -324,7 +325,7 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
       MakeCapsuleVolumeMesh<double>(capsule, edge_length));
 
   const double hydroelastic_modulus =
-      validator.Extract(props, kMaterialGroup, kElastic);
+      validator.Extract(props, kHydroGroup, kElastic);
 
   auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
       MakeCapsulePressureField(capsule, mesh.get(), hydroelastic_modulus));
@@ -345,7 +346,7 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
       MakeEllipsoidVolumeMesh<double>(ellipsoid, edge_length, strategy));
 
   const double hydroelastic_modulus =
-      validator.Extract(props, kMaterialGroup, kElastic);
+      validator.Extract(props, kHydroGroup, kElastic);
 
   auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
       MakeEllipsoidPressureField(ellipsoid, mesh.get(), hydroelastic_modulus));
@@ -361,7 +362,7 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
       validator.Extract(props, kHydroGroup, kSlabThickness);
 
   const double hydroelastic_modulus =
-      validator.Extract(props, kMaterialGroup, kElastic);
+      validator.Extract(props, kHydroGroup, kElastic);
 
   return SoftGeometry(SoftHalfSpace{hydroelastic_modulus / thickness});
 }

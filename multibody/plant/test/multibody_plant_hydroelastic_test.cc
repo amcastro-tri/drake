@@ -124,9 +124,10 @@ class HydroelasticModelTests : public ::testing::Test {
 
     geometry::ProximityProperties props;
     // This should produce a level-2 refinement (two steps beyond octahedron).
-    geometry::AddSoftHydroelasticProperties(radius / 2, &props);
+    geometry::AddSoftHydroelasticProperties(
+        radius / 2, hydroelastic_modulus, &props);
     geometry::AddContactMaterial(
-        hydroelastic_modulus, dissipation,
+        dissipation, {},
         CoulombFriction<double>(friction_coefficient, friction_coefficient),
         &props);
     plant->RegisterCollisionGeometry(body, X_BG, shape, "BodyCollisionGeometry",
@@ -292,12 +293,12 @@ TEST_F(HydroelasticModelTests, DiscreteTamsiSolver) {
   const Vector3<double> fz_BBo_W = F_BBo_W.translational();
 
   // The contact force should match the weight of the sphere.
-  const Vector3<double> fz_BBo_W_expeted =
+  const Vector3<double> fz_BBo_W_expected =
       -plant_->gravity_field().gravity_vector() * kMass;
 
   // We use a tolerance value based on previous runs of this test.
   const double tolerance = 2.0e-8;
-  EXPECT_TRUE(CompareMatrices(fz_BBo_W, fz_BBo_W_expeted, tolerance));
+  EXPECT_TRUE(CompareMatrices(fz_BBo_W, fz_BBo_W_expected, tolerance));
 }
 
 // This tests consistency across the ContactModel modes: point pair,
@@ -350,7 +351,7 @@ class ContactModelTest : public ::testing::Test {
 
     geometry::ProximityProperties props;
     geometry::AddContactMaterial(
-        kElasticModulus, kDissipation,
+        kDissipation, {},
         CoulombFriction<double>(kFrictionCoefficient, kFrictionCoefficient),
         &props);
     AddGround(props, plant_);
@@ -391,7 +392,8 @@ class ContactModelTest : public ::testing::Test {
     const double kSize = 10;
     const RigidTransformd X_WG{Vector3d{0, 0, -kSize / 2}};
     geometry::Box ground = geometry::Box::MakeCube(kSize);
-    geometry::AddSoftHydroelasticProperties(kSize, &contact_material);
+    geometry::AddSoftHydroelasticProperties(
+        kSize, kElasticModulus, &contact_material);
     plant->RegisterCollisionGeometry(plant->world_body(), X_WG, ground,
                                      "GroundCollisionGeometry",
                                      std::move(contact_material));
@@ -423,6 +425,12 @@ class ContactModelTest : public ::testing::Test {
   // Compute a set of spatial forces from the given contact results. The
   // translational component of the force acting on a body is defined to be
   // acting at the _origin_ of the body.
+  // This method is used to compute an expected result from
+  // MultibodyPlant::EvalSpatialContactForcesContinuous() from contact results.
+  // EvalSpatialContactForcesContinuous() is an internal private method of
+  // MultibodyPlant and, as many other multibody methods, sorts the results in
+  // the returned array of spatial forces by BodyNodeIndex. Therefore, the
+  // expected results being generated must also be sorted by BodyNodeIndex.
   std::vector<SpatialForce<double>> SpatialForceFromContactResults(
       const ContactResults<double>& contacts) {
     std::vector<SpatialForce<double>> F_BBo_W_array(
@@ -434,17 +442,21 @@ class ContactModelTest : public ::testing::Test {
       const SpatialForce<double> F_Bc_W{Vector3d::Zero(),
                                         contact_info.contact_force()};
       const Vector3d& p_WC = contact_info.contact_point();
-      const Vector3d& p_WAo = plant_->get_body(contact_info.bodyA_index())
-                                  .EvalPoseInWorld(*plant_context_)
-                                  .translation();
+      const auto& bodyA = plant_->get_body(contact_info.bodyA_index());
+      const Vector3d& p_WAo =
+          bodyA.EvalPoseInWorld(*plant_context_).translation();
       const Vector3d& p_CAo_W = p_WAo - p_WC;
-      const Vector3d& p_WBo = plant_->get_body(contact_info.bodyB_index())
-                                  .EvalPoseInWorld(*plant_context_)
-                                  .translation();
+      const auto& bodyB = plant_->get_body(contact_info.bodyB_index());
+      const Vector3d& p_WBo =
+          bodyB.EvalPoseInWorld(*plant_context_).translation();
       const Vector3d& p_CBo_W = p_WBo - p_WC;
 
-      F_BBo_W_array[contact_info.bodyB_index()] += F_Bc_W.Shift(p_CBo_W);
-      F_BBo_W_array[contact_info.bodyA_index()] -= F_Bc_W.Shift(p_CAo_W);
+      // N.B. Since we are using this method to test the internal (private)
+      // MultibodyPlant::EvalSpatialContactForcesContinuous(), we must use
+      // internal API to generate a forces vector sorted in the same way, by
+      // internal::BodyNodeIndex.
+      F_BBo_W_array[bodyB.node_index()] += F_Bc_W.Shift(p_CBo_W);
+      F_BBo_W_array[bodyA.node_index()] -= F_Bc_W.Shift(p_CAo_W);
     }
 
     for (int i = 0; i < contacts.num_hydroelastic_contacts(); ++i) {
@@ -470,8 +482,8 @@ class ContactModelTest : public ::testing::Test {
       // The force applied to body A at a fixed point coincident with the
       // centroid point C.
       const SpatialForce<double>& F_Ac_W = contact_info.F_Ac_W();
-      F_BBo_W_array[body_A.index()] += F_Ac_W.Shift(p_CAo_W);
-      F_BBo_W_array[body_B.index()] -= F_Ac_W.Shift(p_CBo_W);
+      F_BBo_W_array[body_A.node_index()] += F_Ac_W.Shift(p_CAo_W);
+      F_BBo_W_array[body_B.node_index()] -= F_Ac_W.Shift(p_CBo_W);
     }
 
     return F_BBo_W_array;

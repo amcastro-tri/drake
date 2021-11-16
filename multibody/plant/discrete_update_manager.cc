@@ -7,6 +7,7 @@
 namespace drake {
 namespace multibody {
 namespace internal {
+
 template <typename T>
 std::unique_ptr<DiscreteUpdateManager<double>>
 DiscreteUpdateManager<T>::CloneToDouble() const {
@@ -79,8 +80,9 @@ DiscreteUpdateManager<T>::EvalDiscreteContactPairs(
 }
 
 template <typename T>
-const std::vector<geometry::ContactSurface<T>>& DiscreteUpdateManager<T>::EvalContactSurfaces(
-      const systems::Context<T>& context) const {
+const std::vector<geometry::ContactSurface<T>>&
+DiscreteUpdateManager<T>::EvalContactSurfaces(
+    const systems::Context<T>& context) const {
   return MultibodyPlantDiscreteUpdateManagerAttorney<T>::EvalContactSurfaces(
       plant(), context);
 }

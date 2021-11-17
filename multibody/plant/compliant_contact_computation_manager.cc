@@ -135,21 +135,9 @@ void CompliantContactComputationManager<T>::
   DRAKE_DEMAND(vstar->size() == plant().num_velocities());
   DRAKE_DEMAND(v_guess->size() == plant().num_velocities());
 
-  // MultibodyTreeSystem::CalcArticulatedBodyForceCache()
+  // Compute all the non-contact forces.
   MultibodyForces<T> forces0(plant());
-
-  const internal::PositionKinematicsCache<T>& pc =
-      plant().EvalPositionKinematics(context0);
-  const internal::VelocityKinematicsCache<T>& vc =
-      plant().EvalVelocityKinematics(context0);
-
-  // Compute forces applied by force elements. Note that this resets forces
-  // to empty so must come first.
-  this->internal_tree().CalcForceElementsContribution(context0, pc, vc,
-                                                      &forces0);
-
-  // We need only handle MultibodyPlant-specific forces here.
-  this->AddInForcesFromInputPorts(context0, &forces0);
+  plant().CalcNonContactForces(context0, true, &forces0);
 
   // Perform the tip-to-base pass to compute the force bias terms needed by ABA.
   const auto& tree_topology = this->internal_tree().get_topology();

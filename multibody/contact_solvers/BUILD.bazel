@@ -53,6 +53,18 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "contact_problem",
+    srcs = ["contact_problem.cc"],
+    hdrs = ["contact_problem.h"],
+    deps = [
+        ":block_sparse_matrix",        
+        "//common:default_scalars",
+        "//common:essential",
+        "//common:sorted_pair",
+    ],
+)
+
+drake_cc_library(
     name = "contact_solver_results",
     srcs = ["contact_solver_results.cc"],
     hdrs = ["contact_solver_results.h"],
@@ -366,6 +378,16 @@ drake_cc_googletest(
     name = "block_sparse_matrix_test",
     deps = [
         ":block_sparse_matrix",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "contact_problem_test",
+    deps = [
+        ":block_sparse_matrix",
+        ":contact_problem",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
     ],

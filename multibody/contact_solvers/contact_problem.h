@@ -10,6 +10,9 @@
 #include "drake/common/sorted_pair.h"
 #include "drake/multibody/contact_solvers/block_sparse_matrix.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
+
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
@@ -19,12 +22,15 @@ namespace internal {
 // Edges are a bundle of constraints that connect two cliques.
 class ContactProblemGraph {
  public:
-  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(ContactProblemGraph);  
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(ContactProblemGraph);
 
   struct Edge {
     Edge(const drake::SortedPair<int>& cliques_in,
          std::vector<int>&& constraints_in)
         : cliques(cliques_in), constraints_index(std::move(constraints_in)) {}
+    Edge(const drake::SortedPair<int>& cliques_in,
+         const std::vector<int>& constraints_in)
+        : cliques(cliques_in), constraints_index(constraints_in) {}
     drake::SortedPair<int> cliques;
     std::vector<int> constraints_index;
   };
@@ -45,6 +51,9 @@ class ContactProblemGraph {
   int num_edges() const { return static_cast<int>(edges_.size()); }
   int num_constraints() const { return num_constraints_; }
 
+  ContactProblemGraph MakeGraphOfParticipatingCliques(
+      std::vector<int>* participating_cliques) const;
+
  private:
   int num_cliques_{0};
   int num_constraints_{0};
@@ -62,12 +71,13 @@ class SapConstraint {
 
   virtual ~SapConstraint() = default;
 
-  SapConstraint(int clique, MatrixX<T>&& J)
-      : clique0_(clique), J0_(std::move(J)) {
+  SapConstraint(int clique, const MatrixX<T>& J)
+      : clique0_(clique), J0_(J) {
     DRAKE_DEMAND(clique >= 0);
   }
 
-  SapConstraint(int clique0, int clique1, MatrixX<T>&& J0, MatrixX<T>&& J1)
+  SapConstraint(int clique0, int clique1, const MatrixX<T>& J0,
+                const MatrixX<T>& J1)
       : clique0_(clique0),
         clique1_(clique1),
         J0_(std::move(J0)),
@@ -105,15 +115,15 @@ class SapFrictionConeConstraint final : public SapConstraint<T> {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(SapFrictionConeConstraint);
 
-  SapFrictionConeConstraint(int clique, MatrixX<T>&& J, const T& mu)
-      : SapConstraint<T>(clique, std::move(J)), mu_(mu) {
+  SapFrictionConeConstraint(int clique, const MatrixX<T>& J, const T& mu)
+      : SapConstraint<T>(clique, J), mu_(mu) {
     DRAKE_DEMAND(mu >= 0.0);
     DRAKE_DEMAND(this->clique0_jacobian().rows() == 3);
   }
 
-  SapFrictionConeConstraint(int clique0, int clique1, MatrixX<T>&& J0,
-                            MatrixX<T>&& J1, const T& mu)
-      : SapConstraint<T>(clique0, clique1, std::move(J0), std::move(J1)),
+  SapFrictionConeConstraint(int clique0, int clique1, const MatrixX<T>& J0,
+                            const MatrixX<T>& J1, const T& mu)
+      : SapConstraint<T>(clique0, clique1, J0, J1),
         mu_(mu) {
     DRAKE_DEMAND(mu >= 0.0);
     DRAKE_DEMAND(this->clique0_jacobian().rows() == 3);
@@ -146,10 +156,14 @@ class SapContactProblem {
       std::vector<MatrixX<T>>&& A, VectorX<T>&& v_star)
       : A_(std::move(A)),
         v_star_(std::move(v_star)) {
+    nv_ = 0;
     for (const auto& Ac : A_) {
       DRAKE_DEMAND(Ac.rows() == Ac.cols());
+      PRINT_VAR(Ac.rows());
       nv_ += Ac.rows();
     }
+    PRINT_VAR(nv_);
+    PRINT_VAR(v_star_.size());
     DRAKE_DEMAND(v_star_.size() == nv_);
   }
 
@@ -159,10 +173,13 @@ class SapContactProblem {
       : A_(std::move(A)),
         v_star_(std::move(v_star)),
         constraints_(std::move(constraints)) {
+    nv_ = 0;
     for (const auto& Ac : A_) {
       DRAKE_DEMAND(Ac.rows() == Ac.cols());
       nv_ += Ac.rows();
     }
+    PRINT_VAR(nv_);
+    PRINT_VAR(v_star_.size());
     DRAKE_DEMAND(v_star_.size() == nv_);
   }
 
@@ -171,7 +188,7 @@ class SapContactProblem {
     DRAKE_DEMAND(c->clique1() < num_cliques());
     DRAKE_DEMAND(c->clique0_jacobian().cols() == num_velocities(c->clique0()));
     if (c->clique1() >= 0) {
-      DRAKE_DEMAND(c->clique0_jacobian().cols() ==
+      DRAKE_DEMAND(c->clique1_jacobian().cols() ==
                    num_velocities(c->clique1()));
     }
     constraints_.push_back(std::move(c));

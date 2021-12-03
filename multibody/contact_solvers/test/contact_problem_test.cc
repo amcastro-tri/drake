@@ -16,43 +16,47 @@ namespace internal {
 namespace {
 
 // clang-format off
-const Matrix3d S22 =
-    (Eigen::Matrix3d() << 2, 1,
+const Eigen::Matrix2d S22 =
+    (Eigen::Matrix2d() << 2, 1,
                           1, 2).finished();
-const Matrix3d S33 =
+const Eigen::Matrix3d S33 =
     (Eigen::Matrix3d() << 4, 1, 2,
                           1, 5, 3,
                           2, 3, 6).finished();
-const Matrix3d S44 =
-    (Eigen::Matrix3d() << 7, 1, 2, 3,
+const Eigen::Matrix4d S44 =
+    (Eigen::Matrix4d() << 7, 1, 2, 3,
                           1, 8, 4, 5,
                           2, 4, 9, 6,
                           3, 5, 6, 10).finished();
 // clang-format on
 
 // clang-format off
-const Matrix3d J32 =
-    (Eigen::Matrix3d() << 2, 1,
-                          1, 2,
-                          1, 2).finished();
-const Matrix3d J33 =
-    (Eigen::Matrix3d() << 4, 1, 2,
-                          1, 5, 3,
-                          2, 3, 6).finished();
-const Matrix3d J34 =
-    (Eigen::Matrix3d() << 7, 1, 2, 3,
-                          1, 8, 4, 5,
-                          2, 4, 9, 6).finished();
+const MatrixXd J32 =
+    (MatrixXd(3, 2) << 2, 1,
+                       1, 2,
+                       1, 2).finished();
+const MatrixXd J33 =
+    (MatrixXd(3, 3) << 4, 1, 2,
+                       1, 5, 3,
+                       2, 3, 6).finished();
+const MatrixXd J34 =
+    (MatrixXd(3, 4) << 7, 1, 2, 3,
+                       1, 8, 4, 5,
+                       2, 4, 9, 6).finished();
 // clang-format on
 
-
 GTEST_TEST(ContactProblem, Construction) {
-  std::vector<MatrixXd> A{S22, S33, S44};
-  VectorXd v_star = VectorXd::LinSpaced(9, 1.0, 9.0);
+  std::vector<MatrixXd> A{S22, S33, S44, S22};
+  VectorXd v_star = VectorXd::LinSpaced(11, 1.0, 11.0);
+  PRINT_VAR(A.size());
+  PRINT_VAR(A[0].rows());
+  PRINT_VAR(A[1].rows());
+  PRINT_VAR(A[2].rows());
+  PRINT_VAR(A[3].rows());
   SapContactProblem<double> problem(std::move(A), std::move(v_star));
-  EXPECT_EQ(problem.num_cliques(), 3);
+  EXPECT_EQ(problem.num_cliques(), 4);
   EXPECT_EQ(problem.num_constraints(), 0);
-  EXPECT_EQ(problem.num_velocities(), 9);
+  EXPECT_EQ(problem.num_velocities(), 11);
 
   problem.AddConstraint(
       std::make_unique<SapFrictionConeConstraint<double>>(0, 1, J32, J33, 1.0));
@@ -67,11 +71,18 @@ GTEST_TEST(ContactProblem, Construction) {
   EXPECT_EQ(problem.num_constraints(), 5);
 
   const ContactProblemGraph graph = problem.MakeGraph();
-  EXPECT_EQ(graph.num_cliques(), 3);  
+  EXPECT_EQ(graph.num_cliques(), 4);
   EXPECT_EQ(graph.num_edges(), 4);
   EXPECT_EQ(graph.num_constraints(), 5);
 
-
+  std::vector<int> participating_cliques;
+  const ContactProblemGraph participating_cliques_graph =
+      graph.MakeGraphOfParticipatingCliques(&participating_cliques);
+  EXPECT_EQ(participating_cliques_graph.num_cliques(), 3);
+  EXPECT_EQ(participating_cliques_graph.num_edges(), 4);
+  EXPECT_EQ(participating_cliques_graph.num_constraints(), 5);
+  EXPECT_EQ(participating_cliques.size(),
+            participating_cliques_graph.num_cliques());
 }
 
 }  // namespace

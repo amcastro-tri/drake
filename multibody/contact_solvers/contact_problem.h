@@ -51,6 +51,13 @@ class ContactProblemGraph {
   int num_edges() const { return static_cast<int>(edges_.size()); }
   int num_constraints() const { return num_constraints_; }
 
+  const std::vector<Edge>& edges() const { return edges_;  }
+
+  const Edge& get_edge(int e) const {
+    DRAKE_DEMAND(0 <= e && e < num_edges());
+    return edges_[e];
+  }
+
   ContactProblemGraph MakeGraphOfParticipatingCliques(
       std::vector<int>* participating_cliques) const;
 
@@ -74,18 +81,20 @@ class SapConstraint {
   SapConstraint(int clique, const MatrixX<T>& J)
       : clique0_(clique), J0_(J) {
     DRAKE_DEMAND(clique >= 0);
+    num_constrained_dofs_ = J.rows();
   }
 
   SapConstraint(int clique0, int clique1, const MatrixX<T>& J0,
                 const MatrixX<T>& J1)
       : clique0_(clique0),
         clique1_(clique1),
-        J0_(std::move(J0)),
-        J1_(std::move(J1)) {
+        J0_(J0),
+        J1_(J1) {
     DRAKE_DEMAND(clique0 >= 0);
     DRAKE_DEMAND(clique1 >= 0);
     DRAKE_DEMAND(clique0 != clique1);
     DRAKE_DEMAND(J0.rows() == J1.rows());
+    num_constrained_dofs_ = J0.rows();
   }
 
   int num_cliques() const { return clique1_ < 0 ? 1 : 2; }
@@ -99,6 +108,8 @@ class SapConstraint {
   virtual VectorX<T> Project(const Eigen::Ref<const VectorX<T>>& y,
                              std::optional<MatrixX<T>> dPdy) const = 0;
 
+  int num_constrained_dofs() const { return num_constrained_dofs_; }
+
   // VectorX<T> CalcConstraintBias(const T& wi);
   // VectorX<T> CalcRegularizationParameters(const T& wi);
 
@@ -108,6 +119,7 @@ class SapConstraint {
   int clique1_{-1};
   MatrixX<T> J0_;
   MatrixX<T> J1_;
+  int num_constrained_dofs_{0};
 };
 
 template <typename T>
@@ -205,6 +217,11 @@ class SapContactProblem {
     return A_[clique].rows();
   }
 
+  const SapConstraint<T>& get_constraint(int k) const {
+    DRAKE_DEMAND(0 <= k && k < num_constraints());
+    return *constraints_[k];
+  }
+
   ContactProblemGraph MakeGraph() const;
 
  private:
@@ -213,6 +230,83 @@ class SapContactProblem {
   VectorX<T> v_star_;
   std::vector<std::unique_ptr<SapConstraint<T>>> constraints_;
 };
+
+// TODO: this might be better to be a SapSolver method. `graph` must make
+// reference to all constraints in `problem`. However, `graph` might only make
+// reference to a subset of cliques in `problem` (for participating cliques
+// only.)
+template <typename T>
+BlockSparseMatrix<T> MakeConstraintsBundleJacobian(
+    const SapContactProblem<T>& problem,
+    const std::vector<int>& participating_cliques,
+    const ContactProblemGraph& participating_cliques_graph) {
+  // We have at most two blocks per row, and one row per edge in the graph.
+  const int non_zero_blocks_capacity =
+      2 * participating_cliques_graph.num_edges();
+  BlockSparseMatrixBuilder<T> builder(participating_cliques_graph.num_edges(),
+                                      participating_cliques_graph.num_cliques(),
+                                      non_zero_blocks_capacity);
+
+  std::vector<int> edge_dofs(participating_cliques_graph.num_edges(), 0);
+  for (int e = 0; e < participating_cliques_graph.num_edges(); ++e) {
+    const auto& edge = participating_cliques_graph.get_edge(e);
+    for (int k : edge.constraints_index) {
+      const SapConstraint<T>& c = problem.get_constraint(k);
+      edge_dofs[e] += c.num_constrained_dofs();
+    }
+  }
+
+  for (int block_row = 0; block_row < participating_cliques_graph.num_edges();
+       ++block_row) {
+    const auto& e = participating_cliques_graph.get_edge(block_row);
+    const int participating_c0 = e.cliques.first();
+    const int participating_c1 = e.cliques.second();
+    const int c0 =
+        participating_c0 >= 0 ? participating_cliques[participating_c0] : -1;
+    // At least one clique must be valid per graph edge.
+    // Since c0 < c1, then c1 must always be valid.
+    DRAKE_DEMAND(participating_c1 >= 0);
+    const int c1 = participating_cliques[participating_c1];
+
+    // Allocate Jacobian blocks for this edge.
+    MatrixX<T> J0, J1;
+    const int num_rows = edge_dofs[block_row];
+    if (c0 >= 0) {
+      const int nv0 = problem.num_velocities(c0);
+      J0.resize(num_rows, nv0);
+    }
+    const int nv1 = problem.num_velocities(c1);
+    J1.resize(num_rows, nv1);
+
+    int row_start = 0;
+    for (int k : e.constraints_index) {
+      const SapConstraint<T>& c = problem.get_constraint(k);
+      const int nk = c.num_constrained_dofs();
+
+      // N.B. Each edge stores its cliques as a sorted pair. However, the pair
+      // of cliques in the original constraints can be in arbitrary order.
+      // Therefore below we must check to what clique in the original constraint
+      // the edge's cliques correspond to.
+
+      if (c0 >= 0) {
+        J0.middleRows(row_start, nk) =
+            c0 == c.clique0() ? c.clique0_jacobian() : c.clique1_jacobian();
+      }
+
+      J1.middleRows(row_start, nk) =
+          c1 == c.clique0() ? c.clique0_jacobian() : c.clique1_jacobian();
+
+      row_start += nk;
+    }
+
+    if (c0 >= 0) {
+      builder.PushBlock(block_row, participating_c0, J0);
+    }
+    builder.PushBlock(block_row, participating_c1, J1);
+  }
+
+  return builder.Build();
+}
 
 // TODO: Move this to the SapSolver source. It'd seem specific to SAP to
 // rearrange constraints in the order it needs them. I just need to come up with
@@ -227,9 +321,11 @@ class SapConstraintsBundle {
                        const ContactProblemGraph& graph);
 
  private:
+#if 0
   const SapContactProblem<T>* problem_{nullptr};
   // Graph corresponding to `problem_`.
   ContactProblemGraph graph_;
+#endif  
   // Jacobian for the entire bundle, with graph_.num_edges() block rows and
   // graph_.num_cliques() block columns.
   BlockSparseMatrix<T> J_;

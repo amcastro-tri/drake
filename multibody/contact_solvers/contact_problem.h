@@ -3,12 +3,14 @@
 #include <memory>
 #include <optional>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
 #include "drake/common/sorted_pair.h"
 #include "drake/multibody/contact_solvers/block_sparse_matrix.h"
+#include "drake/multibody/contact_solvers/partial_permutation.h"
 
 #include <iostream>
 #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
@@ -222,6 +224,9 @@ class SapContactProblem {
     return *constraints_[k];
   }
 
+  // Returns the block diagonal dynamics matrix A.
+  const std::vector<MatrixX<T>>& dynamics_matrix() const { return A_; }
+
   ContactProblemGraph MakeGraph() const;
 
  private:
@@ -230,6 +235,91 @@ class SapContactProblem {
   VectorX<T> v_star_;
   std::vector<std::unique_ptr<SapConstraint<T>>> constraints_;
 };
+
+// For a given contact graph, not all of the cliques participate in a
+// constraint. This method identifies those cliques in `graph` that appear at
+// least once at one of the graph's edges.
+PartialPermutation MakeParticipatingCliquesPermutation(
+    const ContactProblemGraph& graph);
+
+// TODO: this might be better to be a SapSolver method. `graph` must make
+// reference to all constraints in `problem`. However, `graph` might only make
+// reference to a subset of cliques in `problem` (for participating cliques
+// only.)
+template <typename T>
+BlockSparseMatrix<T> MakeConstraintsBundleJacobian(
+    const SapContactProblem<T>& problem,
+    const ContactProblemGraph& graph,
+    const PartialPermutation& cliques_permutation) {
+  // We have at most two blocks per row, and one row per edge in the graph.
+  const int non_zero_blocks_capacity = 2 * graph.num_edges();
+  BlockSparseMatrixBuilder<T> builder(
+      graph.num_edges(), cliques_permutation.permuted_domain_size(),
+      non_zero_blocks_capacity);
+
+  // DOFs per edge.
+  // TODO: consider the graph storing "weights"; number of dofs per node
+  // (clique) and number of constrained dofs per edge.
+  std::vector<int> edge_dofs(graph.num_edges(), 0);
+  for (int e = 0; e < graph.num_edges(); ++e) {
+    const auto& edge = graph.get_edge(e);
+    for (int k : edge.constraints_index) {
+      const SapConstraint<T>& c = problem.get_constraint(k);
+      edge_dofs[e] += c.num_constrained_dofs();
+    }
+  }                                      
+
+  // Add a block row (with one or two blocks) per edge in the graph.
+  for (int block_row = 0; block_row < graph.num_edges(); ++block_row) {
+    const auto& e = graph.get_edge(block_row);
+    const int c0 = e.cliques.first();
+    const int c1 = e.cliques.second();
+
+    // Allocate Jacobian blocks for this edge.
+    MatrixX<T> J0, J1;
+    const int num_rows = edge_dofs[block_row];
+    if (c0 >= 0) {
+      //  && cliques_permutation.participates(c0)
+      PRINT_VAR(c0);  
+      const int nv0 = problem.num_velocities(c0);
+      J0.resize(num_rows, nv0);
+    }
+    DRAKE_DEMAND(c1 >= 0);
+    PRINT_VAR(c1);
+    const int nv1 = problem.num_velocities(c1);
+    J1.resize(num_rows, nv1);
+
+    int row_start = 0;
+    for (int k : e.constraints_index) {
+      const SapConstraint<T>& c = problem.get_constraint(k);
+      const int nk = c.num_constrained_dofs();
+
+      // N.B. Each edge stores its cliques as a sorted pair. However, the pair
+      // of cliques in the original constraints can be in arbitrary order.
+      // Therefore below we must check to what clique in the original constraint
+      // the edge's cliques correspond to.
+
+      if (c0 >= 0) {
+        J0.middleRows(row_start, nk) =
+            c0 == c.clique0() ? c.clique0_jacobian() : c.clique1_jacobian();
+      }
+      J1.middleRows(row_start, nk) =
+          c1 == c.clique0() ? c.clique0_jacobian() : c.clique1_jacobian();
+
+      row_start += nk;
+    }
+
+    if (c0 >= 0) {
+      const int participating_c0 = cliques_permutation.permuted_index(c0);
+      builder.PushBlock(block_row, participating_c0, J0);
+    }
+    const int participating_c1 = cliques_permutation.permuted_index(c1);
+    builder.PushBlock(block_row, participating_c1, J1);
+  }
+
+  return builder.Build();
+
+}
 
 // TODO: this might be better to be a SapSolver method. `graph` must make
 // reference to all constraints in `problem`. However, `graph` might only make
@@ -306,6 +396,17 @@ BlockSparseMatrix<T> MakeConstraintsBundleJacobian(
   }
 
   return builder.Build();
+}
+
+template <typename T>
+std::vector<MatrixX<T>> ExtractParticipatingDynamics(
+    const SapContactProblem<T>& problem, const ContactProblemGraph& graph,
+    const PartialPermutation& cliques_permutation) {
+  const auto& A = problem.dynamics_matrix();
+  std::vector<MatrixX<T>> A_participating(
+      cliques_permutation.permuted_domain_size());
+  cliques_permutation.Apply(A, &A_participating);
+  return A_participating;
 }
 
 // TODO: Move this to the SapSolver source. It'd seem specific to SAP to

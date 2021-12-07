@@ -9,6 +9,21 @@ namespace multibody {
 namespace contact_solvers {
 namespace internal {
 
+// TODO: make those DRAKE_DEMANDS to throw with a meaningful message.
+PartialPermutation::PartialPermutation(int domain_size,
+                                       std::vector<int>&& inverse_permutation)
+    : permutation_(domain_size, -1),
+      inverse_permutation_(std::move(inverse_permutation)) {
+  const int permuted_domain_size = inverse_permutation_.size();
+  DRAKE_DEMAND(permuted_domain_size <= domain_size);
+  for (int i_permuted = 0; i_permuted < permuted_domain_size; ++i_permuted) {
+    const int i = inverse_permutation_[i_permuted];
+    DRAKE_DEMAND(0 <= i && i < domain_size);
+    DRAKE_DEMAND(permutation_[i] < 0);  // non-repeated entries.
+    permutation_[i] = i_permuted;
+  }
+}
+
 PartialPermutation::PartialPermutation(std::vector<int>&& permutation)
     : permutation_(std::move(permutation)) {
   const int from_size = permutation_.size();      
@@ -54,6 +69,14 @@ PartialPermutation::PartialPermutation(std::vector<int>&& permutation)
                       i_permuted, to_size - 1));
     }
   }
+}
+
+int PartialPermutation::permuted_index(int i) const {
+  if (permutation_[i] < 0) {
+    throw std::runtime_error(
+        fmt::format("Index {} does not participate in this permutation.", i));
+  }
+  return permutation_[i];
 }
 
 }  // namespace internal

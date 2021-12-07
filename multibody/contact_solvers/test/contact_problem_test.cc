@@ -75,6 +75,12 @@ GTEST_TEST(ContactProblem, Construction) {
   EXPECT_EQ(graph.num_edges(), 4);
   EXPECT_EQ(graph.num_constraints(), 5);
 
+  PRINT_VAR(graph.num_cliques());
+  PRINT_VAR(graph.num_edges());
+  for (const auto& e : graph.edges()) {
+    PRINT_VAR(e.cliques);
+  }
+
   std::vector<int> participating_cliques;
   const ContactProblemGraph participating_cliques_graph =
       graph.MakeGraphOfParticipatingCliques(&participating_cliques);
@@ -83,6 +89,79 @@ GTEST_TEST(ContactProblem, Construction) {
   EXPECT_EQ(participating_cliques_graph.num_constraints(), 5);
   EXPECT_EQ(participating_cliques.size(),
             participating_cliques_graph.num_cliques());
+
+  PRINT_VAR(participating_cliques_graph.num_cliques());
+  PRINT_VAR(participating_cliques_graph.num_edges());
+  for (const auto& e : participating_cliques_graph.edges()) {
+    PRINT_VAR(e.cliques);
+  }
+  PRINT_VAR(
+      Eigen::Map<Eigen::Vector3i>(participating_cliques.data()).transpose());
+
+  BlockSparseMatrix<double> J = MakeConstraintsBundleJacobian(
+      problem, participating_cliques, participating_cliques_graph);
+  EXPECT_EQ(J.rows(), 15);
+  EXPECT_EQ(J.cols(), 9);
+  EXPECT_EQ(J.block_rows(), participating_cliques_graph.num_edges());
+  EXPECT_EQ(J.block_cols(), participating_cliques_graph.num_cliques());
+
+  PRINT_VAR(J.rows());
+  PRINT_VAR(J.cols());
+}
+
+GTEST_TEST(ContactProblem, MakeConstraintsBundleJacobian) {
+  std::vector<MatrixXd> A{S22, S33, S44, S22};
+  VectorXd v_star = VectorXd::LinSpaced(11, 1.0, 11.0);
+  PRINT_VAR(A.size());
+  PRINT_VAR(A[0].rows());
+  PRINT_VAR(A[1].rows());
+  PRINT_VAR(A[2].rows());
+  PRINT_VAR(A[3].rows());
+  SapContactProblem<double> problem(std::move(A), std::move(v_star));
+  EXPECT_EQ(problem.num_cliques(), 4);
+  EXPECT_EQ(problem.num_constraints(), 0);
+  EXPECT_EQ(problem.num_velocities(), 11);
+
+  problem.AddConstraint(
+      std::make_unique<SapFrictionConeConstraint<double>>(0, 1, J32, J33, 1.0));
+  problem.AddConstraint(
+      std::make_unique<SapFrictionConeConstraint<double>>(1, 2, J33, J34, 1.0));
+  problem.AddConstraint(
+      std::make_unique<SapFrictionConeConstraint<double>>(2, J34, 1.0));
+  problem.AddConstraint(
+      std::make_unique<SapFrictionConeConstraint<double>>(0, 2, J32, J34, 1.0));
+  problem.AddConstraint(
+      std::make_unique<SapFrictionConeConstraint<double>>(0, 2, J32, J34, 1.0));
+  EXPECT_EQ(problem.num_constraints(), 5);
+
+  const ContactProblemGraph graph = problem.MakeGraph();
+  EXPECT_EQ(graph.num_cliques(), 4);
+  EXPECT_EQ(graph.num_edges(), 4);
+  EXPECT_EQ(graph.num_constraints(), 5);
+
+  PRINT_VAR(graph.num_cliques());
+  PRINT_VAR(graph.num_edges());
+  for (const auto& e : graph.edges()) {
+    PRINT_VAR(e.cliques);
+  }
+
+  const PartialPermutation cliques_permutation =
+      MakeParticipatingCliquesPermutation(graph);
+  EXPECT_EQ(cliques_permutation.domain_size(), graph.num_cliques());
+  EXPECT_EQ(cliques_permutation.permuted_domain_size(), 3);
+
+  PRINT_VAR(cliques_permutation.domain_size());
+  PRINT_VAR(cliques_permutation.permuted_domain_size());
+  const BlockSparseMatrix<double> J =
+      MakeConstraintsBundleJacobian(problem, graph, cliques_permutation);
+
+  EXPECT_EQ(J.rows(), 15);
+  EXPECT_EQ(J.cols(), 9);
+  EXPECT_EQ(J.block_rows(), graph.num_edges());
+  EXPECT_EQ(J.block_cols(), cliques_permutation.permuted_domain_size());
+
+  PRINT_VAR(J.rows());
+  PRINT_VAR(J.cols());
 }
 
 }  // namespace

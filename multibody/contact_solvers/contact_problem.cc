@@ -67,6 +67,22 @@ ContactProblemGraph SapContactProblem<T>::MakeGraph() const {
   return graph;
 }
 
+PartialPermutation MakeParticipatingCliquesPermutation(
+    const ContactProblemGraph& graph) {
+  std::vector<int> participating_cliques(graph.num_cliques(), -1);
+  int num_participating_cliques = 0;
+  for (const auto& e : graph.edges()) {
+    const int c0 = e.cliques.first();
+    const int c1 = e.cliques.second();
+    if (c0 >= 0 && participating_cliques[c0] < 0) {
+      participating_cliques[c0] = num_participating_cliques++;
+    }
+    if (participating_cliques[c1] < 0)
+      participating_cliques[c1] = num_participating_cliques++;
+  }
+  return PartialPermutation(std::move(participating_cliques));
+}
+
 }  // namespace internal
 }  // namespace contact_solvers
 }  // namespace multibody

@@ -57,7 +57,8 @@ drake_cc_library(
     srcs = ["contact_problem.cc"],
     hdrs = ["contact_problem.h"],
     deps = [
-        ":block_sparse_matrix",        
+        ":block_sparse_matrix",
+        ":partial_permutation",
         "//common:default_scalars",
         "//common:essential",
         "//common:sorted_pair",

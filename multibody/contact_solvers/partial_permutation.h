@@ -21,8 +21,20 @@ class PartialPermutation {
 
   explicit PartialPermutation(std::vector<int>&& permutation);
 
+  PartialPermutation(int domain_size, std::vector<int>&& inverse_permutation);
+
   int domain_size() const { return permutation_.size(); }
   int permuted_domain_size() const { return inverse_permutation_.size(); }
+
+  // Returns the index to which i is permuted by this permutation. That is,
+  // i_permuted = P(i).
+  // @throws a std::runtime_error if i does not particate in the permutation,
+  // see participates().
+  int permuted_index(int i) const;
+
+  // Returns `true` if the index i in the domain of the permutation participates
+  // in the permutation.
+  bool participates(int i) const { return permutation_[i] >= 0; }
 
   // TODO: templatize on class type, rather than scalar type. The only
   // reuirement being to have [] operator (or do it in temrs of iterators?)

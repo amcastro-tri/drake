@@ -23,6 +23,18 @@ namespace contact_solvers {
 namespace internal {
 namespace {
 
+GTEST_TEST(PartialPermutation, PermutedIndex) {
+  PartialPermutation p({-1, 0, 2, 1, -1, 3});
+  EXPECT_EQ(p.domain_size(), 6);
+  EXPECT_EQ(p.permuted_domain_size(), 4);
+  EXPECT_THROW(p.permuted_index(0), std::runtime_error);
+  EXPECT_EQ(p.permuted_index(1), 0);
+  EXPECT_EQ(p.permuted_index(2), 2);
+  EXPECT_EQ(p.permuted_index(3), 1);
+  EXPECT_THROW(p.permuted_index(4), std::runtime_error);
+  EXPECT_EQ(p.permuted_index(5), 3);
+}
+
 GTEST_TEST(PartialPermutation, PermuteEigenVector) {
   PartialPermutation p({0, -1, 2, 1});
   EXPECT_EQ(p.domain_size(), 4);

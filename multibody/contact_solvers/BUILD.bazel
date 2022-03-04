@@ -255,6 +255,7 @@ drake_cc_library(
         ":friction_cone_constraint",
         "//common:essential",
         "//solvers:choose_best_solver",
+        "//solvers:constraint",
         "//solvers:mathematical_program",
         "//solvers:solve",
     ],

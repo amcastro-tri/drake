@@ -7,6 +7,7 @@
 #include "drake/solvers/ipopt_solver.h"
 #include "drake/solvers/nlopt_solver.h"
 #include "drake/solvers/snopt_solver.h"
+#include "drake/solvers/scs_solver.h"
 
 #include <iostream>
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
@@ -29,7 +30,8 @@ struct ProjectionParameters {
 void CompareAnalyticaVsNumericalProjection(const ProjectionParameters& p,
                                            const Vector3d& y) {
   NumericalInverseDynamics solver(p.Rt, p.Rn, p.mu);
-  const Vector3d gamma = solver.Solve(y, drake::solvers::IpoptSolver::id());
+  //  drake::solvers::IpoptSolver::id()
+  const Vector3d gamma = solver.Solve(y, drake::solvers::ScsSolver::id()); 
   PRINT_VAR(gamma.transpose());
 
   const Vector3d gamma_analytical = AnalyticalProjection(y, p.Rt, p.Rn, p.mu);
@@ -40,10 +42,21 @@ void CompareAnalyticaVsNumericalProjection(const ProjectionParameters& p,
         1e-5, MatrixCompareType::absolute));
 }
 
-GTEST_TEST(InverseDynamics, InsideFrictionCone) {
+GTEST_TEST(InverseDynamics, RegionI) {
+  const Vector3d y(0.4, 0, 1.0);
+  CompareAnalyticaVsNumericalProjection({0.1, 1.0, 0.5}, y);  
+}
+
+GTEST_TEST(InverseDynamics, RegionII) {
+  const Vector3d y(1.0, 0, 1.0);
+  CompareAnalyticaVsNumericalProjection({0.1, 1.0, 0.5}, y);  
+}
+
+GTEST_TEST(InverseDynamics, RegionIII) {
   const Vector3d y(1.0, 0, -0.05);
   CompareAnalyticaVsNumericalProjection({0.1, 1.0, 0.5}, y);  
 }
+
 }
 }  // namespace internal
 }  // namespace contact_solvers

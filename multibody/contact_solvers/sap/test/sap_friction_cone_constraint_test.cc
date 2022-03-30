@@ -8,12 +8,14 @@
 #include "drake/solvers/constraint.h"
 #include "drake/solvers/mathematical_program.h"
 #include "drake/solvers/scs_solver.h"
+#include "drake/solvers/gurobi_solver.h"
 
 using drake::solvers::Binding;
 using drake::solvers::LorentzConeConstraint;
 using drake::solvers::MathematicalProgram;
 using drake::solvers::MathematicalProgramResult;
 using drake::solvers::ScsSolver;
+using drake::solvers::GurobiSolver;
 using drake::solvers::SolverOptions;
 using Eigen::Matrix3d;
 using Eigen::MatrixXd;
@@ -190,13 +192,84 @@ Vector3d SolveProjectionWithScs(double mu, const Vector3d& R,
   prog.AddConstraint(binding);
 
   // Now setup the SCS solver.
-  ScsSolver solver;
+  // ScsSolver solver;
+  GurobiSolver solver;
   SolverOptions options;
   // Mathematical program sets these tolerances to 1.0e-5 by default. To compare
   // against analytical exact solutions those tolerances are too loose. We
   // tighten them.
   options.SetOption(ScsSolver::id(), "eps_abs", kTolerance);
   options.SetOption(ScsSolver::id(), "eps_rel", kTolerance);
+
+  /* Gurobi Parameters:
+   Method: Algorithm used to solve continuous models
+ 	 Type:	int
+ 	 Default value:	-1
+ 	 Minimum value:	-1
+ 	 Maximum value:	5
+
+   N.B. If method!=2 we get the following warning:
+   "Warning: Only barrier available for SOCP models".
+
+   That is, for problems with cone constraints only the barrier method is
+   supported.
+  */
+  //options.SetOption(GurobiSolver::id(), "Method", 2);
+
+  // Turn on logging.
+  //options.SetOption(GurobiSolver::id(), "LogToConsole", 1);
+  //options.SetOption(GurobiSolver::id(), "OutputFlag", 1);
+
+  /*
+  BarConvTol
+  Barrier convergence tolerance
+ 	Type:	double
+ 	Default value:	1e-8
+ 	Minimum value:	0.0
+ 	Maximum value:	1.0*/
+  // N.B. This parameter has no effect for programs with conic constraints.
+  //options.SetOption(GurobiSolver::id(), "BarConvTol", 1.e-8);
+
+  /* BarQCPConvTol
+  Barrier convergence tolerance for QCP models
+ 	Type:	double
+ 	Default value:	1e-6
+ 	Minimum value:	0.0
+ 	Maximum value:	1.0 */
+  // N.B. The underlying solver solves SOCPs. Therefore this is the one
+  // parameter to tune for accuracy when cone constraints are present.
+  // BarConvTol has no effect.
+
+  // NOTE!!: 
+  // While decreasing the tolerance in these tests decreases the number of
+  // failures from 6 to 2 (when going from 1e-6 to 1e-12), in some cases the
+  // solution is degraded!
+  //options.SetOption(GurobiSolver::id(), "BarQCPConvTol", 1.e-3);  // 9 fail (all)
+  options.SetOption(GurobiSolver::id(), "BarQCPConvTol", 1.e-6);  // 6 fail
+  //options.SetOption(GurobiSolver::id(), "BarQCPConvTol", 1.e-12); // 2 fail  
+
+  /* FeasibilityTol
+  Primal feasibility tolerance
+ 	Type:	double
+ 	Default value:	1e-6
+ 	Minimum value:	1e-9
+ 	Maximum value:	1e-2 */
+  // N.B. Not sure if Gurobi is using this. If it uses it to verify
+  // complementarity, for these problems complementarity is below the minimum
+  // value, at least in the norm internally used by Gurobi.
+  //options.SetOption(GurobiSolver::id(), "FeasibilityTol", 1.e-6);
+
+  /* OptimalityTol
+  Dual feasibility tolerance
+ 	Type:	double
+ 	Default value:	1e-6
+ 	Minimum value:	1e-9
+ 	Maximum value:	1e-2 */
+  // N.B. Not sure if Gurobi is using this parameter for these tests. It might
+  // be it does, but their iteration gets stuck and makes no progress, detecting
+  // a false early termination. 
+  //options.SetOption(GurobiSolver::id(), "OptimalityTol", 1.e-6);
+
   MathematicalProgramResult result;
   solver.Solve(prog, y, options, &result);
   DRAKE_DEMAND(result.is_success());
@@ -229,7 +302,12 @@ void ValidateProjection(double mu, const Vector3d& R, const Vector3d& y) {
   // We first validate the result of the projection γ = P(y).
   const Vector3d gamma_numerical = SolveProjectionWithScs(mu, R, y);
   EXPECT_TRUE(CompareMatrices(gamma, gamma_numerical, 5.0 * kTolerance,
-                              MatrixCompareType::relative));
+                              MatrixCompareType::relative))
+      << std::string(80, '*') << std::endl
+      << "** Relative error: "
+      << (gamma - gamma_numerical).norm() /
+             std::max(gamma.norm(), gamma_numerical.norm()) << std::endl
+      << std::string(80, '*') << std::endl;
 
   // We now verify gradients using automatic differentiation.
   const Matrix3d dPdy = math::ExtractValue(dPdy_ad);

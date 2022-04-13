@@ -11,6 +11,8 @@
 #include "drake/geometry/scene_graph_inspector.h"
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/contact_solvers/sap/sap_contact_problem.h"
+#include "drake/multibody/contact_solvers/sap/sap_solver.h"
+#include "drake/multibody/contact_solvers/sap/sap_solver_results.h"
 #include "drake/multibody/plant/discrete_update_manager.h"
 #include "drake/systems/framework/context.h"
 
@@ -130,9 +132,7 @@ class CompliantContactManager final
   // Constructs a contact manager that takes ownership of the supplied
   // `contact_solver` to solve the underlying contact problem.
   // @pre contact_solver != nullptr.
-  explicit CompliantContactManager(
-      std::unique_ptr<contact_solvers::internal::ContactSolver<T>>
-          contact_solver);
+  CompliantContactManager() = default;
 
   ~CompliantContactManager() final;
 
@@ -301,7 +301,12 @@ class CompliantContactManager final
       const systems::Context<T>& context,
       contact_solvers::internal::SapContactProblem<T>* problem) const;
 
-  std::unique_ptr<contact_solvers::internal::ContactSolver<T>> contact_solver_;
+  void PackContactSolverResults(
+      const contact_solvers::internal::SapContactProblem<T>& problem,
+      int num_contacts,
+      const contact_solvers::internal::SapSolverResults<T>& sap_results,
+      contact_solvers::internal::ContactSolverResults<T>* results) const;
+
   CacheIndexes cache_indexes_;
 };
 

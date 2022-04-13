@@ -6,7 +6,6 @@
 #include "drake/common/test_utilities/expect_throws_message.h"
 #include "drake/geometry/proximity/volume_mesh_field.h"
 #include "drake/geometry/proximity_properties.h"
-#include "drake/multibody/contact_solvers/pgs_solver.h"
 #include "drake/multibody/contact_solvers/sap/sap_contact_problem.h"
 #include "drake/multibody/contact_solvers/sap/sap_friction_cone_constraint.h"
 #include "drake/multibody/plant/multibody_plant.h"
@@ -23,7 +22,6 @@ using drake::geometry::VolumeMesh;
 using drake::geometry::VolumeMeshFieldLinear;
 using drake::math::RigidTransformd;
 using drake::math::RotationMatrixd;
-using drake::multibody::contact_solvers::internal::PgsSolver;
 using drake::multibody::contact_solvers::internal::SapContactProblem;
 using drake::multibody::contact_solvers::internal::SapFrictionConeConstraint;
 using drake::multibody::internal::DiscreteContactPair;
@@ -141,8 +139,7 @@ class CompliantContactManagerTest : public ::testing::Test {
 
     plant_->Finalize();
     auto owned_contact_manager =
-        std::make_unique<CompliantContactManager<double>>(
-            std::make_unique<PgsSolver<double>>());
+        std::make_unique<CompliantContactManager<double>>();
     contact_manager_ = owned_contact_manager.get();
     plant_->SetDiscreteUpdateManager(std::move(owned_contact_manager));
 
@@ -705,8 +702,7 @@ class AlgebraicLoopDetection : public ::testing::Test {
     plant_ = builder.AddSystem<MultibodyPlant>(1.0e-3);
     plant_->Finalize();
     auto owned_contact_manager =
-        std::make_unique<CompliantContactManager<double>>(
-            std::make_unique<PgsSolver<double>>());
+        std::make_unique<CompliantContactManager<double>>();
     plant_->SetDiscreteUpdateManager(std::move(owned_contact_manager));
 
     systems::System<double>* feedback{nullptr};

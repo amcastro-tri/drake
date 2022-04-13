@@ -2219,6 +2219,11 @@ void MultibodyPlant<T>::CalcContactSolverResults(
   // TODO(amcastro-tri): remove the entirety of the code we are bypassing here.
   // This requires one of our custom managers to become the default
   // MultibodyPlant manager.
+  // TODO: replace CalcContactSolverResults() with EvalContactResults(context)
+  // so that the creation of discrete pairs, Jacobian and contact results all
+  // live the same place, the manager.
+  // NOTE: MultibodyPlant::EvalContactResults() can directly call
+  // Manager::EvalContactResults().
   if (discrete_update_manager_ != nullptr) {
     discrete_update_manager_->CalcContactSolverResults(context0, results);
     return;
@@ -2707,6 +2712,11 @@ void MultibodyPlant<T>::DoCalcForwardDynamicsDiscrete(
   // This requires one of our custom managers to become the default
   // MultibodyPlant manager.
   if (discrete_update_manager_) {
+    // TODO: consider here EvalMultibodyStateUpdate() to get x_next. Let the
+    // manager compute both v_next and q_next so that the time-stepping scheme
+    // is fully contained in the manger.
+    // With that info, below update vdot and A_WB as needed.
+    // REMOVE Manager::CalcAccelerationKinematicsCache().
     discrete_update_manager_->CalcAccelerationKinematicsCache(context0, ac);
     return;
   }
@@ -2741,6 +2751,9 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
   // This requires one of our custom managers to become the default
   // MultibodyPlant manager.
   if (discrete_update_manager_) {
+    // TODO: Use the same x_next = EvalMultibodyStateUpdate(context) and
+    // REMOVE Manager::CalcDiscreteValues()
+    // Then after this call simply update `updates` with x_next.
     discrete_update_manager_->CalcDiscreteValues(context0, updates);
     return;
   }
@@ -2919,6 +2932,8 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
                       systems::BasicVector<T>* result) {
         const contact_solvers::internal::ContactSolverResults<T>&
             solver_results = EvalContactSolverResults(context);
+        // TODO: make tau_contact a member of ContactResults. That way this code
+        // can simply use ContactResults.
         this->CopyGeneralizedContactForcesOut(solver_results,
                                               model_instance_index, result);
       };

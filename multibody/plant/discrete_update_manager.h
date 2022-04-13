@@ -130,6 +130,17 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
     DoCalcDiscreteValues(context, updates);
   }
 
+  /* Performs the computation needed to calculate the next state x given the
+   state x0 stored in context. In particular this method returns the updated
+   state for multibody degrees of freedom. This computation is usually
+   expensive, including contact and other constraints. */
+  //virtual const VectorX<T>& EvalMultibodyStateUpdate(
+  //    const systems::Context<T>& context) const = 0;
+  
+  /* Returns updated contact results involving multibody elements only. */  
+  //virtual const ContactResults<T>& EvalMultibodyContactResults(
+  //    const systems::Context<T>& context) const = 0;
+
  protected:
   /* Derived classes that support making a clone that uses double as a scalar
    type must implement this so that it creates a copy of the object with double

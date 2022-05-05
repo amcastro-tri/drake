@@ -10,6 +10,30 @@ using std::move;
 using std::unique_ptr;
 using std::vector;
 
+namespace internal {
+ContactRep GetContactSurfaceRepresentationFromString(
+    std::string_view contact_representation) {
+  for (const auto& [value, name] : kContactReps) {
+    if (name == contact_representation) {
+      return value;
+    }
+  }
+  throw std::logic_error(
+      fmt::format("Unknown hydroelastic contact representation: '{}'",
+                  contact_representation));
+}
+
+std::string GetStringFromContactSurfaceRepresentation(
+    ContactRep contact_representation) {
+  for (const auto& [value, name] : kContactReps) {
+    if (value == contact_representation) {
+      return name;
+    }
+  }
+  DRAKE_UNREACHABLE();
+}
+}  // namespace internal
+
 template <typename T>
 const Vector3<T>& ContactSurface<T>::EvaluateGradE_M_W(int index) const {
   if (grad_eM_W_ == nullptr) {

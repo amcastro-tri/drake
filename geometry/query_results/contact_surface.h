@@ -23,6 +23,43 @@ namespace geometry {
  "the documentation in ContactSurface" for more details. */
 enum class HydroelasticContactRepresentation { kTriangle, kPolygon };
 
+namespace internal {
+namespace {
+
+// Take an alias to limit verbosity, especially in the constexpr boilerplate.
+using ContactRep = geometry::HydroelasticContactRepresentation;
+
+// Use a switch() statement here, to ensure the compiler sends us a reminder
+// when somebody add a new value to the enum. New values must be listed here
+// as well as in the list of (enum, name) pairs kContactReps below.
+constexpr const char* ContactRepToChars(ContactRep contact_model) {
+  switch (contact_model) {
+    case ContactRep::kTriangle:
+      return "triangle";
+    case ContactRep::kPolygon:
+      return "polygon";
+  }
+}
+
+constexpr auto MakeContactRepPair(ContactRep value) {
+  return std::pair(value, ContactRepToChars(value));
+}
+
+constexpr std::array<std::pair<ContactRep, const char*>, 2> kContactReps{{
+    MakeContactRepPair(ContactRep::kTriangle),
+    MakeContactRepPair(ContactRep::kPolygon),
+}};
+
+}  // namespace
+
+ContactRep GetContactSurfaceRepresentationFromString(
+    std::string_view contact_representation);
+
+std::string GetStringFromContactSurfaceRepresentation(
+    ContactRep contact_representation);
+
+}  // namespace internal
+
 /** The %ContactSurface characterizes the intersection of two geometries M
   and N as a contact surface with a scalar field and a vector field, whose
   purpose is to support the hydroelastic pressure field contact model as

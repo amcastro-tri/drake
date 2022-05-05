@@ -19,6 +19,7 @@ struct MultibodyPlantConfig {
     a->Visit(DRAKE_NVP(stiction_tolerance));
     a->Visit(DRAKE_NVP(contact_model));
     a->Visit(DRAKE_NVP(contact_surface_representation));
+    a->Visit(DRAKE_NVP(discrete_contact_solver));
   }
 
   /// Configures the MultibodyPlant::MultibodyPlant() constructor time_step.
@@ -52,6 +53,8 @@ struct MultibodyPlantConfig {
   /// chosen above; keep this consistent with
   /// MultibodyPlant::GetDefaultContactSurfaceRepresentation().
   std::string contact_surface_representation{"polygon"};
+
+  std::string discrete_contact_solver{"tamsi"};
 };
 
 }  // namespace multibody

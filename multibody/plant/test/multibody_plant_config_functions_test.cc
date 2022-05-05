@@ -37,6 +37,7 @@ penetration_allowance: 0.003
 stiction_tolerance: 0.004
 contact_model: hydroelastic
 contact_surface_representation: triangle
+discrete_contact_solver: sap
 )""";
 
 GTEST_TEST(MultibodyPlantConfigFunctionsTest, YamlTest) {
@@ -48,6 +49,8 @@ GTEST_TEST(MultibodyPlantConfigFunctionsTest, YamlTest) {
             ContactModel::kHydroelasticsOnly);
   EXPECT_EQ(result.plant.get_contact_surface_representation(),
             geometry::HydroelasticContactRepresentation::kTriangle);
+  EXPECT_EQ(result.plant.get_discrete_contact_solver(),
+            DiscreteContactSolver::kSap);
   // There is no getter for penetration_allowance nor stiction_tolerance, so we
   // can't test them.
 }
@@ -77,12 +80,12 @@ GTEST_TEST(MultibodyPlantConfigFunctionsTest, ContactRepresentationTest) {
   };
 
   for (const auto& [name, value] : known_values) {
-    EXPECT_EQ(GetContactSurfaceRepresentationFromString(name), value);
-    EXPECT_EQ(GetStringFromContactSurfaceRepresentation(value), name);
+    EXPECT_EQ(geometry::internal::GetContactSurfaceRepresentationFromString(name), value);
+    EXPECT_EQ(geometry::internal::GetStringFromContactSurfaceRepresentation(value), name);
   }
 
   DRAKE_EXPECT_THROWS_MESSAGE(
-      GetContactSurfaceRepresentationFromString("nonsense"),
+      geometry::internal::GetContactSurfaceRepresentationFromString("nonsense"),
       ".*Unknown.*nonsense.*");
 }
 

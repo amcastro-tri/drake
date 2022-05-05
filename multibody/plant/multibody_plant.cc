@@ -73,6 +73,47 @@ using systems::InputPortIndex;
 using systems::OutputPortIndex;
 
 namespace internal {
+
+ContactModel GetContactModelFromString(std::string_view contact_model) {
+  for (const auto& [value, name] : kContactModels) {
+    if (name == contact_model) {
+      return value;
+    }
+  }
+  throw std::logic_error(fmt::format(
+      "Unknown contact_model: '{}'", contact_model));
+}
+
+std::string GetStringFromContactModel(ContactModel contact_model) {
+  for (const auto& [value, name] : kContactModels) {
+    if (value == contact_model) {
+      return name;
+    }
+  }
+  DRAKE_UNREACHABLE();
+}
+
+DiscreteContactSolver GetDiscreteContactSolverFromString(
+    std::string_view contact_solver) {
+  for (const auto& [value, name] : kDiscreteContactSolvers) {
+    if (name == contact_solver) {
+      return value;
+    }
+  }
+  throw std::logic_error(
+      fmt::format("Unknown contact_solver: '{}'", contact_solver));
+}
+
+std::string GetStringFromDiscreteContactSolver(
+    DiscreteContactSolver contact_solver) {
+  for (const auto& [value, name] : kDiscreteContactSolvers) {
+    if (value == contact_solver) {
+      return name;
+    }
+  }
+  DRAKE_UNREACHABLE();
+}
+
 // This is a helper struct used to estimate the parameters used in the penalty
 // method to enforce joint limits.
 // The penalty method applies at each joint, a spring-damper force with
@@ -364,16 +405,29 @@ MultibodyPlant<T>::MultibodyPlant(double time_step)
   DRAKE_DEMAND(contact_model_ == ContactModel::kHydroelasticWithFallback);
   DRAKE_DEMAND(MultibodyPlantConfig{}.contact_model ==
                "hydroelastic_with_fallback");
+  DRAKE_DEMAND(MultibodyPlantConfig{}.discrete_contact_solver == "tamsi");
+}
+
+template <typename T>
+MultibodyPlant<T>::MultibodyPlant(const MultibodyPlantConfig& config)
+    : MultibodyPlant(nullptr, config.time_step) {
+  set_penetration_allowance(config.penetration_allowance);
+  set_stiction_tolerance(config.stiction_tolerance);
+  set_contact_model(internal::GetContactModelFromString(config.contact_model));
+  set_contact_surface_representation(
+      geometry::internal::GetContactSurfaceRepresentationFromString(
+          config.contact_surface_representation));
 }
 
 template <typename T>
 MultibodyPlant<T>::MultibodyPlant(
     std::unique_ptr<internal::MultibodyTree<T>> tree_in, double time_step)
-    : internal::MultibodyTreeSystem<T>(
-          systems::SystemTypeTag<MultibodyPlant>{},
-          std::move(tree_in), time_step > 0),
+    : internal::MultibodyTreeSystem<T>(systems::SystemTypeTag<MultibodyPlant>{},
+                                       std::move(tree_in), time_step > 0),
+      discrete_contact_solver_(internal::GetDiscreteContactSolverFromString(
+          MultibodyPlantConfig{}.discrete_contact_solver)),
       contact_surface_representation_(
-        GetDefaultContactSurfaceRepresentation(time_step)),
+          GetDefaultContactSurfaceRepresentation(time_step)),
       time_step_(time_step) {
   DRAKE_THROW_UNLESS(time_step >= 0);
   // TODO(eric.cousineau): Combine all of these elements into one struct, make
@@ -428,6 +482,11 @@ void MultibodyPlant<T>::set_contact_model(ContactModel model) {
 template <typename T>
 ContactModel MultibodyPlant<T>::get_contact_model() const {
   return contact_model_;
+}
+
+template <typename T>
+DiscreteContactSolver MultibodyPlant<T>::get_discrete_contact_solver() const {
+  return discrete_contact_solver_;
 }
 
 template <typename T>
@@ -3592,18 +3651,35 @@ AddMultibodyPlantSceneGraphResult<T> AddMultibodyPlantSceneGraph(
                                      std::move(scene_graph));
 }
 
+template <typename T>
+AddMultibodyPlantSceneGraphResult<T> AddMultibodyPlantSceneGraph(
+    systems::DiagramBuilder<T>* builder, const MultibodyPlantConfig& config,
+    std::unique_ptr<geometry::SceneGraph<T>> scene_graph) {
+  DRAKE_DEMAND(builder != nullptr);
+  auto plant = std::make_unique<MultibodyPlant<T>>(config);
+  plant->set_name("plant");
+  return AddMultibodyPlantSceneGraph(builder, std::move(plant),
+                                     std::move(scene_graph));      
+}
+
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS((
-    /* Use static_cast to disambiguate the two different overloads. */
+    /* Use static_cast to disambiguate different overloads. */
     static_cast<AddMultibodyPlantSceneGraphResult<T>(*)(
         systems::DiagramBuilder<T>*, double,
         std::unique_ptr<geometry::SceneGraph<T>>)>(
             &AddMultibodyPlantSceneGraph),
-    /* Use static_cast to disambiguate the two different overloads. */
+    /* Use static_cast to disambiguate different overloads. */
     static_cast<AddMultibodyPlantSceneGraphResult<T>(*)(
         systems::DiagramBuilder<T>*,
         std::unique_ptr<MultibodyPlant<T>>,
         std::unique_ptr<geometry::SceneGraph<T>>)>(
-            &AddMultibodyPlantSceneGraph)
+            &AddMultibodyPlantSceneGraph),
+    /* Use static_cast to disambiguate different overloads. */
+    static_cast<AddMultibodyPlantSceneGraphResult<T>(*)(
+        systems::DiagramBuilder<T>*,
+        const MultibodyPlantConfig& config,
+        std::unique_ptr<geometry::SceneGraph<T>>)>(
+            &AddMultibodyPlantSceneGraph)            
 ))
 
 }  // namespace multibody

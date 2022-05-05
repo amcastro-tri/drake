@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <limits>
 #include <map>
 #include <memory>
@@ -98,6 +99,75 @@ enum class ContactModel {
   /// Legacy alias. TODO(jwnimmer-tri) Deprecate this constant.
   kPointContactOnly = kPoint,
 };
+
+enum class DiscreteContactSolver {
+  kTamsi,
+  kSap,
+};
+
+namespace internal {
+
+namespace {
+// Use a switch() statement here, to ensure the compiler sends us a reminder
+// when somebody add a new value to the enum. New values must be listed here
+// as well as in the list of kContactModels below.
+constexpr const char* ContactModelToChars(ContactModel contact_model) {
+  switch (contact_model) {
+    case ContactModel::kPointContactOnly:
+      return "point";
+    case ContactModel::kHydroelasticsOnly:
+      return "hydroelastic";
+    case ContactModel::kHydroelasticWithFallback:
+      return "hydroelastic_with_fallback";
+  }
+}
+
+constexpr auto MakeContactModelPair(ContactModel value) {
+  return std::pair(value, ContactModelToChars(value));
+}
+
+constexpr std::array<std::pair<ContactModel, const char*>, 3> kContactModels{{
+    MakeContactModelPair(ContactModel::kPointContactOnly),
+    MakeContactModelPair(ContactModel::kHydroelasticsOnly),
+    MakeContactModelPair(ContactModel::kHydroelasticWithFallback),
+}};
+
+// Use a switch() statement here, to ensure the compiler sends us a reminder
+// when somebody add a new value to the enum. New values must be listed here
+// as well as in the list of kDiscreteContactSolvers below.
+constexpr const char* DiscreteContactSolverToChars(
+    DiscreteContactSolver contact_solver) {
+  switch (contact_solver) {
+    case DiscreteContactSolver::kTamsi:
+      return "tamsi";
+    case DiscreteContactSolver::kSap:
+      return "sap";
+  }
+}
+
+constexpr auto MakeDiscreteContactSolverPair(DiscreteContactSolver value) {
+  return std::pair(value, DiscreteContactSolverToChars(value));
+}
+
+constexpr std::array<std::pair<DiscreteContactSolver, const char*>, 2>
+    kDiscreteContactSolvers{{
+        MakeDiscreteContactSolverPair(DiscreteContactSolver::kSap),
+        MakeDiscreteContactSolverPair(DiscreteContactSolver::kTamsi),
+    }};
+
+}  // namespace
+
+ContactModel GetContactModelFromString(std::string_view contact_model);
+
+std::string GetStringFromContactModel(ContactModel contact_model);
+
+DiscreteContactSolver GetDiscreteContactSolverFromString(
+    std::string_view contact_solver);
+
+std::string GetStringFromDiscreteContactSolver(
+    DiscreteContactSolver contact_solver);
+
+}  // namespace internal
 
 /// @cond
 // Helper macro to throw an exception within methods that should not be called
@@ -776,6 +846,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @throws std::exception if `time_step` is negative.
   explicit MultibodyPlant(double time_step);
 
+  explicit MultibodyPlant(const MultibodyPlantConfig& config);
+
   /// Scalar-converting copy constructor.  See @ref system_scalar_conversion.
   template <typename U>
   explicit MultibodyPlant(const MultibodyPlant<U>& other)
@@ -796,8 +868,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     num_collision_geometries_ = other.num_collision_geometries_;
     X_WB_default_list_ = other.X_WB_default_list_;
     contact_model_ = other.contact_model_;
+    discrete_contact_solver_ = other.discrete_contact_solver_;
     contact_surface_representation_ =
-        other.contact_surface_representation_;
+        other.contact_surface_representation_;    
     penetration_allowance_ = other.penetration_allowance_;
     // Note: The physical models must be cloned before `FinalizePlantOnly()` is
     // called because `FinalizePlantOnly()` has to allocate system resources
@@ -1643,8 +1716,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// ContactModel for available options.
   /// The default contact model is ContactModel::kHydroelasticWithFallback.
   /// @throws std::exception iff called post-finalize.
-  void set_contact_model(ContactModel model);
-
+  void set_contact_model(ContactModel model);  
 
   /// Return the default value for contact representation, given the desired
   /// time step. Discrete systems default to use polygons; continuous systems
@@ -4102,6 +4174,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// Returns the model used for contact. See documentation for ContactModel.
   ContactModel get_contact_model() const;
 
+  DiscreteContactSolver get_discrete_contact_solver() const;
+
   /// Returns the number of geometries registered for visualization.
   /// This method can be called at any time during the lifetime of `this` plant,
   /// either pre- or post-finalize, see Finalize().
@@ -4894,6 +4968,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // The total number of GeometryId values within collision_geometries_.
   int num_collision_geometries_{0};
 
+  DiscreteContactSolver discrete_contact_solver_{DiscreteContactSolver::kTamsi};
+
   // The model used by the plant to compute contact forces. Keep this in sync
   // with the default value in multibody_plant_config.h; there are already
   // assertions in the cc file that enforce this.
@@ -5038,6 +5114,13 @@ AddMultibodyPlantSceneGraph(
     systems::DiagramBuilder<T>* builder,
     double time_step,
     std::unique_ptr<geometry::SceneGraph<T>> scene_graph = nullptr);
+
+template <typename T>
+AddMultibodyPlantSceneGraphResult<T>
+AddMultibodyPlantSceneGraph(
+    systems::DiagramBuilder<T>* builder,
+    const MultibodyPlantConfig& config,
+    std::unique_ptr<geometry::SceneGraph<T>> scene_graph = nullptr);    
 
 /// Adds a MultibodyPlant and a SceneGraph instance to a diagram
 /// builder, connecting the geometry ports.

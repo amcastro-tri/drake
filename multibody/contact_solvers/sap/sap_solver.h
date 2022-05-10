@@ -158,13 +158,18 @@ class SapSolver {
     void Reset() {
       num_iters = 0;
       num_line_search_iters = 0;
+      num_constraints = 0;
+      num_constraint_equations = 0;
       optimality_criterion_reached = false;
       cost_criterion_reached = false;
       momentum_residual.clear();
-      momentum_scale.clear();
+      momentum_scale.clear();      
     }
     int num_iters{0};              // Number of Newton iterations.
     int num_line_search_iters{0};  // Total number of line search iterations.
+
+    int num_constraints{0};
+    int num_constraint_equations{0};
 
     // Indicates if the optimality condition was reached.
     bool optimality_criterion_reached{false};

@@ -95,6 +95,8 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
   using std::abs;
   using std::max;
 
+  stats_ = SolverStats();  
+
   if (problem.num_constraints() == 0) {
     // In the absence of constraints the solution is trivially v = v*.
     results->Resize(problem.num_velocities(),
@@ -108,12 +110,13 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
   model_ = std::make_unique<SapModel<double>>(&problem);
   const int nv = model_->num_velocities();
   const int nk = model_->num_constraint_equations();
+  stats_.num_constraints = model_->num_constraints();
+  stats_.num_constraint_equations = model_->num_constraint_equations();
 
   // Allocate the necessary memory to work with.
   auto context = model_->MakeContext();
   auto scratch = model_->MakeContext();
   SearchDirectionData search_direction_data(nv, nk);
-  stats_ = SolverStats();
   // The supernodal solver is expensive to instantiate and therefore we only
   // instantiate when needed.
   std::unique_ptr<SuperNodalSolver> supernodal_solver;

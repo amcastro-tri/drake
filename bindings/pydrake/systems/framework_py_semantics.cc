@@ -491,7 +491,7 @@ void DoScalarDependentDefinitions(py::module m) {
           // reference cycle as a workaround for #14355. We should find a
           // better way?
           // Keep alive, reference: `self` keeps `return` alive.
-          py::keep_alive<1, 0>(),
+        //   py::keep_alive<1, 0>(),
           // Keep alive, ownership: `system` keeps `self` alive.
           py::keep_alive<2, 1>(), doc.DiagramBuilder.AddSystem.doc)
       .def(
@@ -505,7 +505,7 @@ void DoScalarDependentDefinitions(py::module m) {
           // reference cycle as a workaround for #14355. We should find a
           // better way?
           // Keep alive, reference: `self` keeps `return` alive.
-          py::keep_alive<1, 0>(),
+        //   py::keep_alive<1, 0>(),
           // Keep alive, ownership: `system` keeps `self` alive.
           py::keep_alive<3, 1>(), doc.DiagramBuilder.AddNamedSystem.doc)
       .def("empty", &DiagramBuilder<T>::empty, doc.DiagramBuilder.empty.doc)

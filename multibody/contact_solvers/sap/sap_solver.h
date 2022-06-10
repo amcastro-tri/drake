@@ -172,6 +172,8 @@ class SapSolver {
     // Indicates if the cost condition was reached.
     bool cost_criterion_reached{false};
 
+    std::vector<double> cost;
+
     // Dimensionless momentum residual at each iteration. Of size num_iters + 1.
     std::vector<double> momentum_residual;
 

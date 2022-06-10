@@ -19,6 +19,8 @@
 #include "drake/systems/analysis/simulator_print_stats.h"
 #include "drake/geometry/proximity_properties.h"
 #include "drake/multibody/plant/compliant_contact_manager.h"
+#include "drake/geometry/drake_visualizer.h"
+#include "drake/multibody/plant/contact_results_to_lcm.h"
 
 // #include "drake/multibody/contact_solvers/contact_solver_results.h"
 // #include "drake/multibody/contact_solvers/contact_solver_utils.h"
@@ -184,16 +186,24 @@ int do_main() {
     CompliantContactManager<double>* manager = owned_manager.get();
     plant.SetDiscreteUpdateManager(std::move(owned_manager));
     drake::multibody::contact_solvers::internal::SapSolverParameters ssp;
-    //ssp.ls_max_iterations = 300;
+    ssp.ls_max_iterations = 170;  // 0.8^170 = 3.3520e-17
+    ssp.max_iterations = 5000;
     manager->set_sap_solver_parameters(ssp);
 
     // //----------------------------------------
 
-
+#if 0
     auto meshcat = std::make_shared<drake::geometry::Meshcat>(std::nullopt);
     drake::geometry::MeshcatVisualizerParams vis_param{};
     geometry::MeshcatVisualizer<double>::AddToBuilder(&builder, scene_graph, meshcat, vis_param);
     meshcat->AddSlider("Zval", 0, 10, 0.1, 1);
+#endif    
+
+    geometry::DrakeVisualizerParams viz_params;
+    //viz_params.publish_period = FLAGS_viz_period;
+    geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph, nullptr,
+                                             viz_params);
+    //ConnectContactResultsToDrakeVisualizer(&builder, plant, scene_graph);
 
     auto diagram = builder.Build();
     auto simulator = MakeSimulatorFromGflags(*diagram);

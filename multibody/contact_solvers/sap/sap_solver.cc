@@ -10,6 +10,9 @@
 #include "drake/math/linear_solve.h"
 #include "drake/multibody/contact_solvers/supernodal_solver.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
@@ -140,6 +143,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
         parameters_.abs_tolerance + parameters_.rel_tolerance * momentum_scale;
     stats_.momentum_residual.push_back(momentum_residual);
     stats_.momentum_scale.push_back(momentum_scale);
+    stats_.cost.push_back(ell_previous);
     // TODO(amcastro-tri): consider monitoring the duality gap.
     if (stats_.optimality_criterion_reached || stats_.cost_criterion_reached) {
       converged = true;
@@ -311,10 +315,18 @@ std::pair<T, int> SapSolver<T>::PerformBackTrackingLineSearch(
   T alpha_prev = alpha;
   T ell_prev = ell;
 
+  struct IterData {
+    T alpha;
+    T cost;
+  };
+  std::vector<IterData> hist;
+  hist.push_back(IterData{alpha, ell});
+
   int iteration = 1;
   for (; iteration < max_iterations; ++iteration) {
     alpha *= rho;
     ell = CalcCostAlongLine(context, search_direction_data, alpha, scratch);
+    hist.push_back(IterData{alpha, ell});
     // We scan discrete values of alpha from alpha_max to zero and seek for the
     // minimum value of the cost evaluated at those discrete values. Since we
     // know the cost is convex, we detect this minimum by checking the condition
@@ -335,6 +347,12 @@ std::pair<T, int> SapSolver<T>::PerformBackTrackingLineSearch(
 
   // If the very last iterate satisfies Armijo's, we use it.
   if (satisfies_armijo(alpha, ell)) return std::make_pair(alpha, iteration);
+
+  PRINT_VAR(dell_dalpha0);
+  std::cout << "Cost history:\n";
+  for (const auto& d : hist) {
+    std::cout << fmt::format("{} {}\n", d.alpha, d.cost);
+  }
 
   // If we are here, the line-search could not find a valid parameter that
   // satisfies Armijo's criterion.

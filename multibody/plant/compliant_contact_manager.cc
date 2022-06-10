@@ -637,6 +637,23 @@ void CompliantContactManager<T>::DoCalcContactSolverResults(
   const SapSolverStatus status =
       sap.SolveWithGuess(sap_problem, v0, &sap_results);
   if (status != SapSolverStatus::kSuccess) {
+    const typename SapSolver<T>::SolverStats& stats = sap.get_statistics();
+    std::cout << "Cost hist:\n";
+    for (double cost : stats.cost) {
+      std::cout << fmt::format("{}\n", cost);
+    }
+
+    std::cout << "Momentum residual hist:\n";
+    for (double res : stats.momentum_residual) {
+      std::cout << fmt::format("{}\n", res);
+    }
+
+    std::cout << "Momentum scale hist:\n";
+    for (double res : stats.momentum_scale) {
+      std::cout << fmt::format("{}\n", res);
+    }
+
+
     const std::string msg = fmt::format(
         "The SAP solver failed to converge at simulation time = {:7.3g}. "
         "Reasons for divergence and possible solutions include:\n"

@@ -15,8 +15,8 @@
 #include "drake/multibody/contact_solvers/newton_with_bisection.h"
 
 #include <iostream>
-//#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
-#define PRINT_VAR(a) (void)a;
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+//#define PRINT_VAR(a) (void)a;
 
 namespace drake {
 namespace multibody {
@@ -233,8 +233,20 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
       // GLL allows non-monotone convergence. However the sequence {cost_max} is
       // nonincreasing.
       DRAKE_DEMAND(cost_max <= cost_max_previous + slop);          
-    } else {
-      DRAKE_DEMAND(ell <= ell_previous + slop);
+    } else {            
+      // TODO: Most likely I need to move this to be AFER the check for
+      // convergence to avoid false positives. Otherwise this might only be
+      // triggered because of round-off errors at the minimum.
+      if (ell > ell_previous) {
+        // Warn to console.
+        std::cout << fmt::format("Cost increased by: {}.\n",
+                                 std::abs(ell - ell_previous));
+        //PRINT_VAR(ell);
+        //PRINT_VAR(std::abs(ell-ell_previous));
+        //PRINT_VAR(slop);
+        //PRINT_VAR(ell_scale);
+      }
+      //DRAKE_DEMAND(ell <= ell_previous + slop);      
     }
 
     // N.B. Here we want alpha≈1 and therefore we impose alpha > 0.5, an
@@ -615,8 +627,8 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   // 0 and accept the search direction with alpha = 1.
   const double ell_scale = 0.5 * (ell_alpha_max + ell0);
   if (abs(dell_dalpha0 / ell_scale) < kTolerance) return std::make_pair(1.0, 0);
-  PRINT_VAR(ell_scale);
-  PRINT_VAR(abs(dell_dalpha0 / ell_scale));
+  //PRINT_VAR(ell_scale);
+  //PRINT_VAR(abs(dell_dalpha0 / ell_scale));
 
   // dℓ/dα(α = 0) is guaranteed to be strictly negative given the the Hessian of
   // the cost is positive definite. Only round-off errors in the factorization

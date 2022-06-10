@@ -480,7 +480,12 @@ std::pair<T, int> SapSolver<T>::PerformGllLineSearch(
   const T dell_dalpha0 = ell_grad_v0.dot(dv);
 
   T alpha = parameters_.ls_alpha_max;
-  T ell = CalcCostAlongLine(context, search_direction_data, alpha, scratch);
+  T dell, d2ell;
+  T ell = CalcCostAlongLine(context, search_direction_data, alpha, scratch,
+                            &dell, &d2ell);
+  // If the cost keeps decreasing at alpha_max, then alpha = alpha_max is a good
+  // step size.                        
+  if (dell <= 0) return std::make_pair(alpha, 0);
 
   const double kTolerance = 50 * std::numeric_limits<double>::epsilon();
   // N.B. We expect ell_scale != 0 since otherwise SAP's optimality condition

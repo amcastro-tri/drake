@@ -28,6 +28,10 @@ class Bracket {
   }
 
   bool inside(double x) {
+    using std::abs;
+    using std::max;
+    //const double scale = max(max(abs(x_lower_),abs(x_upper_)), abs(x));
+    //const double slop = 1.0e-6 * scale;
     return x_lower_ <= x && x <= x_upper_;
   }
 
@@ -89,7 +93,7 @@ class Bracket {
 */
 std::pair<double, int> DoNewtonWithBisectionFallback(
     const std::function<std::pair<double, double>(double)>& function,
-    Bracket bracket, double x_guess, double abs_tolerance,
+    Bracket bracket, double x_guess, double x_tolerance, double f_tolerance,
     int max_iterations);
 
 }  // namespace internal

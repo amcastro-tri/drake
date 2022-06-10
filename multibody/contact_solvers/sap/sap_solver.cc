@@ -598,6 +598,9 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   // step size.                        
   if (dell <= 0) return std::make_pair(parameters_.ls_alpha_max, 0);
 
+  // TODO(amcastro-tri): estimate tolerance that takes into account the problem
+  // size and therefor the expected precision loss during matrix-vector
+  // multiplications (when using block sparse matrices).
   const double kTolerance = 50 * std::numeric_limits<double>::epsilon();
   // N.B. We expect ell_scale != 0 since otherwise SAP's optimality condition
   // would've been reached and the solver would not reach this point.
@@ -676,7 +679,7 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
 
   //std::cout << "Calling DoNewtonWithBisectionFallback():\n";
   const auto [alpha, num_iters] = DoNewtonWithBisectionFallback(
-      cost_and_gradient, bracket, alpha_guess, kTolerance, 100);
+      cost_and_gradient, bracket, alpha_guess, kTolerance, kTolerance, 100);
   //std::cout << std::endl;      
 
   return std::make_pair(alpha, num_iters);

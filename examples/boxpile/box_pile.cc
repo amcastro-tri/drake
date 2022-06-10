@@ -1,5 +1,7 @@
 #include <gflags/gflags.h>
 
+#include <chrono>
+
 #include "drake/common/drake_assert.h"
 #include "drake/common/find_resource.h"
 #include "drake/common/text_logging.h"
@@ -79,6 +81,15 @@ DEFINE_double(z0, 0.15, "Ball's initial position in the z-axis.");
 DEFINE_double(x0, 0.0, "Ball's initial position in the x-axis.");
 DEFINE_double(y0, 0.0, "Ball's initial position in the x-axis.");
 
+// Line search.
+DEFINE_string(line_search, "exact",
+              "Primal solver line-search. 'exact', 'backtracking', 'GLL'");
+DEFINE_int32(
+    gll_M, 5,
+    "Number previous costs, in addition to current. M in GLL's paper.");
+DEFINE_int32(gll_N, 2, "Num regular Armijo's before GLL. N in GLL's paper.");    
+DEFINE_int32(sap_max_iterations, 100, "Max SAP iterations.");
+
 namespace drake {
 namespace examples {
 namespace box_pile {
@@ -104,11 +115,11 @@ using drake::multibody::internal::CompliantContactManager;
 // using drake::multibody::contact_solvers::internal::SapContactProblem;
 // using drake::multibody::contact_solvers::internal::SapFrictionConeConstraint;
 // using drake::multibody::contact_solvers::internal::SapSolver;
-// using drake::multibody::contact_solvers::internal::SapSolverParameters;
+using drake::multibody::contact_solvers::internal::SapSolverParameters;
 // using drake::multibody::contact_solvers::internal::SapSolverResults;
 // using drake::multibody::contact_solvers::internal::SapSolverStatus;
 // using drake::multibody::internal::DiscreteContactPair;
-
+using clock = std::chrono::steady_clock;
 
 void AddBody(std::string name, double radius, double mass, double hydroelastic_modulus,
     double dissipation, const CoulombFriction<double>& surface_friction,
@@ -188,6 +199,20 @@ int do_main() {
     drake::multibody::contact_solvers::internal::SapSolverParameters ssp;
     ssp.ls_max_iterations = 170;  // 0.8^170 = 3.3520e-17
     ssp.max_iterations = 5000;
+    if (FLAGS_line_search == "exact") {
+      ssp.line_search_type = SapSolverParameters::LineSearchType::kExact;
+    } else if (FLAGS_line_search == "backtracking") {
+      ssp.line_search_type =
+          SapSolverParameters::LineSearchType::kBackTracking;
+    } else if (FLAGS_line_search == "GLL") {
+      ssp.line_search_type = SapSolverParameters::LineSearchType::kGll;
+    } else {
+      throw std::runtime_error("Unknown line search type: '" +
+                               FLAGS_line_search + "'.");
+    }
+    ssp.gll_num_previous_costs = FLAGS_gll_M;
+    ssp.gll_num_armijos = FLAGS_gll_N;
+    ssp.max_iterations = FLAGS_sap_max_iterations;
     manager->set_sap_solver_parameters(ssp);
 
     // //----------------------------------------
@@ -219,7 +244,14 @@ int do_main() {
     simulator->set_publish_every_time_step(true);
     simulator->set_target_realtime_rate(FLAGS_target_realtime_rate);
     simulator->Initialize();
+
+    clock::time_point sim_start_time = clock::now();
     simulator->AdvanceTo(FLAGS_simulation_time);
+    clock::time_point sim_end_time = clock::now();
+    const double sim_time =
+        std::chrono::duration<double>(sim_end_time - sim_start_time).count();
+    std::cout << "AdvanceTo() time [sec]: " << sim_time << std::endl;
+
     systems::PrintSimulatorStatistics(*simulator);
     return 0;
 }

@@ -195,6 +195,10 @@ class SapSolver {
 
     int num_constraints{0};
     int num_constraint_equations{0};
+
+    double make_solver_time{0};
+    double solve_time{0};
+    double ls_time{0};
   };
 
   SapSolver() = default;

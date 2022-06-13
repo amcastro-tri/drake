@@ -13,6 +13,7 @@
 #include "drake/math/linear_solve.h"
 #include "drake/multibody/contact_solvers/supernodal_solver.h"
 #include "drake/multibody/contact_solvers/newton_with_bisection.h"
+#include "drake/multibody/plant/stop_watch.h"
 
 #include <iostream>
 #define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
@@ -25,6 +26,7 @@ namespace internal {
 
 using drake::systems::Context;
 using drake::test::LimitMalloc;
+using drake::multibody::internal::StopWatch;
 
 template <typename T>
 void SapSolver<T>::set_parameters(const SapSolverParameters& parameters) {
@@ -165,7 +167,9 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
         // Instantiate supernodal solver on the first iteration when needed. If
         // the stopping criteria is satisfied at k = 0 (good guess), then we
         // skip the expensive instantiation of the solver.
+        StopWatch watch;
         supernodal_solver = MakeSuperNodalSolver();
+        stats_.make_solver_time = watch.Elapsed();
       }
     }
 
@@ -182,6 +186,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
 
     double alpha = 1.0;
     int ls_iters = 0;
+    StopWatch watch;
     switch (parameters_.line_search_type) {
       case SapSolverParameters::LineSearchType::kBackTracking:
         std::tie(alpha, ls_iters) = PerformBackTrackingLineSearch(
@@ -198,6 +203,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
                                  use_armijo, scratch.get());
         break;
     }
+    stats_.ls_time += watch.Elapsed();
 
     stats_.num_line_search_iters += ls_iters;
 
@@ -284,9 +290,7 @@ T SapSolver<T>::CalcCostAlongLine(
     VectorX<T>* vec_scratch,
     T* dell_dalpha, T* d2ell_dalpha2) const {
   // If dell_dalpha is requested, then d2ell_dalpha2 must also be requested.
-  if (dell_dalpha != nullptr) DRAKE_DEMAND(d2ell_dalpha2 != nullptr);
-
-  vec_scratch->resize(model_->num_constraint_equations());
+  if (dell_dalpha != nullptr) DRAKE_DEMAND(d2ell_dalpha2 != nullptr);  
 
   // We expect no allocations beyond this point.
   //LimitMalloc guard({.max_num_allocations = 0});
@@ -328,6 +332,7 @@ T SapSolver<T>::CalcCostAlongLine(
 
   // Compute both dell_dalpha & d2ell_dalpha2
   if (dell_dalpha != nullptr) {
+    vec_scratch->resize(model_->num_constraint_equations());
     const VectorX<T>& v_alpha = model_->GetVelocities(context_alpha);
 
     // First derivative.
@@ -832,11 +837,13 @@ void SapSolver<T>::CalcSearchDirectionData(
     SapSolver<T>::SearchDirectionData* data) const {
   DRAKE_DEMAND(parameters_.use_dense_algebra || (supernodal_solver != nullptr));
   // Update search direction dv.
+  StopWatch watch;
   if (!parameters_.use_dense_algebra) {
     CallSuperNodalSolver(context, supernodal_solver, &data->dv);
   } else {
     CallDenseSolver(context, &data->dv);
   }
+  stats_.solve_time += watch.Elapsed();
 
   // Update Δp, Δvc and d²ellA/dα².
   model_->constraints_bundle().J().Multiply(data->dv, &data->dvc);

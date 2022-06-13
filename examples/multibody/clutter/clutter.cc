@@ -593,17 +593,25 @@ int do_main() {
   PRINT_VAR(stats.num_iters);
   PRINT_VAR(stats.num_ls_iters);
 
-  // Average number of constraints.
-#if 0
+  // SAP stats.
   int num_constraints = 0;
   int num_constraint_equations = 0;
+  double make_solver_time{0};
+  double solve_time{0};
+  double ls_time{0};
   for (const auto& s : stats.sap_stats) {
     num_constraints += s.num_constraints;
     num_constraint_equations += s.num_constraint_equations;
+    make_solver_time += s.make_solver_time;
+    solve_time += s.solve_time;
+    ls_time += s.ls_time;
   }
   PRINT_VAR(num_constraints);
   PRINT_VAR(num_constraint_equations);
-#endif
+  PRINT_VAR(make_solver_time);
+  PRINT_VAR(solve_time);
+  PRINT_VAR(ls_time);
+
   return 0;
 }
 

@@ -280,11 +280,13 @@ template <typename T>
 T SapSolver<T>::CalcCostAlongLine(
     const systems::Context<T>& context,
     const SearchDirectionData& search_direction_data, const T& alpha,
-    systems::Context<T>* scratch, T* dell_dalpha, T* d2ell_dalpha2) const {
+    systems::Context<T>* scratch, 
+    VectorX<T>* vec_scratch,
+    T* dell_dalpha, T* d2ell_dalpha2) const {
   // If dell_dalpha is requested, then d2ell_dalpha2 must also be requested.
   if (dell_dalpha != nullptr) DRAKE_DEMAND(d2ell_dalpha2 != nullptr);
 
-  std::vector<T> storage(16);
+  vec_scratch->resize(model_->num_constraint_equations());
 
   // We expect no allocations beyond this point.
   //LimitMalloc guard({.max_num_allocations = 0});
@@ -333,8 +335,7 @@ T SapSolver<T>::CalcCostAlongLine(
     const T dellR_dalpha = -dvc.dot(gamma);     // Regularizer term.
     *dell_dalpha = dellA_dalpha + dellR_dalpha;
 
-    // Second derivative.
-    T d2ellR_dalpha2 = 0;  // = Δvcᵀ⋅G⋅Δvc
+    // Second derivative.    
     const std::vector<MatrixX<T>>& G =
         model_->EvalConstraintsHessian(context_alpha);
     const int nc = model_->num_constraints();
@@ -345,6 +346,9 @@ T SapSolver<T>::CalcCostAlongLine(
       const int ni = G_i.rows();
       const auto dvc_i = dvc.segment(constraint_start, ni);
 
+      vec_scratch->segment(constraint_start, ni) = G_i * dvc_i;
+
+#if 0
       // std::vector does not allocate if ni <= capacity.
       storage.resize(ni);
       Eigen::Map<VectorX<T>> tmp(storage.data(), ni);
@@ -363,9 +367,13 @@ T SapSolver<T>::CalcCostAlongLine(
       // d2ellR_dalpha2_ic is positive within a slop tolerance.
       using std::max;
       d2ellR_dalpha2 += max(0.0, d2ellR_dalpha2_ic);
+#endif      
 
       constraint_start += ni;
     }
+
+    // = Δvcᵀ⋅G⋅Δvc
+    const T d2ellR_dalpha2 = dvc.dot(*vec_scratch);
 
     *d2ell_dalpha2 = d2ellA_dalpha2 + d2ellR_dalpha2;
 
@@ -496,8 +504,9 @@ std::pair<T, int> SapSolver<T>::PerformGllLineSearch(
 
   T alpha = parameters_.ls_alpha_max;
   T dell, d2ell;
+  VectorX<T> vec_scratch;
   T ell = CalcCostAlongLine(context, search_direction_data, alpha, scratch,
-                            &dell, &d2ell);
+                            &vec_scratch, &dell, &d2ell);
   // If the cost keeps decreasing at alpha_max, then alpha = alpha_max is a good
   // step size.                        
   if (dell <= 0) return std::make_pair(alpha, 0);
@@ -606,9 +615,10 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
 
   // Cost and gradient at alpha_max.
   double dell, d2ell;
+  VectorX<double> vec_scratch;
   const double ell_alpha_max =
       CalcCostAlongLine(context, search_direction_data,
-                        parameters_.ls_alpha_max, scratch, &dell, &d2ell);
+                        parameters_.ls_alpha_max, scratch, &vec_scratch, &dell, &d2ell);
   // If the cost keeps decreasing at alpha_max, then alpha = alpha_max is a good
   // step size.                        
   if (dell <= 0) return std::make_pair(parameters_.ls_alpha_max, 0);
@@ -658,6 +668,7 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
     const SearchDirectionData& search_direction_data;
     Context<double>& scratch;   // Context at alpha != 0.
     const double ell_scale;
+    VectorX<double> vec_scratch;
   };
   EvalData data{this, context, search_direction_data, *scratch, ell_scale};
 
@@ -671,7 +682,7 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
     double dell_dalpha;
     double d2ell_dalpha2;
     data.solver->CalcCostAlongLine(data.context0, data.search_direction_data, x,
-                                   &data.scratch, &dell_dalpha, &d2ell_dalpha2);
+                                   &data.scratch, &data.vec_scratch, &dell_dalpha, &d2ell_dalpha2);
 
     //PRINT_VAR(x);
     //PRINT_VAR(dell_dalpha / data.ell_scale);
@@ -693,8 +704,9 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
                   dell / ell_scale);
 
   //std::cout << "Calling DoNewtonWithBisectionFallback():\n";
+  const double x_rel_tol = parameters_.ls_rel_tolerance;
   const auto [alpha, num_iters] = DoNewtonWithBisectionFallback(
-      cost_and_gradient, bracket, alpha_guess, kTolerance, kTolerance, 100);
+      cost_and_gradient, bracket, alpha_guess, x_rel_tol, kTolerance, 100);
   //std::cout << std::endl;      
 
   return std::make_pair(alpha, num_iters);

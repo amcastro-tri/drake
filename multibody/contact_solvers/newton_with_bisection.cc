@@ -115,7 +115,7 @@ DoNewtonWithBisectionFallback(
         "{:10.4g}]. dx = {:10.4g}. f = {:10.4g}. dfdx = {:10.4g}.",
         root, bracket.x_lower(), bracket.x_upper(), -minus_dx, f, df);
 
-    if (abs(f) < f_tolerance || abs(minus_dx) < x_tolerance)
+    if (abs(f) < f_tolerance || abs(minus_dx) < x_tolerance * root)
       return std::make_pair(root, num_evaluations);
 
     // Update the bracket around root to guarantee that there exist a root

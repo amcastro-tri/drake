@@ -126,6 +126,7 @@ DEFINE_bool(log_cond_number, false,
 DEFINE_double(ls_alpha_max, 1.25, "ls_alpha_max");
 DEFINE_double(ls_rho, 0.8, "ls_rho");
 DEFINE_double(armijo_c, 1.0e-4, "Armijo's c constant.");
+DEFINE_double(ls_rel_tolerance, 1.0e-3, "ls_rel_tolerance");
 
 using drake::math::RigidTransform;
 using drake::math::RigidTransformd;
@@ -518,6 +519,7 @@ int do_main() {
     parameters.ls_rho = FLAGS_ls_rho;
     parameters.ls_c = FLAGS_armijo_c;
     parameters.ls_max_iterations = 200;
+    parameters.ls_rel_tolerance = FLAGS_ls_rel_tolerance;
     parameters.gll_num_previous_costs = FLAGS_gll_M;
     parameters.gll_num_armijos = FLAGS_gll_N;
     parameters.max_iterations = FLAGS_sap_max_iterations;

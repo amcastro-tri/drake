@@ -106,6 +106,7 @@ struct SapSolverParameters {
   int ls_max_iterations{40};  // Maximum number of line search iterations.
   double ls_c{1.0e-4};        // Armijo's criterion parameter.
   double ls_rho{0.8};         // Backtracking search parameter.
+  double ls_rel_tolerance{1.0e-3};
 
   int gll_num_previous_costs{5};  // M in GLL paper.
   // Number of regular Armijo iterations before GLL. N in GLL paper.
@@ -268,6 +269,7 @@ class SapSolver {
   T CalcCostAlongLine(const systems::Context<T>& context,
                       const SearchDirectionData& search_direction_data,
                       const T& alpha, systems::Context<T>* scratch,
+                      VectorX<T>* vec_scratch = nullptr,
                       T* dell_dalpha = nullptr,
                       T* d2ell_dalpha2 = nullptr) const;
 

@@ -174,6 +174,8 @@ class SapSolver {
       cost_criterion_reached = false;
       momentum_residual.clear();
       momentum_scale.clear();
+      num_constraints = 0;
+      num_constraint_equations = 0;
     }
     int num_iters{0};              // Number of Newton iterations.
     int num_line_search_iters{0};  // Total number of line search iterations.
@@ -189,6 +191,9 @@ class SapSolver {
 
     // Dimensionless momentum scale at each iteration. Of size num_iters + 1.
     std::vector<double> momentum_scale;
+
+    int num_constraints{0};
+    int num_constraint_equations{0};
   };
 
   SapSolver() = default;

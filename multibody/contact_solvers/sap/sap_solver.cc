@@ -124,6 +124,9 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
   SearchDirectionData search_direction_data(nv, nk);
   std::deque<double> cost_deque;  // Save last M values for GLL line search.
   stats_ = SolverStats();
+  stats_.num_constraints = model_->num_constraints();
+  stats_.num_constraint_equations = model_->num_constraint_equations();
+
   // The supernodal solver is expensive to instantiate and therefore we only
   // instantiate when needed.
   std::unique_ptr<SuperNodalSolver> supernodal_solver;

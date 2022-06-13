@@ -24,6 +24,10 @@
 #include "drake/geometry/drake_visualizer.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
+
 // #include "drake/multibody/contact_solvers/contact_solver_results.h"
 // #include "drake/multibody/contact_solvers/contact_solver_utils.h"
 // #include "drake/multibody/contact_solvers/sap/sap_contact_problem.h"
@@ -89,6 +93,7 @@ DEFINE_int32(
     "Number previous costs, in addition to current. M in GLL's paper.");
 DEFINE_int32(gll_N, 2, "Num regular Armijo's before GLL. N in GLL's paper.");    
 DEFINE_int32(sap_max_iterations, 100, "Max SAP iterations.");
+DEFINE_int32(ls_max_iterations, 50, "Max SAP iterations.");
 
 namespace drake {
 namespace examples {
@@ -110,6 +115,7 @@ using math::RigidTransformd;
 using math::RotationMatrixd;
 using Eigen::Vector3d;
 using drake::multibody::internal::CompliantContactManager;
+using drake::multibody::internal::ManagerStats;
 // using drake::multibody::contact_solvers::internal::ContactSolverResults;
 // using drake::multibody::contact_solvers::internal::MergeNormalAndTangent;
 // using drake::multibody::contact_solvers::internal::SapContactProblem;
@@ -197,7 +203,7 @@ int do_main() {
     CompliantContactManager<double>* manager = owned_manager.get();
     plant.SetDiscreteUpdateManager(std::move(owned_manager));
     drake::multibody::contact_solvers::internal::SapSolverParameters ssp;
-    ssp.ls_max_iterations = 170;  // 0.8^170 = 3.3520e-17
+    ssp.ls_max_iterations = FLAGS_ls_max_iterations;  // 0.8^170 = 3.3520e-17
     ssp.max_iterations = 5000;
     if (FLAGS_line_search == "exact") {
       ssp.line_search_type = SapSolverParameters::LineSearchType::kExact;
@@ -240,9 +246,7 @@ int do_main() {
         std::string name = "Ball"+std::to_string(i);
         plant.SetFreeBodyPose(&plant_context, plant.GetBodyByName(name.c_str()), math::RigidTransformd{Vector3d(0.15, 0.15, 1+0.1*i)});
     }
-
-    simulator->set_publish_every_time_step(true);
-    simulator->set_target_realtime_rate(FLAGS_target_realtime_rate);
+    
     simulator->Initialize();
 
     clock::time_point sim_start_time = clock::now();
@@ -253,6 +257,32 @@ int do_main() {
     std::cout << "AdvanceTo() time [sec]: " << sim_time << std::endl;
 
     systems::PrintSimulatorStatistics(*simulator);
+
+    const ManagerStats& stats = manager->stats();
+    PRINT_VAR(stats.free_motion_accelerations_time);
+    PRINT_VAR(stats.free_motion_velocities_time);
+    PRINT_VAR(stats.discrete_pairs_time);
+    PRINT_VAR(stats.contact_kinematics_time);
+    PRINT_VAR(stats.make_problem_time);
+    PRINT_VAR(stats.solve_problem_time);
+    PRINT_VAR(stats.pack_results_time);
+    PRINT_VAR(stats.discrete_update_time);
+    PRINT_VAR(stats.contact_results_time);
+
+    std::cout << std::endl;
+    PRINT_VAR(stats.sap_stats.size());
+    PRINT_VAR(stats.num_iters);
+    PRINT_VAR(stats.num_ls_iters);
+
+    int num_constraints = 0;
+    int num_constraint_equations = 0;
+    for (const auto& s : stats.sap_stats) {
+      num_constraints += s.num_constraints;
+      num_constraint_equations += s.num_constraint_equations;
+    }
+    PRINT_VAR(num_constraints);
+    PRINT_VAR(num_constraint_equations);
+
     return 0;
 }
 

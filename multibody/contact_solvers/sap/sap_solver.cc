@@ -143,11 +143,14 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
 
   // Start Newton iterations.
   int k = 0;
-  double ell_previous = model_->EvalCost(*context);
+  double ell = model_->EvalCost(*context);
+  double ell_previous = ell;
   cost_deque.push_front(ell_previous);
   double cost_max = ell_previous;
   double cost_max_previous = cost_max;
   bool converged = false;
+  double alpha = 1.0;
+  int ls_iters = 0;
   for (;; ++k) {
     // We first verify the stopping criteria. If satisfied, we skip expensive
     // factorizations.
@@ -163,6 +166,15 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
       converged = true;
       break;
     } else {
+      const double slop =
+          parameters_.relative_slop * std::max(1.0, (ell + ell_previous) / 2.0);
+      if (ell > ell_previous + slop) {
+        std::cout << fmt::format("At iter {} cost increased by: {}. alpha= {}. mom (rel) = {}\n", k,
+                                 std::abs(ell - ell_previous), alpha, momentum_residual / momentum_scale);
+        if (parameters_.nonmonotonic_convergence_is_error) {
+          throw std::runtime_error("Non-monotonic convergence detected.");
+        }
+      }
       if (!parameters_.use_dense_algebra && supernodal_solver == nullptr) {
         // Instantiate supernodal solver on the first iteration when needed. If
         // the stopping criteria is satisfied at k = 0 (good guess), then we
@@ -183,9 +195,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
     CalcSearchDirectionData(*context, supernodal_solver.get(),
                             &search_direction_data);
     const VectorX<double>& dv = search_direction_data.dv;    
-
-    double alpha = 1.0;
-    int ls_iters = 0;
+    
     StopWatch watch;
     switch (parameters_.line_search_type) {
       case SapSolverParameters::LineSearchType::kBackTracking:
@@ -210,7 +220,8 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
     // Update state.
     model_->GetMutableVelocities(context.get()) += alpha * dv;
 
-    const double ell = model_->EvalCost(*context);
+    ell_previous = ell;
+    ell = model_->EvalCost(*context);
 
     // At iteration k, the cost queue will always contain ell_k plus all
     // previous costs ell_{k-j}, with j = 0, gll_num_previous_costs.
@@ -235,8 +246,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
     // to account for round-off errors.
     // TODO(amcastro-tri): We might need to loosen this slop or make this an
     // ASSERT instead.
-    const double slop =
-        50 * std::numeric_limits<double>::epsilon() * std::max(1.0, ell_scale);    
+    const double slop = parameters_.relative_slop * std::max(1.0, ell_scale);
     if (parameters_.line_search_type ==
         SapSolverParameters::LineSearchType::kGll) {
       // GLL allows non-monotone convergence. However the sequence {cost_max} is
@@ -248,8 +258,8 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
       // triggered because of round-off errors at the minimum.
       if (ell > ell_previous) {
         // Warn to console.
-        std::cout << fmt::format("Cost increased by: {}.\n",
-                                 std::abs(ell - ell_previous));
+        //std::cout << fmt::format("Cost increased by: {}.\n",
+        //                         std::abs(ell - ell_previous));
         //PRINT_VAR(ell);
         //PRINT_VAR(std::abs(ell-ell_previous));
         //PRINT_VAR(slop);
@@ -265,9 +275,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
     stats_.cost_criterion_reached =
         ell_decrement < parameters_.cost_abs_tolerance +
                             parameters_.cost_rel_tolerance * ell_scale &&
-        alpha > 0.5;
-
-    ell_previous = ell;
+        alpha > 0.5;    
   }
 
   if (!converged) return SapSolverStatus::kFailure;
@@ -411,9 +419,12 @@ std::pair<T, int> SapSolver<T>::PerformBackTrackingLineSearch(
   const T dell_dalpha0 = ell_grad_v0.dot(dv);
 
   T alpha = parameters_.ls_alpha_max;
-  T ell = CalcCostAlongLine(context, search_direction_data, alpha, scratch);
-
-  const double kTolerance = 50 * std::numeric_limits<double>::epsilon();
+  T dell, d2ell;
+  VectorX<T> vec_scratch;
+  T ell = CalcCostAlongLine(context, search_direction_data, alpha, scratch,
+                            &vec_scratch, &dell, &d2ell);
+  if (dell < 0) return std::make_pair(alpha, 0);
+  
   // N.B. We expect ell_scale != 0 since otherwise SAP's optimality condition
   // would've been reached and the solver would not reach this point.
   // N.B. ell = 0 implies v = v* and gamma = 0, for which the momentum residual
@@ -424,9 +435,14 @@ std::pair<T, int> SapSolver<T>::PerformBackTrackingLineSearch(
   // optimality tolerances, the optimality condition was not met and SAP
   // performed an additional iteration to find a search direction that, most
   // likely, is close to zero. We therefore detect this case with dell_dalpha0 ≈
-  // 0 and accept the search direction with alpha = 1.
+  // 0 and accept the search direction with alpha = 1.  
+
+  // TODO(amcastro-tri): Consider making this a tighter than relative_slop so
+  // that the check on the monotonic decrease of the cost does not lead to false
+  // negatives.
   const T ell_scale = 0.5 * (ell + ell0);
-  if (abs(dell_dalpha0 / ell_scale) < kTolerance) return std::make_pair(1.0, 0);
+  if (abs(dell / ell_scale) < parameters_.relative_slop / 10.0)
+    return std::make_pair(alpha, 0);
 
   // dℓ/dα(α = 0) is guaranteed to be strictly negative given the the Hessian of
   // the cost is positive definite. Only round-off errors in the factorization
@@ -438,7 +454,7 @@ std::pair<T, int> SapSolver<T>::PerformBackTrackingLineSearch(
         "The cost does not decrease along the search direction. This is "
         "usually caused by an excessive accumulation round-off errors for "
         "ill-conditioned systems. Consider revisiting your model.");
-  }
+  }  
 
   // Verifies if ell(alpha) satisfies Armijo's criterion.
   auto satisfies_armijo = [c, ell0, dell_dalpha0](const T& alpha_in,
@@ -450,10 +466,26 @@ std::pair<T, int> SapSolver<T>::PerformBackTrackingLineSearch(
   T alpha_prev = alpha;
   T ell_prev = ell;
 
+  struct HistData {
+    T alpha;
+    T cost;
+  };
+  std::vector<HistData> hist;
+  hist.push_back(HistData{0.0, ell0});
+
   int iteration = 1;
   for (; iteration < max_iterations; ++iteration) {
     alpha *= rho;
     ell = CalcCostAlongLine(context, search_direction_data, alpha, scratch);
+    hist.push_back(HistData{alpha, ell});
+
+    // If variations in the cost are withing round-off errors (to within some
+    // threshold), it is because the gradient is close to zero and we return
+    // with the latest value of alpha.
+    const T dell_dalpha_approx = (ell - ell_prev) / (alpha - alpha_prev);
+    if (abs(dell_dalpha_approx / ell_scale) < parameters_.relative_slop / 10.0)
+      return std::make_pair(alpha, iteration);
+
     // We scan discrete values of alpha from alpha_max to zero and seek for the
     // minimum value of the cost evaluated at those discrete values. Since we
     // know the cost is convex, we detect this minimum by checking the condition
@@ -474,6 +506,13 @@ std::pair<T, int> SapSolver<T>::PerformBackTrackingLineSearch(
 
   // If the very last iterate satisfies Armijo's, we use it.
   if (satisfies_armijo(alpha, ell)) return std::make_pair(alpha, iteration);
+
+  PRINT_VAR(dell_dalpha0);
+  PRINT_VAR(dell);
+  std::cout << "Cost history:\n";
+  for (auto d : hist) {
+    std::cout << fmt::format("{} {}\n", d.alpha, d.cost);
+  }
 
   // If we are here, the line-search could not find a valid parameter that
   // satisfies Armijo's criterion.
@@ -709,9 +748,9 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
                   dell / ell_scale);
 
   //std::cout << "Calling DoNewtonWithBisectionFallback():\n";
-  const double x_rel_tol = parameters_.ls_rel_tolerance;
+  //const double x_rel_tol = parameters_.ls_rel_tolerance;
   const auto [alpha, num_iters] = DoNewtonWithBisectionFallback(
-      cost_and_gradient, bracket, alpha_guess, x_rel_tol, kTolerance, 100);
+      cost_and_gradient, bracket, alpha_guess, kTolerance, kTolerance, 100);
   //std::cout << std::endl;      
 
   return std::make_pair(alpha, num_iters);

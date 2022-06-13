@@ -63,6 +63,7 @@ DoNewtonWithBisectionFallback(
     return std::make_pair(x, dx_negative);
   };
 
+#if 0
   struct HistData {
     double x;
     double f;
@@ -70,6 +71,7 @@ DoNewtonWithBisectionFallback(
   };
   std::vector<HistData> hist;
   hist.push_back(HistData{root, f, df});
+#endif  
 
   for (int num_evaluations = 1; num_evaluations <= max_iterations;
        ++num_evaluations) {
@@ -108,7 +110,7 @@ DoNewtonWithBisectionFallback(
     // The one evaluation per iteration.
     f_previous = f;
     std::tie(f, df) = function(root);
-    hist.push_back(HistData{root, f, df});
+    //hist.push_back(HistData{root, f, df});
 
     DRAKE_LOGGER_DEBUG(
         "x = {:10.4g}. [x_lower, x_upper] = [{:10.4g}, "
@@ -123,10 +125,12 @@ DoNewtonWithBisectionFallback(
     bracket.Update(root, f);
   }
 
+#if 0
   std::cout << "History:\n";
   for (auto&d : hist) {
     std::cout << fmt::format("{} {} {}\n", d.x, d.f, d.df);
   }
+#endif  
 
   // If here, then DoNewtonWithBisectionFallback did not converge.
   // This will happen for instance when the maximum number of iterations is too

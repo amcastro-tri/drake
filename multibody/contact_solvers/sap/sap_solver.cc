@@ -168,9 +168,13 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
     } else {
       const double slop =
           parameters_.relative_slop * std::max(1.0, (ell + ell_previous) / 2.0);
-      if (ell > ell_previous + slop) {
-        std::cout << fmt::format("At iter {} cost increased by: {}. alpha= {}. mom (rel) = {}\n", k,
-                                 std::abs(ell - ell_previous), alpha, momentum_residual / momentum_scale);
+      if (ell > ell_previous + slop &&
+          parameters_.line_search_type !=
+              SapSolverParameters::LineSearchType::kGll) {
+        std::cout << fmt::format(
+            "At iter {} cost increased by: {}. alpha= {}. mom (rel) = {}\n", k,
+            std::abs(ell - ell_previous), alpha,
+            momentum_residual / momentum_scale);
         if (parameters_.nonmonotonic_convergence_is_error) {
           throw std::runtime_error("Non-monotonic convergence detected.");
         }

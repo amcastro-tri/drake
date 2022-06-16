@@ -436,7 +436,6 @@ std::pair<T, int> SapSolver<T>::PerformExactLineSearch(
       "SapSolver::PerformExactLineSearch(): Only T = double is supported.");
 }
 
-
 template <>
 std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
     const systems::Context<double>& context,
@@ -448,15 +447,6 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   model_->EvalConstraintsHessian(*scratch);
   model_->EvalImpulses(*scratch);
 
-  // ===========================================================================
-  // Copy/paste from PerformBackTrackingLineSearch(). Consider refactoring.
-  // ===========================================================================
-
-  // Line search parameters.
-  //const double rho = parameters_.ls_rho;
-  //const double c = parameters_.ls_c;
-  //const int max_iterations = parameters_.ls_max_iterations;
-
   // Quantities at alpha = 0.
   const double ell0 = model_->EvalCost(context);
   const VectorX<double>& ell_grad_v0 = model_->EvalCostGradient(context);
@@ -464,36 +454,6 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   // dℓ/dα(α = 0) = ∇ᵥℓ(α = 0)⋅Δv.
   const VectorX<double>& dv = search_direction_data.dv;
   const double dell_dalpha0 = ell_grad_v0.dot(dv);
-
-  // Cost and gradient at alpha_max.
-  double dell, d2ell;
-  VectorX<double> vec_scratch;
-  const double ell_alpha_max = CalcCostAlongLine(
-      context, search_direction_data, parameters_.ls_alpha_max, scratch, &dell,
-      &d2ell, &vec_scratch);
-  // If the cost keeps decreasing at alpha_max, then alpha = alpha_max is a good
-  // step size.                        
-  if (dell <= 0) return std::make_pair(parameters_.ls_alpha_max, 0);
-
-  // TODO(amcastro-tri): estimate tolerance that takes into account the problem
-  // size and therefor the expected precision loss during matrix-vector
-  // multiplications (when using block sparse matrices).
-  const double kTolerance = 50 * std::numeric_limits<double>::epsilon();
-  // N.B. We expect ell_scale != 0 since otherwise SAP's optimality condition
-  // would've been reached and the solver would not reach this point.
-  // N.B. ell = 0 implies v = v* and gamma = 0, for which the momentum residual
-  // is zero.
-  // Given that the Hessian in SAP is SPD we know that dell_dalpha0 < 0
-  // (strictly). dell_dalpha0 = 0 would mean that we reached the optimum but
-  // most certainly due to round-off errors or very tight user specified
-  // optimality tolerances, the optimality condition was not met and SAP
-  // performed an additional iteration to find a search direction that, most
-  // likely, is close to zero. We therefore detect this case with dell_dalpha0 ≈
-  // 0 and accept the search direction with alpha = 1.
-  const double ell_scale = 0.5 * (ell_alpha_max + ell0);
-  if (abs(dell_dalpha0 / ell_scale) < kTolerance) return std::make_pair(1.0, 0);
-  //PRINT_VAR(ell_scale);
-  //PRINT_VAR(abs(dell_dalpha0 / ell_scale));
 
   // dℓ/dα(α = 0) is guaranteed to be strictly negative given the the Hessian of
   // the cost is positive definite. Only round-off errors in the factorization
@@ -507,9 +467,29 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
         "ill-conditioned systems. Consider revisiting your model.");
   }
 
-  // ===========================================================================
-  // End of copy/pasta.
-  // ===========================================================================
+  double alpha = parameters_.ls_alpha_max;
+  double dell{NAN};
+  double ell =
+      CalcCostAlongLine(context, search_direction_data, alpha, scratch, &dell);
+
+  // If the cost is still decreasing at alpha, we accept this value.
+  if (dell < 0) return std::make_pair(alpha, 0);
+
+  // N.B. ell = 0 implies v = v* and gamma = 0, the solver would've exited
+  // trivially and we would've never gotten to this point. Thus we know
+  // ell_scale != 0.
+  const double ell_scale = 0.5 * (ell + ell0);
+
+  // N.B. SAP checks that the cost decreases monotonically using a slop to avoid
+  // false negatives due to round-off errors. Therefore if we are going to exit
+  // when the gradient is near zero, we want to ensure the error introduced by a
+  // gradient close to zero (though not exaclty zero) is much smaller than the
+  // slop. Thefore we use a relative slop much smaller than the one used to
+  // verify monotonic convergence.
+  const double ell_slop =
+      parameters_.relative_slop / 10.0 * std::max(1.0, ell_scale);
+  if (abs(dell_dalpha0) < ell_slop) return std::make_pair(1.0, 0);
+  if (abs(dell) < ell_slop) return std::make_pair(alpha, 0);
 
   // N.B. We place the data needed to evaluate cost and gradients into a single
   // struct so that cost_and_gradient only needs to capture a single pointer.
@@ -518,29 +498,18 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
     const SapSolver<double>* solver;
     const Context<double>& context0;  // Context at alpha = 0.
     const SearchDirectionData& search_direction_data;
-    Context<double>& scratch;   // Context at alpha != 0.
+    Context<double>& scratch;  // Context at alpha != 0.
     const double ell_scale;
     VectorX<double> vec_scratch;
   };
   EvalData data{this, context, search_direction_data, *scratch, ell_scale};
 
   auto cost_and_gradient = [&data](double x) {
-    // We normalize as:
-    // ell_tilde = (ell-ell_min)/ell_delta
-
-    // x == alpha
-    // f == dell_dalpha
-    // dfdx == d2ell_dalpha2
     double dell_dalpha;
     double d2ell_dalpha2;
     data.solver->CalcCostAlongLine(data.context0, data.search_direction_data, x,
                                    &data.scratch, &dell_dalpha, &d2ell_dalpha2,
                                    &data.vec_scratch);
-
-    //PRINT_VAR(x);
-    //PRINT_VAR(dell_dalpha / data.ell_scale);
-    //PRINT_VAR(d2ell_dalpha2 / data.ell_scale);
-
     return std::make_pair(dell_dalpha / data.ell_scale,
                           d2ell_dalpha2 / data.ell_scale);
   };
@@ -554,15 +523,13 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   // 0, and therefore [0, alpha_max] is a valid bracket. Otherwise we would've
   // already returned or thrown an exception due to numerical errors.
   const Bracket bracket(0., dell_dalpha0 / ell_scale, parameters_.ls_alpha_max,
-                  dell / ell_scale);
+                        dell / ell_scale);
 
-  //std::cout << "Calling DoNewtonWithBisectionFallback():\n";
-  //const double x_rel_tol = parameters_.ls_rel_tolerance;
-  const auto [alpha, num_iters] = DoNewtonWithBisectionFallback(
-      cost_and_gradient, bracket, alpha_guess, kTolerance, kTolerance, 100);
-  //std::cout << std::endl;      
-
-  return std::make_pair(alpha, num_iters);
+  // std::cout << "Calling DoNewtonWithBisectionFallback():\n";
+  // const double x_rel_tol = parameters_.ls_rel_tolerance;
+  const double kTolerance = 50 * std::numeric_limits<double>::epsilon();
+  return DoNewtonWithBisectionFallback(cost_and_gradient, bracket, alpha_guess,
+                                       kTolerance, kTolerance, 100);
 }
 
 template <typename T>

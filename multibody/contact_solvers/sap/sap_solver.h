@@ -102,6 +102,9 @@ struct SapSolverParameters {
   double cost_rel_tolerance{1.e-15};  // Relative tolerance εᵣ.
   int max_iterations{100};            // Maximum number of Newton iterations.
 
+  enum LineSearchType { kBackTracking, kExact };
+  LineSearchType line_search_type{LineSearchType::kExact};
+
   // Line-search parameters.
   int ls_max_iterations{40};  // Maximum number of line search iterations.
   double ls_c{1.0e-4};        // Armijo's criterion parameter.
@@ -262,11 +265,15 @@ class SapSolver {
   // [Castro et al., 2021].
   // If dell_dalpha != nullptr, on return dell_dalpha contains the value of the
   // derivative dℓ/dα = ∇ℓ(vᵐ)⋅Δvᵐ.
+  // If d2ell_dalpha2 != nullptr then on return d2ell_dalpha2 contains the value
+  // of the second derivative d²ℓ/dα².
   // @pre context was created by the underlying SapModel.
+  // @pre vec_scratch != nullptr if d2ell_dalpha2 != nullptr.
   T CalcCostAlongLine(const systems::Context<T>& context,
                       const SearchDirectionData& search_direction_data,
                       const T& alpha, systems::Context<T>* scratch,
-                      T* dell_dalpha = nullptr) const;
+                      T* dell_dalpha = nullptr, T* d2ell_dalpha2 = nullptr,
+                      VectorX<T>* vec_scratch = nullptr) const;
 
   // Approximation to the 1D minimization problem α = argmin ℓ(α) = ℓ(v + αΔv)
   // over α. We define ϕ(α) = ℓ₀ + α c ℓ₀', where ℓ₀ = ℓ(0), ℓ₀' = dℓ/dα(0) and
@@ -285,6 +292,11 @@ class SapSolver {
   // @pre both context and scratch_workspace were created by the underlying
   // SapModel.
   std::pair<T, int> PerformBackTrackingLineSearch(
+      const systems::Context<T>& context,
+      const SearchDirectionData& search_direction_data,
+      systems::Context<T>* scratch_workspace) const;
+
+  std::pair<T, int> PerformExactLineSearch(
       const systems::Context<T>& context,
       const SearchDirectionData& search_direction_data,
       systems::Context<T>* scratch_workspace) const;
@@ -345,6 +357,10 @@ template <>
 SapSolverStatus SapSolver<double>::SolveWithGuess(
     const SapContactProblem<double>&, const VectorX<double>&,
     SapSolverResults<double>*);
+template <>
+std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
+    const systems::Context<double>&, const SearchDirectionData&,
+    systems::Context<double>*) const;
 
 }  // namespace internal
 }  // namespace contact_solvers

@@ -129,6 +129,8 @@ drake_cc_library(
     name = "sap_solver",
     srcs = ["sap_solver.cc"],
     hdrs = ["sap_solver.h"],
+#    copts = ["-UNDEBUG"],
+    copts = ["-g", "-O2"],
     deps = [
         ":sap_model",
         ":sap_solver_results",

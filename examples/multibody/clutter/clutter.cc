@@ -513,6 +513,8 @@ int do_main() {
     parameters.ls_c = FLAGS_armijo_c;
     parameters.ls_max_iterations = 200;
     parameters.max_iterations = FLAGS_sap_max_iterations;
+    parameters.abs_tolerance = FLAGS_abs_tol;
+    parameters.rel_tolerance = FLAGS_rel_tol;
     manager->set_sap_solver_parameters(parameters);
   }
 

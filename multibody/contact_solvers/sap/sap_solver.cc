@@ -159,6 +159,10 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
       const double ell_slop =
           parameters_.relative_slop * std::max(1.0, ell_scale);
       if (ell > ell_previous + ell_slop) {
+        std::cout << fmt::format("At iter {} cost increased by: {}. alpha= {}. Relative momentum "
+            "residual = {}\n",
+            k, std::abs(ell - ell_previous), alpha,
+            momentum_residual / momentum_scale);
         DRAKE_LOGGER_DEBUG(
             "At iter {} cost increased by: {}. alpha= {}. Relative momentum "
             "residual = {}\n",
@@ -486,9 +490,9 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   // gradient close to zero (though not exaclty zero) is much smaller than the
   // slop. Thefore we use a relative slop much smaller than the one used to
   // verify monotonic convergence.
-  const double ell_slop =
-      parameters_.relative_slop / 10.0 * std::max(1.0, ell_scale);
-  if (abs(dell_dalpha0) < ell_slop) return std::make_pair(1.0, 0);
+  const double ell_slop = parameters_.relative_slop * std::max(1.0, ell_scale);
+  (void)ell_slop;
+  // TODO: understand why 1/10 is too tight and SAP fails.      
   if (abs(dell) < ell_slop) return std::make_pair(alpha, 0);
 
   // N.B. We place the data needed to evaluate cost and gradients into a single
@@ -528,6 +532,7 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   // std::cout << "Calling DoNewtonWithBisectionFallback():\n";
   // const double x_rel_tol = parameters_.ls_rel_tolerance;
   const double kTolerance = 50 * std::numeric_limits<double>::epsilon();
+  // TODO(amcastro-tri): Consider f_tolerance based on ell_scale.
   return DoNewtonWithBisectionFallback(cost_and_gradient, bracket, alpha_guess,
                                        kTolerance, kTolerance, 100);
 }

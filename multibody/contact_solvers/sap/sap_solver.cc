@@ -673,8 +673,7 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
 
   // TODO(amcastro-tri): estimate tolerance that takes into account the problem
   // size and therefor the expected precision loss during matrix-vector
-  // multiplications (when using block sparse matrices).
-  const double kTolerance = 50 * std::numeric_limits<double>::epsilon();
+  // multiplications (when using block sparse matrices).  
   // N.B. We expect ell_scale != 0 since otherwise SAP's optimality condition
   // would've been reached and the solver would not reach this point.
   // N.B. ell = 0 implies v = v* and gamma = 0, for which the momentum residual
@@ -687,7 +686,9 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   // likely, is close to zero. We therefore detect this case with dell_dalpha0 ≈
   // 0 and accept the search direction with alpha = 1.
   const double ell_scale = 0.5 * (ell_alpha_max + ell0);
-  if (abs(dell_dalpha0 / ell_scale) < kTolerance) return std::make_pair(1.0, 0);
+  const double slop = parameters_.relative_slop * std::max(1.0, ell_scale);
+  //if (abs(dell_dalpha0) < slop) return std::make_pair(1.0, 0);
+  if (abs(dell) < slop) return std::make_pair(parameters_.ls_alpha_max, 0);
   //PRINT_VAR(ell_scale);
   //PRINT_VAR(abs(dell_dalpha0 / ell_scale));
 
@@ -753,6 +754,7 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
 
   //std::cout << "Calling DoNewtonWithBisectionFallback():\n";
   //const double x_rel_tol = parameters_.ls_rel_tolerance;
+  const double kTolerance = 50 * std::numeric_limits<double>::epsilon();
   const auto [alpha, num_iters] = DoNewtonWithBisectionFallback(
       cost_and_gradient, bracket, alpha_guess, kTolerance, kTolerance, 100);
   //std::cout << std::endl;      

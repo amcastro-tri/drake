@@ -7,6 +7,7 @@ load("@drake//tools/skylark:test_tags.bzl", "mosek_test_tags")
 drake_cc_binary(
     name = "autodiff_overwrite",
     srcs = ["autodiff_overwrite.cc"],
+    copts = ["-g", "-O2"],
     deps = [
         "//common:essential",
         "//math:autodiff",

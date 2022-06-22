@@ -9,43 +9,60 @@ using namespace drake;
 /**
  * A normal function that computes y = f(x) using autodiff.
  */
-VectorX<AutoDiffXd> normal_function(MatrixX<double> A, VectorX<AutoDiffXd> x) {
-  return x.transpose() * A * x;
+template <typename T>
+void TestFunction(const MatrixX<double>& A, const VectorX<T>& x,
+                  VectorX<T>* y) {
+  DRAKE_DEMAND(y != nullptr);
+  DRAKE_DEMAND(y->size() == x.size());
+  y->noalias() = x.transpose() * A * x;
+}
+
+// Same as TestFunction, but optimized (via specialization) for T = AutoDiffXd.
+template <typename T>
+void TestFunctionOptimized(const MatrixX<double>& A, const VectorX<T>& x,
+                           VectorX<T>* y) {
+  TestFunction(A, x, y);
 }
 
 /**
- * A fancy function that computes y = f(x) with floating point math, then uses
- * our special insights to compute dy/dx analytically. These are then loaded
- * back into the derivatives() of y.
+ * Specialize `TestFunctionOptimized()` to T = AutoDiffXd so that calling code
+ * does not need to worry about wether it works with <double> or AutoDiffXd.
+ * This uses our special insights to compute dy/dx analytically. These are then
+ * loaded back into the derivatives() of y.
  */
-VectorX<AutoDiffXd> fancy_function(MatrixX<double> A, VectorX<AutoDiffXd> x) {
+template <>
+void TestFunctionOptimized(const MatrixX<double>& A,
+                           const VectorX<AutoDiffXd>& x,
+                           VectorX<AutoDiffXd>* y) {
+  DRAKE_DEMAND(y != nullptr);
+  DRAKE_DEMAND(y->size() == x.size());
+
   VectorX<double> val = math::ExtractValue(x);
   MatrixX<double> grad = math::ExtractGradient(x);
 
   // Compute the main result using floating point math
-  VectorX<double> res = val.transpose() * A * val;
+  VectorX<double> res(x.size());
+  TestFunction(A, val, &res);
 
   // Compute the derivatives() analytically.
-  MatrixX<double> dy_dx = val.transpose() * (A + A.transpose());
-  MatrixX<double> deriv = dy_dx * grad;  // chain rule
+  const MatrixX<double> dy_dx = val.transpose() * (A + A.transpose());
+  const MatrixX<double> deriv = dy_dx * grad;  // chain rule
 
   // Load those into a newly computed result.
   // Note that other versions of InitializeAutoDiff may end up being
   // more useful to us, such as the one that takes a pointer to y
   // (the resulting autodiff matrix) rather than returning it.
-  VectorX<AutoDiffXd> y = math::InitializeAutoDiff(res, deriv);
-
-  return y;
+  y->noalias() = math::InitializeAutoDiff(res, deriv);
 }
 
 int main() {
   // Size of the vector x
-  int n = 100;
+  int n = 300;
 
   // Define original vector
   VectorX<double> x(n);
   x.setRandom(n, 1);
-  VectorX<AutoDiffXd> x_ad = math::InitializeAutoDiff(x);
+  const VectorX<AutoDiffXd> x_ad = math::InitializeAutoDiff(x);
 
   // Define the matrix that we use for the test function y = x'Ax
   MatrixX<double> A(n, n);
@@ -58,11 +75,13 @@ int main() {
 
   // Do some maths
   st = std::chrono::high_resolution_clock::now();
-  auto y_normal = normal_function(A, x_ad);
+  VectorX<AutoDiffXd> y_normal(n);
+  TestFunction(A, x_ad, &y_normal);
   elapsed_normal = std::chrono::high_resolution_clock::now() - st;
 
   st = std::chrono::high_resolution_clock::now();
-  auto y_fancy = fancy_function(A, x_ad);
+  VectorX<AutoDiffXd> y_fancy(n);
+  TestFunctionOptimized(A, x_ad, &y_fancy);
   elapsed_fancy = std::chrono::high_resolution_clock::now() - st;
 
   // Print the results
@@ -74,17 +93,13 @@ int main() {
   std::cout << std::endl;
 
   // Sanity check
-  VectorX<double> value_diff =
+  const VectorX<double> value_diff =
       math::ExtractValue(y_normal) - math::ExtractValue(y_fancy);
-  VectorX<double> deriv_diff =
+  const MatrixX<double> deriv_diff =
       math::ExtractGradient(y_normal) - math::ExtractGradient(y_fancy);
 
-  if (value_diff.norm() < 1e-12) {
-    std::cout << "values match" << std::endl;
-  }
-  if (deriv_diff.norm() < 1e-12) {
-    std::cout << "gradients match" << std::endl;
-  }
+  std::cout << fmt::format("Values error: {}\n", value_diff.norm());
+  std::cout << fmt::format("Gradients error: {}\n", deriv_diff.norm());
 
   return 0;
 }

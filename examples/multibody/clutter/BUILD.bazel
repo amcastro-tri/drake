@@ -17,6 +17,7 @@ drake_cc_binary(
     copts = ["-Wno-error=deprecated-declarations","-Wno-deprecated-declarations","-Wno-error=unused-variable"],
     deps = [
         "//common:add_text_logging_gflags",
+        "//common:profiler",
         "//geometry:drake_visualizer",
         "//multibody/plant:contact_results_to_lcm",
         "//multibody/contact_solvers/sap:sap_solver",

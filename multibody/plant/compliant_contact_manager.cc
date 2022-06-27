@@ -22,6 +22,7 @@
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/triangle_quadrature/gaussian_triangle_quadrature_rule.h"
 #include "drake/systems/framework/context.h"
+#include "drake/common/profiler.h"
 
 using drake::geometry::GeometryId;
 using drake::geometry::PenetrationAsPointPair;
@@ -39,6 +40,15 @@ using drake::multibody::contact_solvers::internal::SapSolverStatus;
 using drake::multibody::internal::DiscreteContactPair;
 using drake::multibody::internal::MultibodyTreeTopology;
 using drake::systems::Context;
+
+// N.B. Static variables do not need to be captured in a lambda, they are
+// global!
+// https://stackoverflow.com/questions/13827855/capturing-a-static-variable-by-reference-in-a-c11-lambda
+#define INSTRUMENT_WITH_TIMER() \
+  static const drake::common::TimerIndex timer = \
+      addTimer(__func__); \
+  startTimer(timer); \
+  ScopeExit guard([]() { stopTimer(timer); })
 
 namespace drake {
 namespace multibody {
@@ -554,8 +564,10 @@ void CompliantContactManager<T>::CalcAccelerationsDueToNonContactForcesCache(
 
 template <typename T>
 void CompliantContactManager<T>::CalcFreeMotionVelocities(
-    const systems::Context<T>& context, VectorX<T>* v_star) const {
-  DRAKE_DEMAND(v_star != nullptr);
+    const systems::Context<T>& context, VectorX<T>* v_star) const {        
+  INSTRUMENT_WITH_TIMER();
+
+  DRAKE_DEMAND(v_star != nullptr);  
   // N.B. Forces are evaluated at the previous time step state. This is
   // consistent with the explicit Euler and symplectic Euler schemes.
   // TODO(amcastro-tri): Implement free-motion velocities update based on the
@@ -572,6 +584,8 @@ void CompliantContactManager<T>::CalcFreeMotionVelocities(
 template <typename T>
 void CompliantContactManager<T>::CalcLinearDynamicsMatrix(
     const systems::Context<T>& context, std::vector<MatrixX<T>>* A) const {
+  INSTRUMENT_WITH_TIMER();
+
   DRAKE_DEMAND(A != nullptr);
   A->resize(tree_topology().num_trees());
   const int nv = plant().num_velocities();
@@ -621,6 +635,8 @@ template <typename T>
 void CompliantContactManager<T>::DoCalcContactSolverResults(
     const systems::Context<T>& context,
     ContactSolverResults<T>* contact_results) const {
+  INSTRUMENT_WITH_TIMER();
+
   const ContactProblemCache<T>& contact_problem_cache =
       EvalContactProblemCache(context);
   const SapContactProblem<T>& sap_problem = *contact_problem_cache.sap_problem;
@@ -862,6 +878,8 @@ void CompliantContactManager<T>::AddLimitConstraints(
 template <typename T>
 void CompliantContactManager<T>::CalcContactProblemCache(
     const systems::Context<T>& context, ContactProblemCache<T>* cache) const {
+  INSTRUMENT_WITH_TIMER();
+      
   SapContactProblem<T>& problem = *cache->sap_problem;
   std::vector<MatrixX<T>> A;
   CalcLinearDynamicsMatrix(context, &A);
@@ -889,6 +907,8 @@ template <typename T>
 void CompliantContactManager<T>::DoCalcDiscreteValues(
     const drake::systems::Context<T>& context,
     drake::systems::DiscreteValues<T>* updates) const {
+  INSTRUMENT_WITH_TIMER();
+
   const ContactSolverResults<T>& results =
       this->EvalContactSolverResults(context);
 

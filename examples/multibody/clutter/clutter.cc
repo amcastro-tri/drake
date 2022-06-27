@@ -27,6 +27,7 @@
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/geometry/proximity_properties.h"
 #include "drake/geometry/collision_filter_declaration.h"
+#include "drake/common/profiler.h"
 
 // To profile with Valgrind run with (the defaults are good):
 // valgrind --tool=callgrind --separate-callers=10 --instr-atstart=no
@@ -568,6 +569,8 @@ int do_main() {
   std::cout << "AdvanceTo() time [sec]: " << sim_time << std::endl;
 
   PrintSimulatorStatistics(*simulator);
+
+  std::cout << TableOfAverages() << "\n";
 
   return 0;
 }

@@ -155,7 +155,13 @@ void stopTimer(drake::common::TimerIndex index);
 /**  Lap the ith timer.
 
  @param  index  The timer identifier supplied by addTimer.  */
-void lapTimer(drake::common::TimerIndex index);
+double lapTimer(drake::common::TimerIndex index);
+
+double lapTimerSeconds(drake::common::TimerIndex index);
+drake::common::TimerIndex PushTimer(drake::common::TimerIndex index);
+void PopTimer();
+
+void UpdateStack(double dt);
 
 /**  Reports the average time of the ith timer in seconds.
 
@@ -166,13 +172,33 @@ double averageTimeInSec(drake::common::TimerIndex index);
 /**  Creates a string representing a table of all of the averages.  */
 std::string TableOfAverages();
 
+// N.B. Static variables do not need to be captured in a lambda, they are
+// global!
+// https://stackoverflow.com/questions/13827855/capturing-a-static-variable-by-reference-in-a-c11-lambda
+#define INSTRUMENT_FUNCTION(details_string)      \
+  std::string description = __func__;            \
+  description += "(): ";                         \
+  description += details_string;                 \
+  static const drake::common::TimerIndex timer = \
+      addTimer(std::move(description));          \
+  PushTimer(timer);                              \
+  startTimer(timer);                             \
+  ScopeExit guard([]() {                         \
+    const double dt = lapTimerSeconds(timer);    \
+    UpdateStack(dt);                             \
+    PopTimer();                                  \
+  })
+
 #else  // not defined ENABLE_TIMERS
 
 #define addTimer(displayString) (common::TimerIndex(0))
 #define startTimer(index) ((void)index)
 #define stopTimer(index) ((void)index)
 #define lapTimer(index) ((void)index)
+#define PushTimer(index) ((void)index)
+#define PopTimer()
 #define averageTimeInSec(index) ((void)index)
 #define TableOfAverages() ("Profiling turned off")
+#define INSTRUMENT_FUNCTION()
 
 #endif  // ENABLE_TIMERS

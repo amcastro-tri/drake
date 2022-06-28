@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "drake/common/eigen_types.h"
 #include "drake/common/scope_exit.h"
@@ -41,14 +42,9 @@ using drake::multibody::internal::DiscreteContactPair;
 using drake::multibody::internal::MultibodyTreeTopology;
 using drake::systems::Context;
 
-// N.B. Static variables do not need to be captured in a lambda, they are
-// global!
-// https://stackoverflow.com/questions/13827855/capturing-a-static-variable-by-reference-in-a-c11-lambda
-#define INSTRUMENT_WITH_TIMER() \
-  static const drake::common::TimerIndex timer = \
-      addTimer(__func__); \
-  startTimer(timer); \
-  ScopeExit guard([]() { stopTimer(timer); })
+// &name = __func__
+// std::cout << name << ": " << dt << std::endl;
+
 
 namespace drake {
 namespace multibody {
@@ -117,6 +113,8 @@ template <typename T>
 std::vector<ContactPairKinematics<T>>
 CompliantContactManager<T>::CalcContactKinematics(
     const systems::Context<T>& context) const {
+  INSTRUMENT_FUNCTION("Computes Jacobians ginve contact pairs.");
+      
   const std::vector<DiscreteContactPair<T>>& contact_pairs =
       EvalDiscreteContactPairs(context);
   const int num_contacts = contact_pairs.size();
@@ -269,6 +267,8 @@ template <typename T>
 void CompliantContactManager<T>::CalcDiscreteContactPairs(
     const systems::Context<T>& context,
     std::vector<DiscreteContactPair<T>>* contact_pairs) const {
+  INSTRUMENT_FUNCTION("Assembles discrete pairs from contact queries.");
+      
   plant().ValidateContext(context);
   DRAKE_DEMAND(contact_pairs != nullptr);
 
@@ -565,7 +565,7 @@ void CompliantContactManager<T>::CalcAccelerationsDueToNonContactForcesCache(
 template <typename T>
 void CompliantContactManager<T>::CalcFreeMotionVelocities(
     const systems::Context<T>& context, VectorX<T>* v_star) const {        
-  INSTRUMENT_WITH_TIMER();
+  INSTRUMENT_FUNCTION("Computes v*.");
 
   DRAKE_DEMAND(v_star != nullptr);  
   // N.B. Forces are evaluated at the previous time step state. This is
@@ -584,7 +584,7 @@ void CompliantContactManager<T>::CalcFreeMotionVelocities(
 template <typename T>
 void CompliantContactManager<T>::CalcLinearDynamicsMatrix(
     const systems::Context<T>& context, std::vector<MatrixX<T>>* A) const {
-  INSTRUMENT_WITH_TIMER();
+  INSTRUMENT_FUNCTION("Computes A.");
 
   DRAKE_DEMAND(A != nullptr);
   A->resize(tree_topology().num_trees());
@@ -635,7 +635,7 @@ template <typename T>
 void CompliantContactManager<T>::DoCalcContactSolverResults(
     const systems::Context<T>& context,
     ContactSolverResults<T>* contact_results) const {
-  INSTRUMENT_WITH_TIMER();
+  INSTRUMENT_FUNCTION("Eval contact problem. Solves with SAP.");
 
   const ContactProblemCache<T>& contact_problem_cache =
       EvalContactProblemCache(context);
@@ -730,6 +730,9 @@ template <typename T>
 std::vector<RotationMatrix<T>>
 CompliantContactManager<T>::AddContactConstraints(
     const systems::Context<T>& context, SapContactProblem<T>* problem) const {
+  INSTRUMENT_FUNCTION(
+      "Evals pairs and kinematics. Adds constraints to the problem.");
+
   DRAKE_DEMAND(problem != nullptr);
 
   // Parameters used by SAP to estimate regularization, see [Castro et al.,
@@ -878,7 +881,7 @@ void CompliantContactManager<T>::AddLimitConstraints(
 template <typename T>
 void CompliantContactManager<T>::CalcContactProblemCache(
     const systems::Context<T>& context, ContactProblemCache<T>* cache) const {
-  INSTRUMENT_WITH_TIMER();
+  INSTRUMENT_FUNCTION("Calcs A, v* and makes contact problem.");
       
   SapContactProblem<T>& problem = *cache->sap_problem;
   std::vector<MatrixX<T>> A;
@@ -907,7 +910,7 @@ template <typename T>
 void CompliantContactManager<T>::DoCalcDiscreteValues(
     const drake::systems::Context<T>& context,
     drake::systems::DiscreteValues<T>* updates) const {
-  INSTRUMENT_WITH_TIMER();
+  INSTRUMENT_FUNCTION("Evals contact results and updates state.");
 
   const ContactSolverResults<T>& results =
       this->EvalContactSolverResults(context);

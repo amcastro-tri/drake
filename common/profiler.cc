@@ -3,6 +3,7 @@
 #include <memory>
 #include <ratio>
 #include <sstream>
+#include <stack>
 #include <vector>
 
 #include <fmt/format.h>
@@ -44,8 +45,29 @@ class Profiler {
     DRAKE_DEMAND(timers_.size() == display_string_.size());
     size_t id = timers_.size();
     timers_.emplace_back();
+    self_wallclock_.push_back(0.0);
     display_string_.emplace_back(std::move(label));
     return TimerIndex(id);
+  }
+
+  TimerIndex PushTimer(TimerIndex index) {
+    DRAKE_DEMAND(timers_.size() == display_string_.size());
+    timers_stack_.push(index);
+    return index;
+  }
+
+  void PopTimer() {
+    timers_stack_.pop();
+  }
+
+  void UpdateStack(double total_time) {
+    double& self_time = self_wallclock_[timers_stack_.top()];
+    self_time += total_time;
+    std::stack<TimerIndex> parent_timers(timers_stack_);  // copy.
+    parent_timers.pop();  // remove self.
+    if (!parent_timers.empty()) {
+      self_wallclock_[parent_timers.top()] -= total_time;
+    }
   }
 
   /**  Reports the number of timers.  */
@@ -131,6 +153,10 @@ class Profiler {
     return display_string_[i];
   }
 
+  double self_time(TimerIndex i) const {
+    return self_wallclock_[i];
+  }
+
  private:
   // Singleton pointer.
   static std::unique_ptr<Profiler> PROFILER;
@@ -142,6 +168,10 @@ class Profiler {
 
   // The timer names; there should be one name for each timer.
   std::vector<::std::string> display_string_;
+
+  std::vector<double> self_wallclock_;
+
+  std::stack<TimerIndex> timers_stack_;
 };
 
 std::unique_ptr<Profiler> Profiler::PROFILER{nullptr};
@@ -160,8 +190,25 @@ void stopTimer(TimerIndex index) {
   Profiler::getMutableInstance().lap<LapTimer::Units>(index);
 }
 
-void lapTimer(TimerIndex index) {
-  Profiler::getMutableInstance().lap<LapTimer::Units>(index);
+TimerIndex PushTimer(TimerIndex index) {
+  return Profiler::getMutableInstance().PushTimer(index);
+}
+
+void PopTimer() {
+  return Profiler::getMutableInstance().PopTimer();
+}
+
+void UpdateStack(double dt) {
+  Profiler::getMutableInstance().UpdateStack(dt);
+}
+
+double lapTimer(TimerIndex index) {
+  return Profiler::getMutableInstance().lap<LapTimer::Units>(index);
+}
+
+double lapTimerSeconds(TimerIndex index) {
+  using Seconds = std::ratio<1, 1>;
+  return Profiler::getMutableInstance().lap<Seconds>(index);
 }
 
 double averageTimeInSec(TimerIndex index) {
@@ -174,15 +221,20 @@ std::string TableOfAverages() {
   const int count = profiler.timerCount();
   std::stringstream ss;
   ss << "All registered profiles average times:\n";
-  ss << fmt::format("{:>15}{:>10}{:>17}  {}", "Time (s)", "Samples",
-                    "Total Time (s)", "Label") << "\n";
+  ss << fmt::format("{:>15}{:>10}{:>17}{:>10} {}", "Time (s)", "Samples",
+                    "Total Time (s)", "Self", "Label") << "\n";
+  double self_total = 0;                    
   for (TimerIndex i(0); i < count; ++i) {
     double time = profiler.average<Seconds>(i);
-    ss << fmt::format("{:>15.7g}{:>10}{:>17.7g}  {}", time, profiler.laps(i),
-                      profiler.total<Seconds>(i), profiler.displayString(i));
-    if (i < count - 1) ss << "\n";
-  }
-  return ss.str();
+    ss << fmt::format("{:>15.7g}{:>10}{:>17.7g}{:>15.7g}  {}", time,
+                      profiler.laps(i), profiler.total<Seconds>(i),
+                      profiler.self_time(i), profiler.displayString(i));
+    //if (i < count - 1)                       
+    ss << "\n";
+    self_total += profiler.self_time(i);
+  }  
+  ss << fmt::format("Self Total: {}\n", self_total);
+  return ss.str();  
 }
 
 #endif  // ENABLE_TIMERS

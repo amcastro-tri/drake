@@ -151,8 +151,10 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
     stats_.optimality_criterion_reached =
         momentum_residual <=
         parameters_.abs_tolerance + parameters_.rel_tolerance * momentum_scale;
+    stats_.cost.push_back(ell);
+    stats_.alpha.push_back(alpha);
     stats_.momentum_residual.push_back(momentum_residual);
-    stats_.momentum_scale.push_back(momentum_scale);
+    stats_.momentum_scale.push_back(momentum_scale);    
     // TODO(amcastro-tri): consider monitoring the duality gap.
     if (stats_.optimality_criterion_reached || stats_.cost_criterion_reached) {
       converged = true;
@@ -234,7 +236,19 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
         alpha > 0.5;
   }
 
-  if (!converged) return SapSolverStatus::kFailure;
+  if (!converged) {
+    std::cout << fmt::format("SAP did not converge in {} iterations.\n",
+                             k);
+    std::cout << fmt::format("  Line search iters: {}.\n",
+                             stats_.num_line_search_iters);
+    std::cout << fmt::format("cost  -  mom.   -   scale   -   alpha.\n");                              
+    for (size_t i = 0; i < stats_.cost.size(); ++i) {
+      std::cout << fmt::format("{} {} {} {}\n", stats_.cost[i],
+                               stats_.momentum_residual[i],
+                               stats_.momentum_scale[i], stats_.alpha[i]);
+    }
+    return SapSolverStatus::kFailure;
+  }
 
   PackSapSolverResults(*context, results);
 
@@ -505,6 +519,15 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   const double ell_slop =
       parameters_.relative_slop * std::max(1.0, ell_scale) / 10.;
   (void)ell_slop;
+
+  if (-dell_dalpha0 < ell_slop) {
+    alpha = std::min(-dell_dalpha0 / d2ell, parameters_.ls_alpha_max);
+    DRAKE_LOGGER_DEBUG(
+            "-dℓ/dα(α=0) < slop, with dℓ/dα(α=0) = {}, slop = {}. alpha = {}.\n",
+            dell_dalpha0, ell_slop, alpha);
+    return std::make_pair(alpha, 0);
+  }
+
   // TODO: understand why 1/10 is too tight and SAP fails.      
   bool too_small = false;
   if (dell < ell_slop) {  // N.B. At this point we know dell > 0.
@@ -512,14 +535,6 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
     DRAKE_LOGGER_DEBUG(
             "dℓ/dα(αₘₐₓ) < slop, with dℓ/dα(αₘₐₓ) = {}, slop = {}.\n",
             dell, ell_slop);
-    return std::make_pair(alpha, 0);
-  }
-
-  if (-dell_dalpha0 < ell_slop) {
-    alpha = std::min(-dell_dalpha0 / d2ell, parameters_.ls_alpha_max);
-    DRAKE_LOGGER_DEBUG(
-            "-dℓ/dα(α=0) < slop, with dℓ/dα(α=0) = {}, slop = {}. alpha = {}.\n",
-            dell_dalpha0, ell_slop, alpha);
     return std::make_pair(alpha, 0);
   }
 

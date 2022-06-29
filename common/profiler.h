@@ -200,6 +200,6 @@ std::string TableOfAverages();
 #define PopTimer()
 #define averageTimeInSec(index) ((void)index)
 #define TableOfAverages() ("Profiling turned off")
-#define INSTRUMENT_FUNCTION()
+#define INSTRUMENT_FUNCTION(details_string) ((void)details_string)
 
 #endif  // ENABLE_TIMERS

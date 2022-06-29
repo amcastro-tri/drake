@@ -14,6 +14,10 @@
 
 #include "drake/common/profiler.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
+
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
@@ -479,11 +483,13 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
 
   double alpha = parameters_.ls_alpha_max;
   double dell{NAN};
+  double d2ell{NAN};
+  VectorX<double> tmp;
   double ell =
-      CalcCostAlongLine(context, search_direction_data, alpha, scratch, &dell);
+      CalcCostAlongLine(context, search_direction_data, alpha, scratch, &dell, &d2ell, &tmp);
 
   // If the cost is still decreasing at alpha, we accept this value.
-  if (dell < 0) return std::make_pair(alpha, 0);
+  if (dell <= 0) return std::make_pair(alpha, 0);
 
   // N.B. ell = 0 implies v = v* and gamma = 0, the solver would've exited
   // trivially and we would've never gotten to this point. Thus we know
@@ -496,10 +502,32 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   // gradient close to zero (though not exaclty zero) is much smaller than the
   // slop. Thefore we use a relative slop much smaller than the one used to
   // verify monotonic convergence.
-  const double ell_slop = parameters_.relative_slop * std::max(1.0, ell_scale);
+  const double ell_slop =
+      parameters_.relative_slop * std::max(1.0, ell_scale) / 10.;
   (void)ell_slop;
   // TODO: understand why 1/10 is too tight and SAP fails.      
-  if (abs(dell) < ell_slop) return std::make_pair(alpha, 0);
+  bool too_small = false;
+  if (dell < ell_slop) {  // N.B. At this point we know dell > 0.
+    too_small = true;
+    DRAKE_LOGGER_DEBUG(
+            "dℓ/dα(αₘₐₓ) < slop, with dℓ/dα(αₘₐₓ) = {}, slop = {}.\n",
+            dell, ell_slop);
+    return std::make_pair(alpha, 0);
+  }
+
+  if (-dell_dalpha0 < ell_slop) {
+    alpha = std::min(-dell_dalpha0 / d2ell, parameters_.ls_alpha_max);
+    DRAKE_LOGGER_DEBUG(
+            "-dℓ/dα(α=0) < slop, with dℓ/dα(α=0) = {}, slop = {}. alpha = {}.\n",
+            dell_dalpha0, ell_slop, alpha);
+    return std::make_pair(alpha, 0);
+  }
+
+  // Since we are here, the checks above failed and therefore we know:
+  //  1. dell_dalpha0 < -ell_slop.
+  //  2. ell_slop < dell
+  // Therefore the absolute value of the derivatives at the end of the
+  // bracket are larger than ell_slop.
 
   // N.B. We place the data needed to evaluate cost and gradients into a single
   // struct so that cost_and_gradient only needs to capture a single pointer.
@@ -539,8 +567,23 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   // const double x_rel_tol = parameters_.ls_rel_tolerance;
   const double kTolerance = 50 * std::numeric_limits<double>::epsilon();
   // TODO(amcastro-tri): Consider f_tolerance based on ell_scale.
-  return DoNewtonWithBisectionFallback(cost_and_gradient, bracket, alpha_guess,
-                                       kTolerance, kTolerance, 100);
+  // TODO: make f_tolerance = ell_slop?
+
+  const double f_tolerance = ell_slop / ell_scale / 2.0;
+  const auto [alpha_star, iters] = DoNewtonWithBisectionFallback(
+      cost_and_gradient, bracket, alpha_guess, kTolerance, f_tolerance, 100);
+
+  if (too_small) {
+    PRINT_VAR(ell_slop);
+    PRINT_VAR(ell_scale);
+    PRINT_VAR(d2ell);
+    PRINT_VAR(dell_dalpha0);
+    PRINT_VAR(dell);
+    PRINT_VAR(alpha_star);
+    PRINT_VAR(iters);
+  }
+
+  return std::make_pair(alpha_star, iters);
 }
 
 template <typename T>

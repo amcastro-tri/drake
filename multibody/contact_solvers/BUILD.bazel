@@ -116,6 +116,7 @@ drake_cc_library(
     name = "newton_with_bisection",
     srcs = ["newton_with_bisection.cc"],
     hdrs = ["newton_with_bisection.h"],
+#    copts = ["-UNDEBUG"],
     deps = [
         "//common:essential",
     ],

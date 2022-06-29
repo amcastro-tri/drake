@@ -8,6 +8,8 @@
 #include "drake/multibody/contact_solvers/block_sparse_matrix.h"
 #include "drake/multibody/contact_solvers/sap/contact_problem_graph.h"
 
+#include "drake/common/profiler.h"
+
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
@@ -18,6 +20,8 @@ using systems::Context;
 template <typename T>
 SapModel<T>::SapModel(const SapContactProblem<T>* problem_ptr)
     : problem_(problem_ptr) {
+  INSTRUMENT_FUNCTION("Construction from a SapContactProblem.");
+
   // Graph to the original contact problem, including all cliques
   // (participating and non-participating).
   const ContactProblemGraph& graph = problem().graph();
@@ -128,6 +132,7 @@ void SapModel<T>::DeclareCacheEntries() {
 
 template <typename T>
 std::unique_ptr<systems::Context<T>> SapModel<T>::MakeContext() const {
+  INSTRUMENT_FUNCTION("Makes context to store the state of the model.");
   return system_->CreateDefaultContext();
 }
 
@@ -166,6 +171,8 @@ void SapModel<T>::CalcConstraintVelocities(const Context<T>& context,
 template <typename T>
 void SapModel<T>::CalcImpulsesCache(const Context<T>& context,
                                     ImpulsesCache<T>* cache) const {
+  INSTRUMENT_FUNCTION(
+      "Computes impulses, if not updated already with the Hessian.");
   // Impulses are computed as a side effect of updating the Hessian cache.
   // Therefore if the Hessian cache is up to date we do not need to recompute
   // the impulses but simply make a copy into the impulses cache.
@@ -201,6 +208,7 @@ void SapModel<T>::CalcMomentumGainCache(const Context<T>& context,
 template <typename T>
 void SapModel<T>::CalcCostCache(const Context<T>& context,
                                 CostCache<T>* cache) const {
+  INSTRUMENT_FUNCTION("Evals gain_cache+impulses. Computes ell(v).");
   system_->ValidateContext(context);
   const MomentumGainCache<T>& gain_cache = EvalMomentumGainCache(context);
   const VectorX<T>& velocity_gain = gain_cache.velocity_gain;
@@ -226,6 +234,7 @@ void SapModel<T>::CalcGradientsCache(const systems::Context<T>& context,
 template <typename T>
 void SapModel<T>::CalcHessianCache(const systems::Context<T>& context,
                                    HessianCache<T>* cache) const {
+  INSTRUMENT_FUNCTION("Evals vc. Computes y, gamma and G.");
   system_->ValidateContext(context);
   cache->Resize(num_constraints(), num_constraint_equations());
   const VectorX<T>& vc = EvalConstraintVelocities(context);

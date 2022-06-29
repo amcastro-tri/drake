@@ -199,7 +199,10 @@ drake_cc_library(
     name = "profiler",
     srcs = ["profiler.cc"],
     hdrs = ["profiler.h"],
-    deps = [":type_safe_index"],
+    deps = [
+        ":scope_exit",
+        ":type_safe_index",
+    ],
 )
 
 drake_cc_library(

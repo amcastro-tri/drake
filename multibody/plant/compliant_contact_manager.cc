@@ -114,7 +114,7 @@ std::vector<ContactPairKinematics<T>>
 CompliantContactManager<T>::CalcContactKinematics(
     const systems::Context<T>& context) const {
   INSTRUMENT_FUNCTION("Computes Jacobians ginve contact pairs.");
-      
+
   const std::vector<DiscreteContactPair<T>>& contact_pairs =
       EvalDiscreteContactPairs(context);
   const int num_contacts = contact_pairs.size();

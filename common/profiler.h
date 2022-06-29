@@ -5,6 +5,7 @@
 #include <string>
 
 #include "drake/common/type_safe_index.h"
+#include "drake/common/scope_exit.h"
 
 namespace drake {
 namespace common {
@@ -183,7 +184,7 @@ std::string TableOfAverages();
       addTimer(std::move(description));          \
   PushTimer(timer);                              \
   startTimer(timer);                             \
-  ScopeExit guard([]() {                         \
+  drake::ScopeExit guard([]() {                  \
     const double dt = lapTimerSeconds(timer);    \
     UpdateStack(dt);                             \
     PopTimer();                                  \

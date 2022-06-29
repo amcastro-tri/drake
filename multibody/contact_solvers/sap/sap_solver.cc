@@ -12,6 +12,8 @@
 #include "drake/multibody/contact_solvers/newton_with_bisection.h"
 #include "drake/multibody/contact_solvers/supernodal_solver.h"
 
+#include "drake/common/profiler.h"
+
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
@@ -94,6 +96,8 @@ template <>
 SapSolverStatus SapSolver<double>::SolveWithGuess(
     const SapContactProblem<double>& problem, const VectorX<double>& v_guess,
     SapSolverResults<double>* results) {
+  INSTRUMENT_FUNCTION("Main entry point for SAP.");
+
   using std::abs;
   using std::max;
 
@@ -328,6 +332,7 @@ std::pair<T, int> SapSolver<T>::PerformBackTrackingLineSearch(
     const systems::Context<T>& context,
     const SearchDirectionData& search_direction_data,
     systems::Context<T>* scratch) const {
+  INSTRUMENT_FUNCTION("");
   using std::abs;
   // Line search parameters.
   const double rho = parameters_.ls_rho;
@@ -445,6 +450,7 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
     const systems::Context<double>& context,
     const SearchDirectionData& search_direction_data,
     systems::Context<double>* scratch) const {
+  INSTRUMENT_FUNCTION("");      
   using std::abs;
 
   // Ensure everythin is allocated beyond this point.
@@ -576,6 +582,7 @@ MatrixX<T> SapSolver<T>::CalcDenseHessian(const Context<T>& context) const {
 
 template <typename T>
 std::unique_ptr<SuperNodalSolver> SapSolver<T>::MakeSuperNodalSolver() const {
+  INSTRUMENT_FUNCTION("Supernodal solver construction.");
   if constexpr (std::is_same_v<T, double>) {
     const BlockSparseMatrix<T>& J = model_->constraints_bundle().J();
     return std::make_unique<SuperNodalSolver>(J.block_rows(), J.get_blocks(),
@@ -655,6 +662,7 @@ void SapSolver<T>::CalcSearchDirectionData(
     const systems::Context<T>& context,
     SuperNodalSolver* supernodal_solver,
     SapSolver<T>::SearchDirectionData* data) const {
+  INSTRUMENT_FUNCTION("Solver Newton system. Update search direction data.");
   DRAKE_DEMAND(parameters_.use_dense_algebra || (supernodal_solver != nullptr));
   // Update search direction dv.
   if (!parameters_.use_dense_algebra) {

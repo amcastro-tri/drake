@@ -15,10 +15,12 @@ if __name__ == '__main__':
                     visualize_contact=False,
                     diff_ik_filter_hz=-1,
                     )
-    for ind in range(100):
+    for ind in range(1, 100):
         task = task_all[ind]
+        print('')
         print('Resetting...')
         print(f"Task - modulus: {10**task['obj_modulus']} - friction coefficient: {task['obj_mu']}")
+        print('')
         obs = env.reset(task=task)
         for _ in range(1):
             action = [0, 0, 0]

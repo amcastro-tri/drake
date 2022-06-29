@@ -1,0 +1,74 @@
+<robot name="spatula">
+  <!-- links -->
+  <link name="pad">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="1.04e-5"  ixy="0"  ixz="0" iyy="9.38e-5" iyz="0" izz="1.04e-4" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <!-- <mesh filename="pad.obj"/> -->
+        <box size="0.15 0.08 0.001" />
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <!-- <mesh filename="pad.obj"/> -->
+        <box size="0.15 0.08 0.001" />
+      </geometry>
+      <!-- <drake:proximity_properties>
+        <drake:compliant_hydroelastic/>
+        <drake:mesh_resolution_hint value="0.002"/>
+        <drake:hydroelastic_modulus value="1e5"/>
+        <drake:hunt_crossley_dissipation value="2"/>
+      </drake:proximity_properties> -->
+    </collision>
+  </link>
+  <link name="handle">
+    <inertial>
+      <origin xyz="0.06 0 0.0" rpy="0 1.571 0"/>
+      <!-- <origin xyz="0 0 0" rpy="0 0 0"/> -->
+      <mass value="0.05"/>
+      <inertia ixx="4.45e-5"  ixy="0"  ixz="0" iyy="4.45e-5" iyz="0" izz="5.63e-6" />
+    </inertial>
+    <visual>
+      <origin xyz="0.06 0 0.0" rpy="0 1.571 0"/>
+      <!-- <origin xyz="0 0 0" rpy="0 0 0"/> -->
+      <geometry>
+        <cylinder length="0.10" radius="0.015"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.06 0 0.0" rpy="0 1.571 0"/>
+      <!-- <origin xyz="0 0 0" rpy="0 0 0"/> -->
+      <geometry>
+        <!-- <mesh filename="handle.obj"/> -->
+        <cylinder length="0.10" radius="0.015"/>
+      </geometry>
+      <!-- <drake:proximity_properties>
+        <drake:compliant_hydroelastic/>
+        <drake:mesh_resolution_hint value="0.002"/>
+        <drake:hydroelastic_modulus value="1e5"/>
+        <drake:hunt_crossley_dissipation value="2"/>
+      </drake:proximity_properties> -->
+    </collision>
+  </link>
+
+  <!-- joints - always x pointing forward to the next link, y to the left, z upward-->
+  <joint name="joint" type="fixed">
+    <origin rpy="3.142 -2.357 0" xyz="-0.07 0 0"/>
+    <!-- <origin rpy="0 -0.785 0" xyz="-0.10 0 0.05"/> -->
+    <parent link="pad" />
+    <child link="handle" />
+    <axis xyz="0 0 0" />
+  </joint>
+</robot>

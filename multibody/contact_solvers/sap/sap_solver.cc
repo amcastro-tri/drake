@@ -283,6 +283,10 @@ T SapSolver<T>::CalcCostAlongLine(
   const VectorX<T>& v = model_->GetVelocities(context);
   model_->GetMutableVelocities(&context_alpha) = v + alpha * dv;
 
+  if (d2ell_dalpha2 != nullptr) {
+    model_->EvalConstraintsHessian(context_alpha);
+  }
+
   // Update velocities and impulses at v(alpha).
   const VectorX<T>& gamma = model_->EvalImpulses(context_alpha);
 
@@ -472,11 +476,12 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   using std::abs;
 
   // Ensure everythin is allocated beyond this point.
-  model_->EvalConstraintsHessian(*scratch);
-  model_->EvalImpulses(*scratch);
+  //model_->EvalConstraintsHessian(*scratch);
+  //model_->EvalImpulses(*scratch);
 
   // Quantities at alpha = 0.
   const double ell0 = model_->EvalCost(context);
+  (void)ell0;
   const VectorX<double>& ell_grad_v0 = model_->EvalCostGradient(context);
 
   // dℓ/dα(α = 0) = ∇ᵥℓ(α = 0)⋅Δv.
@@ -501,14 +506,18 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   VectorX<double> tmp;
   double ell =
       CalcCostAlongLine(context, search_direction_data, alpha, scratch, &dell, &d2ell, &tmp);
+  (void) ell;
 
   // If the cost is still decreasing at alpha, we accept this value.
   if (dell <= 0) return std::make_pair(alpha, 0);
 
+  const double ell_scale = -dell_dalpha0;
+
+#if 0
   // N.B. ell = 0 implies v = v* and gamma = 0, the solver would've exited
   // trivially and we would've never gotten to this point. Thus we know
   // ell_scale != 0.
-  const double ell_scale = 0.5 * (ell + ell0);
+  const double ell_scale = ell0;
 
   // N.B. SAP checks that the cost decreases monotonically using a slop to avoid
   // false negatives due to round-off errors. Therefore if we are going to exit
@@ -519,6 +528,10 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   const double ell_slop =
       parameters_.relative_slop * std::max(1.0, ell_scale) / 10.;
   (void)ell_slop;
+
+  DRAKE_LOGGER_DEBUG("-1/ℓ⋅dℓ/dα(α=0) = {}. dℓ/dα(α=0) = {}, ℓ(α=0) = {}.\n",
+                     -dell_dalpha0 / ell0, dell_dalpha0, ell0);
+  std::cout << fmt::format("{} {} {}\n",-dell_dalpha0 / ell0, dell_dalpha0, ell0);
 
   if (-dell_dalpha0 < ell_slop) {
     alpha = std::min(-dell_dalpha0 / d2ell, parameters_.ls_alpha_max);
@@ -543,6 +556,7 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   //  2. ell_slop < dell
   // Therefore the absolute value of the derivatives at the end of the
   // bracket are larger than ell_slop.
+#endif  
 
   // N.B. We place the data needed to evaluate cost and gradients into a single
   // struct so that cost_and_gradient only needs to capture a single pointer.
@@ -570,7 +584,8 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   //  LimitMalloc guard({.max_num_allocations = 0});
 
   // The most likely solution close to the optimal solution.
-  const double alpha_guess = 1.0;
+  const double alpha_guess =
+      std::min(-dell_dalpha0 / d2ell, parameters_.ls_alpha_max);
 
   // N.B. If we are here, then we already know that dell_dalpha0 < 0 and dell >
   // 0, and therefore [0, alpha_max] is a valid bracket. Otherwise we would've
@@ -580,14 +595,22 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
 
   // std::cout << "Calling DoNewtonWithBisectionFallback():\n";
   // const double x_rel_tol = parameters_.ls_rel_tolerance;
-  const double kTolerance = 50 * std::numeric_limits<double>::epsilon();
+  //const double kTolerance = 50 * std::numeric_limits<double>::epsilon();
+  const double f_tolerance = 1.0e-2;  // f = −ℓ'(α)/ℓ'₀ is dimensionless.
+  const double alpha_tolerance = f_tolerance * alpha_guess;
   // TODO(amcastro-tri): Consider f_tolerance based on ell_scale.
   // TODO: make f_tolerance = ell_slop?
 
-  const double f_tolerance = ell_slop / ell_scale / 2.0;
-  const auto [alpha_star, iters] = DoNewtonWithBisectionFallback(
-      cost_and_gradient, bracket, alpha_guess, kTolerance, f_tolerance, 100);
+  //const double f_tolerance = ell_slop / ell_scale / 2.0;
+  const auto [alpha_star, iters] =
+      DoNewtonWithBisectionFallback(cost_and_gradient, bracket, alpha_guess,
+                                    alpha_tolerance, f_tolerance, 100);
 
+  //std::cout << fmt::format("{} {} {} {}\n",
+    //                       -dell_dalpha0 / d2ell,
+      //                     alpha_guess, alpha_star, iters);
+
+#if 0
   if (too_small) {
     PRINT_VAR(ell_slop);
     PRINT_VAR(ell_scale);
@@ -597,6 +620,7 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
     PRINT_VAR(alpha_star);
     PRINT_VAR(iters);
   }
+#endif  
 
   return std::make_pair(alpha_star, iters);
 }

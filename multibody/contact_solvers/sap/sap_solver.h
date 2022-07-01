@@ -102,8 +102,17 @@ struct SapSolverParameters {
   double cost_rel_tolerance{1.e-15};  // Relative tolerance εᵣ.
   int max_iterations{100};            // Maximum number of Newton iterations.
 
-  // Line-search parameters.
-  int ls_max_iterations{40};  // Maximum number of line search iterations.
+  // Line search method.
+  enum LineSearchType {
+    // Approximate bactracking method with Armijo criterion.
+    kBackTracking,
+    // Newton method to find the root of dℓ(α)/dα to high accuracy.
+    kExact,
+  };
+  LineSearchType line_search_type{LineSearchType::kExact};
+
+  // Backtracking (approximate) line search parameters.
+  int ls_max_iterations{40};  // Maximum number of backtracking iterations.
   double ls_c{1.0e-4};        // Armijo's criterion parameter.
   double ls_rho{0.8};         // Backtracking search parameter.
 
@@ -191,6 +200,12 @@ class SapSolver {
     // Indicates if the cost condition was reached.
     bool cost_criterion_reached{false};
 
+    // Cost at each iteration. cost[0] stores cost at the initial guess.
+    std::vector<double> cost;
+
+    // Line search parameter at each iteration. alpha[0] stores alpha = 1.
+    std::vector<double> alpha;
+
     // Dimensionless momentum residual at each iteration. Of size num_iters + 1.
     std::vector<double> momentum_residual;
 
@@ -268,11 +283,15 @@ class SapSolver {
   // [Castro et al., 2021].
   // If dell_dalpha != nullptr, on return dell_dalpha contains the value of the
   // derivative dℓ/dα = ∇ℓ(vᵐ)⋅Δvᵐ.
+  // If d2ell_dalpha2 != nullptr then on return d2ell_dalpha2 contains the value
+  // of the second derivative d²ℓ/dα².
   // @pre context was created by the underlying SapModel.
+  // @pre vec_scratch != nullptr if d2ell_dalpha2 != nullptr.
   T CalcCostAlongLine(const systems::Context<T>& context,
                       const SearchDirectionData& search_direction_data,
                       const T& alpha, systems::Context<T>* scratch,
-                      T* dell_dalpha = nullptr) const;
+                      T* dell_dalpha = nullptr, T* d2ell_dalpha2 = nullptr,
+                      VectorX<T>* vec_scratch = nullptr) const;
 
   // Approximation to the 1D minimization problem α = argmin ℓ(α) = ℓ(v + αΔv)
   // over α. We define ϕ(α) = ℓ₀ + α c ℓ₀', where ℓ₀ = ℓ(0), ℓ₀' = dℓ/dα(0) and
@@ -291,6 +310,17 @@ class SapSolver {
   // @pre both context and scratch_workspace were created by the underlying
   // SapModel.
   std::pair<T, int> PerformBackTrackingLineSearch(
+      const systems::Context<T>& context,
+      const SearchDirectionData& search_direction_data,
+      systems::Context<T>* scratch_workspace) const;
+
+  // Solves α = argmin ℓ(α) = ℓ(v + αΔv) using a Newton-based method.
+  //
+  // @returns A pair (α, num_iterations) where α satisfies Armijo's criterion
+  // and num_iterations is the number of backtracking iterations performed.
+  // @pre both context and scratch_workspace were created by the underlying
+  // SapModel.
+  std::pair<T, int> PerformExactLineSearch(
       const systems::Context<T>& context,
       const SearchDirectionData& search_direction_data,
       systems::Context<T>* scratch_workspace) const;
@@ -351,6 +381,10 @@ template <>
 SapSolverStatus SapSolver<double>::SolveWithGuess(
     const SapContactProblem<double>&, const VectorX<double>&,
     SapSolverResults<double>*);
+template <>
+std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
+    const systems::Context<double>&, const SearchDirectionData&,
+    systems::Context<double>*) const;
 
 }  // namespace internal
 }  // namespace contact_solvers

@@ -552,13 +552,17 @@ GTEST_TEST(PizzaSaver, Sliding) {
                 std::numeric_limits<double>::epsilon() * normal_impulse);
   }
 
-  // To verify the line search throws when it doesn't converge, we set a low
-  // maximum number of iterations and verify the solver fails for the right
-  // reasons.
-  params.ls_max_iterations = 1;
-  DRAKE_EXPECT_THROWS_MESSAGE(
-      AdvanceNumSteps(problem, tau, 1, params),
-      "Line search reached the maximum number of iterations.*");
+  // ls_max_iterations only pertains to backtracking line search.
+  if (params.line_search_type !=
+      SapSolverParameters::LineSearchType::kExact) {
+    // To verify the line search throws when it doesn't converge, we set a low
+    // maximum number of iterations and verify the solver fails for the right
+    // reasons.
+    params.ls_max_iterations = 1;
+    DRAKE_EXPECT_THROWS_MESSAGE(
+        AdvanceNumSteps(problem, tau, 1, params),
+        "Line search reached the maximum number of iterations.*");
+  }
 }
 
 // Verify we can also get a solution in the near-rigid regime. To trigger this
@@ -757,7 +761,8 @@ class LimitConstraint final : public SapConstraint<T> {
 // perform by changing the initial guess. For instance, when the initial guess
 // is within the contraint's bounds, the cost is quadratic and we expect SAP to
 // converge in a single Newton iteration.
-class SapNewtonIterationTest : public ::testing::Test {
+class SapNewtonIterationTest
+    : public testing::TestWithParam<SapSolverParameters::LineSearchType> {
  public:
   void SetUp() override {
     const double time_step = 0.01;
@@ -842,19 +847,27 @@ class SapNewtonIterationTest : public ::testing::Test {
 
   // Compare solutions obtained with dense and supernodal algebra.
   void CompareDenseAgainstSupernodal(const VectorXd& v_guess) const {
+    const double relative_tolerance = kEps;
+
     // Perform computation with supernodal algebra.
     SapSolverParameters params_supernodal;
     params_supernodal.use_dense_algebra = false;
+    params_supernodal.abs_tolerance = 0;
+    params_supernodal.rel_tolerance = relative_tolerance;
+    params_supernodal.line_search_type = GetParam();
     const VectorXd v_supernodal = SolveWithGuess(params_supernodal, v_guess);
 
     // Perform computation with dense algebra.
     SapSolverParameters params_dense;
     params_dense.use_dense_algebra = true;
+    params_dense.abs_tolerance = 0;
+    params_dense.rel_tolerance = relative_tolerance;
+    params_dense.line_search_type = GetParam();
     const VectorXd v_dense = SolveWithGuess(params_dense, v_guess);
 
     // We expected results computed with dense and supernodal algebra to match
     // close to machine epsilon for this small problem.
-    EXPECT_TRUE(CompareMatrices(v_supernodal, v_dense, 5.0 * kEps,
+    EXPECT_TRUE(CompareMatrices(v_supernodal, v_dense, 5.0 * relative_tolerance,
                                 MatrixCompareType::relative));
   }
 
@@ -867,8 +880,11 @@ class SapNewtonIterationTest : public ::testing::Test {
 
 // Unit test that SAP performs no computation when provided with an initial
 // guess that satisfies optimality condition.
-TEST_F(SapNewtonIterationTest, GuessIsTheSolution) {
+TEST_P(SapNewtonIterationTest, GuessIsTheSolution) {
   SapSolver<double> sap;
+  SapSolverParameters parameters;
+  parameters.line_search_type = GetParam();
+  sap.set_parameters(parameters);
   const VectorXd v_guess = v_star_;
   SapSolverResults<double> result;
   const SapSolverStatus status =
@@ -893,7 +909,7 @@ TEST_F(SapNewtonIterationTest, GuessIsTheSolution) {
 // bounds of the limits imposed by the constraint. Therefore we expect the
 // Newton solver to achieve convergence in just a single iteration, to machine
 // precision when a full step (alpha=1) is taken by the line search.
-TEST_F(SapNewtonIterationTest, GuessWithinLimits) {
+TEST_P(SapNewtonIterationTest, GuessWithinLimits) {
   SapSolver<double> sap;
   SapSolverParameters params;
   // We setup the line search parameters so that the backtracking line-search
@@ -904,6 +920,7 @@ TEST_F(SapNewtonIterationTest, GuessWithinLimits) {
   // Newton iteration with alpha = 1 will achieve convergence within machine
   // precision.
   params.ls_alpha_max = 1.0 / params.ls_rho;
+  params.line_search_type = GetParam();
   sap.set_parameters(params);
 
   // Arbitrary initial guess within the velocity limits but different from the
@@ -921,7 +938,11 @@ TEST_F(SapNewtonIterationTest, GuessWithinLimits) {
   const SapSolver<double>::SolverStats& stats = sap.get_statistics();
   EXPECT_EQ(stats.num_iters, 1);
   // We expect two backtracking line search iterations given ls_alpha_max != 1.
-  EXPECT_EQ(stats.num_line_search_iters, 2);
+  // Since the problem is quadratic, we expect the exact line search to
+  // take only one iteration.
+  const int expected_line_search_iterations =
+      params.line_search_type == SapSolverParameters::kBackTracking ? 2 : 1;
+  EXPECT_EQ(stats.num_line_search_iters, expected_line_search_iterations);
   // This problem is very well conditioned, we expect convergence on the
   // optimality condition.
   EXPECT_TRUE(stats.optimality_criterion_reached);
@@ -946,13 +967,14 @@ TEST_F(SapNewtonIterationTest, GuessWithinLimits) {
 // For this problem when the initial guess is outside the constraint's limits
 // the cost is non-linear and we need several Newton iterations to achieve
 // convergence.
-TEST_F(SapNewtonIterationTest, GuessOutsideLimits) {
+TEST_P(SapNewtonIterationTest, GuessOutsideLimits) {
   SapSolver<double> sap;
   SapSolverParameters params;
   // We use the same parameters as in the unit test
   // SapNewtonIterationTest__GuessWithinLimits so that the only difference
   // between the two tests is the initial guess given to the solver.
   params.ls_alpha_max = 1.0 / params.ls_rho;
+  params.line_search_type = GetParam();
   sap.set_parameters(params);
 
   // Arbitrary initial guess outside the constraint bounds to force several
@@ -994,6 +1016,11 @@ TEST_F(SapNewtonIterationTest, GuessOutsideLimits) {
   // Verify solution computed with dense and supernodal algebra match.
   CompareDenseAgainstSupernodal(v_guess);
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    TestLineSearchMethods, SapNewtonIterationTest,
+    testing::Values(SapSolverParameters::LineSearchType::kBackTracking,
+                    SapSolverParameters::LineSearchType::kExact));
 
 }  // namespace internal
 }  // namespace contact_solvers

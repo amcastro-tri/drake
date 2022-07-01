@@ -241,9 +241,11 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
                              k);
     std::cout << fmt::format("  Line search iters: {}.\n",
                              stats_.num_line_search_iters);
-    std::cout << fmt::format("cost  -  mom.   -   scale   -   alpha.\n");                              
+    std::cout << fmt::format("cost    -    Δℓ    -  residual   -   scale    -    alpha.\n");                              
     for (size_t i = 0; i < stats_.cost.size(); ++i) {
-      std::cout << fmt::format("{} {} {} {}\n", stats_.cost[i],
+      const double ell_decrement =
+          i == 0 ? -1 : stats_.cost[i - 1] - stats_.cost[i];
+      std::cout << fmt::format("{:20.16g} {:20.16g} {:20.16g} {:20.16g} {:20.16g}\n", stats_.cost[i], ell_decrement,
                                stats_.momentum_residual[i],
                                stats_.momentum_scale[i], stats_.alpha[i]);
     }
@@ -472,19 +474,10 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
     const systems::Context<double>& context,
     const SearchDirectionData& search_direction_data,
     systems::Context<double>* scratch) const {
-  INSTRUMENT_FUNCTION("");      
-  using std::abs;
-
-  // Ensure everythin is allocated beyond this point.
-  //model_->EvalConstraintsHessian(*scratch);
-  //model_->EvalImpulses(*scratch);
-
-  // Quantities at alpha = 0.
-  const double ell0 = model_->EvalCost(context);
-  (void)ell0;
-  const VectorX<double>& ell_grad_v0 = model_->EvalCostGradient(context);
+  INSTRUMENT_FUNCTION("");
 
   // dℓ/dα(α = 0) = ∇ᵥℓ(α = 0)⋅Δv.
+  const VectorX<double>& ell_grad_v0 = model_->EvalCostGradient(context);
   const VectorX<double>& dv = search_direction_data.dv;
   const double dell_dalpha0 = ell_grad_v0.dot(dv);
 
@@ -500,75 +493,36 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
         "ill-conditioned systems. Consider revisiting your model.");
   }
 
-  double alpha = parameters_.ls_alpha_max;
+  const double alpha_max = parameters_.ls_alpha_max;
   double dell{NAN};
   double d2ell{NAN};
-  VectorX<double> tmp;
-  double ell =
-      CalcCostAlongLine(context, search_direction_data, alpha, scratch, &dell, &d2ell, &tmp);
-  (void) ell;
+  VectorX<double> vec_scratch;
+  CalcCostAlongLine(context, search_direction_data, alpha_max, scratch, &dell,
+                    &d2ell, &vec_scratch);
 
-  // If the cost is still decreasing at alpha, we accept this value.
-  if (dell <= 0) return std::make_pair(alpha, 0);
-
-  const double ell_scale = -dell_dalpha0;
-
-#if 0
-  // N.B. ell = 0 implies v = v* and gamma = 0, the solver would've exited
-  // trivially and we would've never gotten to this point. Thus we know
-  // ell_scale != 0.
-  const double ell_scale = ell0;
-
-  // N.B. SAP checks that the cost decreases monotonically using a slop to avoid
-  // false negatives due to round-off errors. Therefore if we are going to exit
-  // when the gradient is near zero, we want to ensure the error introduced by a
-  // gradient close to zero (though not exaclty zero) is much smaller than the
-  // slop. Thefore we use a relative slop much smaller than the one used to
-  // verify monotonic convergence.
-  const double ell_slop =
-      parameters_.relative_slop * std::max(1.0, ell_scale) / 10.;
-  (void)ell_slop;
-
-  DRAKE_LOGGER_DEBUG("-1/ℓ⋅dℓ/dα(α=0) = {}. dℓ/dα(α=0) = {}, ℓ(α=0) = {}.\n",
-                     -dell_dalpha0 / ell0, dell_dalpha0, ell0);
-  std::cout << fmt::format("{} {} {}\n",-dell_dalpha0 / ell0, dell_dalpha0, ell0);
-
-  if (-dell_dalpha0 < ell_slop) {
-    alpha = std::min(-dell_dalpha0 / d2ell, parameters_.ls_alpha_max);
-    DRAKE_LOGGER_DEBUG(
-            "-dℓ/dα(α=0) < slop, with dℓ/dα(α=0) = {}, slop = {}. alpha = {}.\n",
-            dell_dalpha0, ell_slop, alpha);
-    return std::make_pair(alpha, 0);
-  }
-
-  // TODO: understand why 1/10 is too tight and SAP fails.      
-  bool too_small = false;
-  if (dell < ell_slop) {  // N.B. At this point we know dell > 0.
-    too_small = true;
-    DRAKE_LOGGER_DEBUG(
-            "dℓ/dα(αₘₐₓ) < slop, with dℓ/dα(αₘₐₓ) = {}, slop = {}.\n",
-            dell, ell_slop);
-    return std::make_pair(alpha, 0);
-  }
-
-  // Since we are here, the checks above failed and therefore we know:
-  //  1. dell_dalpha0 < -ell_slop.
-  //  2. ell_slop < dell
-  // Therefore the absolute value of the derivatives at the end of the
-  // bracket are larger than ell_slop.
-#endif  
+  // If the cost is still decreasing at alpha_max, we accept this value.
+  if (dell <= 0) return std::make_pair(alpha_max, 0);
 
   // N.B. We place the data needed to evaluate cost and gradients into a single
   // struct so that cost_and_gradient only needs to capture a single pointer.
-  // This avoid heap allocation when calling RtSafe.
+  // This avoids heap allocations when passing the lambda to
+  // DoNewtonWithBisectionFallback().
   struct EvalData {
     const SapSolver<double>* solver;
     const Context<double>& context0;  // Context at alpha = 0.
     const SearchDirectionData& search_direction_data;
     Context<double>& scratch;  // Context at alpha != 0.
+    // N.B. We normalize the gradient to minimize round-off errors as f(alpha) =
+    // −ℓ'(α)/ell_scale.
     const double ell_scale;
     VectorX<double> vec_scratch;
   };
+
+  // N.B. At this point we know that dell_dalpha0 < 0. Also, if the line search
+  // was called it is because the residual (the gradient of the cost) is
+  // non-zero. Therefore we can safely divide by dell_dalpha0.
+  // N.B. We then define f(alpha) = −ℓ'(α)/ℓ'₀ so that f(alpha=0) = -1.
+  const double ell_scale = -dell_dalpha0;
   EvalData data{this, context, search_direction_data, *scratch, ell_scale};
 
   auto cost_and_gradient = [&data](double x) {
@@ -581,48 +535,22 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
                           d2ell_dalpha2 / data.ell_scale);
   };
 
-  //  LimitMalloc guard({.max_num_allocations = 0});
-
-  // The most likely solution close to the optimal solution.
-  const double alpha_guess =
-      std::min(-dell_dalpha0 / d2ell, parameters_.ls_alpha_max);
+  // To estimate a guess, we approximate the cost as being quadratic around
+  // alpha = 0.
+  const double alpha_guess = std::min(-dell_dalpha0 / d2ell, alpha_max);
 
   // N.B. If we are here, then we already know that dell_dalpha0 < 0 and dell >
-  // 0, and therefore [0, alpha_max] is a valid bracket. Otherwise we would've
-  // already returned or thrown an exception due to numerical errors.
-  const Bracket bracket(0., dell_dalpha0 / ell_scale, parameters_.ls_alpha_max,
+  // 0, and therefore [0, alpha_max] is a valid bracket.
+  const Bracket bracket(0., dell_dalpha0 / ell_scale, alpha_max,
                         dell / ell_scale);
 
-  // std::cout << "Calling DoNewtonWithBisectionFallback():\n";
-  // const double x_rel_tol = parameters_.ls_rel_tolerance;
-  //const double kTolerance = 50 * std::numeric_limits<double>::epsilon();
   const double f_tolerance = 1.0e-2;  // f = −ℓ'(α)/ℓ'₀ is dimensionless.
   const double alpha_tolerance = f_tolerance * alpha_guess;
-  // TODO(amcastro-tri): Consider f_tolerance based on ell_scale.
-  // TODO: make f_tolerance = ell_slop?
-
-  //const double f_tolerance = ell_slop / ell_scale / 2.0;
-  const auto [alpha_star, iters] =
+  const auto [alpha, iters] =
       DoNewtonWithBisectionFallback(cost_and_gradient, bracket, alpha_guess,
                                     alpha_tolerance, f_tolerance, 100);
 
-  //std::cout << fmt::format("{} {} {} {}\n",
-    //                       -dell_dalpha0 / d2ell,
-      //                     alpha_guess, alpha_star, iters);
-
-#if 0
-  if (too_small) {
-    PRINT_VAR(ell_slop);
-    PRINT_VAR(ell_scale);
-    PRINT_VAR(d2ell);
-    PRINT_VAR(dell_dalpha0);
-    PRINT_VAR(dell);
-    PRINT_VAR(alpha_star);
-    PRINT_VAR(iters);
-  }
-#endif  
-
-  return std::make_pair(alpha_star, iters);
+  return std::make_pair(alpha, iters);
 }
 
 template <typename T>

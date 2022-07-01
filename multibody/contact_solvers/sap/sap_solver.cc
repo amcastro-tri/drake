@@ -561,7 +561,7 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   const Bracket bracket(0., dell_dalpha0 / ell_scale, alpha_max,
                         dell / ell_scale);
 
-  const double f_tolerance = 1.0e-6;  // f = −ℓ'(α)/ℓ'₀ is dimensionless.
+  const double f_tolerance = 1.0e-8;  // f = −ℓ'(α)/ℓ'₀ is dimensionless.
   const double alpha_tolerance = f_tolerance * alpha_guess;
   const auto [alpha, iters] =
       DoNewtonWithBisectionFallback(cost_and_gradient, bracket, alpha_guess,

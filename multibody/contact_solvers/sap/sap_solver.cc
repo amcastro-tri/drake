@@ -152,6 +152,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
         momentum_residual <=
         parameters_.abs_tolerance + parameters_.rel_tolerance * momentum_scale;
     stats_.cost.push_back(ell);
+    stats_.cost_decrease.push_back(ell_previous - ell);
     stats_.alpha.push_back(alpha);
     stats_.momentum_residual.push_back(momentum_residual);
     stats_.momentum_scale.push_back(momentum_scale);    
@@ -224,7 +225,18 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
     // N.B. Even though theoretically we expect ell < ell_previous, round-off
     // errors might make the difference ell_previous - ell negative, within
     // machine epsilon. Therefore we take the absolute value here.
-    const double ell_decrement = std::abs(ell_previous - ell);
+    // N.B. We monitor the decrease in the cost to detect when it no longer
+    // decreases due to round-off errros (typically because the user requested
+    // very tight tolerances). When the solver is working closer to machine
+    // epsilon erros, it is not uncommon to observe a zigzag (of order machine
+    // epsilon) in the decrease of the cost. We filter this out by taking the
+    // average over the last two iterations. In this situation, the average will
+    // be orders of magnitude smaller than the decrease over a single iteration.
+    const double ell_decrement =
+        k == 0
+            ? std::abs(stats_.cost_decrease[k])
+            : std::abs((stats_.cost_decrease[k] + stats_.cost_decrease[k - 1]) /
+                       2.0);
 
     // N.B. Here we want alpha≈1 and therefore we impose alpha > 0.5, an
     // arbitrarily "large" value. This is to avoid a false positive on the
@@ -497,8 +509,13 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   double dell{NAN};
   double d2ell{NAN};
   VectorX<double> vec_scratch;
-  CalcCostAlongLine(context, search_direction_data, alpha_max, scratch, &dell,
-                    &d2ell, &vec_scratch);
+  const double ell0 =
+      CalcCostAlongLine(context, search_direction_data, alpha_max, scratch,
+                        &dell, &d2ell, &vec_scratch);
+
+  if (-dell_dalpha0 <
+      parameters_.cost_abs_tolerance + parameters_.cost_rel_tolerance * ell0)
+    return std::make_pair(1.0, 0);
 
   // If the cost is still decreasing at alpha_max, we accept this value.
   if (dell <= 0) return std::make_pair(alpha_max, 0);
@@ -544,7 +561,7 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   const Bracket bracket(0., dell_dalpha0 / ell_scale, alpha_max,
                         dell / ell_scale);
 
-  const double f_tolerance = 1.0e-2;  // f = −ℓ'(α)/ℓ'₀ is dimensionless.
+  const double f_tolerance = 1.0e-6;  // f = −ℓ'(α)/ℓ'₀ is dimensionless.
   const double alpha_tolerance = f_tolerance * alpha_guess;
   const auto [alpha, iters] =
       DoNewtonWithBisectionFallback(cost_and_gradient, bracket, alpha_guess,

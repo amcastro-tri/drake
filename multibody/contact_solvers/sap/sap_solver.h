@@ -196,6 +196,8 @@ class SapSolver {
 
     // Cost history.
     std::vector<double> cost;
+    
+    std::vector<double> cost_decrease;
 
     std::vector<double> alpha;
 

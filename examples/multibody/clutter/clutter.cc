@@ -516,8 +516,8 @@ int do_main() {
     parameters.max_iterations = FLAGS_sap_max_iterations;
     parameters.abs_tolerance = FLAGS_abs_tol;
     parameters.rel_tolerance = FLAGS_rel_tol;
-    parameters.cost_abs_tolerance = FLAGS_abs_tol * FLAGS_abs_tol;
-    parameters.cost_rel_tolerance = FLAGS_rel_tol * FLAGS_rel_tol;    
+    parameters.cost_abs_tolerance = 1.0e-30;
+    parameters.cost_rel_tolerance = 1.0e-15;
     manager->set_sap_solver_parameters(parameters);
   }
 

@@ -96,7 +96,8 @@ DEFINE_int32(
 DEFINE_int32(gll_N, 2, "Num regular Armijo's before GLL. N in GLL's paper.");    
 DEFINE_int32(sap_max_iterations, 100, "Max SAP iterations.");
 DEFINE_int32(ls_max_iterations, 50, "Max SAP iterations.");
-DEFINE_double(sap_rel_tol, 1.0e-4, "SAP rel tol.");
+DEFINE_double(abs_tol, 1.0e-16, "SAP abs tol.");
+DEFINE_double(rel_tol, 1.0e-5, "SAP rel tol.");
 
 namespace drake {
 namespace examples {
@@ -218,7 +219,10 @@ int do_main() {
                                FLAGS_line_search + "'.");
     }    
     ssp.max_iterations = FLAGS_sap_max_iterations;
-    ssp.rel_tolerance = FLAGS_sap_rel_tol;
+    ssp.abs_tolerance = FLAGS_abs_tol;
+    ssp.rel_tolerance = FLAGS_rel_tol;
+    ssp.cost_abs_tolerance = 1.0e-32;
+    ssp.cost_rel_tolerance = 1.0e-16;
     manager->set_sap_solver_parameters(ssp);
 
     // //----------------------------------------

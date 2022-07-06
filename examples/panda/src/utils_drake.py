@@ -19,28 +19,31 @@ def set_collision_properties(scene_graph,
                              geometry_id, 
                              static_friction, 
                              dynamic_friction, 
-                             dissipation=1.0, 
-                             modulus=1e5,
-                             resolution=0.005,
+                             hc_dissipation=1.0, 
+                             hydro_modulus=1e5,
+                             hydro_resolution=0.005,
+                             sap_dissipation=0.1,
                              compliance_type=None):
     # Get current properties 
     proximity_properties = context_inspector.GetProximityProperties(geometry_id)
 
     # Update friction coefficient and dissipation
     add_property(proximity_properties, 'material', 'coulomb_friction', CoulombFriction(static_friction, dynamic_friction))
-    add_property(proximity_properties, 'material','hunt_crossley_dissipation', dissipation)
-    
+    add_property(proximity_properties, 'material','hunt_crossley_dissipation', hc_dissipation)
+    add_property(proximity_properties, 'material','dissipation_time_constant', sap_dissipation)
+    # print(proximity_properties)
+
     # Hydro - remove first since cannot replace - HydroelastocType not exposed
     hydro_property_list = ['compliance_type', 'hydroelastic_modulus', 'resolution_hint']
     for hydro_property in hydro_property_list:
         if proximity_properties.HasProperty('hydroelastic', hydro_property):
             proximity_properties.RemoveProperty('hydroelastic', hydro_property)
     if compliance_type == 'rigid':
-        AddRigidHydroelasticProperties(resolution_hint=resolution,
+        AddRigidHydroelasticProperties(resolution_hint=hydro_resolution,
                                        properties=proximity_properties)
     elif compliance_type == 'compliant':
-        AddCompliantHydroelasticProperties(resolution_hint=resolution,
-                                        hydroelastic_modulus=modulus,
+        AddCompliantHydroelasticProperties(resolution_hint=hydro_resolution,
+                                        hydroelastic_modulus=hydro_modulus,
                                         properties=proximity_properties)
 
     # Replace

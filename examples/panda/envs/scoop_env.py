@@ -14,6 +14,7 @@ class ScoopEnv(PandaEnv, ABC):
                 visualize_contact=False,
                 diff_ik_filter_hz=500,
                 contact_solver='sap',
+                panda_joint_damping=200,
                 ):
         """
         """
@@ -24,14 +25,15 @@ class ScoopEnv(PandaEnv, ABC):
             visualize_contact=visualize_contact,
             diff_ik_filter_hz=diff_ik_filter_hz,
             contact_solver=contact_solver,
+            panda_joint_damping=panda_joint_damping,
         )
         self.veggie_x = 0.68    # for scooping direction - assume veggies around this position in x
         self.finger_init_pos = 0.03
         self.spatula_init_z = 0.002
 
         # Fixed dynamics parameter
-        self.veggie_dissipation = 1.0
-        self.veggie_resolution = 0.005
+        self.veggie_hc_dissipation = 1.0
+        self.veggie_hydro_resolution = 0.005
 
         # Set default task
         self.task = {}
@@ -149,7 +151,8 @@ class ScoopEnv(PandaEnv, ABC):
                     if flag_replace:
                         self.set_obj_dynamics(context_inspector, 
                                               sg_context,
-                                              body)
+                                              body,
+                                              sap_dissipation=0.1)
 
                         # Change mass - not using, specified in sdf
                         body.SetMass(plant_context, sdf_config['m'+body_str])
@@ -165,7 +168,8 @@ class ScoopEnv(PandaEnv, ABC):
                               sg_context, 
                               self.table_body,
                               mu=0.3,
-                              modulus=5,
+                              hydro_modulus=5,
+                              sap_dissipation=0.1,
                               compliance_type='compliant')
 
         # Change global params - time step for both plant and controller_plant? seems impossible

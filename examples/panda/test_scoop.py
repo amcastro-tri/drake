@@ -17,7 +17,7 @@ if __name__ == '__main__':
                 visualize_contact=False,  # conflict with swapping geometry
                 diff_ik_filter_hz=200,
                 contact_solver='sap',
-                panda_joint_damping=1.5,    # issue with diff ik
+                panda_joint_damping=10,    # issue with diff ik
                 )
     for ind in range(1, 100):
         task = task_all[ind]

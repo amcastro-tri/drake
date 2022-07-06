@@ -11,6 +11,7 @@ from pydrake.all import (
 def AddPanda(plant, 
              q0=[0.0, 0.1, 0, -1.2, 0, 1.6, 0], 
              X_WB=RigidTransform(),
+             joint_damping=200,
              ):
     """ Adds a franka panda arm without any hand to the mutlibody plant and welds it to the world frame
 
@@ -32,6 +33,7 @@ def AddPanda(plant,
         joint = plant.get_mutable_joint(joint_index)
         if isinstance(joint, pydrake.multibody.tree.RevoluteJoint):
             joint.set_default_angle(q0[index])
+            joint.set_default_damping(joint_damping)  # joint.damping()
             index += 1
     return panda_model_instance
 
@@ -60,7 +62,7 @@ def AddHand(plant,
         X_8G = RigidTransform(RollPitchYaw(0, 0, roll), [0,0,0])
     elif type == 'plate':
         file_path = FindResourceOrThrow('drake/examples/panda/data/models/hand_plate/hand_plate.sdf')
-        gripper_base_frame_name = 'plate_base'
+        gripper_base_frame_name = 'gripper_base'
         X_8G = RigidTransform(RollPitchYaw(0, 0, roll), [0,0,0.06])
     else:
         raise NotImplementedError

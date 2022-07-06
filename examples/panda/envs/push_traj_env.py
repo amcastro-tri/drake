@@ -18,6 +18,7 @@ class PushTrajEnv(PushEnv, ABC):
                  hand_type='plate',
                  diff_ik_filter_hz=-1,
                  contact_solver='sap',
+                 panda_joint_damping=200,
                  ):
         super(PushTrajEnv, self).__init__(
             dt=dt,
@@ -27,6 +28,7 @@ class PushTrajEnv(PushEnv, ABC):
             hand_type=hand_type,
             diff_ik_filter_hz=diff_ik_filter_hz,
             contact_solver=contact_solver,
+            panda_joint_damping=panda_joint_damping,
         )
 
 

@@ -20,11 +20,13 @@ class PandaEnv(ABC):
                  hand_type='wsg',
                  diff_ik_filter_hz=-1,
                  contact_solver='sap',
+                 panda_joint_damping=200,
                  ):
         self.dt = dt
         self.renders = renders
         self.visualize_contact = visualize_contact
         self.camera_params = camera_params
+        self.panda_joint_damping = panda_joint_damping
         if self.camera_params is not None:
             self.flag_use_camera = True
         else:
@@ -59,9 +61,10 @@ class PandaEnv(ABC):
         system = PandaStation(dt=self.dt, 
                               visualize_contact=self.visualize_contact,
                               diff_ik_filter_hz=self.diff_ik_filter_hz,
-                              contact_solver=self.contact_solver)
+                              contact_solver=self.contact_solver,
+                              panda_joint_damping=self.panda_joint_damping)
         self.station = builder.AddSystem(system)
-        self.station.set_panda(self.hand_type)
+        self.hand_body = self.station.set_panda(self.hand_type)
         # self.station.set_camera(self.camera_params)
         self.plant = self.station.get_multibody_plant()
         self.sg = self.station.get_sg()
@@ -160,34 +163,11 @@ class PandaEnv(ABC):
         raise NotImplementedError
 
 
-    @abstractmethod
-    def visualize(self):
-        """
-        Visualize trajectories and value functions.
-        """
-        raise NotImplementedError
-
-
-    def close(self):
-        pass
-
-
     def seed(self, seed=None):
         """
-        Set the seed of the environment. Should be called after action_sapce is
-        defined.    #* No torch rn # TODO: drake seed?
-
-        Args:
-            seed (int, optional): random seed value. Defaults to 0.
+        Set the seed of the environment. No torch rn # TODO: drake seed?
         """
         self.rng = np.random.default_rng(seed=seed)
-        # torch.manual_seed(self.seed_val)
-        # torch.cuda.manual_seed(self.seed_val)
-        # torch.cuda.manual_seed_all(
-        #     self.seed_val)  # if you are using multi-GPU.
-        # torch.backends.cudnn.benchmark = False
-        # torch.backends.cudnn.deterministic = True
-        # self.np_random, seed = gym.utils.seeding.np_random(seed)
         return [seed]
 
 
@@ -293,21 +273,22 @@ class PandaEnv(ABC):
                          context, 
                          body,
                          mu=None,
-                         modulus=None,
-                         dissipation=None,
-                         resolution=None,
+                         hydro_modulus=None,
+                         hc_dissipation=None,
+                         hydro_resolution=None,
+                         sap_dissipation=0.1,
                          compliance_type='compliant'):
         '''
         Change friction - only dynamic friction is used in point contact (static ignored). Assign role with context
         '''
         if mu is None:
             mu = self.task['obj_mu']
-        if modulus is None:
-            modulus = self.task['obj_modulus']
-        if dissipation is None:
-            dissipation = self.veggie_dissipation   # TODO
-        if resolution is None:
-            resolution = self.veggie_resolution
+        if hydro_modulus is None:
+            hydro_modulus = self.task['obj_modulus']
+        if hc_dissipation is None:
+            hc_dissipation = self.veggie_hc_dissipation   # TODO
+        if hydro_resolution is None:
+            hydro_resolution = self.veggie_hydro_resolution
         geometry_id = self.plant.GetCollisionGeometriesForBody(body)[0]
         set_collision_properties(self.sg,
                                 context,
@@ -316,9 +297,10 @@ class PandaEnv(ABC):
                                 geometry_id, 
                                 static_friction=mu, 
                                 dynamic_friction=mu,
-                                dissipation=dissipation,
-                                resolution=resolution,
-                                modulus=10**modulus,
+                                hc_dissipation=hc_dissipation,
+                                hydro_modulus=10**hydro_modulus,
+                                hydro_resolution=hydro_resolution,
+                                sap_dissipation=sap_dissipation,
                                 compliance_type=compliance_type)
 
 

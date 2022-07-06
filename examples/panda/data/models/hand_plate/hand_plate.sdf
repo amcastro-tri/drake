@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <sdf version="1.8">
   <model name="hand_plate">
-    <link name="plate_base">
+    <link name="gripper_base">
       <!-- <pose>0 0.1 0 0 0 0</pose> -->
       <inertial>
         <mass>0.2</mass>
@@ -46,7 +46,7 @@
     </link>
 
     <frame name="body_frame">
-      <pose relative_to="plate_base"/>
+      <pose relative_to="gripper_base"/>
     </frame>
 
   </model>

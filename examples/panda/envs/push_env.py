@@ -18,6 +18,7 @@ class PushEnv(PandaEnv, ABC):
                 hand_type='plate',
                 diff_ik_filter_hz=500,
                 contact_solver='sap',
+                panda_joint_damping=200,
                 ):
         super(PushEnv, self).__init__(
             dt=dt,
@@ -27,6 +28,7 @@ class PushEnv(PandaEnv, ABC):
             hand_type=hand_type,
             diff_ik_filter_hz=diff_ik_filter_hz,
             contact_solver=contact_solver,
+            panda_joint_damping=panda_joint_damping,
         )
         self.finger_init_pos = 0.06
         self.bottle_initial_pos = [0.45, 0.0, 0.05]
@@ -73,9 +75,21 @@ class PushEnv(PandaEnv, ABC):
                               sg_context, 
                               self.table_body,
                               mu=0.1,
-                              modulus=7,
-                              dissipation=1.0,
-                              resolution=0.1, # does not matter for box shape
+                              hydro_modulus=7,
+                              hc_dissipation=1.0,
+                              hydro_resolution=0.1, # does not matter for box shape
+                              sap_dissipation=0.1,
+                              compliance_type='rigid')
+
+        # Set hand properties
+        self.set_obj_dynamics(context_inspector, 
+                              sg_context, 
+                              self.hand_body,
+                              mu=0.3,
+                              hydro_modulus=7,
+                              hc_dissipation=1.0,
+                              hydro_resolution=0.1, # does not matter for box shape
+                              sap_dissipation=0.1,
                               compliance_type='rigid')
 
         # Set bottle properties
@@ -83,9 +97,10 @@ class PushEnv(PandaEnv, ABC):
                               sg_context, 
                               self.bottle_body,
                               mu=task['obj_mu'],
-                              modulus=task['obj_modulus'],
-                              dissipation=1.0,
-                              resolution=0.1,  # matters
+                              hydro_modulus=task['obj_modulus'],
+                              hc_dissipation=1.0,
+                              hydro_resolution=0.1,  # matters
+                              sap_dissipation=0.1,
                               compliance_type='compliant')
         self.bottle_body.SetMass(plant_context, task['obj_mass'])
         self.bottle_body.SetCenterOfMassInBodyFrame(plant_context, 

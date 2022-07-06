@@ -26,12 +26,14 @@ class PandaStation(Diagram):
                  visualize_contact=False,
                  diff_ik_filter_hz=-1,
                  contact_solver='sap',
+                 panda_joint_damping=200,
                  ):
         Diagram.__init__(self)
         self.dt = dt
         self.visualize_contact = visualize_contact
         self.diff_ik_filter_hz = diff_ik_filter_hz
-        
+        self.panda_joint_damping = panda_joint_damping
+
         # Initialie builder and plant
         self.builder = DiagramBuilder()
         plant_config = MultibodyPlantConfig(time_step=dt, 
@@ -66,12 +68,14 @@ class PandaStation(Diagram):
 
 
     def set_panda(self, hand_type='wsg'):
-        self.panda = AddPanda(self.plant)
+        self.panda = AddPanda(self.plant,
+                              joint_damping=self.panda_joint_damping)
         self.hand = AddHand(self.plant, 
                             panda_model_instance=self.panda, 
                             roll=0, 
                             welded=False, 
                             type=hand_type) # offset between EE and hand, roll:-pi/4
+        hand_body = self.plant.GetBodyByName("gripper_base", self.hand)
 
         # self.fix_collisions()
         ee_frame = self.plant.GetFrameByName("panda_link8", self.panda)
@@ -87,7 +91,7 @@ class PandaStation(Diagram):
             joint.set_acceleration_limits([-acc_limit[joint_ind-1]],
                                           [acc_limit[joint_ind-1]])
             # print(joint.acceleration_upper_limits())
-
+        return hand_body
 
     def get_visualizer(self, use_meshcat=False):
         visualizer = DrakeVisualizer.AddToBuilder(
@@ -155,7 +159,8 @@ class PandaStation(Diagram):
                 )
 
         # Initialize plant for the controller
-        self.panda_c = AddPanda(self.controller_plant)
+        self.panda_c = AddPanda(self.controller_plant,
+                                joint_damping=self.panda_joint_damping)
 
         # Set joint acceleration limits - position and velocity limits already specified in SDF
         acc_limit = [15, 7.5, 10, 12.5, 15, 20, 20]
@@ -178,11 +183,18 @@ class PandaStation(Diagram):
         self.controller_plant.Finalize()
 
         # Add arm controller
+        # kp = np.array([2000, 1500, 1500, 1500, 1500, 500, 500])*1.5
+        kp = np.array([2000, 2000, 2000, 2000, 2000, 2000, 2000])*2
+        kd = 2*np.sqrt(kp)
+        ki = np.ones(7)
         self.panda_controller = self.builder.AddSystem(InverseDynamicsController(
                 self.controller_plant,
-                kp =[10000]*num_panda_positions,  # 2000, 100
-                kd =[500]*num_panda_positions,  # 200, 1
-                ki =[0]*num_panda_positions,   # 10, 0
+                # kp=[5000]*num_panda_positions,  # 2000, 10000, 5000
+                # kd=[250]*num_panda_positions,  # 200, 500, 250
+                # ki=[0]*num_panda_positions,   # 0, 0, 0
+                kp=kp,
+                kd=kd,
+                ki=ki,
                 has_reference_acceleration=False))
         self.panda_controller.set_name("panda_controller")
         self.builder.Connect(
@@ -218,7 +230,7 @@ class PandaStation(Diagram):
 
         # Add Differential IK
         diff_ik = self.builder.AddSystem(
-            PseudoInverseController(self.controller_plant)
+            PseudoInverseController(self.controller_plant, self.dt)
             )
         diff_ik.set_name("PseudoInverseController")
         

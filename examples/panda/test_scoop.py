@@ -12,11 +12,12 @@ if __name__ == '__main__':
         task_all = pickle.load(f)
 
     env = ScoopEnv(
-                dt=0.002,
+                dt=0.005,
                 renders=True,
                 visualize_contact=False,  # conflict with swapping geometry
-                diff_ik_filter_hz=500,
+                diff_ik_filter_hz=200,
                 contact_solver='sap',
+                panda_joint_damping=1.5,    # issue with diff ik
                 )
     for ind in range(1, 100):
         task = task_all[ind]

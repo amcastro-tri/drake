@@ -10,10 +10,12 @@ if __name__ == '__main__':
     with open(dataset, 'rb') as f:
         task_all = pickle.load(f)
     env = PushTrajEnv(
-                    dt=0.002,
+                    dt=0.005,
                     renders=True,
                     visualize_contact=False,
                     diff_ik_filter_hz=-1,
+                    contact_solver='sap',
+                    panda_joint_damping=200,
                     )
     for ind in range(1, 100):
         task = task_all[ind]

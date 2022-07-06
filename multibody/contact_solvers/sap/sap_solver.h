@@ -1,5 +1,6 @@
 #pragma once
 
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -128,6 +129,24 @@ struct SapSolverParameters {
   // SAP uses sparse supernodal algebra by default. Set this to true to use
   // dense algebra instead. Typically used for testing.
   bool use_dense_algebra{false};
+
+  // Dimensionless number used to allow some slop on the check near zero for
+  // certain quantities such as the gradient of the cost.
+  // It is also used to check for monotonic convergence. In particular, we allow
+  // a small increase in the cost due to round-off errors
+  //   ℓᵏ ≤ ℓᵏ⁻¹ + ε
+  // where ε = relative_slop*max(1, (ℓᵏ+ℓᵏ⁻¹)/2).
+  // If this condition is not satisfied and nonmonotonic_convergence_is_error =
+  // true, SapSolver throws an exception.
+  double relative_slop{1000 * std::numeric_limits<double>::epsilon()};
+
+  // (For debugging) Even though SAP's convergence in monotonic, round-off
+  // errors could cause small cost increases on the order of machine epsilon.
+  // SAP's implementation uses a `realtive_slop` so that round-off errors do not
+  // cause false negatives. For debugging purposes however, this options allows
+  // to trigger an exception if the cost increases. For details, see
+  // documentation on `relative_slop`.
+  bool nonmonotonic_convergence_is_error{false};
 };
 
 // This class implements the Semi-Analytic Primal (SAP) solver described in

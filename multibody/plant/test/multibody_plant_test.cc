@@ -10,10 +10,8 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "drake/common/eigen_autodiff_types.h"
 #include "drake/common/find_resource.h"
 #include "drake/common/nice_type_name.h"
-#include "drake/common/symbolic.h"
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/common/test_utilities/expect_no_throw.h"
 #include "drake/common/test_utilities/expect_throws_message.h"
@@ -1414,20 +1412,18 @@ GTEST_TEST(MultibodyPlantTest, FilterWeldedSubgraphs) {
 // Tests the error conditions for CollectRegisteredGeometries.
 GTEST_TEST(MultibodyPlantTest, CollectRegisteredGeometriesErrors) {
   MultibodyPlant<double> plant(0.0);
+  const RigidBody<double>& body = plant.AddRigidBody("body",
+      SpatialInertia<double>::MakeTestCube());
 
-  // A throw-away rigid body I can use to satisfy the function interface; it
-  // will never be used because the function will fail in a pre-requisite test.
-  RigidBody<double> body{SpatialInertia<double>()};
-  // The case where the plant has *not* been finalized.
+  // It's an error to call this without a SceneGraph.
   DRAKE_EXPECT_THROWS_MESSAGE(
       plant.CollectRegisteredGeometries({&body}),
-      "Failure .* in CollectRegisteredGeometries.* failed.");
+      ".*geometry_source_is_registered.*failed.*");
 
-  // The case where the plant has *not* been registered as a source.
-  plant.Finalize();
-  DRAKE_EXPECT_THROWS_MESSAGE(
-      plant.CollectRegisteredGeometries({&body}),
-      "Failure .* in CollectRegisteredGeometries.* failed.");
+  // With a scene graph, it passes.
+  SceneGraph<double> scene_graph;
+  plant.RegisterAsSourceForSceneGraph(&scene_graph);
+  EXPECT_NO_THROW(plant.CollectRegisteredGeometries({&body}));
 }
 
 // Tests the ability to accumulate the geometries associated with a set of
@@ -2225,10 +2221,8 @@ GTEST_TEST(MultibodyPlantTest, ScalarConversionConstructor) {
   Parser(&plant, &scene_graph).AddModelFromFile(full_name);
 
   // Try scalar-converting pre-finalize - error.
-  // N.B. Use extra parentheses; otherwise, compiler may think this is a
-  // declaration.
   DRAKE_EXPECT_THROWS_MESSAGE(
-      (MultibodyPlant<AutoDiffXd>(plant)),
+      systems::System<double>::ToAutoDiffXd(plant),
       ".*MultibodyTree with an invalid topology.*");
 
   plant.Finalize();
@@ -2259,26 +2253,27 @@ GTEST_TEST(MultibodyPlantTest, ScalarConversionConstructor) {
   ASSERT_EQ(link3_num_visuals, 0);
 
   // Scalar convert the plant and verify invariants.
-  MultibodyPlant<AutoDiffXd> plant_autodiff(plant);
-  EXPECT_TRUE(plant_autodiff.geometry_source_is_registered());
-  EXPECT_EQ(plant_autodiff.num_collision_geometries(),
+  std::unique_ptr<MultibodyPlant<AutoDiffXd>> plant_autodiff =
+      systems::System<double>::ToAutoDiffXd(plant);
+  EXPECT_TRUE(plant_autodiff->geometry_source_is_registered());
+  EXPECT_EQ(plant_autodiff->num_collision_geometries(),
             plant.num_collision_geometries());
-  EXPECT_EQ(plant_autodiff.GetCollisionGeometriesForBody(
-      plant_autodiff.GetBodyByName("link1")).size(), link1_num_collisions);
-  EXPECT_EQ(plant_autodiff.GetCollisionGeometriesForBody(
-      plant_autodiff.GetBodyByName("link2")).size(), link2_num_collisions);
-  EXPECT_EQ(plant_autodiff.GetCollisionGeometriesForBody(
-      plant_autodiff.GetBodyByName("link3")).size(), link3_num_collisions);
-  EXPECT_EQ(plant_autodiff.GetVisualGeometriesForBody(
-      plant_autodiff.GetBodyByName("link1")).size(), link1_num_visuals);
-  EXPECT_EQ(plant_autodiff.GetVisualGeometriesForBody(
-      plant_autodiff.GetBodyByName("link2")).size(), link2_num_visuals);
-  EXPECT_EQ(plant_autodiff.GetVisualGeometriesForBody(
-      plant_autodiff.GetBodyByName("link3")).size(), link3_num_visuals);
+  EXPECT_EQ(plant_autodiff->GetCollisionGeometriesForBody(
+      plant_autodiff->GetBodyByName("link1")).size(), link1_num_collisions);
+  EXPECT_EQ(plant_autodiff->GetCollisionGeometriesForBody(
+      plant_autodiff->GetBodyByName("link2")).size(), link2_num_collisions);
+  EXPECT_EQ(plant_autodiff->GetCollisionGeometriesForBody(
+      plant_autodiff->GetBodyByName("link3")).size(), link3_num_collisions);
+  EXPECT_EQ(plant_autodiff->GetVisualGeometriesForBody(
+      plant_autodiff->GetBodyByName("link1")).size(), link1_num_visuals);
+  EXPECT_EQ(plant_autodiff->GetVisualGeometriesForBody(
+      plant_autodiff->GetBodyByName("link2")).size(), link2_num_visuals);
+  EXPECT_EQ(plant_autodiff->GetVisualGeometriesForBody(
+      plant_autodiff->GetBodyByName("link3")).size(), link3_num_visuals);
 
   // Make sure the geometry ports were included in the autodiffed plant.
-  DRAKE_EXPECT_NO_THROW(plant_autodiff.get_geometry_query_input_port());
-  DRAKE_EXPECT_NO_THROW(plant_autodiff.get_geometry_poses_output_port());
+  DRAKE_EXPECT_NO_THROW(plant_autodiff->get_geometry_query_input_port());
+  DRAKE_EXPECT_NO_THROW(plant_autodiff->get_geometry_poses_output_port());
 }
 
 // This test is used to verify the correctness of the methods to compute the

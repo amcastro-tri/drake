@@ -15,7 +15,7 @@ drake_cc_binary(
     deps = [
         "//common:essential",
         "@gflags",
-        "@sdformat_internal//:ign_sdf_cmdline",
+        "@sdformat_internal//:ign_cmdline",
     ],
 )
 
@@ -24,4 +24,4 @@ drake_py_unittest(
     data = [":ign_sdf"],
 )
 
-add_lint_tests()
+add_lint_tests(python_lint_extra_srcs = ["embed_sdf.py"])

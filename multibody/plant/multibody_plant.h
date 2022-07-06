@@ -784,67 +784,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
 
   /// Scalar-converting copy constructor.  See @ref system_scalar_conversion.
   template <typename U>
-  explicit MultibodyPlant(const MultibodyPlant<U>& other)
-      : internal::MultibodyTreeSystem<T>(
-            systems::SystemTypeTag<MultibodyPlant>{},
-            other.internal_tree().template CloneToScalar<T>(),
-            other.is_discrete()) {
-    DRAKE_THROW_UNLESS(other.is_finalized());
-    time_step_ = other.time_step_;
-    // Copy of all members related with geometry registration.
-    source_id_ = other.source_id_;
-    body_index_to_frame_id_ = other.body_index_to_frame_id_;
-    frame_id_to_body_index_ = other.frame_id_to_body_index_;
-    geometry_id_to_body_index_ = other.geometry_id_to_body_index_;
-    visual_geometries_ = other.visual_geometries_;
-    num_visual_geometries_ = other.num_visual_geometries_;
-    collision_geometries_ = other.collision_geometries_;
-    num_collision_geometries_ = other.num_collision_geometries_;
-    X_WB_default_list_ = other.X_WB_default_list_;
-    contact_model_ = other.contact_model_;
-    contact_surface_representation_ =
-        other.contact_surface_representation_;
-    penetration_allowance_ = other.penetration_allowance_;
-    // Note: The physical models must be cloned before `FinalizePlantOnly()` is
-    // called because `FinalizePlantOnly()` has to allocate system resources
-    // requested by physical models.
-    for (auto& model : other.physical_models_) {
-      auto cloned_model = model->template CloneToScalar<T>();
-      // TODO(xuchenhan-tri): Rework physical model and discrete update manager
-      //  to eliminate the requirement on the order that they are called with
-      //  respect to Finalize().
-
-      // AddPhysicalModel can't be called here because it's post-finalize. We
-      // have to manually disable scalars that the cloned physical model do not
-      // support.
-      RemoveUnsupportedScalars(*cloned_model);
-      physical_models_.emplace_back(std::move(cloned_model));
-    }
-
-    DeclareSceneGraphPorts();
-
-    // Do accounting for MultibodyGraph
-    for (BodyIndex index(0); index < num_bodies(); ++index) {
-      const Body<T>& body = get_body(index);
-      multibody_graph_.AddBody(body.name(), body.model_instance());
-    }
-
-    for (JointIndex index(0); index < num_joints(); ++index) {
-      RegisterJointInGraph(get_joint(index));
-    }
-
-    // MultibodyTree::CloneToScalar() already called MultibodyTree::Finalize()
-    // on the new MultibodyTree on U. Therefore we only Finalize the plant's
-    // internals (and not the MultibodyTree).
-    FinalizePlantOnly();
-
-    // Note: The discrete update manager needs to be copied *after* the plant is
-    // finalized.
-    if (other.discrete_update_manager_ != nullptr) {
-      SetDiscreteUpdateManager(
-          other.discrete_update_manager_->template CloneToScalar<T>());
-    }
-  }
+  explicit MultibodyPlant(const MultibodyPlant<U>& other);
 
   /// Creates a rigid body with the provided name and spatial inertia.  This
   /// method returns a constant reference to the body just added, which will
@@ -1395,14 +1335,14 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @note There is a *very* specific order of operations:
   ///
   /// 1. Bodies and geometries must be added to the %MultibodyPlant.
-  /// 2. The %MultibodyPlant must be finalized (via Finalize()).
-  /// 3. Create GeometrySet instances from bodies (via this method).
-  /// 4. Invoke SceneGraph::ExcludeCollisions*() to filter collisions.
-  /// 5. Allocate context.
+  /// 2. Create GeometrySet instances from bodies (via this method).
+  /// 3. Invoke SceneGraph::ExcludeCollisions*() to filter collisions.
+  /// 4. Allocate context.
   ///
   /// Changing the order will cause exceptions to be thrown.
   ///
-  /// @throws std::exception if called pre-finalize.
+  /// @throws std::exception if `this` %MultibodyPlant was not
+  /// registered with a SceneGraph.
   geometry::GeometrySet CollectRegisteredGeometries(
       const std::vector<const Body<T>*>& bodies) const;
 
@@ -3889,6 +3829,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// Returns the total number of actuated degrees of freedom for a specific
   /// model instance.  That is, the vector of actuation values u has this size.
   /// See AddJointActuator().
+  /// @throws std::exception if called pre-finalize.
   int num_actuated_dofs(ModelInstanceIndex model_instance) const {
     return internal_tree().num_actuated_dofs(model_instance);
   }
@@ -4028,19 +3969,29 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   std::string GetTopologyGraphvizString() const;
 
   /// Returns the size of the generalized position vector q for this model.
+  /// @warning The intent of this function is only to be used after Finalize().
+  /// Calling it prior to Finalize() will return inaccurate results. On or after
+  /// 2022-10-01, calling this function before Finalize() will result in an
+  /// exception.
   int num_positions() const { return internal_tree().num_positions(); }
 
   /// Returns the size of the generalized position vector qᵢ for model
   /// instance i.
+  /// @throws std::exception if called pre-finalize.
   int num_positions(ModelInstanceIndex model_instance) const {
     return internal_tree().num_positions(model_instance);
   }
 
   /// Returns the size of the generalized velocity vector v for this model.
+  /// @warning The intent of this function is only to be used after Finalize().
+  /// Calling it prior to Finalize() will return inaccurate results. On or after
+  /// 2022-10-01, calling this function before Finalize() will result in an
+  /// exception.
   int num_velocities() const { return internal_tree().num_velocities(); }
 
   /// Returns the size of the generalized velocity vector vᵢ for model
   /// instance i.
+  /// @throws std::exception if called pre-finalize.
   int num_velocities(ModelInstanceIndex model_instance) const {
     return internal_tree().num_velocities(model_instance);
   }
@@ -4049,12 +4000,17 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // integrated power and other discrete states, hence the specific name.
   /// Returns the size of the multibody system state vector x = [q v]. This
   /// will be `num_positions()` plus `num_velocities()`.
+  /// @warning The intent of this function is only to be used after Finalize().
+  /// Calling it prior to Finalize() will return inaccurate results. On or after
+  /// 2022-10-01, calling this function before Finalize() will result in an
+  /// exception.
   int num_multibody_states() const { return internal_tree().num_states(); }
 
   /// Returns the size of the multibody system state vector xᵢ = [qᵢ vᵢ] for
   /// model instance i. (Here qᵢ ⊆ q and vᵢ ⊆ v.)
   /// will be `num_positions(model_instance)` plus
   /// `num_velocities(model_instance)`.
+  /// @throws std::exception if called pre-finalize.
   int num_multibody_states(ModelInstanceIndex model_instance) const {
     return internal_tree().num_states(model_instance);
   }

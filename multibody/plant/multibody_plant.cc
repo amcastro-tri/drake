@@ -11,10 +11,10 @@
 #include "drake/common/drake_throw.h"
 #include "drake/common/text_logging.h"
 #include "drake/common/unused.h"
-#include "drake/geometry/frame_kinematics_vector.h"
 #include "drake/geometry/geometry_frame.h"
 #include "drake/geometry/geometry_instance.h"
 #include "drake/geometry/geometry_roles.h"
+#include "drake/geometry/kinematics_vector.h"
 #include "drake/geometry/proximity_properties.h"
 #include "drake/geometry/query_results/contact_surface.h"
 #include "drake/geometry/render/render_label.h"
@@ -201,7 +201,7 @@ struct JointLimitsPenaltyParametersEstimator {
           // spatial inertias unspecified (i.e. initialized to NaN). A user
           // might do this when only interested in performing kinematics
           // computations.
-          if (std::isnan(body->get_default_mass())) {
+          if (std::isnan(body->default_mass())) {
             return std::numeric_limits<double>::infinity();
           }
 
@@ -387,6 +387,70 @@ MultibodyPlant<T>::MultibodyPlant(
   // Add the world body to the graph.
   multibody_graph_.AddBody(world_body().name(), world_body().model_instance());
   DeclareSceneGraphPorts();
+}
+
+template <typename T>
+template <typename U>
+MultibodyPlant<T>::MultibodyPlant(const MultibodyPlant<U>& other)
+    : internal::MultibodyTreeSystem<T>(
+          systems::SystemTypeTag<MultibodyPlant>{},
+          other.internal_tree().template CloneToScalar<T>(),
+          other.is_discrete()) {
+  DRAKE_THROW_UNLESS(other.is_finalized());
+  time_step_ = other.time_step_;
+  // Copy of all members related with geometry registration.
+  source_id_ = other.source_id_;
+  body_index_to_frame_id_ = other.body_index_to_frame_id_;
+  frame_id_to_body_index_ = other.frame_id_to_body_index_;
+  geometry_id_to_body_index_ = other.geometry_id_to_body_index_;
+  visual_geometries_ = other.visual_geometries_;
+  num_visual_geometries_ = other.num_visual_geometries_;
+  collision_geometries_ = other.collision_geometries_;
+  num_collision_geometries_ = other.num_collision_geometries_;
+  X_WB_default_list_ = other.X_WB_default_list_;
+  contact_model_ = other.contact_model_;
+  contact_surface_representation_ =
+      other.contact_surface_representation_;
+  penetration_allowance_ = other.penetration_allowance_;
+  // Note: The physical models must be cloned before `FinalizePlantOnly()` is
+  // called because `FinalizePlantOnly()` has to allocate system resources
+  // requested by physical models.
+  for (auto& model : other.physical_models_) {
+    auto cloned_model = model->template CloneToScalar<T>();
+    // TODO(xuchenhan-tri): Rework physical model and discrete update manager
+    //  to eliminate the requirement on the order that they are called with
+    //  respect to Finalize().
+
+    // AddPhysicalModel can't be called here because it's post-finalize. We
+    // have to manually disable scalars that the cloned physical model do not
+    // support.
+    RemoveUnsupportedScalars(*cloned_model);
+    physical_models_.emplace_back(std::move(cloned_model));
+  }
+
+  DeclareSceneGraphPorts();
+
+  // Do accounting for MultibodyGraph
+  for (BodyIndex index(0); index < num_bodies(); ++index) {
+    const Body<T>& body = get_body(index);
+    multibody_graph_.AddBody(body.name(), body.model_instance());
+  }
+
+  for (JointIndex index(0); index < num_joints(); ++index) {
+    RegisterJointInGraph(get_joint(index));
+  }
+
+  // MultibodyTree::CloneToScalar() already called MultibodyTree::Finalize()
+  // on the new MultibodyTree on U. Therefore we only Finalize the plant's
+  // internals (and not the MultibodyTree).
+  FinalizePlantOnly();
+
+  // Note: The discrete update manager needs to be copied *after* the plant is
+  // finalized.
+  if (other.discrete_update_manager_ != nullptr) {
+    SetDiscreteUpdateManager(
+        other.discrete_update_manager_->template CloneToScalar<T>());
+  }
 }
 
 template <typename T>

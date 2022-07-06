@@ -9,7 +9,10 @@ load(
 )
 load("//tools/lint:lint.bzl", "add_lint_tests")
 load("@drake//tools/workspace:forward_files.bzl", "forward_files")
-load("//tools/workspace/dm_control:files.bzl", "dm_control_mujoco_files")
+load(
+    "//tools/workspace/dm_control_internal:files.bzl",
+    "dm_control_mujoco_files",
+)
 
 filegroup(
     name = "test_models",
@@ -18,12 +21,18 @@ filegroup(
         "test/**/*.config",
         "test/**/*.obj",
         "test/**/*.sdf",
-        "test/**/*.forced_nesting_sdf",
         "test/**/*.urdf",
         "test/**/*.xml",
         "test/**/*.png",
     ]),
     visibility = ["//visibility:public"],
+)
+
+_DM_CONTROL_MUJOCO_FILES = forward_files(
+    srcs = ["@dm_control_internal//:" + x for x in dm_control_mujoco_files()],
+    dest_prefix = "",
+    strip_prefix = "@dm_control_internal//:",
+    visibility = ["//visibility:private"],
 )
 
 drake_cc_package_library(
@@ -211,6 +220,7 @@ drake_cc_library(
         "//multibody/plant",
     ],
     deps = [
+        ":detail_mujoco_parser",
         ":detail_parsing_workspace",
         ":detail_sdf_parser",
         ":detail_urdf_parser",
@@ -328,7 +338,7 @@ drake_cc_googletest(
     data = [
         ":test_models",
         "//multibody/benchmarks/acrobot:models",
-    ],
+    ] + _DM_CONTROL_MUJOCO_FILES,
     deps = [
         ":parser",
         "//common:filesystem",
@@ -419,13 +429,6 @@ drake_cc_googletest(
         "//multibody/benchmarks/acrobot",
         "//multibody/benchmarks/acrobot:make_acrobot_plant",
     ],
-)
-
-_DM_CONTROL_MUJOCO_FILES = forward_files(
-    srcs = ["@dm_control//:" + x for x in dm_control_mujoco_files()],
-    dest_prefix = "",
-    strip_prefix = "@dm_control//:",
-    visibility = ["//visibility:private"],
 )
 
 drake_cc_googletest(

@@ -24,6 +24,7 @@ drake_cc_package_library(
         ":sap_contact_problem",
         ":sap_friction_cone_constraint",
         ":sap_limit_constraint",
+        ":sap_generic_constraint_with_impulse_limits",
         ":sap_model",
         ":sap_solver",
         ":sap_solver_results",
@@ -79,6 +80,17 @@ drake_cc_library(
     hdrs = ["sap_contact_problem.h"],
     deps = [
         ":contact_problem_graph",
+        ":sap_constraint",
+        "//common:default_scalars",
+        "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "sap_generic_constraint_with_impulse_limits",
+    srcs = ["sap_generic_constraint_with_impulse_limits.cc"],
+    hdrs = ["sap_generic_constraint_with_impulse_limits.h"],
+    deps = [
         ":sap_constraint",
         "//common:default_scalars",
         "//common:essential",

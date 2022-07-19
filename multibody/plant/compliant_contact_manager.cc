@@ -16,6 +16,7 @@
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
 #include "drake/multibody/contact_solvers/sap/sap_contact_problem.h"
 #include "drake/multibody/contact_solvers/sap/sap_friction_cone_constraint.h"
+#include "drake/multibody/contact_solvers/sap/sap_generic_constraint_with_impulse_limits.h"
 #include "drake/multibody/contact_solvers/sap/sap_limit_constraint.h"
 #include "drake/multibody/contact_solvers/sap/sap_solver.h"
 #include "drake/multibody/contact_solvers/sap/sap_solver_results.h"
@@ -32,6 +33,7 @@ using drake::multibody::contact_solvers::internal::ExtractTangent;
 using drake::multibody::contact_solvers::internal::SapConstraint;
 using drake::multibody::contact_solvers::internal::SapContactProblem;
 using drake::multibody::contact_solvers::internal::SapFrictionConeConstraint;
+using drake::multibody::contact_solvers::internal::SapGenericConstraintWithImpulseLimits;
 using drake::multibody::contact_solvers::internal::SapLimitConstraint;
 using drake::multibody::contact_solvers::internal::SapSolver;
 using drake::multibody::contact_solvers::internal::SapSolverResults;
@@ -55,6 +57,16 @@ AccelerationsDueToExternalForcesCache<T>::AccelerationsDueToExternalForcesCache(
 
 template <typename T>
 CompliantContactManager<T>::~CompliantContactManager() {}
+
+template <typename T>
+void CompliantContactManager<T>::AddCouplerConstraint(const Joint<T>& joint0,
+                                                      const Joint<T>& joint1,
+                                                      const T& gear_ratio) {
+  DRAKE_THROW_UNLESS(joint0.num_velocities() == 1);
+  DRAKE_THROW_UNLESS(joint1.num_velocities() == 1);
+  coupler_constraints_info_.push_back(CouplerConstraintInfo{
+      joint0.velocity_start(), joint1.velocity_start(), gear_ratio});
+}
 
 template <typename T>
 void CompliantContactManager<T>::DeclareCacheEntries() {
@@ -779,6 +791,59 @@ CompliantContactManager<T>::AddContactConstraints(
 }
 
 template <typename T>
+void CompliantContactManager<T>::AddCouplerConstraints(
+    const systems::Context<T>& context, SapContactProblem<T>* problem) const {
+  DRAKE_DEMAND(problem != nullptr);
+
+  // Previous time step positions.
+  const VectorX<T> q0 = plant().GetPositions(context);  
+
+  constexpr double kInfinity = std::numeric_limits<double>::infinity();
+  const Vector1<T> ql(-kInfinity);
+  const Vector1<T> qu(kInfinity);
+
+  for (const CouplerConstraintInfo& info : coupler_constraints_info_) {
+    const TreeIndex c0 = tree_topology().velocity_to_tree_index(info.q0);
+    const TreeIndex c1 = tree_topology().velocity_to_tree_index(info.q1);
+
+    // Sanity check.
+    DRAKE_DEMAND(c0.is_valid() && c1.is_valid());
+
+    // Constraint function.
+    const T g0 = q0[info.q0] - info.gear_ratio * q0[info.q1];
+
+    // TODO: expose this parameter.
+    const double beta = 0.1;
+
+    const typename SapGenericConstraintWithImpulseLimits<T>::Parameters parameters{
+        ql, qu, kInfinity, plant().time_step(), beta};
+
+    if (c0 == c1) {
+      const int nv = tree_topology().num_tree_velocities(c0);
+      MatrixX<T> J = MatrixX<T>::Zero(1, nv);
+      // J = dg/dv
+      J(0, info.q0) = 1.0;
+      J(0, info.q1) = -info.gear_ratio;
+
+      problem->AddConstraint(
+          std::make_unique<SapGenericConstraintWithImpulseLimits<T>>(
+              c0, g0, J, parameters));
+    } else {
+      const int nv0 = tree_topology().num_tree_velocities(c0);
+      const int nv1 = tree_topology().num_tree_velocities(c1);
+      MatrixX<T> J0 = MatrixX<T>::Zero(1, nv0);
+      MatrixX<T> J1 = MatrixX<T>::Zero(1, nv1);
+      J0(0, info.q0) = 1.0;
+      J1(0, info.q1) = -info.gear_ratio;
+      problem->AddConstraint(
+          std::make_unique<SapGenericConstraintWithImpulseLimits<T>>(
+              c0, c1, g0, J0, J1, parameters));
+    }
+  }
+
+}
+
+template <typename T>
 void CompliantContactManager<T>::AddLimitConstraints(
     const systems::Context<T>& context, const VectorX<T>& v_star,
     SapContactProblem<T>* problem) const {
@@ -891,6 +956,7 @@ void CompliantContactManager<T>::CalcContactProblemCache(
   // Do not change this order here!
   cache->R_WC = AddContactConstraints(context, &problem);
   AddLimitConstraints(context, problem.v_star(), &problem);
+  AddCouplerConstraints(context, &problem);
 }
 
 template <typename T>

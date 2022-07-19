@@ -137,6 +137,9 @@ class CompliantContactManager final
 
   ~CompliantContactManager() final;
 
+  void AddCouplerConstraint(const Joint<T>& joint0, const Joint<T>& joint1,
+                            const T& gear_ratio);
+
   // Sets the parameters to be used by the SAP solver.
   void set_sap_solver_parameters(
       const contact_solvers::internal::SapSolverParameters& parameters) {
@@ -144,6 +147,12 @@ class CompliantContactManager final
   }
 
  private:
+  struct CouplerConstraintInfo {
+    int q0{-1};
+    int q1{-1};
+    T gear_ratio{1.0};
+  };
+
   // Struct used to conglomerate the indexes of cache entries declared by the
   // manager.
   struct CacheIndexes {
@@ -324,6 +333,11 @@ class CompliantContactManager final
       const systems::Context<T>& context, const VectorX<T>& v_star,
       contact_solvers::internal::SapContactProblem<T>* problem) const;
 
+  void AddCouplerConstraints(
+      const systems::Context<T>& context,
+      drake::multibody::contact_solvers::internal::SapContactProblem<T>*
+          problem) const;
+
   // This method takes SAP results for a given `problem` and loads forces due to
   // contact only into `contact_results`. `contact_results` is properly resized
   // on output.
@@ -346,6 +360,8 @@ class CompliantContactManager final
   // Vector of joint damping coefficients, of size plant().num_velocities().
   // This information is extracted during the call to ExtractModelInfo().
   VectorX<T> joint_damping_;
+
+  std::vector<CouplerConstraintInfo> coupler_constraints_info_;
 };
 
 }  // namespace internal

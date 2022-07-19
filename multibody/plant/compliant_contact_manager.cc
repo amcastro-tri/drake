@@ -801,6 +801,8 @@ void CompliantContactManager<T>::AddCouplerConstraints(
   constexpr double kInfinity = std::numeric_limits<double>::infinity();
   const Vector1<T> ql(-kInfinity);
   const Vector1<T> qu(kInfinity);
+  const Vector1<T> stiffness(kInfinity);
+  const Vector1<T> relaxation_time(plant().time_step());
 
   for (const CouplerConstraintInfo& info : coupler_constraints_info_) {
     const TreeIndex c0 = tree_topology().velocity_to_tree_index(info.q0);
@@ -810,13 +812,13 @@ void CompliantContactManager<T>::AddCouplerConstraints(
     DRAKE_DEMAND(c0.is_valid() && c1.is_valid());
 
     // Constraint function.
-    const T g0 = q0[info.q0] - info.gear_ratio * q0[info.q1];
+    const Vector1<T> g0(q0[info.q0] - info.gear_ratio * q0[info.q1]);
 
     // TODO: expose this parameter.
     const double beta = 0.1;
 
-    const typename SapGenericConstraintWithImpulseLimits<T>::Parameters parameters{
-        ql, qu, kInfinity, plant().time_step(), beta};
+    const typename SapGenericConstraintWithImpulseLimits<T>::Parameters
+        parameters{ql, qu, stiffness, relaxation_time, beta};
 
     if (c0 == c1) {
       const int nv = tree_topology().num_tree_velocities(c0);

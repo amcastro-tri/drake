@@ -12,36 +12,24 @@ namespace multibody {
 namespace contact_solvers {
 namespace internal {
 
-/* Implements limit constraints for the SAP solver, [Castro et al., 2021]. This
- constraint is used to impose a (compliant, see below) limit on the i-th degree
- of freedom (DOF) of a given clique in a SapContactModel. This constraint
- assumes that the rate of change of the i-th configuration exactly equals its
- corresponding generalized velocities, i.e. q̇ᵢ = vᵢ. This is specially true for
- 1-DOF joints such as revolute and prismatic.
+/* Implements an arbitrary holonomic constraint for the SAP formulation [Castro
+ et al., 2021].
 
  Constraint kinematics:
-  We consider the i-th DOF of a clique with m DOFs.
-  We denote the configuration with qᵢ its lower limit with qₗ and its upper
-  limit with qᵤ, where qₗ < qᵤ. The limit constraint defines a constraint
-  function g(q) ∈ ℝ² as:
-    g = |qᵢ - qₗ|   for the lower limit and,
-        |qᵤ - qᵢ|   for the upper limit
-  such that g(qᵢ) < 0 (componentwise) if the constraint is violated. The
-  constraint velocity therefore is:
-    ġ = | q̇ᵢ|
-        |-q̇ᵢ|
-  And therefore the constraint Jacobian is:
-    J = | eᵢᵀ|
-        |-eᵢᵀ|
-  where eᵢ is the i-th element of the standard basis of ℝᵐ whose components are
-  all zero, except for the i-th component that equals to 1.
+  We can write an arbitrary holonomic constraint as g(q, t) = 0, with g(q, t) ∈
+  ℝⁿ and n the number of constraint equations.
+  This constraint can be written at the velocity level by taking the time
+  derivative to obtain
+    ġ(q, t) = J⋅v + b = 0
+  where J is the contraint's Jacobian, v the vector of generalized velocities of
+  the model and b is the bias term b = ∂g/∂t.
 
-  If one of the limits is infinite (qₗ = -∞ or qᵤ = +∞) then only one of the
-  equations is considered (the one with finite bound) and g(q) ∈ ℝ i.e.
-  num_constraint_equations() = 1.
+ Compliant impulses:
+  We will need an impulse for each component in the constraint equation in g(q,
+  t) = 0. Here we consider the more general case in which each impulse γᵢ have a
+  lower and upper limit, γₗᵢ and γᵤᵢ respectively.
 
- Compliant impulse:
-  Limit constraints in the SAP formulation model a compliant impulse γ according
+  Constraints in the SAP formulation model a compliant impulse γ according
   to:
     y/dt = −k⋅g−d⋅ġ
     γ/δt = P(y)
@@ -65,9 +53,9 @@ namespace internal {
 
  @tparam_nonsymbolic_scalar */
 template <typename T>
-class SapGenericConstraintWithImpulseLimits final : public SapConstraint<T> {
+class SapHolonomicConstraint final : public SapConstraint<T> {
  public:
-  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(SapGenericConstraintWithImpulseLimits);
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(SapHolonomicConstraint);
 
   /* Numerical parameters that define the constraint. Refer to this class's
    documentation for details. */
@@ -107,10 +95,10 @@ class SapGenericConstraintWithImpulseLimits final : public SapConstraint<T> {
     double beta_{0.1};
   };
 
-  SapGenericConstraintWithImpulseLimits(int clique, VectorX<T> g, MatrixX<T> J,
+  SapHolonomicConstraint(int clique, VectorX<T> g, MatrixX<T> J,
                                         Parameters parameters);
 
-  SapGenericConstraintWithImpulseLimits(int first_clique, int second_clique,
+  SapHolonomicConstraint(int first_clique, int second_clique,
                                         VectorX<T> g, MatrixX<T> J_first_clique,
                                         MatrixX<T> J_second_clique,
                                         Parameters parameters);

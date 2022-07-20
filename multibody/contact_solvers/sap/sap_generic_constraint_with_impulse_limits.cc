@@ -13,7 +13,7 @@ namespace contact_solvers {
 namespace internal {
 
 template <typename T>
-SapGenericConstraintWithImpulseLimits<T>::Parameters::Parameters(
+SapHolonomicConstraint<T>::Parameters::Parameters(
     VectorX<T> lower_limits, VectorX<T> upper_limits,
     VectorX<T> stiffnesses, VectorX<T> relaxation_times, double beta)
     : lower_limits_(std::move(lower_limits)),
@@ -30,13 +30,13 @@ SapGenericConstraintWithImpulseLimits<T>::Parameters::Parameters(
 }
 
 template <typename T>
-SapGenericConstraintWithImpulseLimits<T>::SapGenericConstraintWithImpulseLimits(
+SapHolonomicConstraint<T>::SapHolonomicConstraint(
     int clique, VectorX<T> g, MatrixX<T> J, Parameters parameters)
     : SapConstraint<T>(clique, std::move(g), std::move(J)),
       parameters_(std::move(parameters)) {}
 
 template <typename T>
-SapGenericConstraintWithImpulseLimits<T>::SapGenericConstraintWithImpulseLimits(
+SapHolonomicConstraint<T>::SapHolonomicConstraint(
     int first_clique, int second_clique, VectorX<T> g,
     MatrixX<T> J_first_clique, MatrixX<T> J_second_clique,
     Parameters parameters)
@@ -45,7 +45,7 @@ SapGenericConstraintWithImpulseLimits<T>::SapGenericConstraintWithImpulseLimits(
       parameters_(std::move(parameters)) {}
 
 template <typename T>
-VectorX<T> SapGenericConstraintWithImpulseLimits<T>::CalcBiasTerm(
+VectorX<T> SapHolonomicConstraint<T>::CalcBiasTerm(
     const T& time_step, const T& wi) const {
   using std::min;
   const double beta = parameters_.beta();
@@ -78,7 +78,7 @@ VectorX<T> SapGenericConstraintWithImpulseLimits<T>::CalcBiasTerm(
 }
 
 template <typename T>
-VectorX<T> SapGenericConstraintWithImpulseLimits<T>::CalcDiagonalRegularization(
+VectorX<T> SapHolonomicConstraint<T>::CalcDiagonalRegularization(
     const T& time_step, const T& wi) const {
   using std::max;
 
@@ -112,7 +112,7 @@ VectorX<T> SapGenericConstraintWithImpulseLimits<T>::CalcDiagonalRegularization(
 }
 
 template <typename T>
-void SapGenericConstraintWithImpulseLimits<T>::Project(
+void SapHolonomicConstraint<T>::Project(
     const Eigen::Ref<const VectorX<T>>& y, const Eigen::Ref<const VectorX<T>>&,
     EigenPtr<VectorX<T>> gamma, MatrixX<T>* dPdy) const {
   DRAKE_DEMAND(gamma != nullptr);
@@ -134,8 +134,8 @@ void SapGenericConstraintWithImpulseLimits<T>::Project(
 
 template <typename T>
 std::unique_ptr<SapConstraint<T>>
-SapGenericConstraintWithImpulseLimits<T>::Clone() const {
-  return std::make_unique<SapGenericConstraintWithImpulseLimits<T>>(*this);
+SapHolonomicConstraint<T>::Clone() const {
+  return std::make_unique<SapHolonomicConstraint<T>>(*this);
 }
 
 }  // namespace internal
@@ -145,4 +145,4 @@ SapGenericConstraintWithImpulseLimits<T>::Clone() const {
 
 DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     class ::drake::multibody::contact_solvers::internal::
-        SapGenericConstraintWithImpulseLimits)
+        SapHolonomicConstraint)

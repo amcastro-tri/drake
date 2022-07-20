@@ -9,8 +9,18 @@ namespace multibody {
 namespace internal {
 
 template <typename T>
+void DiscreteUpdateManager<T>::AddCouplerConstraint(const Joint<T>& joint0,
+                                                    const Joint<T>& joint1,
+                                                    const T& gear_ratio) {
+  DRAKE_THROW_UNLESS(joint0.num_velocities() == 1);
+  DRAKE_THROW_UNLESS(joint1.num_velocities() == 1);
+  coupler_constraints_info_.push_back(CouplerConstraintInfo{
+      joint0.index(), joint1.index(), gear_ratio});
+}
+
+template <typename T>
 std::unique_ptr<DiscreteUpdateManager<double>>
-DiscreteUpdateManager<T>::CloneToDouble() const {
+DiscreteUpdateManager<T>::CloneToDouble(const MultibodyPlant<double>*) const {
   throw std::logic_error(
       "Scalar conversion to double is not supported by this "
       "DiscreteUpdateManager.");
@@ -18,7 +28,7 @@ DiscreteUpdateManager<T>::CloneToDouble() const {
 
 template <typename T>
 std::unique_ptr<DiscreteUpdateManager<AutoDiffXd>>
-DiscreteUpdateManager<T>::CloneToAutoDiffXd() const {
+DiscreteUpdateManager<T>::CloneToAutoDiffXd(const MultibodyPlant<AutoDiffXd>*) const {
   throw std::logic_error(
       "Scalar conversion to AutodiffXd is not supported by this "
       "DiscreteUpdateManager.");
@@ -26,7 +36,7 @@ DiscreteUpdateManager<T>::CloneToAutoDiffXd() const {
 
 template <typename T>
 std::unique_ptr<DiscreteUpdateManager<symbolic::Expression>>
-DiscreteUpdateManager<T>::CloneToSymbolic() const {
+DiscreteUpdateManager<T>::CloneToSymbolic(const MultibodyPlant<symbolic::Expression>*) const {
   throw std::logic_error(
       "Scalar conversion to symbolic::Expression is not supported by this "
       "DiscreteUpdateManager.");
@@ -55,11 +65,11 @@ const MultibodyTree<T>& DiscreteUpdateManager<T>::internal_tree() const {
 template <typename T>
 systems::CacheEntry& DiscreteUpdateManager<T>::DeclareCacheEntry(
     std::string description, systems::ValueProducer value_producer,
-    std::set<systems::DependencyTicket> prerequisites_of_calc) {
-  DRAKE_DEMAND(mutable_plant_ != nullptr);
-  DRAKE_DEMAND(mutable_plant_ == plant_);
+    std::set<systems::DependencyTicket> prerequisites_of_calc,
+    MultibodyPlant<T>* plant) {
+  DRAKE_DEMAND(plant != nullptr);
   return MultibodyPlantDiscreteUpdateManagerAttorney<T>::DeclareCacheEntry(
-      mutable_plant_, std::move(description), std::move(value_producer),
+      plant, std::move(description), std::move(value_producer),
       std::move(prerequisites_of_calc));
 }
 

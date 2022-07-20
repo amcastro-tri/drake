@@ -131,14 +131,12 @@ class CompliantContactManager final
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(CompliantContactManager)
 
-  using internal::DiscreteUpdateManager<T>::plant;
+  using internal::DiscreteUpdateManager<T>::plant;  
 
-  CompliantContactManager() = default;
+  explicit CompliantContactManager(const MultibodyPlant<T>* model)
+      : internal::DiscreteUpdateManager<T>(model) {}
 
   ~CompliantContactManager() final;
-
-  void AddCouplerConstraint(const Joint<T>& joint0, const Joint<T>& joint1,
-                            const T& gear_ratio);
 
   // Sets the parameters to be used by the SAP solver.
   void set_sap_solver_parameters(
@@ -147,12 +145,6 @@ class CompliantContactManager final
   }
 
  private:
-  struct CouplerConstraintInfo {
-    int q0{-1};
-    int q1{-1};
-    T gear_ratio{1.0};
-  };
-
   // Struct used to conglomerate the indexes of cache entries declared by the
   // manager.
   struct CacheIndexes {
@@ -164,6 +156,8 @@ class CompliantContactManager final
   // Provide private access for unit testing only.
   friend class CompliantContactManagerTest;
 
+  using internal::DiscreteUpdateManager<T>::DeclareCacheEntry;
+
   const MultibodyTreeTopology& tree_topology() const {
     return internal::GetInternalTree(this->plant()).get_topology();
   }
@@ -172,7 +166,7 @@ class CompliantContactManager final
   // DiscreteUpdateManager for details.
   void ExtractModelInfo() final;
 
-  void DeclareCacheEntries() final;
+  void DeclareCacheEntries(MultibodyPlant<T>* plant) final;
 
   // TODO(amcastro-tri): implement these APIs according to #16955.
   void DoCalcContactSolverResults(
@@ -360,8 +354,6 @@ class CompliantContactManager final
   // Vector of joint damping coefficients, of size plant().num_velocities().
   // This information is extracted during the call to ExtractModelInfo().
   VectorX<T> joint_damping_;
-
-  std::vector<CouplerConstraintInfo> coupler_constraints_info_;
 };
 
 }  // namespace internal

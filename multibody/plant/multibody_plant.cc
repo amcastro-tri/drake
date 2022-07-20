@@ -387,6 +387,20 @@ MultibodyPlant<T>::MultibodyPlant(
   // Add the world body to the graph.
   multibody_graph_.AddBody(world_body().name(), world_body().model_instance());
   DeclareSceneGraphPorts();
+
+  if constexpr (!std::is_same_v<T, symbolic::Expression>) {
+    discrete_update_manager_ =
+        std::make_unique<internal::CompliantContactManager<T>>(this);
+  } else {
+    // TODO(amcastro-tri): We shoud probably support symbolic for cases without
+    // contact. Therefore we should always be able to set a
+    // DiscreteUpdateManager here.
+    if (contact_solver_enum_ == DiscreteContactSolver::kSap) {
+      throw std::runtime_error(
+          "SAP solver not supported for scalar type T = "
+          "symbolic::Expression.");
+    }
+  }
 }
 
 template <typename T>
@@ -447,9 +461,10 @@ MultibodyPlant<T>::MultibodyPlant(const MultibodyPlant<U>& other)
 
   // Note: The discrete update manager needs to be copied *after* the plant is
   // finalized.
-  if (other.discrete_update_manager_ != nullptr) {
+  if (other.discrete_update_manager_ != nullptr &&
+      contact_solver_enum_ != DiscreteContactSolver::kTamsi) {
     SetDiscreteUpdateManager(
-        other.discrete_update_manager_->template CloneToScalar<T>());
+        other.discrete_update_manager_->template CloneToScalar<T>(this));
   }
 }
 
@@ -831,12 +846,13 @@ void MultibodyPlant<T>::Finalize() {
   // contact, into CompliantContactManager.
   if (is_discrete()) {
     if constexpr (!std::is_same_v<T, symbolic::Expression>) {
-      if (contact_solver_enum_ == DiscreteContactSolver::kSap) {
-        SetDiscreteUpdateManager(
-            std::make_unique<internal::CompliantContactManager<T>>());
+      // Setup the manger if the solver is not TAMSI.
+      if (contact_solver_enum_ != DiscreteContactSolver::kTamsi) {
+        discrete_update_manager_->ExtractModelInfoAndDeclareCacheEntries(this);
+        RemoveUnsupportedScalars(*discrete_update_manager_);
       }
     } else {
-      if (contact_solver_enum_ == DiscreteContactSolver::kSap) {
+      if (contact_solver_enum_ != DiscreteContactSolver::kTamsi) {
         throw std::runtime_error(
             "SAP solver not supported for scalar type T = "
             "symbolic::Expression.");
@@ -1265,9 +1281,11 @@ void MultibodyPlant<T>::SetDiscreteUpdateManager(
   DRAKE_MBP_THROW_IF_NOT_FINALIZED();
   DRAKE_DEMAND(is_discrete());
   DRAKE_DEMAND(manager != nullptr);
-  manager->SetOwningMultibodyPlant(this);
+  DRAKE_DEMAND(&manager->plant() == this);
   discrete_update_manager_ = std::move(manager);
+  discrete_update_manager_->ExtractModelInfoAndDeclareCacheEntries(this);
   RemoveUnsupportedScalars(*discrete_update_manager_);
+  user_supplied_manager_ = true;
 }
 
 template <typename T>
@@ -2943,7 +2961,7 @@ void MultibodyPlant<T>::DoCalcForwardDynamicsDiscrete(
   // TODO(amcastro-tri): remove the entirety of the code we are bypassing here.
   // This requires one of our custom managers to become the default
   // MultibodyPlant manager.
-  if (discrete_update_manager_) {
+  if (discrete_update_manager_ != nullptr) {
     discrete_update_manager_->CalcAccelerationKinematicsCache(context0, ac);
     return;
   }
@@ -2977,7 +2995,7 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
   // TODO(amcastro-tri): remove the entirety of the code we are bypassing here.
   // This requires one of our custom managers to become the default
   // MultibodyPlant manager.
-  if (discrete_update_manager_) {
+  if (discrete_update_manager_ != nullptr) {
     discrete_update_manager_->CalcDiscreteValues(context0, updates);
     return;
   }

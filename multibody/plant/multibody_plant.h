@@ -1123,6 +1123,47 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     return this->mutable_tree().AddModelInstance(name);
   }
 
+  // Defines a holonomic constraint between two single-dof constraints `joint0`
+  // and `joint` with positions q₀ and q₁, respectively, such that q₀ = g⋅q₁,
+  // where `g` is the gear ratio. The gear ratio can have units if the units of
+  // q₀ and q₁ are different. For instance, between a prismatic and a revolute
+  // joint the gear ratio will specify the "pitch" of the resulting mechanism.
+  void AddCouplerConstraint(const Joint<T>& joint0, const Joint<T>& joint1,
+                            const T& gear_ratio) {
+    // N.B. default_discrete_update_manager_ = nullptr after Finalize().
+    DRAKE_MBP_THROW_IF_FINALIZED();
+
+    // Make sure we have a discrete update manager?
+    // Either contact_solver_enum_ != kTamsi or the user set a manager with
+    // SetDiscreteUpdateManager().
+    if (contact_solver_enum_ == DiscreteContactSolver::kTamsi &&
+        !user_supplied_manager_) {
+      // If the user specified a manager with SetDiscreteUpdateManager(), we
+      // allow specifying coupler constraints. Notice the error message does not
+      // advise to call SetDiscreteUpdateManager(), since it is an experimental
+      // API.
+      throw std::runtime_error(
+          "Currently this MultibodyPlant is set to use the TAMSI solver. TAMSI "
+          "does not support coupler constraints. Use "
+          "set_discrete_contact_solver() to set a different solver type.");
+    }
+
+    if (!is_discrete()) {
+      throw std::runtime_error(
+          "Currently coupler constraints are only supported for discrete "
+          "MultibodyPlant models.");
+    }
+
+    if constexpr (std::is_same_v<T, symbolic::Expression>) {
+      throw std::runtime_error(
+          "Currently coupler constraints are not supported for symbolic "
+          "models.");
+    } else {
+      discrete_update_manager_->AddCouplerConstraint(joint0, joint1,
+                                                     gear_ratio);
+    }
+  }
+
   /// This method must be called after all elements in the model (joints,
   /// bodies, force elements, constraints, etc.) are added and before any
   /// computations are performed.
@@ -5036,6 +5077,12 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // resolution into a default contact manager.
   std::unique_ptr<internal::DiscreteUpdateManager<T>>
       discrete_update_manager_;
+
+  // Since in addition to the public set_discrete_contact_solver() we have the
+  // experimental API SetDiscreteUpdateManger(), we track whether the user
+  // supplied a manager to provide a proper error message in
+  // AddCouplerConstraint().
+  bool user_supplied_manager_{false};
 
   // (Experimental) The vector of physical models owned by MultibodyPlant.
   std::vector<std::unique_ptr<internal::PhysicalModel<T>>> physical_models_;

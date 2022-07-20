@@ -17,6 +17,7 @@
 #include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
 #include "drake/multibody/plant/multibody_plant.h"
+#include "drake/multibody/plant/multibody_plant_config_functions.h"
 #include "drake/multibody/tree/prismatic_joint.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
@@ -44,6 +45,7 @@ using multibody::ConnectContactResultsToDrakeVisualizer;
 using multibody::CoulombFriction;
 using multibody::ModelInstanceIndex;
 using multibody::MultibodyPlant;
+using multibody::MultibodyPlantConfig;
 using multibody::Parser;
 using multibody::PrismaticJoint;
 using systems::Sine;
@@ -107,6 +109,8 @@ DEFINE_double(frequency, 2.0,
               "The frequency of the harmonic oscillations "
               "carried out by the gripper. [Hz].");
 
+DEFINE_string(discrete_solver, "sap",
+              "Discrete contact solver. Options are: 'tamsi', 'sap'.");
 DEFINE_double(coupler_gear_ratio, -1.0,
               "Coupler constraint gear ratio. If zero, no coupler is added.");
 
@@ -164,8 +168,11 @@ int do_main() {
   DRAKE_DEMAND(FLAGS_simulator_max_time_step > 0);
   DRAKE_DEMAND(FLAGS_mbp_discrete_update_period >= 0);
 
-  auto [plant, scene_graph] = multibody::AddMultibodyPlantSceneGraph(
-      &builder, FLAGS_mbp_discrete_update_period);
+  MultibodyPlantConfig plant_config;
+  plant_config.time_step = FLAGS_mbp_discrete_update_period;
+  plant_config.discrete_contact_solver = FLAGS_discrete_solver;
+  auto [plant, scene_graph] =
+      multibody::AddMultibodyPlant(plant_config, &builder);
 
   Parser parser(&plant);
   std::string full_name =
@@ -215,11 +222,26 @@ int do_main() {
     AddGripperPads(&plant, +pad_offset, left_finger);
   }
 
+  // Get joints so that we can set initial conditions.
+  const PrismaticJoint<double>& left_slider =
+      plant.GetJointByName<PrismaticJoint>("left_slider");
+  const PrismaticJoint<double>& right_slider =
+      plant.GetJointByName<PrismaticJoint>("right_slider");
+  
+  // TAMSI does not support general constraints. If using TAMSI, we simplify the
+  // model to have the right finger locked.
+  if (FLAGS_discrete_solver != "tamsi") {
+      //if (FLAGS_coupler_gear_ratio != 0.) {
+    plant.AddCouplerConstraint(left_slider, right_slider,
+                               FLAGS_coupler_gear_ratio);
+  }  
+
   // Now the model is complete.
   plant.Finalize();
 
+#if 0
   auto owned_contact_manager =
-      std::make_unique<CompliantContactManager<double>>();
+      std::make_unique<CompliantContactManager<double>>(&plant);
   const auto contact_manager = owned_contact_manager.get();
   plant.SetDiscreteUpdateManager(std::move(owned_contact_manager));
 
@@ -232,6 +254,7 @@ int do_main() {
     contact_manager->AddCouplerConstraint(left_slider, right_slider,
                                           FLAGS_coupler_gear_ratio);
   }
+#endif  
 
   // Set how much penetration (in meters) we are willing to accept.
   plant.set_penetration_allowance(FLAGS_penetration_allowance);
@@ -336,6 +359,10 @@ int do_main() {
   // around this initial position.
   translate_joint.set_translation(&plant_context, 0.0);
   translate_joint.set_translation_rate(&plant_context, v0);
+
+  if (FLAGS_discrete_solver == "tamsi") {
+    right_slider.Lock(&plant_context);
+  }
 
   // Set up simulator.
   auto simulator =

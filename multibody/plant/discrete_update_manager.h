@@ -42,9 +42,17 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(DiscreteUpdateManager);
 
-  DiscreteUpdateManager() = default;
+  // The manager can mutate `plant` by declaring cache entries as needed.
+  // TODO: make this plant const.
+  explicit DiscreteUpdateManager(const MultibodyPlant<T>* plant)
+      : plant_(plant) {
+    DRAKE_DEMAND(plant != nullptr);
+  }
 
   ~DiscreteUpdateManager() override = default;
+
+  void AddCouplerConstraint(const Joint<T>& joint0, const Joint<T>& joint1,
+                            const T& gear_ratio);
 
   /* (Internal) Creates a clone of the concrete DiscreteUpdateManager object
    with the scalar type `ScalarType`. This method is meant to be called only by
@@ -54,13 +62,14 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
    ExtactModelInfo().
    @tparam_default_scalar */
   template <typename ScalarType>
-  std::unique_ptr<DiscreteUpdateManager<ScalarType>> CloneToScalar() const {
+  std::unique_ptr<DiscreteUpdateManager<ScalarType>> CloneToScalar(
+      const MultibodyPlant<ScalarType>* plant) const {
     if constexpr (std::is_same_v<ScalarType, double>) {
-      return CloneToDouble();
+      return CloneToDouble(plant);
     } else if constexpr (std::is_same_v<ScalarType, AutoDiffXd>) {
-      return CloneToAutoDiffXd();
+      return CloneToAutoDiffXd(plant);
     } else if constexpr (std::is_same_v<ScalarType, symbolic::Expression>) {
-      return CloneToSymbolic();
+      return CloneToSymbolic(plant);
     }
     DRAKE_UNREACHABLE();
   }
@@ -89,14 +98,12 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
    MultibodyPlant::SetDiscreteUpdateManager() only. A non-const pointer to
    plant is passed in so that cache entries can be declared.
    @pre plant is Finalized. */
-  void SetOwningMultibodyPlant(MultibodyPlant<T>* plant) {
-    DRAKE_DEMAND(plant != nullptr);
+  void ExtractModelInfoAndDeclareCacheEntries(MultibodyPlant<T>* plant) {
+    DRAKE_DEMAND(plant == plant_);
     DRAKE_DEMAND(plant->is_finalized());
-    plant_ = plant;
-    mutable_plant_ = plant;
     multibody_state_index_ = plant_->GetDiscreteStateIndexOrThrow();
     ExtractModelInfo();
-    DeclareCacheEntries();
+    DeclareCacheEntries(plant);
   }
 
   /* Given the state of the model stored in `context`, this method performs the
@@ -132,25 +139,41 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
   }
 
  protected:
+  // Structure to store the specs for a coupler constraint between two one-dof
+  // joints.
+  struct CouplerConstraintInfo {
+    // First joint with position q₀.
+    JointIndex joint0_index;
+    // Second joint with position q₁.
+    JointIndex joint1_index;
+    // Gear ratio g defined such that q₀ = g⋅q₁.
+    T gear_ratio{1.0};
+  };
+
+  const std::vector<CouplerConstraintInfo>& coupler_constraints_info() const {
+    return coupler_constraints_info_;
+  }
+
   /* Derived classes that support making a clone that uses double as a scalar
    type must implement this so that it creates a copy of the object with double
    as the scalar type. It should copy all members except for those overwritten
    in `SetOwningMultibodyPlant()`. */
-  virtual std::unique_ptr<DiscreteUpdateManager<double>> CloneToDouble() const;
+  virtual std::unique_ptr<DiscreteUpdateManager<double>> CloneToDouble(
+      const MultibodyPlant<double>* plant) const;
 
   /* Derived classes that support making a clone that uses AutoDiffXd as a
    scalar type must implement this so that it creates a copy of the object with
    AutodDiffXd as the scalar type. It should copy all members except for those
    overwritten in `SetOwningMultibodyPlant()`. */
-  virtual std::unique_ptr<DiscreteUpdateManager<AutoDiffXd>> CloneToAutoDiffXd()
-      const;
+  virtual std::unique_ptr<DiscreteUpdateManager<AutoDiffXd>> CloneToAutoDiffXd(
+      const MultibodyPlant<AutoDiffXd>* plant) const;
 
   /* Derived classes that support making a clone that uses symboblic::Expression
    as a scalar type must implement this so that it creates a copy of the object
    with symbolic::Expression as the scalar type. It should copy all members
    except for those overwritten in `SetOwningMultibodyPlant()`. */
   virtual std::unique_ptr<DiscreteUpdateManager<symbolic::Expression>>
-  CloneToSymbolic() const;
+  CloneToSymbolic(const MultibodyPlant<symbolic::Expression>* plant) const;
 
   /* Derived DiscreteUpdateManager should override this method to extract
    information from the owning MultibodyPlant. */
@@ -158,7 +181,7 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
 
   /* Derived DiscreteUpdateManager should override this method to declare
    cache entries in the owning MultibodyPlant. */
-  virtual void DeclareCacheEntries() {}
+  virtual void DeclareCacheEntries(MultibodyPlant<T>*) {}
 
   /* Returns the discrete state index of the rigid position and velocity states
    declared by MultibodyPlant. */
@@ -174,9 +197,10 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
 
   const MultibodyTree<T>& internal_tree() const;
 
-  systems::CacheEntry& DeclareCacheEntry(std::string description,
-                                         systems::ValueProducer,
-                                         std::set<systems::DependencyTicket>);
+  // Helper to delcare cache entries in the given `plant`.
+  static systems::CacheEntry& DeclareCacheEntry(
+      std::string description, systems::ValueProducer,
+      std::set<systems::DependencyTicket>, MultibodyPlant<T>* plant);
 
   const contact_solvers::internal::ContactSolverResults<T>&
   EvalContactSolverResults(const systems::Context<T>& context) const;
@@ -235,8 +259,8 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
 
  private:
   const MultibodyPlant<T>* plant_{nullptr};
-  MultibodyPlant<T>* mutable_plant_{nullptr};
   systems::DiscreteStateIndex multibody_state_index_;
+  std::vector<CouplerConstraintInfo> coupler_constraints_info_;
 };
 }  // namespace internal
 }  // namespace multibody

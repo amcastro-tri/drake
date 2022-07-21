@@ -22,27 +22,43 @@ SapHolonomicConstraint<T>::Parameters::Parameters(
       relaxation_times_(std::move(relaxation_times)),
       beta_(beta) {
   constexpr double kInf = std::numeric_limits<double>::infinity();
-  DRAKE_DEMAND((lower_limits.array() < kInf).all());
-  DRAKE_DEMAND((upper_limits.array() > -kInf).all());
+  DRAKE_DEMAND(lower_limits.size() == upper_limits.size());
+  DRAKE_DEMAND(lower_limits.size() == stiffnesses.size());
+  DRAKE_DEMAND(lower_limits.size() == relaxation_times.size());
+  DRAKE_DEMAND((lower_limits.array() <= kInf).all());
+  DRAKE_DEMAND((upper_limits.array() >= -kInf).all());
   DRAKE_DEMAND((lower_limits.array() <= upper_limits.array()).all());
   DRAKE_DEMAND((stiffnesses.array() > 0).all());
   DRAKE_DEMAND((relaxation_times.array() >= 0).all());
 }
 
 template <typename T>
-SapHolonomicConstraint<T>::SapHolonomicConstraint(
-    int clique, VectorX<T> g, MatrixX<T> J, Parameters parameters)
+SapHolonomicConstraint<T>::SapHolonomicConstraint(int clique, VectorX<T> g,
+                                                  MatrixX<T> J,
+                                                  Parameters parameters)
     : SapConstraint<T>(clique, std::move(g), std::move(J)),
-      parameters_(std::move(parameters)) {}
+      parameters_(std::move(parameters)) {
+  // N.B. SapConstraint's constructor already checked the sizes of g its
+  // Jacobian.
+  DRAKE_DEMAND(this->constraint_function().size() ==
+               parameters_.num_constraint_equations());
+}
 
 template <typename T>
-SapHolonomicConstraint<T>::SapHolonomicConstraint(
-    int first_clique, int second_clique, VectorX<T> g,
-    MatrixX<T> J_first_clique, MatrixX<T> J_second_clique,
-    Parameters parameters)
+SapHolonomicConstraint<T>::SapHolonomicConstraint(int first_clique,
+                                                  int second_clique,
+                                                  VectorX<T> g,
+                                                  MatrixX<T> J_first_clique,
+                                                  MatrixX<T> J_second_clique,
+                                                  Parameters parameters)
     : SapConstraint<T>(first_clique, second_clique, std::move(g),
                        std::move(J_first_clique), std::move(J_second_clique)),
-      parameters_(std::move(parameters)) {}
+      parameters_(std::move(parameters)) {
+  // N.B. SapConstraint's constructor already checked the sizes of g and its
+  // Jacobian.
+  DRAKE_DEMAND(this->constraint_function().size() ==
+               parameters_.num_constraint_equations());
+}
 
 template <typename T>
 VectorX<T> SapHolonomicConstraint<T>::CalcBiasTerm(
@@ -57,17 +73,17 @@ VectorX<T> SapHolonomicConstraint<T>::CalcBiasTerm(
   const VectorX<T> R_elastic_inv =
       time_step * time_step * parameters_.stiffnesses();
 
-  // User supplied relaxation times.
+  // Default to user supplied relaxation times.
   VectorX<T> relaxation_times = parameters_.relaxation_times();
 
   // Adjusted relaxation times to the near-rigid regime.
   // In this near-rigid regime a relaxation time equal to the time step leads to
-  // a critically damped constraint.
+  // a critically damped constraint, [Castro et al., 2022].
   for (int e = 0; e < this->num_constraint_equations(); ++e) {
     // If the elastic relaxation R_elastic is smaller than the near-rigid regime
     // relaxation R_near_rigid, that means that time_step will not be able to
     // resolve the dynamics introduced by this constraint. We call this the
-    // "near-rigid" regime.
+    // "near-rigid" regime. Here we clamp relaxation time to the time step.
     if (R_near_rigid * R_elastic_inv(e) > 1.0) {
       relaxation_times(e) = min(time_step, relaxation_times(e));
     }
@@ -91,9 +107,7 @@ VectorX<T> SapHolonomicConstraint<T>::CalcDiagonalRegularization(
   const VectorX<T> R_elastic_inv =
       time_step * time_step * parameters_.stiffnesses();
 
-  // Adjusted relaxation times to the near-rigid regime.
-  // In this near-rigid regime a relaxation time equal to the time step leads to
-  // a critically damped constraint.
+  // Compute relaxation clamped to R_near_rigid.
   VectorX<T> R(this->num_constraint_equations());
   for (int e = 0; e < this->num_constraint_equations(); ++e) {
     // If the elastic relaxation R_elastic is smaller than the near-rigid regime
@@ -103,8 +117,8 @@ VectorX<T> SapHolonomicConstraint<T>::CalcDiagonalRegularization(
     if (R_near_rigid * R_elastic_inv(e) > 1.0) {
       const T& k = parameters_.stiffnesses()(e);
       const T& tau = parameters_.relaxation_times()(e);
-      const T R_elastic = 1.0 / (time_step * k * (time_step + tau));
-      R(e) = max(R_near_rigid, R_elastic);
+      const T Re = 1.0 / (time_step * k * (time_step + tau));
+      R(e) = max(R_near_rigid, Re);
     }
   }
 

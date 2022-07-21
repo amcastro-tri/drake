@@ -13,7 +13,7 @@ namespace contact_solvers {
 namespace internal {
 
 /* Implements an arbitrary holonomic constraint for the SAP formulation [Castro
- et al., 2021].
+ et al., 2022].
 
  Constraint kinematics:
   We can write an arbitrary holonomic constraint as g(q, t) = 0, with g(q, t) ∈
@@ -26,30 +26,23 @@ namespace internal {
 
  Compliant impulses:
   We will need an impulse for each component in the constraint equation in g(q,
-  t) = 0. Here we consider the more general case in which each impulse γᵢ have a
-  lower and upper limit, γₗᵢ and γᵤᵢ respectively.
+  t) = 0. Here we consider the more general case in which each impulse γᵢ is
+  constrained to live in the (convex) set 𝒞ᵢ = [γₗᵢ, γᵤᵢ] where γₗᵢ and γᵤᵢ are
+  the lower and upper bounds, respectively.
 
-  Constraints in the SAP formulation model a compliant impulse γ according
-  to:
-    y/dt = −k⋅g−d⋅ġ
+  Constraints in the SAP formulation model a compliant impulse γ according to:
+    y/dt = −k⋅(g+τ⋅ġ)
     γ/δt = P(y)
-    P(y) = (y)₊
   where δt is the time step used in the formulation, k is the constraint
-  stiffness (in N/m), d is the dissipation (in N⋅s/m) and (x)₊ = max(0, x),
-  componentwise. Dissipation is parameterized as d = tau_d⋅k, where tau_d is the
-  "dissipation time scale". Notice that these impulses are positive when the
-  constraint is active and zero otherwise.
-  For this constraint the components of γ = [γₗ, γᵤ]ᵀ are constrained to live in
-  ℝ⁺ and therefore the projection can trivially be computed analytically as
-  P(y) = (y)₊, independent of the compliant regularization, see [Todorov, 2014].
+  stiffness (in N/m), τ is the dissipation relaxation time (in seconds) and
+  P(y) is a projection into the (convex) set 𝒞ᵢ. In this case the projection can
+  trivially be computed analytically as:
+    P(y) = max(γₗ, min(γᵤ, y))
+  independent of the compliant regularization.
 
- [Castro et al., 2021] Castro A., Permenter F. and Han X., 2021. An
+ [Castro et al., 2022] Castro A., Permenter F. and Han X., 2021. An
    Unconstrained Convex Formulation of Compliant Contact. Available at
    https://arxiv.org/abs/2110.10107
- [Todorov, 2014] Todorov, E., 2014, May. Convex and analytically-invertible
-   dynamics with contacts and constraints: Theory and implementation in mujoco.
-   In 2014 IEEE International Conference on Robotics and Automation (ICRA) (pp.
-   6054-6061). IEEE.
 
  @tparam_nonsymbolic_scalar */
 template <typename T>
@@ -64,12 +57,23 @@ class SapHolonomicConstraint final : public SapConstraint<T> {
     DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Parameters);
 
     /* Constructs a valid set of parameters.
-     @pre lower_limit < +∞
-     @pre upper_limit > -∞
-     @pre at least one of lower_limit and upper_limit is finite.
-     @pre lower_limit <= upper_limit
-     @pre stiffness > 0
-     @pre dissipation_time_scale >= 0
+     @param lower_limits vector of lower limits γₗ.
+     @param upper_limits vector of upper limits γᵤ.
+     @param stiffnesses vector of stiffnesses kᵢ for each constraint.
+     @param relaxation_times vector of relaxation times τᵢ for each constraint.
+     @param beta Rigid approximation constant: Rₙ = β²/(4π²)⋅w when the
+     constraint frequency ωᵢ for the i-th constraint is below the limit ωᵢ ≤
+     2π/δt. That is, the period is limited to Tᵢ = β⋅δt. w corresponds to a
+     diagonal approximation of the Delassuss operator for the constraint. See
+     [Castro et al., 2022] for details.
+
+     @pre lower_limits, upper_limits, stiffnesses and relaxation_times must all
+     have the same size.
+     @pre lower_limits <= +∞, componentwise.
+     @pre upper_limits >= -∞, componentwise.
+     @pre lower_limit <= upper_limit, componentwise.
+     @pre stiffnesses > 0, componentwise.
+     @pre relaxation_times >= 0, componentwise
      @pre beta > 0 */
     Parameters(VectorX<T> lower_limits, VectorX<T> upper_limits,
                VectorX<T> stiffnesses, VectorX<T> relaxation_times,
@@ -80,47 +84,57 @@ class SapHolonomicConstraint final : public SapConstraint<T> {
     const VectorX<T>& stiffnesses() const { return stiffnesses_; }
     const VectorX<T>& relaxation_times() const { return relaxation_times_; }
     double beta() const { return beta_; }
+    int num_constraint_equations() const { return lower_limits_.size(); }
 
    private:
     VectorX<T> lower_limits_;
     VectorX<T> upper_limits_;
-    /* Contact stiffness k, in N/m. It must be strictly positive. */
     VectorX<T> stiffnesses_;
-    /* Dissipation time scale tau_d, in seconds. It must be non-negative. */
     VectorX<T> relaxation_times_;
-    /* Rigid approximation constant: Rₙ = β²/(4π²)⋅w when the constraint
-     frequency ωₙ is below the limit ωₙ⋅δt ≤ 2π. That is, the period is Tₙ =
-     β⋅δt. w corresponds to a diagonal approximation of the Delassuss operator
-     for each contact. See [Castro et al., 2021] for details. */
     double beta_{0.1};
   };
 
-  SapHolonomicConstraint(int clique, VectorX<T> g, MatrixX<T> J,
-                                        Parameters parameters);
+  /* Constructs a holonomic constraint involving a single clique.
+   @param[in] clique The clique involved in the constraint.
+   @param[in] g The value of the constraint function.
+   @param[in] J The Jacobian, such that vc = J⋅v.
+   @param[in] parameters Constraint parameters. See Parameters for details.
 
-  SapHolonomicConstraint(int first_clique, int second_clique,
-                                        VectorX<T> g, MatrixX<T> J_first_clique,
-                                        MatrixX<T> J_second_clique,
-                                        Parameters parameters);
+   @pre clique is non-negative.
+   @pre g.size() == J.rows() == parameters.num_constraint_equations(). */   
+  SapHolonomicConstraint(int clique, VectorX<T> g, MatrixX<T> J,
+                         Parameters parameters);
+
+  /* Constructs a holonomic constraint involving two cliques.
+   @param[in] first_clique First clique involved in the constraint.
+   @param[in] second_clique Second clique involved in the constraint.
+   @param[in] g The value of the constraint function.
+   @param[in] J_first_clique The Jacobian w.r.t. to the first clique's
+   generalized velocities.
+   @param[in] J_second_clique The Jacobian w.r.t. to the second clique's
+   generalized velocities.
+   @param[in] parameters Constraint parameters. See Parameters for details.
+
+   @pre first_clique and second_clique are non-negative.
+   @pre g.size() == J_first_clique.rows() == J_second_clique.rows() ==
+   parameters.num_constraint_equations(). */
+  SapHolonomicConstraint(int first_clique, int second_clique, VectorX<T> g,
+                         MatrixX<T> J_first_clique, MatrixX<T> J_second_clique,
+                         Parameters parameters);
 
   const Parameters& parameters() const { return parameters_; }
 
-  /* Implements the projection operation P(y) = min(γₗ, max(γᵤ, y)), independent
+  /* Implements the projection operation P(y) = max(γₗ, min(γᵤ, y)), independent
    of the regularization R. Refer to SapConstraint::Project() for details. */
   void Project(const Eigen::Ref<const VectorX<T>>& y,
                const Eigen::Ref<const VectorX<T>>& R,
                EigenPtr<VectorX<T>> gamma,
                MatrixX<T>* dPdy = nullptr) const final;
 
-  /* Computes bias term. Refer to SapConstraint::CalcBiasTerm() for details. */
   // TODO(amcastro-tri): Extend SapConstraint so that wi can be a vector with an
   // entry for each constraint equation.
   VectorX<T> CalcBiasTerm(const T& time_step, const T& wi) const final;
 
-  /* Computes the diagonal of the regularization matrix (positive diagonal) R.
-   This computes R = [Ri, Ri] (or R = [Ri] if only one limit is imposed) with
-     Ri = max(β²/(4π²)⋅wᵢ, (δt⋅(δt+tau_d)⋅k)⁻¹),
-   Refer to [Castro et al., 2021] for details. */
   VectorX<T> CalcDiagonalRegularization(const T& time_step,
                                         const T& wi) const final;
 

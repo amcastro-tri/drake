@@ -42,6 +42,9 @@ using JointActuatorIndex = TypeSafeIndex<class JointActuatorElementTag>;
 /// tree system.
 using ModelInstanceIndex = TypeSafeIndex<class ModelInstanceTag>;
 
+/// Type used to identify constraints by index within a multibody model.
+using ConstraintIndex =  TypeSafeIndex<class ConstraintTag>;
+
 // Note:
 //   static global variables are strongly discouraged by the C++ style guide:
 // https://google.github.io/styleguide/cppguide.html#Static_and_Global_Variables

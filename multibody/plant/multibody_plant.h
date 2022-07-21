@@ -21,6 +21,7 @@
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/contact_solvers/contact_solver.h"
 #include "drake/multibody/contact_solvers/contact_solver_results.h"
+#include "drake/multibody/plant/constraint_specs.h"
 #include "drake/multibody/plant/contact_jacobians.h"
 #include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/coulomb_friction.h"
@@ -1123,41 +1124,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     return this->mutable_tree().AddModelInstance(name);
   }
 
-  // Defines a holonomic constraint between two single-dof constraints `joint0`
-  // and `joint` with positions q₀ and q₁, respectively, such that q₀ = g⋅q₁,
-  // where `g` is the gear ratio. The gear ratio can have units if the units of
-  // q₀ and q₁ are different. For instance, between a prismatic and a revolute
-  // joint the gear ratio will specify the "pitch" of the resulting mechanism.
-  void AddCouplerConstraint(const Joint<T>& joint0, const Joint<T>& joint1,
-                            const T& gear_ratio) {
-    // N.B. The manager is setup at Finalize() and therefore we must require
-    // constraints to be added pre-finalize.                              
-    DRAKE_MBP_THROW_IF_FINALIZED();
-
-    if (!is_discrete()) {
-      throw std::runtime_error(
-          "Currently coupler constraints are only supported for discrete "
-          "MultibodyPlant models.");
-    }
-
-    // TAMSI does not support coupler constraints.
-    if (contact_solver_enum_ == DiscreteContactSolver::kTamsi) {
-      throw std::runtime_error(
-          "Currently this MultibodyPlant is set to use the TAMSI solver. TAMSI "
-          "does not support coupler constraints. Use "
-          "set_discrete_contact_solver() to set a different solver type.");
-    }
-
-    if constexpr (std::is_same_v<T, symbolic::Expression>) {
-      throw std::runtime_error(
-          "Currently coupler constraints are not supported for symbolic "
-          "models.");
-    } else {
-      discrete_update_manager_->AddCouplerConstraint(joint0, joint1,
-                                                     gear_ratio);
-    }
-  }
-
   /// This method must be called after all elements in the model (joints,
   /// bodies, force elements, constraints, etc.) are added and before any
   /// computations are performed.
@@ -1181,6 +1147,28 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// finalized.
   void Finalize();
   /// @}
+
+  /// @anchor mbp_constraints
+  /// @name                      Constraints
+  ///
+  /// blah blah generic docs go here...
+  // TODO: place inside @group (or whatev). Document possible solver limitations
+  // etc, crossref with set_discrete_solver().
+  /// @{
+
+  int num_constraints() const { return coupler_constraints_sepcs_.size(); }  
+
+  /// Defines a holonomic constraint between two single-dof constraints `joint0`
+  /// and `joint` with positions q₀ and q₁, respectively, such that q₀ = g⋅q₁,
+  /// where `g` is the gear ratio. The gear ratio can have units if the units of
+  /// q₀ and q₁ are different. For instance, between a prismatic and a revolute
+  /// joint the gear ratio will specify the "pitch" of the resulting mechanism.
+  ConstraintIndex AddCouplerConstraint(const Joint<T>& joint0,
+                                       const Joint<T>& joint1,
+                                       const T& gear_ratio);
+
+  /// @}  
+
 
   /// @anchor mbp_geometry
   /// @name                      Geometry
@@ -1734,9 +1722,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @throws std::exception if called pre-finalize. See Finalize().
   /// @note `this` MultibodyPlant will no longer support scalar conversion to or
   /// from symbolic::Expression after a call to this method.
-  /// @warning With this experimental feature, currently any constraints
-  /// previously defined before this call will be lost. Those constraints and
-  /// new ones must therefore be added directly through the manager's APIs.
   void SetDiscreteUpdateManager(
       std::unique_ptr<internal::DiscreteUpdateManager<T>> manager);
 
@@ -5077,6 +5062,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
 
   // (Experimental) The vector of physical models owned by MultibodyPlant.
   std::vector<std::unique_ptr<internal::PhysicalModel<T>>> physical_models_;
+
+  // Vector of coupler constraints specifications.
+  std::vector<internal::CouplerConstraintSpecs<T>> coupler_constraints_sepcs_;
 
   // All MultibodyPlant cache indexes are stored in cache_indexes_.
   CacheIndexes cache_indexes_;

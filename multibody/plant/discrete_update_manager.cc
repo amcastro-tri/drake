@@ -9,25 +9,8 @@ namespace multibody {
 namespace internal {
 
 template <typename T>
-int DiscreteUpdateManager<T>::num_non_contact_constraints() const {
-  // N.B. This must be updated whenever the manager's API supports adding other
-  // constraint types.
-  return coupler_constraints_sepcs_.size();
-}
-
-template <typename T>
-void DiscreteUpdateManager<T>::AddCouplerConstraint(const Joint<T>& joint0,
-                                                    const Joint<T>& joint1,
-                                                    const T& gear_ratio) {
-  DRAKE_THROW_UNLESS(joint0.num_velocities() == 1);
-  DRAKE_THROW_UNLESS(joint1.num_velocities() == 1);
-  coupler_constraints_sepcs_.push_back(CouplerConstraintSpecs{
-      joint0.index(), joint1.index(), gear_ratio});
-}
-
-template <typename T>
 std::unique_ptr<DiscreteUpdateManager<double>>
-DiscreteUpdateManager<T>::CloneToDouble(const MultibodyPlant<double>*) const {
+DiscreteUpdateManager<T>::CloneToDouble() const {
   throw std::logic_error(
       "Scalar conversion to double is not supported by this "
       "DiscreteUpdateManager.");
@@ -35,7 +18,7 @@ DiscreteUpdateManager<T>::CloneToDouble(const MultibodyPlant<double>*) const {
 
 template <typename T>
 std::unique_ptr<DiscreteUpdateManager<AutoDiffXd>>
-DiscreteUpdateManager<T>::CloneToAutoDiffXd(const MultibodyPlant<AutoDiffXd>*) const {
+DiscreteUpdateManager<T>::CloneToAutoDiffXd() const {
   throw std::logic_error(
       "Scalar conversion to AutodiffXd is not supported by this "
       "DiscreteUpdateManager.");
@@ -43,7 +26,7 @@ DiscreteUpdateManager<T>::CloneToAutoDiffXd(const MultibodyPlant<AutoDiffXd>*) c
 
 template <typename T>
 std::unique_ptr<DiscreteUpdateManager<symbolic::Expression>>
-DiscreteUpdateManager<T>::CloneToSymbolic(const MultibodyPlant<symbolic::Expression>*) const {
+DiscreteUpdateManager<T>::CloneToSymbolic() const {
   throw std::logic_error(
       "Scalar conversion to symbolic::Expression is not supported by this "
       "DiscreteUpdateManager.");
@@ -72,11 +55,11 @@ const MultibodyTree<T>& DiscreteUpdateManager<T>::internal_tree() const {
 template <typename T>
 systems::CacheEntry& DiscreteUpdateManager<T>::DeclareCacheEntry(
     std::string description, systems::ValueProducer value_producer,
-    std::set<systems::DependencyTicket> prerequisites_of_calc,
-    MultibodyPlant<T>* plant) {
-  DRAKE_DEMAND(plant != nullptr);
+    std::set<systems::DependencyTicket> prerequisites_of_calc) {
+  DRAKE_DEMAND(mutable_plant_ != nullptr);
+  DRAKE_DEMAND(mutable_plant_ == plant_);
   return MultibodyPlantDiscreteUpdateManagerAttorney<T>::DeclareCacheEntry(
-      plant, std::move(description), std::move(value_producer),
+      mutable_plant_, std::move(description), std::move(value_producer),
       std::move(prerequisites_of_calc));
 }
 
@@ -176,6 +159,13 @@ const std::unordered_map<geometry::GeometryId, BodyIndex>&
 DiscreteUpdateManager<T>::geometry_id_to_body_index() const {
   return MultibodyPlantDiscreteUpdateManagerAttorney<
       T>::geometry_id_to_body_index(*plant_);
+}
+
+template <typename T>
+const std::vector<internal::CouplerConstraintSpecs<T>>&
+DiscreteUpdateManager<T>::coupler_constraints_sepcs() const {
+  return MultibodyPlantDiscreteUpdateManagerAttorney<
+      T>::coupler_constraints_sepcs(*plant_);
 }
 
 }  // namespace internal

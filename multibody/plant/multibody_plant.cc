@@ -447,11 +447,49 @@ MultibodyPlant<T>::MultibodyPlant(const MultibodyPlant<U>& other)
 
   // Note: The discrete update manager needs to be copied *after* the plant is
   // finalized.
-  if (other.discrete_update_manager_ != nullptr &&
-      contact_solver_enum_ != DiscreteContactSolver::kTamsi) {
+  if (other.discrete_update_manager_ != nullptr) {
     SetDiscreteUpdateManager(
-        other.discrete_update_manager_->template CloneToScalar<T>(this));
+        other.discrete_update_manager_->template CloneToScalar<T>());
   }
+}
+
+template <typename T>
+ConstraintIndex MultibodyPlant<T>::AddCouplerConstraint(const Joint<T>& joint0,
+                                                        const Joint<T>& joint1,
+                                                        const T& gear_ratio) {
+  // N.B. The manager is setup at Finalize() and therefore we must require
+  // constraints to be added pre-finalize.
+  DRAKE_MBP_THROW_IF_FINALIZED();
+
+  if (!is_discrete()) {
+    throw std::runtime_error(
+        "Currently coupler constraints are only supported for discrete "
+        "MultibodyPlant models.");
+  }
+
+  // TAMSI does not support coupler constraints. For all other solvers, we let
+  // the discrete update manger to throw an exception at finalize time.
+  if (contact_solver_enum_ == DiscreteContactSolver::kTamsi) {
+    throw std::runtime_error(
+        "Currently this MultibodyPlant is set to use the TAMSI solver. TAMSI "
+        "does not support coupler constraints. Use "
+        "set_discrete_contact_solver() to set a different solver type.");
+  }
+
+  if (joint0.num_velocities() != 1 || joint1.num_velocities() != 1) {
+    const std::string message = fmt::format(
+        "Coupler constraints can only be defined on single-DOF joints. "
+        "However joint '{}' has {} DOFs and joint '{}' has {} "
+        "DOFs.",
+        joint0.name(), joint0.num_velocities(), joint1.name(),
+        joint1.num_velocities());
+    throw std::runtime_error(message);
+  }
+
+  coupler_constraints_sepcs_.push_back(internal::CouplerConstraintSpecs<T>{
+      joint0.index(), joint1.index(), gear_ratio});
+
+  return ConstraintIndex(num_constraints());
 }
 
 template <typename T>
@@ -498,39 +536,6 @@ void MultibodyPlant<T>::set_discrete_contact_solver(
     DiscreteContactSolver contact_solver) {
   DRAKE_MBP_THROW_IF_FINALIZED();
   contact_solver_enum_ = contact_solver;
-
-  if (contact_solver == DiscreteContactSolver::kTamsi) {
-    if (discrete_update_manager_ &&
-        discrete_update_manager_->num_non_contact_constraints() > 0) {
-      // The user had specified constraints before this point and will loose
-      // the ability to model them with TAMSI. Thefore we throw.
-      throw std::runtime_error(
-          "Constraints were defined before this call however TAMSI does not "
-          "support them. Consider using another solver or modifying your model "
-          "to avoid the use of constraints.");
-    }
-    // discrete_update_manager_ = nullptr if we are not using TAMSI or if the
-    // user did not specify one by hand with the experimental
-    // SetDiscreteUpdateManger().
-    discrete_update_manager_.reset(nullptr);
-  } else {
-    // Since TAMSI is still not part of the CompliantContactManager, we need to
-    // create the manager whenever the user requests a non-TAMSI solver.
-    if constexpr (!std::is_same_v<T, symbolic::Expression>) {
-      if (!discrete_update_manager_)
-        discrete_update_manager_ =
-            std::make_unique<internal::CompliantContactManager<T>>(this);
-    } else {
-      // TODO(amcastro-tri): We shoud probably support symbolic for cases
-      // without contact. Therefore we should always be able to set a
-      // DiscreteUpdateManager here.
-      if (contact_solver_enum_ == DiscreteContactSolver::kSap) {
-        throw std::runtime_error(
-            "SAP solver not supported for scalar type T = "
-            "symbolic::Expression.");
-      }
-    }
-  }
 }
 
 template <typename T>
@@ -863,19 +868,20 @@ void MultibodyPlant<T>::Finalize() {
   // MultibodyPlant's source, rather than in CompliantContactManager. The plan
   // is to move TAMSI, as well as the entirety of the discrete handling of
   // contact, into CompliantContactManager.
-  if (is_discrete() && discrete_update_manager_) {
+  if (is_discrete()) {
     if constexpr (!std::is_same_v<T, symbolic::Expression>) {
-      discrete_update_manager_->ExtractModelInfoAndDeclareCacheEntries(this);
-      RemoveUnsupportedScalars(*discrete_update_manager_);
+      if (contact_solver_enum_ == DiscreteContactSolver::kSap) {
+        SetDiscreteUpdateManager(
+            std::make_unique<internal::CompliantContactManager<T>>());
+      }
     } else {
-      if (contact_solver_enum_ != DiscreteContactSolver::kTamsi) {
+      if (contact_solver_enum_ == DiscreteContactSolver::kSap) {
         throw std::runtime_error(
-            "Discrete modeling not supported for scalar type T = "
+            "SAP solver not supported for scalar type T = "
             "symbolic::Expression.");
       }
     }
   }
-
 }
 
 template<typename T>
@@ -1298,9 +1304,8 @@ void MultibodyPlant<T>::SetDiscreteUpdateManager(
   DRAKE_MBP_THROW_IF_NOT_FINALIZED();
   DRAKE_DEMAND(is_discrete());
   DRAKE_DEMAND(manager != nullptr);
-  DRAKE_DEMAND(&manager->plant() == this);
+  manager->SetOwningMultibodyPlant(this);
   discrete_update_manager_ = std::move(manager);
-  discrete_update_manager_->ExtractModelInfoAndDeclareCacheEntries(this);
   RemoveUnsupportedScalars(*discrete_update_manager_);
 }
 
@@ -2977,7 +2982,7 @@ void MultibodyPlant<T>::DoCalcForwardDynamicsDiscrete(
   // TODO(amcastro-tri): remove the entirety of the code we are bypassing here.
   // This requires one of our custom managers to become the default
   // MultibodyPlant manager.
-  if (discrete_update_manager_ != nullptr) {
+  if (discrete_update_manager_) {
     discrete_update_manager_->CalcAccelerationKinematicsCache(context0, ac);
     return;
   }
@@ -3011,7 +3016,7 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
   // TODO(amcastro-tri): remove the entirety of the code we are bypassing here.
   // This requires one of our custom managers to become the default
   // MultibodyPlant manager.
-  if (discrete_update_manager_ != nullptr) {
+  if (discrete_update_manager_) {
     discrete_update_manager_->CalcDiscreteValues(context0, updates);
     return;
   }

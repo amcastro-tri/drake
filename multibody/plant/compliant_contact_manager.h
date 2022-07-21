@@ -131,10 +131,9 @@ class CompliantContactManager final
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(CompliantContactManager)
 
-  using internal::DiscreteUpdateManager<T>::plant;  
+  using internal::DiscreteUpdateManager<T>::plant;
 
-  explicit CompliantContactManager(const MultibodyPlant<T>* model)
-      : internal::DiscreteUpdateManager<T>(model) {}
+  CompliantContactManager() = default;
 
   ~CompliantContactManager() final;
 
@@ -156,8 +155,6 @@ class CompliantContactManager final
   // Provide private access for unit testing only.
   friend class CompliantContactManagerTest;
 
-  using internal::DiscreteUpdateManager<T>::DeclareCacheEntry;
-
   const MultibodyTreeTopology& tree_topology() const {
     return internal::GetInternalTree(this->plant()).get_topology();
   }
@@ -166,7 +163,7 @@ class CompliantContactManager final
   // DiscreteUpdateManager for details.
   void ExtractModelInfo() final;
 
-  void DeclareCacheEntries(MultibodyPlant<T>* plant) final;
+  void DeclareCacheEntries() final;
 
   // TODO(amcastro-tri): implement these APIs according to #16955.
   void DoCalcContactSolverResults(
@@ -329,8 +326,7 @@ class CompliantContactManager final
 
   void AddCouplerConstraints(
       const systems::Context<T>& context,
-      drake::multibody::contact_solvers::internal::SapContactProblem<T>*
-          problem) const;
+      contact_solvers::internal::SapContactProblem<T>* problem) const;
 
   // This method takes SAP results for a given `problem` and loads forces due to
   // contact only into `contact_results`. `contact_results` is properly resized

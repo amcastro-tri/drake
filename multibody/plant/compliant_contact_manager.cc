@@ -16,7 +16,7 @@
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
 #include "drake/multibody/contact_solvers/sap/sap_contact_problem.h"
 #include "drake/multibody/contact_solvers/sap/sap_friction_cone_constraint.h"
-#include "drake/multibody/contact_solvers/sap/sap_generic_constraint_with_impulse_limits.h"
+#include "drake/multibody/contact_solvers/sap/sap_holonomic_constraint.h"
 #include "drake/multibody/contact_solvers/sap/sap_limit_constraint.h"
 #include "drake/multibody/contact_solvers/sap/sap_solver.h"
 #include "drake/multibody/contact_solvers/sap/sap_solver_results.h"
@@ -59,21 +59,19 @@ template <typename T>
 CompliantContactManager<T>::~CompliantContactManager() {}
 
 template <typename T>
-void CompliantContactManager<T>::DeclareCacheEntries(
-    MultibodyPlant<T>* mutable_plant) {
+void CompliantContactManager<T>::DeclareCacheEntries() {
   // N.B. We use xd_ticket() instead of q_ticket() since discrete
   // multibody plant does not have q's, but rather discrete state.
   // Therefore if we make it dependent on q_ticket() the Jacobian only
   // gets evaluated once at the start of the simulation.
 
   // Cache discrete contact pairs.
-  const auto& discrete_contact_pairs_cache_entry = DeclareCacheEntry(
+  const auto& discrete_contact_pairs_cache_entry = this->DeclareCacheEntry(
       "Discrete contact pairs.",
       systems::ValueProducer(
           this, &CompliantContactManager<T>::CalcDiscreteContactPairs),
       {systems::System<T>::xd_ticket(),
-       systems::System<T>::all_parameters_ticket()},
-      mutable_plant);
+       systems::System<T>::all_parameters_ticket()});
   cache_indexes_.discrete_contact_pairs =
       discrete_contact_pairs_cache_entry.cache_index();
 
@@ -82,29 +80,28 @@ void CompliantContactManager<T>::DeclareCacheEntries(
   // AccelerationsDueToExternalForcesCache.
   AccelerationsDueToExternalForcesCache<T> non_contact_forces_accelerations(
       this->internal_tree().get_topology());
-  const auto& non_contact_forces_accelerations_cache_entry = DeclareCacheEntry(
-      "Non-contact forces accelerations.",
-      systems::ValueProducer(
-          this, non_contact_forces_accelerations,
-          &CompliantContactManager<
-              T>::CalcAccelerationsDueToNonContactForcesCache),
-      // Due to issue #12786, we cannot properly mark this entry dependent
-      // on inputs. CalcAccelerationsDueToNonContactForcesCache() uses
-      // CacheIndexes::non_contact_forces_evaluation_in_progress to guard
-      // against algebraic loops.
-      {systems::System<T>::xd_ticket(),
-       systems::System<T>::all_parameters_ticket()},
-      mutable_plant);
+  const auto& non_contact_forces_accelerations_cache_entry =
+      this->DeclareCacheEntry(
+          "Non-contact forces accelerations.",
+          systems::ValueProducer(
+              this, non_contact_forces_accelerations,
+              &CompliantContactManager<
+                  T>::CalcAccelerationsDueToNonContactForcesCache),
+          // Due to issue #12786, we cannot properly mark this entry dependent
+          // on inputs. CalcAccelerationsDueToNonContactForcesCache() uses
+          // CacheIndexes::non_contact_forces_evaluation_in_progress to guard
+          // against algebraic loops.
+          {systems::System<T>::xd_ticket(),
+           systems::System<T>::all_parameters_ticket()});
   cache_indexes_.non_contact_forces_accelerations =
       non_contact_forces_accelerations_cache_entry.cache_index();
 
-  const auto& contact_problem_cache_entry = DeclareCacheEntry(
+  const auto& contact_problem_cache_entry = this->DeclareCacheEntry(
       "Contact Problem.",
       systems::ValueProducer(
           this, ContactProblemCache<T>(plant().time_step()),
           &CompliantContactManager<T>::CalcContactProblemCache),
-      {plant().cache_entry_ticket(cache_indexes_.discrete_contact_pairs)},
-      mutable_plant);
+      {plant().cache_entry_ticket(cache_indexes_.discrete_contact_pairs)});
   cache_indexes_.contact_problem = contact_problem_cache_entry.cache_index();
 }
 
@@ -784,65 +781,6 @@ CompliantContactManager<T>::AddContactConstraints(
 }
 
 template <typename T>
-void CompliantContactManager<T>::AddCouplerConstraints(
-    const systems::Context<T>& context, SapContactProblem<T>* problem) const {
-  DRAKE_DEMAND(problem != nullptr);
-
-  // Previous time step positions.
-  const VectorX<T> q0 = plant().GetPositions(context);  
-
-  constexpr double kInfinity = std::numeric_limits<double>::infinity();
-  const Vector1<T> ql(-kInfinity);
-  const Vector1<T> qu(kInfinity);
-  const Vector1<T> stiffness(kInfinity);
-  const Vector1<T> relaxation_time(plant().time_step());
-
-  for (const typename DiscreteUpdateManager<T>::CouplerConstraintSpecs& info :
-       this->coupler_constraints_sepcs()) {
-    const Joint<T>& joint0 = plant().get_joint(info.joint0_index);
-    const Joint<T>& joint1 = plant().get_joint(info.joint1_index);
-    const int dof0 = joint0.velocity_start();
-    const int dof1 = joint1.velocity_start();
-    const TreeIndex c0 = tree_topology().velocity_to_tree_index(dof0);
-    const TreeIndex c1 = tree_topology().velocity_to_tree_index(dof1);
-
-    // Sanity check.
-    DRAKE_DEMAND(c0.is_valid() && c1.is_valid());
-
-    // Constraint function.
-    const Vector1<T> g0(q0[dof0] - info.gear_ratio * q0[dof1]);
-
-    // TODO: expose this parameter.
-    const double beta = 0.1;
-
-    const typename SapHolonomicConstraint<T>::Parameters
-        parameters{ql, qu, stiffness, relaxation_time, beta};
-
-    if (c0 == c1) {
-      const int nv = tree_topology().num_tree_velocities(c0);
-      MatrixX<T> J = MatrixX<T>::Zero(1, nv);
-      // J = dg/dv
-      J(0, dof0) = 1.0;
-      J(0, dof1) = -info.gear_ratio;
-
-      problem->AddConstraint(
-          std::make_unique<SapHolonomicConstraint<T>>(
-              c0, g0, J, parameters));
-    } else {
-      const int nv0 = tree_topology().num_tree_velocities(c0);
-      const int nv1 = tree_topology().num_tree_velocities(c1);
-      MatrixX<T> J0 = MatrixX<T>::Zero(1, nv0);
-      MatrixX<T> J1 = MatrixX<T>::Zero(1, nv1);
-      J0(0, dof0) = 1.0;
-      J1(0, dof1) = -info.gear_ratio;
-      problem->AddConstraint(
-          std::make_unique<SapHolonomicConstraint<T>>(
-              c0, c1, g0, J0, J1, parameters));
-    }
-  }
-}
-
-template <typename T>
 void CompliantContactManager<T>::AddLimitConstraints(
     const systems::Context<T>& context, const VectorX<T>& v_star,
     SapContactProblem<T>* problem) const {
@@ -936,6 +874,63 @@ void CompliantContactManager<T>::AddLimitConstraints(
             "CompliantContactManager::AddLimitConstraints() must be updated to "
             "support this feature.");
       }
+    }
+  }
+}
+
+template <typename T>
+void CompliantContactManager<T>::AddCouplerConstraints(
+    const systems::Context<T>& context, SapContactProblem<T>* problem) const {
+  DRAKE_DEMAND(problem != nullptr);
+
+  // Previous time step positions.
+  const VectorX<T> q0 = plant().GetPositions(context);
+
+  constexpr double kInfinity = std::numeric_limits<double>::infinity();
+  const Vector1<T> ql(-kInfinity);
+  const Vector1<T> qu(kInfinity);
+  const Vector1<T> stiffness(kInfinity);
+  const Vector1<T> relaxation_time(plant().time_step());
+
+  for (const CouplerConstraintSpecs<T>& info :
+       this->coupler_constraints_sepcs()) {
+    const Joint<T>& joint0 = plant().get_joint(info.joint0_index);
+    const Joint<T>& joint1 = plant().get_joint(info.joint1_index);
+    const int dof0 = joint0.velocity_start();
+    const int dof1 = joint1.velocity_start();
+    const TreeIndex c0 = tree_topology().velocity_to_tree_index(dof0);
+    const TreeIndex c1 = tree_topology().velocity_to_tree_index(dof1);
+
+    // Sanity check.
+    DRAKE_DEMAND(c0.is_valid() && c1.is_valid());
+
+    // Constraint function.
+    const Vector1<T> g0(q0[dof0] - info.gear_ratio * q0[dof1]);
+
+    // TODO: expose this parameter.
+    const double beta = 0.1;
+
+    const typename SapHolonomicConstraint<T>::Parameters parameters{
+        ql, qu, stiffness, relaxation_time, beta};
+
+    if (c0 == c1) {
+      const int nv = tree_topology().num_tree_velocities(c0);
+      MatrixX<T> J = MatrixX<T>::Zero(1, nv);
+      // J = dg/dv
+      J(0, dof0) = 1.0;
+      J(0, dof1) = -info.gear_ratio;
+
+      problem->AddConstraint(
+          std::make_unique<SapHolonomicConstraint<T>>(c0, g0, J, parameters));
+    } else {
+      const int nv0 = tree_topology().num_tree_velocities(c0);
+      const int nv1 = tree_topology().num_tree_velocities(c1);
+      MatrixX<T> J0 = MatrixX<T>::Zero(1, nv0);
+      MatrixX<T> J1 = MatrixX<T>::Zero(1, nv1);
+      J0(0, dof0) = 1.0;
+      J1(0, dof1) = -info.gear_ratio;
+      problem->AddConstraint(std::make_unique<SapHolonomicConstraint<T>>(
+          c0, c1, g0, J0, J1, parameters));
     }
   }
 }

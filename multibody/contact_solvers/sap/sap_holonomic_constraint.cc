@@ -1,4 +1,4 @@
-#include "drake/multibody/contact_solvers/sap/sap_generic_constraint_with_impulse_limits.h"
+#include "drake/multibody/contact_solvers/sap/sap_holonomic_constraint.h"
 
 #include <algorithm>
 #include <limits>

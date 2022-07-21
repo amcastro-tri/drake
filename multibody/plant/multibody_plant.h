@@ -1130,28 +1130,22 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // joint the gear ratio will specify the "pitch" of the resulting mechanism.
   void AddCouplerConstraint(const Joint<T>& joint0, const Joint<T>& joint1,
                             const T& gear_ratio) {
-    // N.B. default_discrete_update_manager_ = nullptr after Finalize().
+    // N.B. The manager is setup at Finalize() and therefore we must require
+    // constraints to be added pre-finalize.                              
     DRAKE_MBP_THROW_IF_FINALIZED();
-
-    // Make sure we have a discrete update manager?
-    // Either contact_solver_enum_ != kTamsi or the user set a manager with
-    // SetDiscreteUpdateManager().
-    if (contact_solver_enum_ == DiscreteContactSolver::kTamsi &&
-        !user_supplied_manager_) {
-      // If the user specified a manager with SetDiscreteUpdateManager(), we
-      // allow specifying coupler constraints. Notice the error message does not
-      // advise to call SetDiscreteUpdateManager(), since it is an experimental
-      // API.
-      throw std::runtime_error(
-          "Currently this MultibodyPlant is set to use the TAMSI solver. TAMSI "
-          "does not support coupler constraints. Use "
-          "set_discrete_contact_solver() to set a different solver type.");
-    }
 
     if (!is_discrete()) {
       throw std::runtime_error(
           "Currently coupler constraints are only supported for discrete "
           "MultibodyPlant models.");
+    }
+
+    // TAMSI does not support coupler constraints.
+    if (contact_solver_enum_ == DiscreteContactSolver::kTamsi) {
+      throw std::runtime_error(
+          "Currently this MultibodyPlant is set to use the TAMSI solver. TAMSI "
+          "does not support coupler constraints. Use "
+          "set_discrete_contact_solver() to set a different solver type.");
     }
 
     if constexpr (std::is_same_v<T, symbolic::Expression>) {
@@ -1740,6 +1734,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @throws std::exception if called pre-finalize. See Finalize().
   /// @note `this` MultibodyPlant will no longer support scalar conversion to or
   /// from symbolic::Expression after a call to this method.
+  /// @warning With this experimental feature, currently any constraints
+  /// previously defined before this call will be lost. Those constraints and
+  /// new ones must therefore be added directly through the manager's APIs.
   void SetDiscreteUpdateManager(
       std::unique_ptr<internal::DiscreteUpdateManager<T>> manager);
 
@@ -5077,12 +5074,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // resolution into a default contact manager.
   std::unique_ptr<internal::DiscreteUpdateManager<T>>
       discrete_update_manager_;
-
-  // Since in addition to the public set_discrete_contact_solver() we have the
-  // experimental API SetDiscreteUpdateManger(), we track whether the user
-  // supplied a manager to provide a proper error message in
-  // AddCouplerConstraint().
-  bool user_supplied_manager_{false};
 
   // (Experimental) The vector of physical models owned by MultibodyPlant.
   std::vector<std::unique_ptr<internal::PhysicalModel<T>>> physical_models_;

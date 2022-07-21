@@ -54,6 +54,8 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
   void AddCouplerConstraint(const Joint<T>& joint0, const Joint<T>& joint1,
                             const T& gear_ratio);
 
+  int num_non_contact_constraints() const;                            
+
   /* (Internal) Creates a clone of the concrete DiscreteUpdateManager object
    with the scalar type `ScalarType`. This method is meant to be called only by
    MultibodyPlant. MultibodyPlant guarantees the call to ExtactModelInfo() after
@@ -141,7 +143,7 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
  protected:
   // Structure to store the specs for a coupler constraint between two one-dof
   // joints.
-  struct CouplerConstraintInfo {
+  struct CouplerConstraintSpecs {
     // First joint with position q₀.
     JointIndex joint0_index;
     // Second joint with position q₁.
@@ -150,8 +152,8 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
     T gear_ratio{1.0};
   };
 
-  const std::vector<CouplerConstraintInfo>& coupler_constraints_info() const {
-    return coupler_constraints_info_;
+  const std::vector<CouplerConstraintSpecs>& coupler_constraints_sepcs() const {
+    return coupler_constraints_sepcs_;
   }
 
   /* Derived classes that support making a clone that uses double as a scalar
@@ -260,7 +262,7 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
  private:
   const MultibodyPlant<T>* plant_{nullptr};
   systems::DiscreteStateIndex multibody_state_index_;
-  std::vector<CouplerConstraintInfo> coupler_constraints_info_;
+  std::vector<CouplerConstraintSpecs> coupler_constraints_sepcs_;
 };
 }  // namespace internal
 }  // namespace multibody

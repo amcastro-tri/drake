@@ -797,8 +797,8 @@ void CompliantContactManager<T>::AddCouplerConstraints(
   const Vector1<T> stiffness(kInfinity);
   const Vector1<T> relaxation_time(plant().time_step());
 
-  for (const typename DiscreteUpdateManager<T>::CouplerConstraintInfo& info :
-       this->coupler_constraints_info()) {
+  for (const typename DiscreteUpdateManager<T>::CouplerConstraintSpecs& info :
+       this->coupler_constraints_sepcs()) {
     const Joint<T>& joint0 = plant().get_joint(info.joint0_index);
     const Joint<T>& joint1 = plant().get_joint(info.joint1_index);
     const int dof0 = joint0.velocity_start();

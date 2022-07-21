@@ -9,12 +9,19 @@ namespace multibody {
 namespace internal {
 
 template <typename T>
+int DiscreteUpdateManager<T>::num_non_contact_constraints() const {
+  // N.B. This must be updated whenever the manager's API supports adding other
+  // constraint types.
+  return coupler_constraints_sepcs_.size();
+}
+
+template <typename T>
 void DiscreteUpdateManager<T>::AddCouplerConstraint(const Joint<T>& joint0,
                                                     const Joint<T>& joint1,
                                                     const T& gear_ratio) {
   DRAKE_THROW_UNLESS(joint0.num_velocities() == 1);
   DRAKE_THROW_UNLESS(joint1.num_velocities() == 1);
-  coupler_constraints_info_.push_back(CouplerConstraintInfo{
+  coupler_constraints_sepcs_.push_back(CouplerConstraintSpecs{
       joint0.index(), joint1.index(), gear_ratio});
 }
 

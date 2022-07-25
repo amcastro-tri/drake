@@ -69,12 +69,11 @@ VectorX<T> SapHolonomicConstraint<T>::CalcBiasTerm(
   // Relaxation used in the near-rigid regime.
   const T R_near_rigid = beta * beta / (4.0 * M_PI * M_PI) * wi;
 
-  // Relaxation (inverse of) for a constraint without dissipation.
-  const VectorX<T> R_elastic_inv =
-      time_step * time_step * parameters_.stiffnesses();
-
-  // Default to user supplied relaxation times.
-  VectorX<T> relaxation_times = parameters_.relaxation_times();
+  // Regularization for the specified stiffness and dissipation.
+  const VectorX<T>& k = parameters_.stiffnesses();
+  VectorX<T> tau = parameters_.relaxation_times();
+  const VectorX<T> R =
+      1.0 / (time_step * (time_step + tau.array()) * k.array());
 
   // Adjusted relaxation times to the near-rigid regime.
   // In this near-rigid regime a relaxation time equal to the time step leads to
@@ -84,13 +83,12 @@ VectorX<T> SapHolonomicConstraint<T>::CalcBiasTerm(
     // relaxation R_near_rigid, that means that time_step will not be able to
     // resolve the dynamics introduced by this constraint. We call this the
     // "near-rigid" regime. Here we clamp relaxation time to the time step.
-    if (R_near_rigid * R_elastic_inv(e) > 1.0) {
-      relaxation_times(e) = min(time_step, relaxation_times(e));
+    if (R(e) < R_near_rigid) {
+      tau(e) = min(time_step, tau(e));
     }
   }
 
-  return -this->constraint_function().array() /
-         (time_step + relaxation_times.array());
+  return -this->constraint_function().array() / (time_step + tau.array());
 }
 
 template <typename T>
@@ -98,31 +96,17 @@ VectorX<T> SapHolonomicConstraint<T>::CalcDiagonalRegularization(
     const T& time_step, const T& wi) const {
   using std::max;
 
-  const double beta = parameters_.beta();
+  // Regularization for the specified stiffness and dissipation.
+  const VectorX<T>& k = parameters_.stiffnesses();
+  const VectorX<T>& tau = parameters_.relaxation_times();
+  const VectorX<T> R =
+      1.0 / (time_step * (time_step + tau.array()) * k.array());
 
-  // Relaxation used in the near-rigid regime.
+  // Minimum relaxation in the near-rigid regime.
+  const double beta = parameters_.beta();
   const T R_near_rigid = beta * beta / (4.0 * M_PI * M_PI) * wi;
 
-  // Relaxation (inverse of) for a constraint without dissipation.
-  const VectorX<T> R_elastic_inv =
-      time_step * time_step * parameters_.stiffnesses();
-
-  // Compute relaxation clamped to R_near_rigid.
-  VectorX<T> R(this->num_constraint_equations());
-  for (int e = 0; e < this->num_constraint_equations(); ++e) {
-    // If the elastic relaxation R_elastic is smaller than the near-rigid regime
-    // relaxation R_near_rigid, that means that time_step will not be able to
-    // resolve the dynamics introduced by this constraint. We call this the
-    // "near-rigid" regime.
-    if (R_near_rigid * R_elastic_inv(e) > 1.0) {
-      const T& k = parameters_.stiffnesses()(e);
-      const T& tau = parameters_.relaxation_times()(e);
-      const T Re = 1.0 / (time_step * k * (time_step + tau));
-      R(e) = max(R_near_rigid, Re);
-    }
-  }
-
-  return R;
+  return R.array().max(R_near_rigid);
 }
 
 template <typename T>

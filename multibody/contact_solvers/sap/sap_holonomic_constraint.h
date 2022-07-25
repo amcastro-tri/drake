@@ -45,6 +45,8 @@ namespace internal {
    https://arxiv.org/abs/2110.10107
 
  @tparam_nonsymbolic_scalar */
+// TODO(amcastro-tri): allow to instantinate holonomic constraints with a non
+// zero bias term b = ∂g/∂t.
 template <typename T>
 class SapHolonomicConstraint final : public SapConstraint<T> {
  public:

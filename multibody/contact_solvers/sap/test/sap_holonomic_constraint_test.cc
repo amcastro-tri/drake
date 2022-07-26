@@ -5,15 +5,9 @@
 #include "drake/common/pointer_cast.h"
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 
-using Eigen::Matrix2d;
-using Eigen::Matrix3d;
 using Eigen::MatrixXd;
-using Eigen::Vector2d;
 using Eigen::Vector3d;
 using Eigen::VectorXd;
-
-#include <iostream>
-#define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
 
 namespace drake {
 namespace multibody {
@@ -35,12 +29,12 @@ class SapHolonomicConstraintTests : public ::testing::Test {
 
   static SapHolonomicConstraint<double>::Parameters MakeArbitraryParameters(
       double beta = 0) {
-    VectorXd lower_limits = -Vector3d(1.0, 2.0, 3.0);
-    VectorXd upper_limits = Vector3d(1.0, 2.0, 3.0);
+    VectorXd impulse_lower_limits = -Vector3d(1.0, 2.0, 3.0);
+    VectorXd impulse_upper_limits = Vector3d(1.0, 2.0, 3.0);
     VectorXd stiffnesses = 1.0e4 * Vector3d(1.0, 2.0, 3.0);
     VectorXd relaxation_times = 0.01 * Vector3d(1.0, 2.0, 3.0);
     return SapHolonomicConstraint<double>::Parameters(
-        std::move(lower_limits), std::move(upper_limits),
+        std::move(impulse_lower_limits), std::move(impulse_upper_limits),
         std::move(stiffnesses), std::move(relaxation_times), beta);
   }
 
@@ -62,8 +56,10 @@ TEST_F(SapHolonomicConstraintTests, SingleCliqueConstruction) {
   EXPECT_THROW(dut_->second_clique_jacobian(), std::exception);
   const SapHolonomicConstraint<double>::Parameters p =
       MakeArbitraryParameters();
-  EXPECT_EQ(dut_->parameters().lower_limits(), p.lower_limits());
-  EXPECT_EQ(dut_->parameters().upper_limits(), p.upper_limits());
+  EXPECT_EQ(dut_->parameters().impulse_lower_limits(),
+            p.impulse_lower_limits());
+  EXPECT_EQ(dut_->parameters().impulse_upper_limits(),
+            p.impulse_upper_limits());
   EXPECT_EQ(dut_->parameters().stiffnesses(), p.stiffnesses());
   EXPECT_EQ(dut_->parameters().relaxation_times(), p.relaxation_times());
   EXPECT_EQ(dut_->parameters().beta(), p.beta());
@@ -89,16 +85,18 @@ TEST_F(SapHolonomicConstraintTests, TwoCliquesConstruction) {
   EXPECT_EQ(dut_->constraint_function(), g);
   EXPECT_EQ(dut_->first_clique_jacobian(), J1);
   EXPECT_EQ(dut_->second_clique_jacobian(), J2);
-  EXPECT_EQ(dut_->parameters().lower_limits(), p.lower_limits());
-  EXPECT_EQ(dut_->parameters().upper_limits(), p.upper_limits());
+  EXPECT_EQ(dut_->parameters().impulse_lower_limits(),
+            p.impulse_lower_limits());
+  EXPECT_EQ(dut_->parameters().impulse_upper_limits(),
+            p.impulse_upper_limits());
   EXPECT_EQ(dut_->parameters().stiffnesses(), p.stiffnesses());
   EXPECT_EQ(dut_->parameters().relaxation_times(), p.relaxation_times());
   EXPECT_EQ(dut_->parameters().beta(), p.beta());
 }
 
 TEST_F(SapHolonomicConstraintTests, Project) {
-  const VectorXd& gl = dut_->parameters().lower_limits();
-  const VectorXd& gu = dut_->parameters().upper_limits();
+  const VectorXd& gl = dut_->parameters().impulse_lower_limits();
+  const VectorXd& gu = dut_->parameters().impulse_upper_limits();
 
   // For this constraint the projection is independent of the regularization R.
   // We test this by setting R to NaN and verifying we still get the expected
@@ -167,7 +165,7 @@ TEST_F(SapHolonomicConstraintTests, Project) {
 // but overwrite beta to be non-zero.
 TEST_F(SapHolonomicConstraintTests, CalcDiagonalRegularization) {
   // We set a non-zero beta in order to test CalcDiagonalRegularization() for
-  // parameters within the near-rigid regime.   
+  // parameters within the near-rigid regime.
   const double beta = 1.5;
   SapHolonomicConstraint<double>::Parameters parameters =
       MakeArbitraryParameters(beta);
@@ -199,7 +197,7 @@ TEST_F(SapHolonomicConstraintTests, CalcDiagonalRegularization) {
 
 TEST_F(SapHolonomicConstraintTests, CalcBiasTerm) {
   // We set a non-zero beta in order to test CalcBiasTerm() for
-  // parameters within the near-rigid regime.   
+  // parameters within the near-rigid regime.
   const double beta = 1.5;
   SapHolonomicConstraint<double>::Parameters parameters =
       MakeArbitraryParameters(beta);
@@ -242,8 +240,10 @@ TEST_F(SapHolonomicConstraintTests, Clone) {
   const SapHolonomicConstraint<double>::Parameters& p = dut_->parameters();
   EXPECT_EQ(clone->parameters().num_constraint_equations(),
             p.num_constraint_equations());
-  EXPECT_EQ(clone->parameters().lower_limits(), p.lower_limits());
-  EXPECT_EQ(clone->parameters().upper_limits(), p.upper_limits());
+  EXPECT_EQ(clone->parameters().impulse_lower_limits(),
+            p.impulse_lower_limits());
+  EXPECT_EQ(clone->parameters().impulse_upper_limits(),
+            p.impulse_upper_limits());
   EXPECT_EQ(clone->parameters().stiffnesses(), p.stiffnesses());
   EXPECT_EQ(clone->parameters().relaxation_times(), p.relaxation_times());
   EXPECT_EQ(clone->parameters().beta(), p.beta());

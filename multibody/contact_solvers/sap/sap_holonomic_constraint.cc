@@ -14,20 +14,20 @@ namespace internal {
 
 template <typename T>
 SapHolonomicConstraint<T>::Parameters::Parameters(
-    VectorX<T> lower_limits, VectorX<T> upper_limits,
+    VectorX<T> impulse_lower_limits, VectorX<T> impulse_upper_limits,
     VectorX<T> stiffnesses, VectorX<T> relaxation_times, double beta)
-    : lower_limits_(std::move(lower_limits)),
-      upper_limits_(std::move(upper_limits)),
+    : impulse_lower_limits_(std::move(impulse_lower_limits)),
+      impulse_upper_limits_(std::move(impulse_upper_limits)),
       stiffnesses_(std::move(stiffnesses)),
       relaxation_times_(std::move(relaxation_times)),
       beta_(beta) {
   constexpr double kInf = std::numeric_limits<double>::infinity();
-  DRAKE_DEMAND(lower_limits.size() == upper_limits.size());
-  DRAKE_DEMAND(lower_limits.size() == stiffnesses.size());
-  DRAKE_DEMAND(lower_limits.size() == relaxation_times.size());
-  DRAKE_DEMAND((lower_limits.array() <= kInf).all());
-  DRAKE_DEMAND((upper_limits.array() >= -kInf).all());
-  DRAKE_DEMAND((lower_limits.array() <= upper_limits.array()).all());
+  DRAKE_DEMAND(impulse_lower_limits.size() == impulse_upper_limits.size());
+  DRAKE_DEMAND(impulse_lower_limits.size() == stiffnesses.size());
+  DRAKE_DEMAND(impulse_lower_limits.size() == relaxation_times.size());
+  DRAKE_DEMAND((impulse_lower_limits.array() <= kInf).all());
+  DRAKE_DEMAND((impulse_upper_limits.array() >= -kInf).all());
+  DRAKE_DEMAND((impulse_lower_limits.array() <= impulse_upper_limits.array()).all());
   DRAKE_DEMAND((stiffnesses.array() > 0).all());
   DRAKE_DEMAND((relaxation_times.array() >= 0).all());
 }
@@ -116,8 +116,8 @@ void SapHolonomicConstraint<T>::Project(
   DRAKE_DEMAND(gamma != nullptr);
   DRAKE_DEMAND(gamma->size() == this->num_constraint_equations());
   // Limits in the impulses.
-  const VectorX<T>& gl = parameters_.lower_limits();
-  const VectorX<T>& gu = parameters_.upper_limits();
+  const VectorX<T>& gl = parameters_.impulse_lower_limits();
+  const VectorX<T>& gu = parameters_.impulse_upper_limits();
 
   *gamma = y.array().max(gl.array()).min(gu.array());
   if (dPdy != nullptr) {

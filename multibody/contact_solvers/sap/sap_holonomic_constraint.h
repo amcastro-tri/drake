@@ -59,8 +59,8 @@ class SapHolonomicConstraint final : public SapConstraint<T> {
     DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Parameters);
 
     /* Constructs a valid set of parameters.
-     @param lower_limits vector of lower limits γₗ.
-     @param upper_limits vector of upper limits γᵤ.
+     @param impulse_lower_limits vector of lower limits γₗ.
+     @param impulse_upper_limits vector of upper limits γᵤ.
      @param stiffnesses vector of stiffnesses kᵢ for each constraint.
      @param relaxation_times vector of relaxation times τᵢ for each constraint.
      @param beta Rigid approximation constant: Rₙ = β²/(4π²)⋅w when the
@@ -69,28 +69,34 @@ class SapHolonomicConstraint final : public SapConstraint<T> {
      diagonal approximation of the Delassuss operator for the constraint. See
      [Castro et al., 2022] for details.
 
-     @pre lower_limits, upper_limits, stiffnesses and relaxation_times must all
-     have the same size.
-     @pre lower_limits <= +∞, componentwise.
-     @pre upper_limits >= -∞, componentwise.
+     @pre impulse_lower_limits, impulse_upper_limits, stiffnesses and
+     relaxation_times must all have the same size.
+     @pre impulse_lower_limits <= +∞, componentwise.
+     @pre impulse_upper_limits >= -∞, componentwise.
      @pre lower_limit <= upper_limit, componentwise.
      @pre stiffnesses > 0, componentwise.
      @pre relaxation_times >= 0, componentwise
      @pre beta > 0 */
-    Parameters(VectorX<T> lower_limits, VectorX<T> upper_limits,
+    Parameters(VectorX<T> impulse_lower_limits, VectorX<T> impulse_upper_limits,
                VectorX<T> stiffnesses, VectorX<T> relaxation_times,
                double beta = 0.1);
 
-    const VectorX<T>& lower_limits() const { return lower_limits_; }
-    const VectorX<T>& upper_limits() const { return upper_limits_; }
+    const VectorX<T>& impulse_lower_limits() const {
+      return impulse_lower_limits_;
+    }
+    const VectorX<T>& impulse_upper_limits() const {
+      return impulse_upper_limits_;
+    }
     const VectorX<T>& stiffnesses() const { return stiffnesses_; }
     const VectorX<T>& relaxation_times() const { return relaxation_times_; }
     double beta() const { return beta_; }
-    int num_constraint_equations() const { return lower_limits_.size(); }
+    int num_constraint_equations() const {
+      return impulse_lower_limits_.size();
+    }
 
    private:
-    VectorX<T> lower_limits_;
-    VectorX<T> upper_limits_;
+    VectorX<T> impulse_lower_limits_;
+    VectorX<T> impulse_upper_limits_;
     VectorX<T> stiffnesses_;
     VectorX<T> relaxation_times_;
     double beta_{0.1};

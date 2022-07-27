@@ -27,6 +27,20 @@ struct CouplerConstraintSpecs {
   T offset{0.0};
 };
 
+template <typename T>
+struct PdControllerConstraintSpecs {
+  // TODO: do I need the actuator index to pull u_FF from the actuation?
+  // JointActuatorIndex joint_index;
+  // Joint on which the PD controller is added.
+  JointActuatorIndex actuator_index;
+  // Proportional gain, with units consistent to the type of joint (i.e. N/m for
+  // prismatic and Nm/rad for revolute).
+  T proportional_gain{NAN};
+  // Derivative gain, with units consistent to the type of joint (i.e. Ns/m for
+  // prismatic and Nms/rad for revolute)
+  T derivative_gain{0.0};
+};
+
 }  // namespace internal
 }  // namespace multibody
 }  // namespace drake

@@ -487,10 +487,44 @@ ConstraintIndex MultibodyPlant<T>::AddCouplerConstraint(const Joint<T>& joint0,
     throw std::runtime_error(message);
   }
 
-  const ConstraintIndex constraint_index(num_constraints());
+  const ConstraintIndex constraint_index(total_num_constraints_++);
 
-  coupler_constraints_sepcs_.push_back(internal::CouplerConstraintSpecs<T>{
+  coupler_constraints_specs_.push_back(internal::CouplerConstraintSpecs<T>{
       joint0.index(), joint1.index(), gear_ratio, offset});
+
+  return constraint_index;
+}
+
+template <typename T>
+ConstraintIndex MultibodyPlant<T>::AddPdController(
+    const JointActuator<T>& actuator, const T& proportional_gain,
+    const T& derivative_gain) {
+  DRAKE_DEMAND(proportional_gain > 0.0);
+  DRAKE_DEMAND(derivative_gain >= 0.0);
+
+  // N.B. The manager is setup at Finalize() and therefore we must require
+  // constraints to be added pre-finalize.
+  DRAKE_MBP_THROW_IF_FINALIZED();
+
+  if (!is_discrete()) {
+    throw std::runtime_error(
+        "Currently PD controller constraints are only supported for discrete "
+        "MultibodyPlant models.");
+  }
+
+  // TAMSI does not support coupler constraints. For all other solvers, we let
+  // the discrete update manger to throw an exception at finalize time.
+  if (contact_solver_enum_ == DiscreteContactSolver::kTamsi) {
+    throw std::runtime_error(
+        "Currently this MultibodyPlant is set to use the TAMSI solver. TAMSI "
+        "does not support constraints. Use "
+        "set_discrete_contact_solver() to set a different solver type.");
+  }
+
+  const ConstraintIndex constraint_index(total_num_constraints_++);
+
+  pd_controller_specs_.push_back(internal::PdControllerConstraintSpecs<T>{
+      actuator.index(), proportional_gain, derivative_gain});
 
   return constraint_index;
 }
@@ -3080,6 +3114,14 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
       this->DeclareVectorInputPort("actuation", num_actuated_dofs())
           .get_index();
 
+  // Ports of desired positions and velocities.
+  desired_positions_port_ =
+      this->DeclareVectorInputPort("Desired positions", num_actuated_dofs())
+          .get_index();
+  desired_velocities_port_ =
+      this->DeclareVectorInputPort("Desired velocities", num_actuated_dofs())
+          .get_index();          
+
   // Declare the generalized force input port.
   applied_generalized_force_input_port_ =
       this->DeclareVectorInputPort("applied_generalized_force",
@@ -3507,6 +3549,20 @@ const systems::InputPort<T>& MultibodyPlant<T>::get_actuation_input_port()
     const {
   DRAKE_MBP_THROW_IF_NOT_FINALIZED();
   return systems::System<T>::get_input_port(actuation_port_);
+}
+
+template <typename T>
+const systems::InputPort<T>&
+MultibodyPlant<T>::get_desired_positions_input_port() const {
+  DRAKE_MBP_THROW_IF_NOT_FINALIZED();
+  return systems::System<T>::get_input_port(desired_positions_port_);
+}
+
+template <typename T>
+const systems::InputPort<T>&
+MultibodyPlant<T>::get_desired_velocities_input_port() const {
+  DRAKE_MBP_THROW_IF_NOT_FINALIZED();
+  return systems::System<T>::get_input_port(desired_velocities_port_);
 }
 
 template <typename T>

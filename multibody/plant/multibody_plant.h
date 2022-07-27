@@ -669,6 +669,13 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @throws std::exception if individual actuation ports are connected.
   const systems::InputPort<T>& get_actuation_input_port() const;
 
+  /// Ports of desired positions and velocities. These are vector valued ports
+  /// indexd by JointActuatorIndex. Actuators with a PD controller (call to
+  /// AddPdController()) will have an entry in these vectors. Entries
+  /// corresponding to actuators with no PD controller are ignored.
+  const systems::InputPort<T>& get_desired_positions_input_port() const;
+  const systems::InputPort<T>& get_desired_velocities_input_port() const;
+
   /// Returns a constant reference to the vector-valued input port for applied
   /// generalized forces, and the vector will be added directly into `tau` (see
   /// @ref mbp_equations_of_motion "System dynamics"). This vector is ordered
@@ -1166,7 +1173,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @{
 
   /// Returns the total number of constraints specified by the user.
-  int num_constraints() const { return coupler_constraints_sepcs_.size(); }
+  int num_constraints() const {
+    return total_num_constraints_;
+  }
 
   /// Defines a holonomic constraint between two single-dof constraints `joint0`
   /// and `joint1` with positions q₀ and q₁, respectively, such that q₀ = ρ⋅q₁ +
@@ -1180,6 +1189,12 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
                                        const Joint<T>& joint1,
                                        const T& gear_ratio,
                                        const T& offset = 0.0);
+
+  // TODO(amcstro-tri): Consider having these parameters in the JointActuator
+  // and removing this API.
+  ConstraintIndex AddPdController(const JointActuator<T>& actuator,
+                                  const T& proportional_gain,
+                                  const T& derivative_gain);
 
   /// @}
 
@@ -5013,6 +5028,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // The actuation port for all actuated dofs.
   systems::InputPortIndex actuation_port_;
 
+  systems::InputPortIndex desired_positions_port_;
+  systems::InputPortIndex desired_velocities_port_;
+
   // A port for externally applied generalized forces u.
   systems::InputPortIndex applied_generalized_force_input_port_;
 
@@ -5076,8 +5094,13 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // (Experimental) The vector of physical models owned by MultibodyPlant.
   std::vector<std::unique_ptr<internal::PhysicalModel<T>>> physical_models_;
 
+  // Total number of constrains in the MultibodyPlant model.
+  int total_num_constraints_{0};
+
   // Vector of coupler constraints specifications.
-  std::vector<internal::CouplerConstraintSpecs<T>> coupler_constraints_sepcs_;
+  std::vector<internal::CouplerConstraintSpecs<T>> coupler_constraints_specs_;
+
+  std::vector<internal::PdControllerConstraintSpecs<T>> pd_controller_specs_;
 
   // All MultibodyPlant cache indexes are stored in cache_indexes_.
   CacheIndexes cache_indexes_;

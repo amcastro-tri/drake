@@ -207,6 +207,8 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
   void CalcForceElementsContribution(const drake::systems::Context<T>& context,
                                      MultibodyForces<T>* forces) const;
 
+  VectorX<T> AssembleActuationInput(const systems::Context<T>& context) const;
+
   // TODO(xuchenhan-tri): Remove this when SceneGraph takes control of all
   //  geometries.
   const std::vector<std::vector<geometry::GeometryId>>& collision_geometries()
@@ -219,7 +221,10 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
   geometry_id_to_body_index() const;
 
   const std::vector<internal::CouplerConstraintSpecs<T>>&
-  coupler_constraints_sepcs() const;
+  coupler_constraints_specs() const;
+
+  const std::vector<internal::PdControllerConstraintSpecs<T>>&
+  pd_controllers_specs() const;
   /* @} */
 
   /* Concrete DiscreteUpdateManagers must override these NVI Calc methods to

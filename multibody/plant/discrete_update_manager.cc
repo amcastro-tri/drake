@@ -136,6 +136,13 @@ void DiscreteUpdateManager<T>::CalcForceElementsContribution(
 }
 
 template <typename T>
+VectorX<T> DiscreteUpdateManager<T>::AssembleActuationInput(
+    const systems::Context<T>& context) const {
+  return MultibodyPlantDiscreteUpdateManagerAttorney<T>::AssembleActuationInput(
+      plant(), context);
+}
+
+template <typename T>
 const std::vector<std::vector<geometry::GeometryId>>&
 DiscreteUpdateManager<T>::collision_geometries() const {
   return MultibodyPlantDiscreteUpdateManagerAttorney<T>::collision_geometries(
@@ -163,9 +170,16 @@ DiscreteUpdateManager<T>::geometry_id_to_body_index() const {
 
 template <typename T>
 const std::vector<internal::CouplerConstraintSpecs<T>>&
-DiscreteUpdateManager<T>::coupler_constraints_sepcs() const {
+DiscreteUpdateManager<T>::coupler_constraints_specs() const {
   return MultibodyPlantDiscreteUpdateManagerAttorney<
-      T>::coupler_constraints_sepcs(*plant_);
+      T>::coupler_constraints_specs(*plant_);
+}
+
+template <typename T>
+const std::vector<internal::PdControllerConstraintSpecs<T>>&
+DiscreteUpdateManager<T>::pd_controllers_specs() const {
+  return MultibodyPlantDiscreteUpdateManagerAttorney<T>::pd_controllers_specs(
+      *plant_);
 }
 
 }  // namespace internal

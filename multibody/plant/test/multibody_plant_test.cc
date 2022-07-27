@@ -120,12 +120,6 @@ class MultibodyPlantTester {
     plant.CalcNormalAndTangentContactJacobians(
         context, discrete_pairs, Jn, Jt, R_WC_set);
   }
-
-  static const geometry::QueryObject<double>& EvalGeometryQueryInput(
-      const MultibodyPlant<double>& plant,
-      const systems::Context<double>& context) {
-    return plant.EvalGeometryQueryInput(context);
-  }
 };
 
 namespace {
@@ -1038,7 +1032,7 @@ GTEST_TEST(MultibodyPlantTest, SetDefaultFreeBodyPose) {
   MultibodyPlant<double> plant(0.0);
   // To avoid unnecessary warnings/errors, use a non-zero spatial inertia.
   const auto& body = plant.AddRigidBody("body",
-      SpatialInertia<double>::MakeTestCube());
+      SpatialInertia<double>::MakeUnitary());
   EXPECT_TRUE(CompareMatrices(
       plant.GetDefaultFreeBodyPose(body).GetAsMatrix4(),
       RigidTransformd::Identity().GetAsMatrix4()));
@@ -1195,7 +1189,7 @@ class SphereChainScenario {
       const double radius = 0.5;
       // To avoid unnecessary warnings/errors, use a non-zero spatial inertia.
       const RigidBody<double>& sphere = plant_->AddRigidBody(
-          "Sphere" + to_string(i), SpatialInertia<double>::MakeTestCube());
+          "Sphere" + to_string(i), SpatialInertia<double>::MakeUnitary());
       GeometryId sphere_id = plant_->RegisterCollisionGeometry(
           sphere, RigidTransformd::Identity(), geometry::Sphere(radius),
           "collision", CoulombFriction<double>());
@@ -1228,7 +1222,7 @@ class SphereChainScenario {
     // Body with no registered frame.
     // To avoid unnecessary warnings/errors, use a non-zero spatial inertia.
     no_geometry_body_ = &plant_->AddRigidBody("NothingRegistered",
-        SpatialInertia<double>::MakeTestCube());
+        SpatialInertia<double>::MakeUnitary());
   }
 
   void Finalize() {
@@ -1413,7 +1407,7 @@ GTEST_TEST(MultibodyPlantTest, FilterWeldedSubgraphs) {
 GTEST_TEST(MultibodyPlantTest, CollectRegisteredGeometriesErrors) {
   MultibodyPlant<double> plant(0.0);
   const RigidBody<double>& body = plant.AddRigidBody("body",
-      SpatialInertia<double>::MakeTestCube());
+      SpatialInertia<double>::MakeUnitary());
 
   // It's an error to call this without a SceneGraph.
   DRAKE_EXPECT_THROWS_MESSAGE(
@@ -1628,8 +1622,8 @@ GTEST_TEST(MultibodyPlantTest, CollisionGeometryRegistration) {
 
   // Add two spherical bodies.
   // To avoid unnecessary warnings/errors, use a non-zero spatial inertia.
-  const RigidBody<double>& sphere1 =
-      plant.AddRigidBody("Sphere1", SpatialInertia<double>::MakeTestCube());
+  const RigidBody<double>& sphere1 = plant.AddRigidBody("Sphere1",
+          SpatialInertia<double>::MakeUnitary());
   CoulombFriction<double> sphere1_friction(0.8, 0.5);
   // estimated parameters for mass=1kg, penetration_tolerance=0.01m
   // and gravity g=9.8 m/s^2.
@@ -1665,8 +1659,8 @@ GTEST_TEST(MultibodyPlantTest, CollisionGeometryRegistration) {
   sphere2_properties.AddProperty(geometry::internal::kMaterialGroup,
                                  geometry::internal::kHcDissipation,
                                  sphere2_dissipation);
-  const RigidBody<double>& sphere2 =
-      plant.AddRigidBody("Sphere2", SpatialInertia<double>::MakeTestCube());
+  const RigidBody<double>& sphere2 = plant.AddRigidBody("Sphere2",
+      SpatialInertia<double>::MakeUnitary());
   GeometryId sphere2_id = plant.RegisterCollisionGeometry(
       sphere2, RigidTransformd::Identity(), geometry::Sphere(radius),
       "collision", std::move(sphere2_properties));
@@ -1813,15 +1807,15 @@ GTEST_TEST(MultibodyPlantTest, VisualGeometryRegistration) {
 
   // Add two spherical bodies.
   // To avoid unnecessary warnings/errors, use a non-zero spatial inertia.
-  const RigidBody<double>& sphere1 =
-      plant.AddRigidBody("Sphere1", SpatialInertia<double>::MakeTestCube());
+  const RigidBody<double>& sphere1 = plant.AddRigidBody("Sphere1",
+      SpatialInertia<double>::MakeUnitary());
   Vector4<double> sphere1_diffuse{0.9, 0.1, 0.1, 0.5};
   GeometryId sphere1_id = plant.RegisterVisualGeometry(
       sphere1, RigidTransformd::Identity(), geometry::Sphere(radius),
       "visual", sphere1_diffuse);
   EXPECT_EQ(render_engine.num_registered(), 2);
-  const RigidBody<double>& sphere2 =
-      plant.AddRigidBody("Sphere2", SpatialInertia<double>::MakeTestCube());
+  const RigidBody<double>& sphere2 = plant.AddRigidBody("Sphere2",
+      SpatialInertia<double>::MakeUnitary());
   IllustrationProperties sphere2_props;
   const Vector4<double> sphere2_diffuse{0.1, 0.9, 0.1, 0.5};
   sphere2_props.AddProperty("phong", "diffuse", sphere2_diffuse);
@@ -1904,30 +1898,6 @@ GTEST_TEST(MultibodyPlantTest, AutoDiffCalcPointPairPenetrations) {
   // This test case contains no collisions, and hence we should not throw.
   DRAKE_EXPECT_NO_THROW(
       autodiff_pendulum->EvalPointPairPenetrations(*autodiff_context.get()));
-}
-
-GTEST_TEST(MultibodyPlantTest, CalcPointPairPenetrationsDisconnectedPorts) {
-  // Creates a plant and register geometry with a SceneGraph, but does not
-  // connect their respective ports in a Diagram. MultibodyPlant will know
-  // that it is registered as a source for geometry, but will fail to Eval
-  // its geometry_query_input_port(). Check that this failure happens as
-  // expected.
-  SceneGraph<double> scene_graph;
-  MultibodyPlant<double> plant(0.0);
-  plant.RegisterAsSourceForSceneGraph(&scene_graph);
-  plant.Finalize();
-  std::unique_ptr<Context<double>> context = plant.CreateDefaultContext();
-
-  // Plant was not connected to the SceneGraph in a diagram, so its input port
-  // should be invalid.
-  DRAKE_EXPECT_THROWS_MESSAGE(
-      MultibodyPlantTester::EvalGeometryQueryInput(plant, *context),
-      "The geometry query input port \\(see "
-      "MultibodyPlant::get_geometry_query_input_port\\(\\)\\) "
-      "of this MultibodyPlant is not connected. Please connect the"
-      "geometry query output port of a SceneGraph object "
-      "\\(see SceneGraph::get_query_output_port\\(\\)\\) to this plants input "
-      "port in a Diagram.");
 }
 
 GTEST_TEST(MultibodyPlantTest, LinearizePendulum) {
@@ -2053,8 +2023,8 @@ void InitializePlantAndContextForVelocityToQDotMapping(
     MultibodyPlant<double>* plant, std::unique_ptr<Context<double>>* context) {
   // This is used in purely kinematic tests.
   // To avoid unnecessary warnings/errors, use a non-zero spatial inertia.
-  const RigidBody<double>& body =
-      plant->AddRigidBody("FreeBody", SpatialInertia<double>::MakeTestCube());
+  const RigidBody<double>& body = plant->AddRigidBody("FreeBody",
+      SpatialInertia<double>::MakeUnitary());
   plant->Finalize();
 
   *context = plant->CreateDefaultContext();
@@ -2200,7 +2170,8 @@ TEST_F(SplitPendulum, GetMultibodyPlantFromElement) {
   // Create an element-owning MBTreeSystem that _is not_ an MBPlant.
   struct MyMBSystem : public internal::MultibodyTreeSystem<double> {
     MyMBSystem() {
-      rigid_body = &mutable_tree().AddBody<RigidBody>(SpatialInertia<double>());
+      rigid_body = &mutable_tree().AddBody<RigidBody>(
+          "Body", SpatialInertia<double>());
       Finalize();
     }
     const RigidBody<double>* rigid_body{};
@@ -2299,15 +2270,15 @@ class MultibodyPlantContactJacobianTests : public ::testing::Test {
 
     // The model simply contains a small and a large box.
     // To avoid unnecessary warnings/errors, use a non-zero spatial inertia.
-    const RigidBody<double>& large_box =
-        plant_.AddRigidBody("LargeBox", SpatialInertia<double>::MakeTestCube());
+    const RigidBody<double>& large_box = plant_.AddRigidBody("LargeBox",
+        SpatialInertia<double>::MakeUnitary());
     large_box_id_ = plant_.RegisterCollisionGeometry(
         large_box, RigidTransformd::Identity(),
         geometry::Box(large_box_size_, large_box_size_, large_box_size_),
         "collision", CoulombFriction<double>());
 
-    const RigidBody<double>& small_box =
-        plant_.AddRigidBody("SmallBox", SpatialInertia<double>::MakeTestCube());
+    const RigidBody<double>& small_box = plant_.AddRigidBody("SmallBox",
+        SpatialInertia<double>::MakeUnitary());
     small_box_id_ = plant_.RegisterCollisionGeometry(
         small_box, RigidTransformd::Identity(),
         geometry::Box(small_box_size_, small_box_size_, small_box_size_),
@@ -3359,7 +3330,7 @@ GTEST_TEST(SetRandomTest, FloatingBodies) {
 
   // To avoid unnecessary warnings/errors, use a non-zero spatial inertia.
   const Body<double>& body = plant.AddRigidBody("LoneBody",
-      SpatialInertia<double>::MakeTestCube());
+      SpatialInertia<double>::MakeUnitary());
   plant.Finalize();
 
   RandomGenerator generator;

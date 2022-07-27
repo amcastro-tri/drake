@@ -75,7 +75,8 @@ GTEST_TEST(MultibodyTree, BasicAPIToAddBodiesAndMobilizers) {
   SpatialInertia<double> M_Bo_B;
 
   // Adds a new body to the world.
-  const RigidBody<double>& pendulum = model->AddBody<RigidBody>(M_Bo_B);
+  const RigidBody<double>& pendulum = model->AddBody<RigidBody>(
+      "pendulum", M_Bo_B);
 
   // Adds a revolute mobilizer.
   DRAKE_EXPECT_NO_THROW((model->AddMobilizer<RevoluteMobilizer>(
@@ -97,7 +98,8 @@ GTEST_TEST(MultibodyTree, BasicAPIToAddBodiesAndMobilizers) {
       Vector3d::UnitZ())), std::runtime_error);
 
   // Adds a second pendulum.
-  const RigidBody<double>& pendulum2 = model->AddBody<RigidBody>(M_Bo_B);
+  const RigidBody<double>& pendulum2 = model->AddBody<RigidBody>(
+      "pendulum2", M_Bo_B);
   model->AddMobilizer<RevoluteMobilizer>(
       model->world_frame(), pendulum2.body_frame(), Vector3d::UnitZ());
 
@@ -139,7 +141,7 @@ GTEST_TEST(MultibodyTree, BasicAPIToAddBodiesAndMobilizers) {
   EXPECT_THROW(model->Finalize(), std::logic_error);
 
   // Verifies that after compilation no more bodies can be added.
-  EXPECT_THROW(model->AddBody<RigidBody>(M_Bo_B), std::logic_error);
+  EXPECT_THROW(model->AddBody<RigidBody>("B", M_Bo_B), std::logic_error);
 }
 
 // Tests the correctness of MultibodyElement checks to verify one or more
@@ -155,8 +157,8 @@ GTEST_TEST(MultibodyTree, MultibodyElementChecks) {
   // expressed in the body frame B.
   SpatialInertia<double> M_Bo_B;
 
-  const RigidBody<double>& body1 = model1->AddBody<RigidBody>(M_Bo_B);
-  const RigidBody<double>& body2 = model2->AddBody<RigidBody>(M_Bo_B);
+  const RigidBody<double>& body1 = model1->AddBody<RigidBody>("body1", M_Bo_B);
+  const RigidBody<double>& body2 = model2->AddBody<RigidBody>("body2", M_Bo_B);
 
   // Verifies we can add a mobilizer between body1 and the world of model1.
   const RevoluteMobilizer<double>& pin1 =
@@ -254,8 +256,8 @@ class TreeTopologyTests : public ::testing::Test {
 
     const int kNumBodies = 10;
     bodies_.push_back(&model_->world_body());
-    for (int i =1; i < kNumBodies; ++i)
-      AddTestBody();
+    for (int i = 1; i < kNumBodies; ++i)
+      AddTestBody(i);
 
     // Adds mobilizers to connect bodies according to the following diagram:
     ConnectBodies(*bodies_[1], *bodies_[6]);  // mob. 0
@@ -269,11 +271,12 @@ class TreeTopologyTests : public ::testing::Test {
     WeldBodies(*bodies_[9], *bodies_[8]);     // mob. 8
   }
 
-  const RigidBody<double>* AddTestBody() {
+  const RigidBody<double>* AddTestBody(int i) {
     // NaN SpatialInertia to instantiate the RigidBody objects.
     // It is safe here since this tests only focus on topological information.
     const SpatialInertia<double> M_Bo_B;
-    const RigidBody<double>* body = &model_->AddBody<RigidBody>(M_Bo_B);
+    const RigidBody<double>* body = &model_->AddBody<RigidBody>(
+       fmt::format("TestBody_{}", i), M_Bo_B);
     bodies_.push_back(body);
     return body;
   }
@@ -832,14 +835,33 @@ GTEST_TEST(WeldedBodies, CreateListOfWeldedBodies) {
   }
 }
 
+// Helper function to create a unit inertia for a uniform-density cube B about
+// Bo (B's origin point) from a given dimension (length).
+// If length = 0, the spatial inertia is that of a particle.
+// @param[in] length The length of any of the cube's edges.
+// @retval M_BBo_B Cube B's unit inertia about point Bo (B's origin),
+// expressed in terms of unit vectors Bx, By, Bz, each of which are parallel
+// to sides (edges) of the cube. Point Bo is the centroid of the face of the
+// cube whose outward normal is -Bx. Hence, the position vector from Bo to Bcm
+// (B's center of mass) is p_BoBcm_B = Lx/2 Bx.
+UnitInertia<double> MakeTestCubeUnitInertia(const double length = 1.0) {
+    const UnitInertia<double> G_BBcm_B = UnitInertia<double>::SolidCube(length);
+    const Vector3<double> p_BoBcm_B(length / 2, 0, 0);
+    const UnitInertia<double> G_BBo_B =
+        G_BBcm_B.ShiftFromCenterOfMass(-p_BoBcm_B);
+    return G_BBo_B;
+}
+
 // Helper function to add a rigid body to a model.
 const RigidBody<double>& AddRigidBody(MultibodyTree<double>* model,
                                       const std::string& name,
                                       const double mass,
                                       const double link_length = 1.0) {
     DRAKE_DEMAND(model != nullptr);
-    return model->AddRigidBody(name,
-        SpatialInertia<double>::MakeTestCube(mass, link_length));
+    const Vector3<double> p_BoBcm_B(link_length / 2, 0, 0);
+    const UnitInertia<double> G_BBo_B = MakeTestCubeUnitInertia(link_length);
+    const SpatialInertia<double> M_BBo_B(mass, p_BoBcm_B, G_BBo_B);
+    return model->AddRigidBody(name, M_BBo_B);
 }
 
 // Verify Body::default_rotational_inertia() and related MultibodyTree methods.
@@ -859,8 +881,7 @@ GTEST_TEST(DefaultInertia, VerifyDefaultRotationalInertia) {
 
   // Verify the default rotational inertia for each of the bodies.
   // To help with testing, create a RotationalInertia for a unit mass cube.
-  const UnitInertia<double> G_SSo_S =
-      SpatialInertia<double>::MakeTestCube(1.0, length).get_unit_inertia();
+  const UnitInertia<double> G_SSo_S = MakeTestCubeUnitInertia(length);
   const RotationalInertia<double> I_A = body_A.default_rotational_inertia();
   const RotationalInertia<double> I_B = body_B.default_rotational_inertia();
   const RotationalInertia<double> I_C = body_C.default_rotational_inertia();

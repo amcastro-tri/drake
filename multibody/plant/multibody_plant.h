@@ -357,17 +357,20 @@ pre-finalize.
 %Multibodyplant declares an input port for geometric queries, see
 get_geometry_query_input_port(). If %MultibodyPlant registers geometry with
 a SceneGraph via calls to RegisterCollisionGeometry(), users may use this
-port for geometric queries. Users must connect this input port to the output
-port for geometric queries of the SceneGraph used for registration, which
-can be obtained with SceneGraph::get_query_output_port(). In summary, if
-%MultibodyPlant registers collision geometry, the setup process will
-include:
+port for geometric queries. The port must be connected to the same SceneGraph
+used for registration. The preferred mechanism is to use
+AddMultibodyPlantSceneGraph() as documented above.
+
+In extraordinary circumstances, this can be done by hand and the setup process
+will include:
 
 1. Call to RegisterAsSourceForSceneGraph().
 2. Calls to RegisterCollisionGeometry(), as many as needed.
 3. Call to Finalize(), user is done specifying the model.
-4. Connect SceneGraph::get_query_output_port() to
+4. Connect geometry::SceneGraph::get_query_output_port() to
    get_geometry_query_input_port().
+5. Connect get_geometry_poses_output_port() to
+   geometry::SceneGraph::get_source_pose_port()
 
 Refer to the documentation provided in each of the methods above for further
 details.
@@ -954,7 +957,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   ///   braces `{}` imply that frame F **is** the same body frame P. If instead
   ///   your intention is to make a frame F with pose `X_PF` equal to the
   ///   identity pose, provide `RigidTransform<double>::Identity()` as your
-  ///   input.
+  ///   input. When non-nullopt, adds a FixedOffsetFrame named `{name}_parent`.
   /// @param[in] child
   ///   The child body connected by the new joint.
   /// @param[in] X_BM
@@ -963,7 +966,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   ///   braces `{}` imply that frame M **is** the same body frame B. If instead
   ///   your intention is to make a frame M with pose `X_BM` equal to the
   ///   identity pose, provide `RigidTransform<double>::Identity()` as your
-  ///   input.
+  ///   input.  When non-nullopt, adds a FixedOffsetFrame named `{name}_child`.
   /// @param[in] args
   ///   Zero or more parameters provided to the constructor of the new joint. It
   ///   must be the case that
@@ -1015,7 +1018,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     const Frame<T>* frame_on_parent{nullptr};
     if (X_PF) {
       frame_on_parent = &this->AddFrame(
-          std::make_unique<FixedOffsetFrame<T>>(parent, *X_PF));
+          std::make_unique<FixedOffsetFrame<T>>(
+              name + "_parent", parent, *X_PF));
     } else {
       frame_on_parent = &parent.body_frame();
     }
@@ -1023,7 +1027,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     const Frame<T>* frame_on_child{nullptr};
     if (X_BM) {
       frame_on_child = &this->AddFrame(
-          std::make_unique<FixedOffsetFrame<T>>(child, *X_BM));
+          std::make_unique<FixedOffsetFrame<T>>(
+              name + "_child", child, *X_BM));
     } else {
       frame_on_child = &child.body_frame();
     }
@@ -4225,8 +4230,37 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Consolidates calls to Eval on the geometry query input port to have a
   // consistent and helpful error message in the situation where the
   // geometry_query_input_port is not connected, but is expected to be.
+  //
+  // Public APIs that ultimately depend on the query object input port should
+  // invoke ValidateGeometryInput() to guard against failed access in the depths
+  // of the code. As a safety net, all invocations of *this* method should
+  // pass the function that invoked it (via __func__), so that if any usage
+  // slips through the curated net, some insight will be provided as to what was
+  // attempting to access the disconnected port.
   const geometry::QueryObject<T>& EvalGeometryQueryInput(
-      const systems::Context<T>& context) const;
+      const systems::Context<T>& context,
+      std::string_view caller) const;
+
+  // These functions provide a mechanism to provide early warning when a
+  // calculation depends on the QueryObject input port. The goal is to provide
+  // as much feedback to the caller as to *why* the input port is required.
+  // Therefore, it should be called as "high" in the callstack as possible with
+  // an explanation of the need (e.g., computing forward dynamics).
+  //
+  // Note: the connection is only tested if MbP knows about collision
+  // geometries. This is correlated with the fact that the operations that
+  // depend on the geometry input port only do so based on that same condition.
+  void ValidateGeometryInput(const systems::Context<T>& context,
+                             std::string_view explanation) const;
+
+  // A validation overload that automatically constructs an explanation when
+  // the reason is due to evaluating an output port.
+  void ValidateGeometryInput(const systems::Context<T>& context,
+                             const systems::OutputPort<T>& output_port) const;
+
+  // Reports if the geometry input is "valid", i.e., either unnecessary or
+  // connected.
+  bool IsValidGeometryInput(const systems::Context<T>& context) const;
 
   // Helper to acquire per-geometry contact parameters from SG.
   // Returns the pair (stiffness, dissipation)

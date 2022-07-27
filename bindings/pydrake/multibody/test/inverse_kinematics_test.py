@@ -151,6 +151,17 @@ class TestInverseKinematics(unittest.TestCase):
         self.assertIs(self.ik_two_bodies.get_mutable_context(),
                       self.ik_two_bodies.context())
 
+    def test_AddPositionCost(self):
+        p_BQ = np.array([0.2, 0.3, 0.5])
+        p_AP = np.array([-0.1, -0.2, -0.3])
+
+        binding = self.ik_two_bodies.AddPositionCost(frameA=self.body1_frame,
+                                                     p_AP=p_AP,
+                                                     frameB=self.body2_frame,
+                                                     p_BQ=p_BQ,
+                                                     C=np.eye(3))
+        self.assertIsInstance(binding, mp.Binding[mp.Cost])
+
     def test_AddOrientationConstraint(self):
         theta_bound = 0.2 * math.pi
         R_AbarA = RotationMatrix(quaternion=Quaternion(0.5, -0.5, 0.5, 0.5))
@@ -187,6 +198,15 @@ class TestInverseKinematics(unittest.TestCase):
             R_AbarBbar.dot(R_BbarB.matrix()))
         self.assertGreater(R_AB.trace(),
                            1 + 2 * math.cos(theta_bound) - 1E-6)
+
+    def test_AddOrientationCost(self):
+        binding = self.ik_two_bodies.AddOrientationCost(
+            frameAbar=self.body1_frame,
+            R_AbarA=RotationMatrix(),
+            frameBbar=self.body2_frame,
+            R_BbarB=RotationMatrix(),
+            c=1.0)
+        self.assertIsInstance(binding, mp.Binding[mp.Cost])
 
     def test_AddGazeTargetConstraint(self):
         p_AS = np.array([0.1, 0.2, 0.3])
@@ -301,6 +321,17 @@ class TestInverseKinematics(unittest.TestCase):
         result = mp.Solve(self.prog)
         self.assertTrue(result.is_success())
         self.assertTrue(np.allclose(result.GetSolution(self.q), q_val))
+
+    def test_AddPolyhedronConstraint(self):
+        p_GP = np.array([[0.2, -0.4], [0.9, 0.2], [-0.1, 1]])
+        A = np.array([[0.5, 1., 0.1, 0.2, 0.5, 1.5]])
+        b = np.array([10.])
+
+        self.ik_two_bodies.AddPolyhedronConstraint(
+            frameF=self.body1_frame, frameG=self.body2_frame,
+            p_GP=p_GP, A=A, b=b)
+        result = mp.Solve(self.prog)
+        self.assertTrue(result.is_success())
 
     def test_AddMinimumDistanceConstraint(self):
         ik = self.ik_two_bodies
@@ -515,6 +546,17 @@ class TestConstraints(unittest.TestCase):
         constraint.set_bounds(new_lb=[-1, -2, -2.], new_ub=[1., 2., 3.])
 
     @check_type_variables
+    def test_position_cost(self, variables):
+        cost = ik.PositionCost(plant=variables.plant,
+                               frameA=variables.body1_frame,
+                               p_AP=[-0.1, -0.2, -0.3],
+                               frameB=variables.body2_frame,
+                               p_BQ=[0.2, 0.3, 0.5],
+                               C=np.eye(3),
+                               plant_context=variables.plant_context)
+        self.assertIsInstance(cost, mp.Cost)
+
+    @check_type_variables
     def test_com_position_constraint(self, variables):
         constraint = ik.ComPositionConstraint(
             plant=variables.plant,
@@ -545,12 +587,35 @@ class TestConstraints(unittest.TestCase):
         self.assertIsInstance(constraint, mp.Constraint)
 
     @check_type_variables
+    def test_orientation_cost(self, variables):
+        cost = ik.OrientationCost(plant=variables.plant,
+                                  frameAbar=variables.body1_frame,
+                                  R_AbarA=RotationMatrix(),
+                                  frameBbar=variables.body2_frame,
+                                  R_BbarB=RotationMatrix(),
+                                  c=1.0,
+                                  plant_context=variables.plant_context)
+        self.assertIsInstance(cost, mp.Cost)
+
+    @check_type_variables
     def test_point_to_point_distance_constraint(self, variables):
         constraint = ik.PointToPointDistanceConstraint(
             plant=variables.plant,
             frame1=variables.body1_frame, p_B1P1=[0.1, 0.2, 0.3],
             frame2=variables.body2_frame, p_B2P2=[0.3, 0.4, 0.5],
             distance_lower=0.1, distance_upper=0.2,
+            plant_context=variables.plant_context)
+        self.assertIsInstance(constraint, mp.Constraint)
+
+    @check_type_variables
+    def test_polyhedron_constraint(self, variables):
+        constraint = ik.PolyhedronConstraint(
+            plant=variables.plant,
+            frameF=variables.body1_frame,
+            frameG=variables.body2_frame,
+            p_GP=np.array([[0.2, 0.3], [0.1, 0.5], [1.2, 1.3]]),
+            A=np.array([[1, 2, 3, 4, 5, 6]]),
+            b=np.array([10.]),
             plant_context=variables.plant_context)
         self.assertIsInstance(constraint, mp.Constraint)
 
@@ -636,6 +701,7 @@ class TestGlobalInverseKinematics(unittest.TestCase):
             body_orientation_cost=[1] * plant.num_bodies())
         gurobi_solver = GurobiSolver()
         if gurobi_solver.available():
+            global_ik.SetInitialGuess(q=plant.GetPositions(context))
             result = gurobi_solver.Solve(global_ik.prog())
             self.assertTrue(result.is_success())
             global_ik.ReconstructGeneralizedPositionSolution(result=result)

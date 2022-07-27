@@ -1,5 +1,6 @@
 #include "drake/geometry/proximity/deformable_mesh_intersection.h"
 
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -73,62 +74,51 @@ class DeformableSurfaceVolumeIntersector
   std::vector<VolumeMesh<double>::Barycentric<double>> barycentric_centroids_{};
 };
 
-std::unique_ptr<ContactSurface<double>>
-ComputeContactSurfaceFromDeformableVolumeRigidSurface(
-    const GeometryId deformable_id,
+void AppendDeformableRigidContact(
     const deformable::DeformableGeometry& deformable_D,
     const GeometryId rigid_id, const TriangleSurfaceMesh<double>& rigid_mesh_R,
     const Bvh<Obb, TriangleSurfaceMesh<double>>& rigid_bvh_R,
     const math::RigidTransform<double>& X_DR,
-    std::vector<int>* tetrahedron_index_of_polygons,
-    std::vector<VolumeMesh<double>::Barycentric<double>>*
-        barycentric_centroids) {
-  DRAKE_DEMAND(tetrahedron_index_of_polygons != nullptr);
-  DRAKE_DEMAND(barycentric_centroids != nullptr);
-  tetrahedron_index_of_polygons->clear();
-  barycentric_centroids->clear();
-
-  // TODO(DamrongGuoy) Is there a better way than creating a new
-  //  VolumeMeshFieldLinear here? We do it here, so we can reuse
-  //  SurfaceVolumeIntersector. These are some ideas that Xuchen and Damrong
-  //  consider for future refactoring:
-  //  1. Change the type parameter MeshBuilder of SurfaceVolumeIntersector<>
-  //     to provide the tetrahedral mesh. This includes TriMeshBuilder and
-  //     PolyMeshBuilder.
-  //  Or 2. Allow VolumeMeshFieldLinear to switch to a different tetrahedral
-  //        mesh while keeping the same field values at vertices. Assume that
-  //        the new mesh has the same connectivity.
-  //  Or 3. Pass an additional parameter for the tetrahedral mesh to
-  //        SampleVolumeFieldOnSurface(). Right now it uses the mesh of the
-  //        given VolumeMeshFieldLinear.
-  VolumeMeshFieldLinear<double, double> field_D(
-      std::vector<double>(deformable_D.signed_distance_field().values()),
-      &deformable_D.deformable_mesh().mesh(), true /*calculate gradient*/);
+    DeformableRigidContact<double>* deformable_rigid_contact) {
+  DRAKE_DEMAND(deformable_rigid_contact != nullptr);
 
   DeformableSurfaceVolumeIntersector intersect;
   intersect.SampleVolumeFieldOnSurface(
-      field_D, deformable_D.deformable_mesh().bvh(), rigid_mesh_R, rigid_bvh_R,
-      X_DR, false /* don't filter face normal along field gradient */);
+      deformable_D.signed_distance_field(),
+      deformable_D.deformable_mesh().bvh(), rigid_mesh_R, rigid_bvh_R, X_DR,
+      false /* don't filter face normal along field gradient */);
 
-  if (!intersect.has_intersection()) {
-    return {};
+  if (intersect.has_intersection()) {
+    std::unique_ptr<PolygonSurfaceMesh<double>> contact_mesh_W =
+        intersect.release_mesh();
+    const PolygonSurfaceMeshFieldLinear<double, double>& signed_distance_field =
+        intersect.mutable_field();
+    const int num_faces = contact_mesh_W->num_faces();
+    /* Compute the penetration distance at the centroid of each contact polygon
+     using the signed distance field. */
+    std::vector<double> penetration_distances(num_faces);
+    for (int i = 0; i < num_faces; ++i) {
+      /* `signed_distance_field` has a gradient, therefore `EvaluateCartesian()`
+       should be cheap. */
+      penetration_distances[i] = signed_distance_field.EvaluateCartesian(
+          i, contact_mesh_W->element_centroid(i));
+    }
+
+    const VolumeMesh<double>& mesh = deformable_D.deformable_mesh().mesh();
+    std::vector<int>& participating_tetrahedra =
+        intersect.mutable_tetrahedron_index_of_polygons();
+    std::unordered_set<int> participating_vertices;
+    for (int e : participating_tetrahedra) {
+      for (int v = 0; v < VolumeMesh<double>::kVertexPerElement; ++v) {
+        participating_vertices.insert(mesh.element(e).vertex(v));
+      }
+    }
+
+    deformable_rigid_contact->Append(
+        rigid_id, participating_vertices, std::move(*contact_mesh_W),
+        std::move(penetration_distances), std::move(participating_tetrahedra),
+        std::move(intersect.mutable_barycentric_centroids()));
   }
-
-  tetrahedron_index_of_polygons->swap(
-      intersect.mutable_tetrahedron_index_of_polygons());
-  barycentric_centroids->swap(intersect.mutable_barycentric_centroids());
-  // The contact surface is documented as having the normals pointing *out*
-  // of the second surface and into the first. This mesh intersection
-  // creates a surface mesh with normals pointing out of the rigid surface,
-  // so we make sure the ids are ordered so that the rigid is the second id.
-  auto contact_surface = std::make_unique<ContactSurface<double>>(
-      deformable_id, rigid_id, intersect.release_mesh(),
-      intersect.release_field(),
-      std::make_unique<std::vector<Vector3<double>>>(
-          std::move(intersect.mutable_grad_eM_M())),
-      nullptr);
-
-  return contact_surface;
 }
 
 }  // namespace internal

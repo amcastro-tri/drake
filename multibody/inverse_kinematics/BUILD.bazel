@@ -23,6 +23,17 @@ drake_cc_package_library(
     ],
 )
 
+# A deprecation shim library, to be removed on or after 2022-11-01.
+drake_cc_library(
+    name = "kinematic_constraint",
+    deprecation = "The new name is 'kinematic_evaluators' instead of 'kinematic_constraint'.",  # noqa
+    tags = [
+        "exclude_from_package",
+        "manual",
+    ],
+    deps = [":kinematic_evaluators"],
+)
+
 drake_cc_library(
     name = "kinematic_evaluators",
     srcs = [
@@ -35,8 +46,11 @@ drake_cc_library(
         "kinematic_evaluator_utilities.cc",
         "minimum_distance_constraint.cc",
         "orientation_constraint.cc",
+        "orientation_cost.cc",
         "point_to_point_distance_constraint.cc",
+        "polyhedron_constraint.cc",
         "position_constraint.cc",
+        "position_cost.cc",
         "unit_quaternion_constraint.cc",
     ],
     hdrs = [
@@ -49,8 +63,11 @@ drake_cc_library(
         "kinematic_evaluator_utilities.h",
         "minimum_distance_constraint.h",
         "orientation_constraint.h",
+        "orientation_cost.h",
         "point_to_point_distance_constraint.h",
+        "polyhedron_constraint.h",
         "position_constraint.h",
+        "position_cost.h",
         "unit_quaternion_constraint.h",
     ],
     deps = [
@@ -89,11 +106,13 @@ drake_cc_library(
         "global_inverse_kinematics.h",
     ],
     deps = [
+        "//common:scope_exit",
         "//multibody/plant",
         "//solvers:mathematical_program",
         "//solvers:mathematical_program_result",
         "//solvers:mixed_integer_rotation_constraint",
         "//solvers:rotation_constraint",
+        "//solvers:solve",
     ],
 )
 
@@ -130,6 +149,14 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "position_cost_test",
+    deps = [
+        ":inverse_kinematics_test_utilities",
+        ":kinematic_evaluators",
+    ],
+)
+
+drake_cc_googletest(
     name = "com_position_constraint_test",
     deps = [
         ":inverse_kinematics_test_utilities",
@@ -152,6 +179,14 @@ drake_cc_googletest(
         ":inverse_kinematics_test_utilities",
         ":kinematic_evaluators",
         "//math:geometric_transform",
+    ],
+)
+
+drake_cc_googletest(
+    name = "orientation_cost_test",
+    deps = [
+        ":inverse_kinematics_test_utilities",
+        ":kinematic_evaluators",
     ],
 )
 
@@ -192,6 +227,15 @@ drake_cc_googletest(
 
 drake_cc_googletest(
     name = "point_to_point_distance_constraint_test",
+    deps = [
+        ":inverse_kinematics_test_utilities",
+        ":kinematic_evaluators",
+        "//solvers/test_utilities",
+    ],
+)
+
+drake_cc_googletest(
+    name = "polyhedron_constraint_test",
     deps = [
         ":inverse_kinematics_test_utilities",
         ":kinematic_evaluators",

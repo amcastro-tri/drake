@@ -17,33 +17,42 @@ def set_collision_properties(scene_graph,
                              context_inspector, 
                              plant, 
                              geometry_id, 
+                             hc_dissipation, 
+                             sap_dissipation,
                              static_friction, 
                              dynamic_friction, 
-                             hc_dissipation=1.0, 
-                             hydro_modulus=1e5,
-                             hydro_resolution=0.005,
-                             sap_dissipation=0.1,
-                             compliance_type=None):
+                             hydro_modulus,
+                             hydro_resolution,
+                             compliance_type):
+    """For all properties, update only specified, otherwise keep the existing one after retrieving the current properties."""
+    
     # Get current properties 
     proximity_properties = context_inspector.GetProximityProperties(geometry_id)
 
-    # Update friction coefficient and dissipation
-    add_property(proximity_properties, 'material', 'coulomb_friction', CoulombFriction(static_friction, dynamic_friction))
-    add_property(proximity_properties, 'material','hunt_crossley_dissipation', hc_dissipation)
-    add_property(proximity_properties, 'material','dissipation_time_constant', sap_dissipation)
+    # Update hc/sap dissipation and friction coefficient if specified
+    if hc_dissipation is not None:
+        add_property(proximity_properties, 'material','hunt_crossley_dissipation', hc_dissipation)
+    if sap_dissipation is not None:
+        add_property(proximity_properties, 'material','relaxation_time', sap_dissipation)
+    if static_friction is not None and dynamic_friction is not None:
+        add_property(proximity_properties, 'material', 'coulomb_friction', CoulombFriction(static_friction, dynamic_friction))
     # print(proximity_properties)
 
-    # Hydro - remove first since cannot replace - HydroelastocType not exposed
-    hydro_property_list = ['compliance_type', 'hydroelastic_modulus', 'resolution_hint']
-    for hydro_property in hydro_property_list:
-        if proximity_properties.HasProperty('hydroelastic', hydro_property):
-            proximity_properties.RemoveProperty('hydroelastic', hydro_property)
-    if compliance_type == 'rigid':
-        AddRigidHydroelasticProperties(resolution_hint=hydro_resolution,
-                                       properties=proximity_properties)
-    elif compliance_type == 'compliant':
-        AddCompliantHydroelasticProperties(resolution_hint=hydro_resolution,
-                                        hydroelastic_modulus=hydro_modulus,
+    # Hydro - remove first since cannot replace - HydroelasticType not exposed
+    if compliance_type is not None:
+        hydro_property_list = ['compliance_type', 
+                              'hydroelastic_modulus', 
+                              'resolution_hint']
+        assert hydro_modulus, hydro_resolution
+        for hydro_property in hydro_property_list:
+            if proximity_properties.HasProperty('hydroelastic', hydro_property):
+                proximity_properties.RemoveProperty('hydroelastic', hydro_property)
+        if compliance_type == 'rigid':
+            AddRigidHydroelasticProperties(resolution_hint=hydro_resolution,
+                                            properties=proximity_properties)
+        elif compliance_type == 'compliant':
+            AddCompliantHydroelasticProperties(resolution_hint=hydro_resolution,
+                                        hydroelastic_modulus=10**hydro_modulus,
                                         properties=proximity_properties)
 
     # Replace

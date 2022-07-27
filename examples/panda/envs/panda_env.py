@@ -273,35 +273,32 @@ class PandaEnv(ABC):
                          context, 
                          body,
                          mu=None,
-                         hydro_modulus=None,
                          hc_dissipation=None,
                          hydro_resolution=None,
-                         sap_dissipation=0.1,
-                         compliance_type='compliant'):
+                         hydro_modulus=None,
+                         sap_dissipation=None,
+                        #  compliance_type='compliant',
+                         compliance_type=None,
+                         flag_all_geometry=False):
         '''
-        Change friction - only dynamic friction is used in point contact (static ignored). Assign role with context
+        Only dynamic friction is used in point contact (static ignored). Assign role with context.
         '''
-        if mu is None:
-            mu = self.task['obj_mu']
-        if hydro_modulus is None:
-            hydro_modulus = self.task['obj_modulus']
-        if hc_dissipation is None:
-            hc_dissipation = self.veggie_hc_dissipation   # TODO
-        if hydro_resolution is None:
-            hydro_resolution = self.veggie_hydro_resolution
-        geometry_id = self.plant.GetCollisionGeometriesForBody(body)[0]
-        set_collision_properties(self.sg,
-                                context,
-                                context_inspector,
-                                self.plant, 
-                                geometry_id, 
-                                static_friction=mu, 
-                                dynamic_friction=mu,
-                                hc_dissipation=hc_dissipation,
-                                hydro_modulus=10**hydro_modulus,
-                                hydro_resolution=hydro_resolution,
-                                sap_dissipation=sap_dissipation,
-                                compliance_type=compliance_type)
+        geometry_ids = self.plant.GetCollisionGeometriesForBody(body)
+        if not flag_all_geometry:
+            geometry_ids = geometry_ids[0:1]
+        for geometry_id in geometry_ids:
+            set_collision_properties(self.sg,
+                                    context,
+                                    context_inspector,
+                                    self.plant, 
+                                    geometry_id, 
+                                    hc_dissipation=hc_dissipation,
+                                    sap_dissipation=sap_dissipation,
+                                    static_friction=mu, 
+                                    dynamic_friction=mu,
+                                    hydro_resolution=hydro_resolution,
+                                    hydro_modulus=hydro_modulus,
+                                    compliance_type=compliance_type)
 
 
     def replace_body(self, 

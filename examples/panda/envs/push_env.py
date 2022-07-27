@@ -55,6 +55,7 @@ class PushEnv(PandaEnv, ABC):
                 name='bottle',
             )
         self.bottle_body = self.plant.get_body(bottle_body_indice[0])
+        self.bottle_default_inertia = self.bottle_body.default_spatial_inertia() 
 
 
     def reset(self, task=None):
@@ -74,37 +75,48 @@ class PushEnv(PandaEnv, ABC):
         self.set_obj_dynamics(context_inspector, 
                               sg_context, 
                               self.table_body,
+                              hc_dissipation=1.0,
+                              sap_dissipation=0.1,
                               mu=0.1,
                               hydro_modulus=7,
-                              hc_dissipation=1.0,
-                              hydro_resolution=0.1, # does not matter for box shape
-                              sap_dissipation=0.1,
+                              hydro_resolution=0.1, # does not matter
                               compliance_type='rigid')
 
         # Set hand properties
         self.set_obj_dynamics(context_inspector, 
                               sg_context, 
                               self.hand_body,
-                              mu=0.3,
-                              hydro_modulus=7,
                               hc_dissipation=1.0,
-                              hydro_resolution=0.1, # does not matter for box shape
                               sap_dissipation=0.1,
+                              mu=0.3,
+                              hydro_modulus=6,
+                              hydro_resolution=0.1, # does not matter
                               compliance_type='rigid')
 
         # Set bottle properties
         self.set_obj_dynamics(context_inspector, 
                               sg_context, 
                               self.bottle_body,
+                              hc_dissipation=1.0,
+                              sap_dissipation=0.1,
                               mu=task['obj_mu'],
                               hydro_modulus=task['obj_modulus'],
-                              hc_dissipation=1.0,
-                              hydro_resolution=0.1,  # matters
-                              sap_dissipation=0.1,
+                              hydro_resolution=0.002,  # matters
                               compliance_type='compliant')
-        self.bottle_body.SetMass(plant_context, task['obj_mass'])
-        self.bottle_body.SetCenterOfMassInBodyFrame(plant_context, 
-                            [task['obj_com_x'], task['obj_com_y'], 0])
+
+        # First, revert inertia back to origin
+        self.bottle_body.SetSpatialInertiaInBodyFrame(plant_context, self.bottle_default_inertia)
+
+        # Next, shift the current inertia to new COM - need to shift in the opposite direction.
+        inertia = self.bottle_body.CalcSpatialInertiaInBodyFrame(plant_context)
+        inertia = inertia.Shift([-task['obj_com_x'], -task['obj_com_y'], 0])
+        self.bottle_body.SetSpatialInertiaInBodyFrame(plant_context, inertia)
+
+        # Reset bottle
+        self.set_body_pose(self.bottle_body, plant_context, 
+                            p=self.bottle_initial_pos,
+                            rpy=[0, 0, 0])
+        self.set_body_vel(self.bottle_body, plant_context)
 
         # Reset bottle
         self.set_body_pose(self.bottle_body, plant_context, 

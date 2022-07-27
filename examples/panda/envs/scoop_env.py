@@ -134,9 +134,9 @@ class ScoopEnv(PandaEnv, ABC):
                                     body=body,
                                     frame_id=frame_id,
                                     geom_type=geom_type,
-                                    x_dim=x_dim,
-                                    y_dim=y_dim,
-                                    z_dim=z_dim,
+                                    x_dim=x_dim*1.2,
+                                    y_dim=y_dim*1.2,
+                                    z_dim=z_dim*1.2,
                                     x=x,
                                     y=y,
                                     z=z,
@@ -150,9 +150,15 @@ class ScoopEnv(PandaEnv, ABC):
                     # Change body dynamics - if new geometry is added
                     if flag_replace:
                         self.set_obj_dynamics(context_inspector, 
-                                              sg_context,
-                                              body,
-                                              sap_dissipation=0.1)
+                                sg_context,
+                                body,
+                                hc_dissipation=1.0,
+                                sap_dissipation=0.1,
+                                mu=self.task['obj_mu'],
+                                hydro_modulus=self.task['obj_modulus'],
+                                hydro_resolution=0.002,
+                                compliance_type='compliant',
+                                )
 
                         # Change mass - not using, specified in sdf
                         body.SetMass(plant_context, sdf_config['m'+body_str])
@@ -167,9 +173,11 @@ class ScoopEnv(PandaEnv, ABC):
         self.set_obj_dynamics(context_inspector, 
                               sg_context, 
                               self.table_body,
+                              hc_dissipation=1.0,
+                              sap_dissipation=0.1,
                               mu=0.3,
                               hydro_modulus=5,
-                              sap_dissipation=0.1,
+                              hydro_resolution=0.1, # does not matter
                               compliance_type='compliant')
 
         # Change global params - time step for both plant and controller_plant? seems impossible
@@ -187,7 +195,7 @@ class ScoopEnv(PandaEnv, ABC):
             self.set_body_pose(veggie_base, plant_context, 
                                 p=[task['obj_x'][ind],
                                    task['obj_y'][ind],
-                                   task['obj_z'][ind],
+                                   task['obj_z'][ind]*1.2,
                                    ],
                                 rpy=[0, 0, 0])
             self.set_body_vel(veggie_base, plant_context)

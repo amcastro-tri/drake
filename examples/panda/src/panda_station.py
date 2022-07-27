@@ -36,9 +36,9 @@ class PandaStation(Diagram):
 
         # Initialie builder and plant
         self.builder = DiagramBuilder()
-        plant_config = MultibodyPlantConfig(time_step=dt, 
-                                            contact_solver=contact_solver)
-        self.plant, self.sg = AddMultibodyPlant(plant_config, self.builder)
+        plant_cfg = MultibodyPlantConfig(time_step=dt, 
+                                         discrete_contact_solver=contact_solver)
+        self.plant, self.sg = AddMultibodyPlant(plant_cfg, self.builder)
         self.plant.set_name("plant")
 
         self.set_name("panda_station")

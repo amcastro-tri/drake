@@ -216,12 +216,29 @@ T CompliantContactManager<T>::GetDissipationTimeConstant(
   const geometry::ProximityProperties* prop =
       inspector.GetProximityProperties(id);
   DRAKE_DEMAND(prop != nullptr);
+
+  auto provide_context_string =
+      [this, &inspector](geometry::GeometryId geometry_id) -> std::string {
+    const BodyIndex body_index =
+        this->geometry_id_to_body_index().at(geometry_id);
+    const Body<T>& body = plant().get_body(body_index);
+    return fmt::format("For geometry {} on body {}.",
+                       inspector.GetName(geometry_id), body.name());
+  };
+
   // N.B. Here we rely on the resolution of #13289 and #5454 to get properties
   // with the proper scalar type T. This will not work on scalar converted
   // models until those issues are resolved.
-  return prop->template GetPropertyOrDefault<T>(
-      geometry::internal::kMaterialGroup, "dissipation_time_constant",
-      plant().time_step());
+  const T relaxation_time = prop->template GetPropertyOrDefault<double>(
+      geometry::internal::kMaterialGroup, "relaxation_time", 0.1);
+  if (relaxation_time < 0.0) {
+    const std::string message = fmt::format(
+        "Relaxation time must be non-negative and relaxation_time "
+        "= {} was provided. {}",
+        relaxation_time, provide_context_string(id));
+    throw std::runtime_error(message);
+  }
+  return relaxation_time;
 }
 
 template <typename T>
@@ -785,7 +802,7 @@ void CompliantContactManager<T>::AddLimitConstraints(
   // these forces implicitly and therefore these parameters can be tighten for
   // stiffer limits. Here we set the stiffness parameter to a very high value so
   // that SAP works in the "near-rigid" regime as described in the SAP paper,
-  // [Castro et al., 2021]. As shown in the SAP paper, a dissipation time scale
+  // [Castro et al., 2021]. As shown in the SAP paper, a dissipation timescale
   // of the order of the time step leads to a critically damped constraint.
   // TODO(amcastro-tri): allow users to specify joint limits stiffness and
   // damping.

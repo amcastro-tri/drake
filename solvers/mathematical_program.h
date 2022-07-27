@@ -24,7 +24,9 @@
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
 #include "drake/common/polynomial.h"
-#include "drake/common/symbolic.h"
+#include "drake/common/symbolic/expression.h"
+#include "drake/common/symbolic/monomial_util.h"
+#include "drake/common/symbolic/polynomial.h"
 #include "drake/solvers/binding.h"
 #include "drake/solvers/constraint.h"
 #include "drake/solvers/cost.h"
@@ -2639,12 +2641,10 @@ class MathematicalProgram {
   template <typename Derived>
   typename std::enable_if_t<
       std::is_same_v<typename Derived::Scalar, symbolic::Variable>,
-      Eigen::Matrix<double, Derived::RowsAtCompileTime,
-                    Derived::ColsAtCompileTime>>
+      MatrixLikewise<double, Derived>>
   GetInitialGuess(
       const Eigen::MatrixBase<Derived>& decision_variable_mat) const {
-    Eigen::Matrix<double, Derived::RowsAtCompileTime,
-                  Derived::ColsAtCompileTime>
+    MatrixLikewise<double, Derived>
         decision_variable_values(decision_variable_mat.rows(),
                                  decision_variable_mat.cols());
     for (int i = 0; i < decision_variable_mat.rows(); ++i) {
@@ -3443,6 +3443,8 @@ class MathematicalProgram {
   symbolic::Polynomial NewFreePolynomialImpl(
       const symbolic::Variables& indeterminates, int degree,
       const std::string& coeff_name,
+      // TODO(jwnimmer-tri) Fix this to not depend on all of "monomial_util.h"
+      // for just this tiny enum (e.g., use a bare int == 0,1,2 instead).
       symbolic::internal::DegreeType degree_type);
 
   std::unordered_map<int, double> var_scaling_map_{};

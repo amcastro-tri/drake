@@ -1,6 +1,10 @@
 # -*- python -*-
 
 load(
+    "@drake//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
+)
+load(
     "@drake//tools/performance:defs.bzl",
     "drake_cc_googlebench_binary",
     "drake_py_experiment_binary",
@@ -12,6 +16,7 @@ package(default_visibility = ["//visibility:private"])
 drake_cc_googlebench_binary(
     name = "framework_benchmarks",
     srcs = ["framework_benchmarks.cc"],
+    add_test_rule = True,
     deps = [
         "//systems/framework:diagram_builder",
         "//systems/primitives:pass_through",
@@ -22,6 +27,16 @@ drake_cc_googlebench_binary(
 drake_py_experiment_binary(
     name = "framework_experiment",
     googlebench_binary = ":framework_benchmarks",
+)
+
+drake_cc_binary(
+    name = "multilayer_perceptron_performance",
+    srcs = ["multilayer_perceptron_performance.cc"],
+    add_test_rule = True,
+    deps = [
+        "//systems/primitives:multilayer_perceptron",
+        "@gflags",
+    ],
 )
 
 add_lint_tests()

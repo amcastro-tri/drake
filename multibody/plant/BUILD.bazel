@@ -524,6 +524,7 @@ drake_cc_googletest(
         ":kuka_iiwa_model_tests",
         ":plant",
         "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:limit_malloc",
         "//systems/primitives:linear_system",
     ],
 )
@@ -572,6 +573,7 @@ drake_cc_googletest(
         ":plant",
         "//common:find_resource",
         "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:limit_malloc",
         "//multibody/parsing",
     ],
 )
@@ -691,6 +693,7 @@ drake_cc_googletest(
     deps = [
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_no_throw",
+        "//common/test_utilities:expect_throws_message",
         "//multibody/benchmarks/free_body",
         "//multibody/test_utilities:floating_body_plant",
         "//systems/analysis:simulator",

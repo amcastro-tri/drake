@@ -93,9 +93,14 @@ class TestGeometryVisualizers(unittest.TestCase):
         params = mut.MeshcatParams(
             host="*",
             port=port,
-            web_url_pattern="http://host:{port}")
+            web_url_pattern="http://host:{port}",
+            show_stats_plot=False)
         meshcat = mut.Meshcat(params=params)
         self.assertEqual(meshcat.port(), port)
+        self.assertEqual(repr(params),
+                         ("MeshcatParams(port=7051,"
+                          " web_url_pattern=http://host:{port},"
+                          " show_stats_plot=False)"))
         with self.assertRaises(RuntimeError):
             meshcat2 = mut.Meshcat(port=port)
         self.assertIn("http", meshcat.web_url())
@@ -150,6 +155,7 @@ class TestGeometryVisualizers(unittest.TestCase):
         meshcat.DeleteAddedControls()
         self.assertIn("data:application/octet-binary;base64",
                       meshcat.StaticHtml())
+        meshcat.SetRealtimeRate(1.0)
         meshcat.Flush()
 
         # PerspectiveCamera
@@ -263,6 +269,17 @@ class TestGeometryVisualizers(unittest.TestCase):
         vis_autodiff = vis.ToAutoDiffXd()
         self.assertIsInstance(vis_autodiff,
                               mut.MeshcatVisualizer_[AutoDiffXd])
+
+    def test_deprecated_meshcat_visualizer_cpp_add(self):
+        """This checks a deprecated API spelling; remove this on 2022-11-01."""
+        T = float
+        builder = DiagramBuilder_[T]()
+        scene_graph = builder.AddSystem(mut.SceneGraph_[T]())
+        meshcat = mut.Meshcat()
+        with catch_drake_warnings(expected_count=1):
+            added = mut.MeshcatVisualizerCpp.AddToBuilder(
+                builder=builder, scene_graph=scene_graph, meshcat=meshcat)
+        self.assertIsInstance(added, mut.MeshcatVisualizer)
 
     def test_deprecated_meshcat_visualizer_cpp_scalar_conversion(self):
         """This checks a deprecated API spelling; remove this on 2022-11-01."""

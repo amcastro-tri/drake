@@ -151,13 +151,13 @@ struct JointLimitsPenaltyParametersEstimator {
     // Penalty parameters for the parent body (child fixed).
     const double parent_mass = joint.parent_body().index() == world_index() ?
                                std::numeric_limits<double>::infinity() :
-                               joint.parent_body().get_default_mass();
+                               joint.parent_body().default_mass();
     const auto parent_params = CalcCriticallyDampedHarmonicOscillatorParameters(
         numerical_time_scale, parent_mass);
     // Penalty parameters for the child body (parent fixed).
     const double child_mass = joint.child_body().index() == world_index() ?
                                std::numeric_limits<double>::infinity() :
-                               joint.child_body().get_default_mass();
+                               joint.child_body().default_mass();
     const auto child_params = CalcCriticallyDampedHarmonicOscillatorParameters(
         numerical_time_scale, child_mass);
 
@@ -365,8 +365,8 @@ MultibodyPlant<T>::MultibodyPlant(double time_step)
   DRAKE_DEMAND(contact_model_ == ContactModel::kHydroelasticWithFallback);
   DRAKE_DEMAND(MultibodyPlantConfig{}.contact_model ==
                "hydroelastic_with_fallback");
-  DRAKE_DEMAND(solver_type_ == ContactSolver::kTamsi);
-  DRAKE_DEMAND(MultibodyPlantConfig{}.contact_solver == "tamsi");
+  DRAKE_DEMAND(contact_solver_enum_ == DiscreteContactSolver::kTamsi);
+  DRAKE_DEMAND(MultibodyPlantConfig{}.discrete_contact_solver == "tamsi");
 }
 
 template <typename T>
@@ -493,14 +493,16 @@ void MultibodyPlant<T>::set_contact_model(ContactModel model) {
 }
 
 template <typename T>
-void MultibodyPlant<T>::set_contact_solver(ContactSolver solver_type) {
+void MultibodyPlant<T>::set_discrete_contact_solver(
+    DiscreteContactSolver contact_solver) {
   DRAKE_MBP_THROW_IF_FINALIZED();
-  solver_type_ = solver_type;
+  contact_solver_enum_ = contact_solver;
 }
 
 template <typename T>
-ContactSolver MultibodyPlant<T>::get_contact_solver() const {
-  return solver_type_;
+DiscreteContactSolver MultibodyPlant<T>::get_discrete_contact_solver()
+    const {
+  return contact_solver_enum_;
 }
 
 template <typename T>
@@ -843,17 +845,24 @@ void MultibodyPlant<T>::Finalize() {
   }
   FinalizePlantOnly();
 
-  // Set discrete update manger. Currently, CompliantContactManager does not
+  // Set discrete update manager. Currently, CompliantContactManager does not
   // support T = symbolic::Expression.
-  if constexpr (!std::is_same_v<T, symbolic::Expression>) {
-    if (solver_type_ == ContactSolver::kSap) {
-      SetDiscreteUpdateManager(
-          std::make_unique<internal::CompliantContactManager<T>>());
-    }
-  } else {
-    if (solver_type_ == ContactSolver::kSap) {
-      throw std::runtime_error(
-        "SAP solver not supported for scalar type T = symbolic::Expression.");
+  // N.B. Unlike SAP, currently the TAMSI solver is incorporated directly into
+  // MultibodyPlant's source, rather than in CompliantContactManager. The plan
+  // is to move TAMSI, as well as the entirety of the discrete handling of
+  // contact, into CompliantContactManager.
+  if (is_discrete()) {
+    if constexpr (!std::is_same_v<T, symbolic::Expression>) {
+      if (contact_solver_enum_ == DiscreteContactSolver::kSap) {
+        SetDiscreteUpdateManager(
+            std::make_unique<internal::CompliantContactManager<T>>());
+      }
+    } else {
+      if (contact_solver_enum_ == DiscreteContactSolver::kSap) {
+        throw std::runtime_error(
+            "SAP solver not supported for scalar type T = "
+            "symbolic::Expression.");
+      }
     }
   }
 }
@@ -1243,6 +1252,7 @@ void MultibodyPlant<T>::SetDiscreteUpdateManager(
   // least to build the contact problem. However, here we play safe and demand
   // finalization right here.
   DRAKE_MBP_THROW_IF_NOT_FINALIZED();
+  DRAKE_DEMAND(is_discrete());
   DRAKE_DEMAND(manager != nullptr);
   manager->SetOwningMultibodyPlant(this);
   discrete_update_manager_ = std::move(manager);
@@ -1295,7 +1305,7 @@ void MultibodyPlant<T>::EstimatePointContactParameters(
   double mass = 0.0;
   for (BodyIndex body_index(0); body_index < num_bodies(); ++body_index) {
     const Body<T>& body = get_body(body_index);
-    mass = std::max(mass, body.get_default_mass());
+    mass = std::max(mass, body.default_mass());
   }
 
   // For now, we use the model of a critically damped spring mass oscillator
@@ -2011,7 +2021,9 @@ template<typename T>
 VectorX<T> MultibodyPlant<T>::AssembleActuationInput(
     const systems::Context<T>& context) const {
   this->ValidateContext(context);
+
   // Assemble the vector from the model instance input ports.
+  // TODO(sherm1) Heap allocation here. Get rid of it.
   VectorX<T> actuation_input(num_actuated_dofs());
 
   const auto& actuation_port = this->get_input_port(actuation_port_);

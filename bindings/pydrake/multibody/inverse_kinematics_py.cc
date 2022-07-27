@@ -10,6 +10,7 @@
 #include "drake/multibody/inverse_kinematics/com_position_constraint.h"
 #include "drake/multibody/inverse_kinematics/distance_constraint.h"
 #include "drake/multibody/inverse_kinematics/gaze_target_constraint.h"
+#include "drake/multibody/inverse_kinematics/global_inverse_kinematics.h"
 #include "drake/multibody/inverse_kinematics/inverse_kinematics.h"
 #include "drake/multibody/inverse_kinematics/minimum_distance_constraint.h"
 #include "drake/multibody/inverse_kinematics/orientation_constraint.h"
@@ -22,9 +23,6 @@ namespace pydrake {
 namespace {
 
 using solvers::Constraint;
-constexpr char ctor_doc_ad[] =
-    "Overloaded constructor. Constructs the constraint using "
-    "MultibodyPlant<AutoDiffXd>";
 
 PYBIND11_MODULE(inverse_kinematics, m) {
   // NOLINTNEXTLINE(build/namespaces): Emulate placement in namespace.
@@ -36,7 +34,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
 
   py::module::import("pydrake.math");
   py::module::import("pydrake.multibody.plant");
-  py::module::import("pydrake.solvers.mathematicalprogram");
+  py::module::import("pydrake.solvers");
 
   {
     using Class = InverseKinematics;
@@ -139,7 +137,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 9>(), cls_doc.ctor.doc)
+            py::keep_alive<1, 9>(), cls_doc.ctor.doc_double)
         .def(py::init([](const MultibodyPlant<AutoDiffXd>* plant,
                           const Frame<AutoDiffXd>& frameA,
                           const Eigen::Ref<const Eigen::Vector3d>& a_A,
@@ -156,7 +154,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 9>(), ctor_doc_ad);
+            py::keep_alive<1, 9>(), cls_doc.ctor.doc_autodiff);
   }
   {
     using Class = PointToPointDistanceConstraint;
@@ -180,7 +178,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 9>(), cls_doc.ctor.doc)
+            py::keep_alive<1, 9>(), cls_doc.ctor.doc_double)
         .def(py::init(
                  [](const multibody::MultibodyPlant<AutoDiffXd>* const plant,
                      const multibody::Frame<AutoDiffXd>& frame1,
@@ -198,7 +196,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 9>(), ctor_doc_ad);
+            py::keep_alive<1, 9>(), cls_doc.ctor.doc_autodiff);
   }
   {
     using Class = DistanceConstraint;
@@ -218,7 +216,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 4>(), cls_doc.ctor.doc)
+            py::keep_alive<1, 4>(), cls_doc.ctor.doc_double)
         .def(py::init(
                  [](const multibody::MultibodyPlant<AutoDiffXd>* const plant,
                      SortedPair<geometry::GeometryId> geometry_pair,
@@ -233,7 +231,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 4>(), ctor_doc_ad);
+            py::keep_alive<1, 4>(), cls_doc.ctor.doc_autodiff);
   }
 
   {
@@ -258,7 +256,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 9>(), cls_doc.ctor.doc)
+            py::keep_alive<1, 9>(), cls_doc.ctor.doc_double)
         .def(py::init([](const MultibodyPlant<AutoDiffXd>* plant,
                           const Frame<AutoDiffXd>& frameA,
                           const Eigen::Ref<const Eigen::Vector3d>& p_AS,
@@ -276,7 +274,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 9>(), ctor_doc_ad);
+            py::keep_alive<1, 9>(), cls_doc.ctor.doc_autodiff);
   }
 
   {
@@ -300,7 +298,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 4>(), cls_doc.ctor.doc)
+            py::keep_alive<1, 4>(), cls_doc.ctor.doc_double)
         .def(py::init(
                  [](const multibody::MultibodyPlant<AutoDiffXd>* const plant,
                      double minimum_distance,
@@ -318,7 +316,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 4>(), ctor_doc_ad);
+            py::keep_alive<1, 4>(), cls_doc.ctor.doc_autodiff);
   }
 
   {
@@ -342,7 +340,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 8>(), cls_doc.ctor.doc_7args)
+            py::keep_alive<1, 8>(), cls_doc.ctor.doc_double)
         .def(py::init([](const MultibodyPlant<double>* plant,
                           const Frame<double>& frameAbar,
                           const std::optional<math::RigidTransformd>& X_AbarA,
@@ -360,7 +358,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 9>(), cls_doc.ctor.doc_8args)
+            py::keep_alive<1, 9>(), cls_doc.ctor.doc_double_Abar)
         .def(py::init([](const MultibodyPlant<AutoDiffXd>* plant,
                           const Frame<AutoDiffXd>& frameA,
                           const Eigen::Ref<const Eigen::Vector3d>& p_AQ_lower,
@@ -377,7 +375,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 8>(), ctor_doc_ad)
+            py::keep_alive<1, 8>(), cls_doc.ctor.doc_autodiff)
         .def(py::init([](const MultibodyPlant<AutoDiffXd>* plant,
                           const Frame<AutoDiffXd>& frameAbar,
                           const std::optional<math::RigidTransformd>& X_AbarA,
@@ -395,7 +393,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 9>(), ctor_doc_ad)
+            py::keep_alive<1, 9>(), cls_doc.ctor.doc_autodiff_Abar)
         .def("set_bounds", &Class::set_bounds, py::arg("new_lb"),
             py::arg("new_ub"), constraint_doc.set_bounds.doc)
         .def("UpdateLowerBound", &Class::UpdateLowerBound, py::arg("new_lb"),
@@ -422,7 +420,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 5>(), cls_doc.ctor.doc_ctor_double)
+            py::keep_alive<1, 5>(), cls_doc.ctor.doc_double)
         .def(py::init([](const MultibodyPlant<AutoDiffXd>* plant,
                           const std::optional<std::vector<ModelInstanceIndex>>&
                               model_instances,
@@ -436,7 +434,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 5>(), cls_doc.ctor.doc_ctor_autodiff);
+            py::keep_alive<1, 5>(), cls_doc.ctor.doc_autodiff);
   }
 
   {
@@ -462,7 +460,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 8>(), cls_doc.ctor.doc)
+            py::keep_alive<1, 8>(), cls_doc.ctor.doc_double)
         .def(py::init([](const MultibodyPlant<AutoDiffXd>* plant,
                           std::optional<std::vector<ModelInstanceIndex>>
                               model_instances,
@@ -480,7 +478,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 8>(), ctor_doc_ad);
+            py::keep_alive<1, 8>(), cls_doc.ctor.doc_autodiff);
   }
 
   {
@@ -504,7 +502,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 8>(), cls_doc.ctor.doc)
+            py::keep_alive<1, 8>(), cls_doc.ctor.doc_double)
         .def(py::init([](const MultibodyPlant<AutoDiffXd>* const plant,
                           const Frame<AutoDiffXd>& frameAbar,
                           const math::RotationMatrix<double>& R_AbarA,
@@ -521,7 +519,7 @@ PYBIND11_MODULE(inverse_kinematics, m) {
             // Keep alive, reference: `self` keeps `plant` alive.
             py::keep_alive<1, 2>(),
             // Keep alive, reference: `self` keeps `plant_context` alive.
-            py::keep_alive<1, 8>(), ctor_doc_ad);
+            py::keep_alive<1, 8>(), cls_doc.ctor.doc_autodiff);
   }
   {
     using Class = UnitQuaternionConstraint;
@@ -540,6 +538,105 @@ PYBIND11_MODULE(inverse_kinematics, m) {
         py::arg("q_vars"), py::arg("prog"),
         doc.AddUnitQuaternionConstraintOnPlant.doc);
   }
+  {
+    using Class = GlobalInverseKinematics;
+    constexpr auto& cls_doc = doc.GlobalInverseKinematics;
+    py::class_<Class> global_ik(m, "GlobalInverseKinematics", cls_doc.doc);
+
+    py::class_<GlobalInverseKinematics::Options>(
+        global_ik, "Options", cls_doc.Options.doc)
+        .def(py::init<>(), cls_doc.Options.ctor.doc)
+        .def_readwrite("num_intervals_per_half_axis",
+            &GlobalInverseKinematics::Options::num_intervals_per_half_axis,
+            cls_doc.Options.num_intervals_per_half_axis.doc)
+        .def_readwrite("approach", &GlobalInverseKinematics::Options::approach,
+            cls_doc.Options.approach.doc)
+        .def_readwrite("interval_binning",
+            &GlobalInverseKinematics::Options::interval_binning,
+            cls_doc.Options.interval_binning.doc)
+        .def_readwrite("linear_constraint_only",
+            &GlobalInverseKinematics::Options::linear_constraint_only,
+            cls_doc.Options.linear_constraint_only.doc)
+        .def("__repr__", [](const GlobalInverseKinematics::Options& self) {
+          return py::str(
+              "GlobalInverseKinematics.Options("
+              "num_intervals_per_half_axis={}, "
+              "approach={}, "
+              "interval_binning={}, "
+              "linear_constraint_only={})")
+              .format(self.num_intervals_per_half_axis, self.approach,
+                  self.interval_binning, self.linear_constraint_only);
+        });
+
+    global_ik
+        .def(py::init<const MultibodyPlant<double>&,
+                 const GlobalInverseKinematics::Options&>(),
+            py::arg("plant"),
+            py::arg("options") = GlobalInverseKinematics::Options(),
+            // Keep alive, reference: `self` keeps `plant` alive.
+            py::keep_alive<1, 2>(),  // BR
+            cls_doc.ctor.doc)
+        .def("prog", &Class::prog, py_rvp::reference_internal, cls_doc.prog.doc)
+        .def("get_mutable_prog", &Class::get_mutable_prog,
+            py_rvp::reference_internal, cls_doc.get_mutable_prog.doc)
+        .def("body_rotation_matrix", &Class::body_rotation_matrix,
+            py::arg("body_index"), cls_doc.body_rotation_matrix.doc)
+        .def("body_position", &Class::body_position, py::arg("body_index"),
+            cls_doc.body_position.doc)
+        .def("ReconstructGeneralizedPositionSolution",
+            &Class::ReconstructGeneralizedPositionSolution, py::arg("result"),
+            cls_doc.ReconstructGeneralizedPositionSolution.doc)
+        .def(
+            "AddWorldPositionConstraint",
+            [](Class* self, BodyIndex body_index, const Eigen::Vector3d& p_BQ,
+                const Eigen::Vector3d& box_lb_F,
+                const Eigen::Vector3d& box_ub_F,
+                const math::RigidTransformd& X_WF) {
+              return self->AddWorldPositionConstraint(
+                  body_index, p_BQ, box_lb_F, box_ub_F, X_WF);
+            },
+            py::arg("body_index"), py::arg("p_BQ"), py::arg("box_lb_F"),
+            py::arg("box_ub_F"), py::arg("X_WF") = math::RigidTransformd(),
+            cls_doc.AddWorldPositionConstraint.doc)
+        .def(
+            "AddWorldRelativePositionConstraint",
+            [](Class* self, BodyIndex body_index_B, const Eigen::Vector3d& p_BQ,
+                BodyIndex body_index_A, const Eigen::Vector3d& p_AP,
+                const Eigen::Vector3d& box_lb_F,
+                const Eigen::Vector3d& box_ub_F,
+                const math::RigidTransformd& X_WF) {
+              return self->AddWorldRelativePositionConstraint(body_index_B,
+                  p_BQ, body_index_A, p_AP, box_lb_F, box_ub_F, X_WF);
+            },
+            py::arg("body_index_B"), py::arg("p_BQ"), py::arg("body_index_A"),
+            py::arg("p_AP"), py::arg("box_lb_F"), py::arg("box_ub_F"),
+            py::arg("X_WF") = math::RigidTransformd(),
+            cls_doc.AddWorldRelativePositionConstraint.doc)
+        .def(
+            "AddWorldOrientationConstraint",
+            [](Class* self, BodyIndex body_index,
+                const Eigen::Quaterniond& desired_orientation,
+                double angle_tol) {
+              return self->AddWorldOrientationConstraint(
+                  body_index, desired_orientation, angle_tol);
+            },
+            py::arg("body_index"), py::arg("desired_orientation"),
+            py::arg("angle_tol"), cls_doc.AddWorldOrientationConstraint.doc)
+        .def(
+            "AddPostureCost",
+            [](Class* self, const Eigen::Ref<const Eigen::VectorXd>& q_desired,
+                const Eigen::Ref<const Eigen::VectorXd>& body_position_cost,
+                const Eigen::Ref<const Eigen::VectorXd>&
+                    body_orientation_cost) {
+              return self->AddPostureCost(
+                  q_desired, body_position_cost, body_orientation_cost);
+            },
+            py::arg("q_desired"), py::arg("body_position_cost"),
+            py::arg("body_orientation_cost"), cls_doc.AddPostureCost.doc);
+    // TODO(russt): Add bindings for Polytope3D struct and related methods
+    // (or convert those methods to use ConvexSets).
+  }
+  // NOLINTNEXTLINE(readability/fn_size)
 }
 
 }  // namespace

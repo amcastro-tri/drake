@@ -209,6 +209,9 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
 
   VectorX<T> AssembleActuationInput(const systems::Context<T>& context) const;
 
+  VectorX<T> AssembleDesiredPositionsInput(const systems::Context<T>& context) const;
+  VectorX<T> AssembleDesiredVelocitiesInput(const systems::Context<T>& context) const;
+
   // TODO(xuchenhan-tri): Remove this when SceneGraph takes control of all
   //  geometries.
   const std::vector<std::vector<geometry::GeometryId>>& collision_geometries()

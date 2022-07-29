@@ -143,6 +143,20 @@ VectorX<T> DiscreteUpdateManager<T>::AssembleActuationInput(
 }
 
 template <typename T>
+VectorX<T> DiscreteUpdateManager<T>::AssembleDesiredPositionsInput(
+    const systems::Context<T>& context) const {
+  return MultibodyPlantDiscreteUpdateManagerAttorney<T>::AssembleDesiredPositionsInput(
+      plant(), context);
+}
+
+template <typename T>
+VectorX<T> DiscreteUpdateManager<T>::AssembleDesiredVelocitiesInput(
+    const systems::Context<T>& context) const {
+  return MultibodyPlantDiscreteUpdateManagerAttorney<T>::AssembleDesiredVelocitiesInput(
+      plant(), context);
+}
+
+template <typename T>
 const std::vector<std::vector<geometry::GeometryId>>&
 DiscreteUpdateManager<T>::collision_geometries() const {
   return MultibodyPlantDiscreteUpdateManagerAttorney<T>::collision_geometries(

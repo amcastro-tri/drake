@@ -886,7 +886,7 @@ void CompliantContactManager<T>::AddCouplerConstraints(
   // Previous time step positions.
   const VectorX<T> q0 = plant().GetPositions(context);
 
-  // Couplers have not impulse limits, they are bi-lateral constraints. Each
+  // Couplers do not have impulse limits, they are bi-lateral constraints. Each
   // coupler constraint introduces a single constraint equation.
   constexpr double kInfinity = std::numeric_limits<double>::infinity();
   const Vector1<T> gamma_lower(-kInfinity);
@@ -903,11 +903,15 @@ void CompliantContactManager<T>::AddCouplerConstraints(
     const Joint<T>& joint1 = plant().get_joint(info.joint1_index);
     const int dof0 = joint0.velocity_start();
     const int dof1 = joint1.velocity_start();
-    const TreeIndex c0 = tree_topology().velocity_to_tree_index(dof0);
-    const TreeIndex c1 = tree_topology().velocity_to_tree_index(dof1);
+    const TreeIndex tree0 = tree_topology().velocity_to_tree_index(dof0);
+    const TreeIndex tree1 = tree_topology().velocity_to_tree_index(dof1);
 
     // Sanity check.
-    DRAKE_DEMAND(c0.is_valid() && c1.is_valid());
+    DRAKE_DEMAND(tree0.is_valid() && tree1.is_valid());
+
+    // DOFs local to their tree.
+    const int tree_dof0 = dof0 - tree_topology().tree_velocities_start(tree0);
+    const int tree_dof1 = dof1 - tree_topology().tree_velocities_start(tree1);
 
     // Constraint function defined as g = q₀ - ρ⋅q₁ - Δq, with ρ the gear ratio
     // and Δq a fixed position offset.
@@ -919,24 +923,24 @@ void CompliantContactManager<T>::AddCouplerConstraints(
     const typename SapHolonomicConstraint<T>::Parameters parameters{
         gamma_lower, gamma_upper, stiffness, relaxation_time, beta};
 
-    if (c0 == c1) {
-      const int nv = tree_topology().num_tree_velocities(c0);
+    if (tree0 == tree1) {
+      const int nv = tree_topology().num_tree_velocities(tree0);
       MatrixX<T> J = MatrixX<T>::Zero(1, nv);
       // J = dg/dv
-      J(0, dof0) = 1.0;
-      J(0, dof1) = -info.gear_ratio;
+      J(0, tree_dof0) = 1.0;
+      J(0, tree_dof1) = -info.gear_ratio;
 
-      problem->AddConstraint(
-          std::make_unique<SapHolonomicConstraint<T>>(c0, g0, J, parameters));
+      problem->AddConstraint(std::make_unique<SapHolonomicConstraint<T>>(
+          tree0, g0, J, parameters));
     } else {
-      const int nv0 = tree_topology().num_tree_velocities(c0);
-      const int nv1 = tree_topology().num_tree_velocities(c1);
+      const int nv0 = tree_topology().num_tree_velocities(tree0);
+      const int nv1 = tree_topology().num_tree_velocities(tree1);
       MatrixX<T> J0 = MatrixX<T>::Zero(1, nv0);
       MatrixX<T> J1 = MatrixX<T>::Zero(1, nv1);
-      J0(0, dof0) = 1.0;
-      J1(0, dof1) = -info.gear_ratio;
+      J0(0, tree_dof0) = 1.0;
+      J1(0, tree_dof1) = -info.gear_ratio;
       problem->AddConstraint(std::make_unique<SapHolonomicConstraint<T>>(
-          c0, c1, g0, J0, J1, parameters));
+          tree0, tree1, g0, J0, J1, parameters));
     }
   }
 }
@@ -946,15 +950,20 @@ void CompliantContactManager<T>::AddPdControllerConstraints(
     const systems::Context<T>& context, SapContactProblem<T>* problem) const {
   DRAKE_DEMAND(problem != nullptr);
 
+  // Do nothing if not PD controllers were specified.
+  if (this->pd_controllers_specs().size() == 0) return;
+
   // Previous time step positions.
   const VectorX<T> q0 = plant().GetPositions(context);
 
   // Desired positions & velocities.
-  const VectorX<T>& desired_positions =
-      plant().get_desired_positions_input_port().Eval(context);
-  const VectorX<T>& desired_velocities =
-      plant().get_desired_velocities_input_port().Eval(context);
-  const VectorX<T> feed_forward_actuation = this->AssembleActuationInput(context);
+  // TODO: makes this EvalFoo() instead to avoid heap allocations.
+  const VectorX<T> desired_positions =
+      this->AssembleDesiredPositionsInput(context);
+  const VectorX<T> desired_velocities =
+      this->AssembleDesiredVelocitiesInput(context);
+  const VectorX<T> feed_forward_actuation =
+      this->AssembleActuationInput(context);
 
   // TODO(amcastro-tri): consider exposing this parameter.
   const double beta = 0.1;      
@@ -972,6 +981,7 @@ void CompliantContactManager<T>::AddPdControllerConstraints(
 
     const int dof = joint.velocity_start();
     const TreeIndex tree = tree_topology().velocity_to_tree_index(dof);    
+    const int tree_dof = dof - tree_topology().tree_velocities_start(tree);
 
     // Set constraint impulse limits so that feed forward actuation plus PD
     // controller actuation is withing limits.
@@ -993,7 +1003,7 @@ void CompliantContactManager<T>::AddPdControllerConstraints(
     const Vector1<T> g0(q0[dof] - qd);
     MatrixX<T> J = MatrixX<T>::Zero(1, nv);
     const Vector1<T> bias(-vd);
-    J(0, dof) = 1.0;
+    J(0, tree_dof) = 1.0;
     problem->AddConstraint(std::make_unique<SapHolonomicConstraint<T>>(
         tree, g0, std::move(J), std::move(bias), std::move(parameters)));
   }

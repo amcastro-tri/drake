@@ -30,6 +30,9 @@
 #include "drake/multibody/tree/revolute_joint.h"
 #include "drake/multibody/triangle_quadrature/gaussian_triangle_quadrature_rule.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 namespace drake {
 namespace multibody {
 
@@ -2151,25 +2154,123 @@ VectorX<T> MultibodyPlant<T>::AssembleActuationInput(
 
       const auto& input_port =
           this->get_input_port(instance_actuation_ports_[model_instance_index]);
+      VectorX<T> u_values = VectorX<T>::Zero(instance_num_dofs);
       if (!input_port.HasValue(context)) {
-        throw std::logic_error(fmt::format("Actuation input port for model "
-            "instance {} must be connected.",
-            GetModelInstanceName(model_instance_index)));
+        const auto& qd_input_port = this->get_input_port(
+            instance_desired_positions_ports_[model_instance_index]);
+        if (!qd_input_port.HasValue(context)) {
+          throw std::logic_error(
+              fmt::format("Actuation input port for model "
+                          "instance {} must be connected.",
+                          GetModelInstanceName(model_instance_index)));
+        }
+      } else {
+        u_values = input_port.Eval(context);
       }
-      const auto& u_instance = input_port.Eval(context);
+      //const auto& u_instance = input_port.Eval(context);
 
+      if (u_values.hasNaN()) {
+        throw std::runtime_error(
+            fmt::format("Actuation input port for model "
+                        "instance {} contains NaN.",
+                        GetModelInstanceName(model_instance_index)));
+      }
+      actuation_input.segment(u_offset, instance_num_dofs) = u_values;
+      u_offset += instance_num_dofs;
+    }
+    DRAKE_ASSERT(u_offset == num_actuated_dofs());
+  }
+
+  PRINT_VAR(actuation_input.transpose());
+  return actuation_input;
+}
+
+template <typename T>
+VectorX<T> MultibodyPlant<T>::AssembleDesiredPositionsInput(
+    const systems::Context<T>& context) const {
+  this->ValidateContext(context);
+
+  // Assemble the vector from the model instance input ports.
+  // TODO(amcastro-tri): Heap allocation here. Get rid of it. Make it EvalFoo().
+  VectorX<T> qd(num_actuated_dofs());
+
+  const ModelInstanceIndex first_non_world_index(1);
+
+  int u_offset = 0;
+  for (ModelInstanceIndex model_instance_index(first_non_world_index);
+       model_instance_index < num_model_instances(); ++model_instance_index) {
+    // Ignore the port if the model instance has no actuated DoFs.
+    const int instance_num_dofs = num_actuated_dofs(model_instance_index);
+    if (instance_num_dofs == 0) continue;
+
+    const auto& input_port = this->get_input_port(
+        instance_desired_positions_ports_[model_instance_index]);
+
+    if (input_port.HasValue(context)) {
+      const auto& u_instance = input_port.Eval(context);
+      // TODO: NaN values are actually allowed on actuators without PD control.
       if (u_instance.hasNaN()) {
         throw std::runtime_error(
             fmt::format("Actuation input port for model "
                         "instance {} contains NaN.",
                         GetModelInstanceName(model_instance_index)));
       }
-      actuation_input.segment(u_offset, instance_num_dofs) = u_instance;
-      u_offset += instance_num_dofs;
+      qd.segment(u_offset, instance_num_dofs) = u_instance;
+    } else {
+      // We do not allow a valid default value of positions.
+      qd.segment(u_offset, instance_num_dofs).setConstant(NAN);
     }
-    DRAKE_ASSERT(u_offset == num_actuated_dofs());
+    u_offset += instance_num_dofs;
   }
-  return actuation_input;
+  DRAKE_ASSERT(u_offset == num_actuated_dofs());
+
+  PRINT_VAR(qd.transpose());
+
+  return qd;
+}
+
+template <typename T>
+VectorX<T> MultibodyPlant<T>::AssembleDesiredVelocitiesInput(
+    const systems::Context<T>& context) const {
+  this->ValidateContext(context);
+
+  // Assemble the vector from the model instance input ports.
+  // TODO(amcastro-tri): Heap allocation here. Get rid of it. Make it EvalFoo().
+  VectorX<T> vd(num_actuated_dofs());
+
+  const ModelInstanceIndex first_non_world_index(1);
+
+  int u_offset = 0;
+  for (ModelInstanceIndex model_instance_index(first_non_world_index);
+       model_instance_index < num_model_instances(); ++model_instance_index) {
+    // Ignore the port if the model instance has no actuated DoFs.
+    const int instance_num_dofs = num_actuated_dofs(model_instance_index);
+    if (instance_num_dofs == 0) continue;
+
+    const auto& input_port = this->get_input_port(
+        instance_desired_velocities_ports_[model_instance_index]);
+
+    if (input_port.HasValue(context)) {
+      const auto& u_instance = input_port.Eval(context);
+      // TODO: NaN values are actually allowed on actuators without PD control.
+      if (u_instance.hasNaN()) {
+        throw std::runtime_error(
+            fmt::format("Actuation input port for model "
+                        "instance {} contains NaN.",
+                        GetModelInstanceName(model_instance_index)));
+      }
+      vd.segment(u_offset, instance_num_dofs) = u_instance;
+    } else {
+      // If not connected, we assume vd = 0.
+      vd.segment(u_offset, instance_num_dofs).setZero();
+    }
+    u_offset += instance_num_dofs;
+  }
+  DRAKE_ASSERT(u_offset == num_actuated_dofs());
+
+  PRINT_VAR(vd.transpose());
+
+  return vd;
 }
 
 template<typename T>
@@ -3114,13 +3215,29 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
       this->DeclareVectorInputPort("actuation", num_actuated_dofs())
           .get_index();
 
-  // Ports of desired positions and velocities.
-  desired_positions_port_ =
-      this->DeclareVectorInputPort("Desired positions", num_actuated_dofs())
-          .get_index();
-  desired_velocities_port_ =
-      this->DeclareVectorInputPort("Desired velocities", num_actuated_dofs())
-          .get_index();          
+  // Declare per model instance desired posionts and velocities ports.
+  instance_desired_positions_ports_.resize(num_model_instances());
+  instance_desired_velocities_ports_.resize(num_model_instances());
+  for (ModelInstanceIndex model_instance_index(0);
+       model_instance_index < num_model_instances(); ++model_instance_index) {
+    const int instance_num_dofs = num_actuated_dofs(model_instance_index);
+    if (instance_num_dofs > 0) {
+      ++num_actuated_instances;
+      last_actuated_instance = model_instance_index;
+    }
+    instance_desired_positions_ports_[model_instance_index] =
+        this->DeclareVectorInputPort(
+                GetModelInstanceName(model_instance_index) +
+                    "_desired_positions",
+                instance_num_dofs)
+            .get_index();
+    instance_desired_velocities_ports_[model_instance_index] =
+        this->DeclareVectorInputPort(
+                GetModelInstanceName(model_instance_index) +
+                    "_desired_velocities",
+                instance_num_dofs)
+            .get_index();            
+  }
 
   // Declare the generalized force input port.
   applied_generalized_force_input_port_ =
@@ -3553,16 +3670,24 @@ const systems::InputPort<T>& MultibodyPlant<T>::get_actuation_input_port()
 
 template <typename T>
 const systems::InputPort<T>&
-MultibodyPlant<T>::get_desired_positions_input_port() const {
+MultibodyPlant<T>::get_desired_positions_input_port(
+    ModelInstanceIndex model_instance) const {
   DRAKE_MBP_THROW_IF_NOT_FINALIZED();
-  return systems::System<T>::get_input_port(desired_positions_port_);
+  DRAKE_THROW_UNLESS(model_instance.is_valid());
+  DRAKE_THROW_UNLESS(model_instance < num_model_instances());
+  return systems::System<T>::get_input_port(
+      instance_desired_positions_ports_.at(model_instance));
 }
 
 template <typename T>
 const systems::InputPort<T>&
-MultibodyPlant<T>::get_desired_velocities_input_port() const {
+MultibodyPlant<T>::get_desired_velocities_input_port(
+    ModelInstanceIndex model_instance) const {
   DRAKE_MBP_THROW_IF_NOT_FINALIZED();
-  return systems::System<T>::get_input_port(desired_velocities_port_);
+  DRAKE_THROW_UNLESS(model_instance.is_valid());
+  DRAKE_THROW_UNLESS(model_instance < num_model_instances());
+  return systems::System<T>::get_input_port(
+      instance_desired_velocities_ports_.at(model_instance));
 }
 
 template <typename T>

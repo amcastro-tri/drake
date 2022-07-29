@@ -134,10 +134,11 @@ int do_main(int argc, char* argv[]) {
                   wsg_command->GetInputPort("command_message"));
   builder.Connect(wsg_command->get_position_output_port(),
                   station->GetInputPort("wsg_position"));
-  builder.Connect(wsg_command->get_force_limit_output_port(),
-                  station->GetInputPort("wsg_force_limit"));
+  //builder.Connect(wsg_command->get_force_limit_output_port(),
+    //              station->GetInputPort("wsg_force_limit"));
 
   // Publish the WSG status.
+#if 0  
   auto wsg_status =
       builder.AddSystem<manipulation::schunk_wsg::SchunkWsgStatusSender>();
   builder.Connect(station->GetOutputPort("wsg_state_measured"),
@@ -149,6 +150,7 @@ int do_main(int argc, char* argv[]) {
           "SCHUNK_WSG_STATUS", lcm, 0.05 /* publish period */));
   builder.Connect(wsg_status->get_output_port(0),
                   wsg_status_publisher->get_input_port());
+#endif
 
   // Publish the camera outputs.
   if (FLAGS_publish_cameras) {

@@ -136,7 +136,39 @@ class EndEffectorTeleop(LeafSystem):
         output.SetAtIndex(4, y)
         output.SetAtIndex(5, z)
 
+def reexecute_if_unbuffered():
+    """Ensures that output is immediately flushed (e.g. for segfaults).
+    ONLY use this at your entrypoint. Otherwise, you may have code be
+    re-executed that will clutter your console."""
+    import os
+    import shlex
+    import sys
+    if os.environ.get("PYTHONUNBUFFERED") in (None, ""):
+        os.environ["PYTHONUNBUFFERED"] = "1"
+        argv = list(sys.argv)
+        if argv[0] != sys.executable:
+            argv.insert(0, sys.executable)
+        cmd = " ".join([shlex.quote(arg) for arg in argv])
+        sys.stdout.flush()
+        os.execv(argv[0], argv)
 
+def traced(func, ignoredirs=None):
+    """Decorates func such that its execution is traced, but filters out any
+     Python code outside of the system prefix."""
+    import functools
+    import sys
+    import trace
+    if ignoredirs is None:
+        ignoredirs = ["/usr", sys.prefix]
+    tracer = trace.Trace(trace=1, count=0, ignoredirs=ignoredirs)
+
+    @functools.wraps(func)
+    def wrapped(*args, **kwargs):
+        return tracer.runfunc(func, *args, **kwargs)
+
+    return wrapped
+
+#@traced
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -194,7 +226,16 @@ def main():
         station = builder.AddSystem(ManipulationStationHardwareInterface())
         station.Connect(wait_for_cameras=False)
     else:
-        station = builder.AddSystem(ManipulationStation())
+        station = builder.AddSystem(ManipulationStation(time_step=0.01))
+        kp_gain = 10 * np.ones(7)  # 100
+        kd_gain = 2 * np.sqrt(kp_gain)  # 2* sqrt(kp)
+        print(kp_gain)
+        print(kd_gain)
+        station.SetIiwaPositionGains(kp_gain)
+        station.SetIiwaVelocityGains(kd_gain)
+        gripper_kp = 200
+        gripper_kd = 5
+        station.SetWsgGains(gripper_kp, gripper_kd)
 
         if args.schunk_collision_model == "box":
             schunk_model = SchunkCollisionModel.kBox
@@ -306,8 +347,8 @@ def main():
     wsg_buttons = builder.AddSystem(SchunkWsgButtons(meshcat=meshcat))
     builder.Connect(wsg_buttons.GetOutputPort("position"),
                     station.GetInputPort("wsg_position"))
-    builder.Connect(wsg_buttons.GetOutputPort("force_limit"),
-                    station.GetInputPort("wsg_force_limit"))
+    #builder.Connect(wsg_buttons.GetOutputPort("force_limit"),
+    #                station.GetInputPort("wsg_force_limit"))
 
     # When in regression test mode, log our joint velocities to later check
     # that they were sufficiently quiet.
@@ -369,4 +410,5 @@ def main():
 
 
 if __name__ == '__main__':
+#    reexecute_if_unbuffered()
     main()

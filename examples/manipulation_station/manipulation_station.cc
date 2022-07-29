@@ -20,6 +20,7 @@
 #include "drake/systems/primitives/adder.h"
 #include "drake/systems/primitives/constant_value_source.h"
 #include "drake/systems/primitives/constant_vector_source.h"
+#include "drake/systems/primitives/multiplexer.h"
 #include "drake/systems/primitives/demultiplexer.h"
 #include "drake/systems/primitives/discrete_derivative.h"
 #include "drake/systems/primitives/linear_system.h"
@@ -211,6 +212,7 @@ ManipulationStation<T>::ManipulationStation(double time_step)
   plant_->RegisterAsSourceForSceneGraph(scene_graph_);
   scene_graph_->set_name("scene_graph");
   plant_->set_name("plant");
+  plant_->set_discrete_contact_solver(multibody::DiscreteContactSolver::kSap);
 
   this->set_name("manipulation_station");
 }
@@ -482,6 +484,24 @@ void ManipulationStation<T>::Finalize(
 
   MakeIiwaControllerModel();
 
+  // Setup gripper controller. (before Finalize()).
+  {
+    //const auto& left_finger = plant.GetRigidBodyByName("left_finger");
+    //const auto& right_finger = plant.GetRigidBodyByName("right_finger");
+    // N.B. Models from SDF name their actuators as their joints.
+    const auto& left_slider =
+        plant_->GetJointByName("left_finger_sliding_joint");
+    const auto& right_slider =
+        plant_->GetJointByName("right_finger_sliding_joint");
+    plant_->AddCouplerConstraint(left_slider, right_slider, -1.0);
+
+    //const auto& left_actuator =
+      //  plant.GetJointActuatorByName("left_finger_sliding_joint");
+    const auto& right_actuator =
+        plant_->GetJointActuatorByName("right_finger_sliding_joint");
+    plant_->AddPdController(right_actuator, wsg_kp_, wsg_kd_);    
+  }
+
   // Note: This deferred diagram construction method/workflow exists because we
   //   - cannot finalize plant until all of my objects are added, and
   //   - cannot wire up my diagram until we have finalized the plant.
@@ -658,6 +678,28 @@ void ManipulationStation<T>::Finalize(
     builder.ExportOutput(adder->get_output_port(), "iiwa_torque_measured");
   }
 
+  // Gripper ports.
+  {
+    // As a quick hack, I combine the single scalar valued position into a
+    // vector of size 2.
+    auto wsg_qd_passthrough =
+        builder.template AddSystem<systems::PassThrough>(1);
+    auto mux = builder.template AddSystem<systems::Multiplexer>(2);
+    builder.Connect(wsg_qd_passthrough->get_output_port(),
+                    mux->get_input_port(0));
+    builder.Connect(wsg_qd_passthrough->get_output_port(),
+                    mux->get_input_port(1));
+
+    // Connect command to the plant
+    builder.Connect(
+        mux->get_output_port(0),
+        plant_->get_desired_positions_input_port(wsg_model_.model_instance));
+
+    // Export an input of a vector of size one.
+    builder.ExportInput(wsg_qd_passthrough->get_input_port(), "wsg_position");
+  }
+
+#if 0
   {
     auto wsg_controller = builder.template AddSystem<
         manipulation::schunk_wsg::SchunkWsgPositionController>(
@@ -686,6 +728,7 @@ void ManipulationStation<T>::Finalize(
     builder.ExportOutput(wsg_controller->get_grip_force_output_port(),
                          "wsg_force_measured");
   }
+#endif
 
   builder.ExportOutput(plant_->get_generalized_contact_forces_output_port(
                            iiwa_model_.model_instance),

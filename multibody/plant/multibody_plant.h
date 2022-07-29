@@ -673,8 +673,13 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// indexd by JointActuatorIndex. Actuators with a PD controller (call to
   /// AddPdController()) will have an entry in these vectors. Entries
   /// corresponding to actuators with no PD controller are ignored.
-  const systems::InputPort<T>& get_desired_positions_input_port() const;
-  const systems::InputPort<T>& get_desired_velocities_input_port() const;
+  //const systems::InputPort<T>& get_desired_positions_input_port() const;
+  //const systems::InputPort<T>& get_desired_velocities_input_port() const;
+
+  const systems::InputPort<T>& get_desired_positions_input_port(
+      ModelInstanceIndex model_instance) const;
+  const systems::InputPort<T>& get_desired_velocities_input_port(
+      ModelInstanceIndex model_instance) const;      
 
   /// Returns a constant reference to the vector-valued input port for applied
   /// generalized forces, and the vector will be added directly into `tau` (see
@@ -4366,6 +4371,12 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   VectorX<T> AssembleActuationInput(
       const systems::Context<T>& context) const;
 
+  VectorX<T> AssembleDesiredPositionsInput(
+      const systems::Context<T>& context) const;
+
+  VectorX<T> AssembleDesiredVelocitiesInput(
+      const systems::Context<T>& context) const;
+
   // Computes all non-contact applied forces including:
   //  - Force elements.
   //  - Joint actuation.
@@ -5028,8 +5039,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // The actuation port for all actuated dofs.
   systems::InputPortIndex actuation_port_;
 
-  systems::InputPortIndex desired_positions_port_;
-  systems::InputPortIndex desired_velocities_port_;
+  std::vector<systems::InputPortIndex> instance_desired_positions_ports_;
+  std::vector<systems::InputPortIndex> instance_desired_velocities_ports_;
 
   // A port for externally applied generalized forces u.
   systems::InputPortIndex applied_generalized_force_input_port_;

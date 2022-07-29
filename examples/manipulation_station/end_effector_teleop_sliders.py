@@ -233,7 +233,7 @@ def main():
         print(kd_gain)
         station.SetIiwaPositionGains(kp_gain)
         station.SetIiwaVelocityGains(kd_gain)
-        gripper_kp = 200
+        gripper_kp = 1000
         gripper_kd = 5
         station.SetWsgGains(gripper_kp, gripper_kd)
 

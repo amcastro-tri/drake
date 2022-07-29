@@ -24,6 +24,10 @@
 #include "drake/multibody/triangle_quadrature/gaussian_triangle_quadrature_rule.h"
 #include "drake/systems/framework/context.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
+
 using drake::geometry::GeometryId;
 using drake::geometry::PenetrationAsPointPair;
 using drake::math::RotationMatrix;
@@ -991,7 +995,16 @@ void CompliantContactManager<T>::AddPdControllerConstraints(
     // Controller gains.
     // TODO(amcastro-tri): consider getting these from the actuator?
     const T& Kp = info.proportional_gain;
-    const T& Kd = info.proportional_gain;
+    const T& Kd = info.derivative_gain;
+
+    PRINT_VAR(context.get_time());
+    PRINT_VAR(actuator.name());
+    PRINT_VAR(Kp);
+    PRINT_VAR(Kd);
+    PRINT_VAR(effort_limit);
+    PRINT_VAR(u0);
+    PRINT_VAR(gamma_lower);
+    PRINT_VAR(gamma_upper);
     
     typename SapHolonomicConstraint<T>::Parameters parameters{
         Vector1<T>(gamma_lower), Vector1<T>(gamma_upper), Vector1<T>(Kp),

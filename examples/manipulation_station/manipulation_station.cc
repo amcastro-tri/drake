@@ -691,6 +691,7 @@ void ManipulationStation<T>::Finalize(
                     mux->get_input_port(1));
 
     // Connect command to the plant
+    // TODO: connect desired velocities for "faster" gripper response.
     builder.Connect(
         mux->get_output_port(0),
         plant_->get_desired_positions_input_port(wsg_model_.model_instance));

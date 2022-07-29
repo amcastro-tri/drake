@@ -742,7 +742,7 @@ CompliantContactManager<T>::AddContactConstraints(
   // Parameters used by SAP to estimate regularization, see [Castro et al.,
   // 2021].
   // TODO(amcastro-tri): consider exposing these parameters.
-  constexpr double beta = 1.0;
+  constexpr double beta = 0.1;
   constexpr double sigma = 1.0e-3;
 
   const std::vector<DiscreteContactPair<T>>& contact_pairs =

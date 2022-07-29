@@ -234,8 +234,9 @@ def main():
         station.SetIiwaPositionGains(kp_gain)
         station.SetIiwaVelocityGains(kd_gain)
         gripper_kp = 1000
-        gripper_kd = 5
+        gripper_kd = 200
         station.SetWsgGains(gripper_kp, gripper_kd)
+        #station.get_mutable_multibody_plant().set_penetration_allowance(1e-10)
 
         if args.schunk_collision_model == "box":
             schunk_model = SchunkCollisionModel.kBox

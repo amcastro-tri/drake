@@ -112,6 +112,9 @@
             <size>0.012 0.082 0.02</size>
           </box>
         </geometry>
+        <drake:proximity_properties>
+          <drake:point_contact_stiffness>1.0e6</drake:point_contact_stiffness>
+        </drake:proximity_properties>
         <surface>
           <friction>
             <ode>
@@ -189,6 +192,9 @@
             <size>0.012 0.082 0.02</size>
           </box>
         </geometry>
+        <drake:proximity_properties>
+          <drake:point_contact_stiffness>1.0e6</drake:point_contact_stiffness>
+        </drake:proximity_properties>
         <surface>
           <friction>
             <ode>

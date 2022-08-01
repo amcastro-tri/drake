@@ -16,6 +16,7 @@
 #include "drake/multibody/tree/revolute_joint.h"
 #include "drake/perception/depth_image_to_point_cloud.h"
 #include "drake/systems/controllers/inverse_dynamics_controller.h"
+#include "drake/systems/controllers/inverse_dynamics.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/primitives/adder.h"
 #include "drake/systems/primitives/constant_value_source.h"
@@ -502,6 +503,28 @@ void ManipulationStation<T>::Finalize(
     plant_->AddPdController(right_actuator, wsg_kp_, wsg_kd_);    
   }
 
+  // Setup PD control for the arm (before Finalize())
+  {
+    if (iiwa_kp_.size() == 0) {
+      iiwa_kp_ = VectorXd::Constant(7, 100.0);
+    }
+
+    if (iiwa_kd_.size() == 0) {
+      iiwa_kd_.resize(7);
+      for (int i = 0; i < 7; i++) {
+        // Critical damping gains.
+        iiwa_kd_[i] = 2 * std::sqrt(iiwa_kp_[i]);
+      }
+    }
+
+    for (int joint_index = 1; joint_index <= 7; ++joint_index) {
+      const std::string name = fmt::format("iiwa_joint_{}", joint_index);
+      const auto& actuator = plant_->GetJointActuatorByName(name);
+      plant_->AddPdController(actuator, iiwa_kp_[joint_index - 1],
+                              iiwa_kd_[joint_index - 1]);
+    }
+  }
+
   // Note: This deferred diagram construction method/workflow exists because we
   //   - cannot finalize plant until all of my objects are added, and
   //   - cannot wire up my diagram until we have finalized the plant.
@@ -613,6 +636,7 @@ void ManipulationStation<T>::Finalize(
   {
     owned_controller_plant_->Finalize();
 
+#if 0
     auto check_gains = [](const VectorX<double>& gains, int size) {
       return (gains.size() == size) && (gains.array() >= 0).all();
     };
@@ -636,11 +660,13 @@ void ManipulationStation<T>::Finalize(
       iiwa_ki_ = VectorXd::Constant(num_iiwa_positions, 1);
     }
     DRAKE_THROW_UNLESS(check_gains(iiwa_ki_, num_iiwa_positions));
+#endif    
 
-    // Add the inverse dynamics controller.
-    auto iiwa_controller = builder.template AddSystem<
-        systems::controllers::InverseDynamicsController>(
-        *owned_controller_plant_, iiwa_kp_, iiwa_ki_, iiwa_kd_, false);
+    // Add gravity compensation.
+    auto iiwa_controller =
+        builder.template AddSystem<systems::controllers::InverseDynamics>(
+            owned_controller_plant_.get(),
+            systems::controllers::InverseDynamics<double>::InverseDynamicsMode::kGravityCompensation);
     iiwa_controller->set_name("iiwa_controller");
     builder.Connect(plant_->get_state_output_port(iiwa_model_.model_instance),
                     iiwa_controller->get_input_port_estimated_state());
@@ -648,7 +674,7 @@ void ManipulationStation<T>::Finalize(
     // Add in feedforward torque.
     auto adder =
         builder.template AddSystem<systems::Adder>(2, num_iiwa_positions);
-    builder.Connect(iiwa_controller->get_output_port_control(),
+    builder.Connect(iiwa_controller->get_output_port_force(),
                     adder->get_input_port(0));
     // Use a passthrough to make the port optional.  (Will provide zero values
     // if not connected).
@@ -661,6 +687,31 @@ void ManipulationStation<T>::Finalize(
     builder.Connect(adder->get_output_port(), plant_->get_actuation_input_port(
                                                   iiwa_model_.model_instance));
 
+#if 0
+    // Connnect PD controller.
+    // As a quick hack, I combine the single scalar valued position into a
+    // vector of size 2.
+    auto wsg_qd_passthrough =
+        builder.template AddSystem<systems::PassThrough>(1);
+    auto mux = builder.template AddSystem<systems::Multiplexer>(2);
+    builder.Connect(wsg_qd_passthrough->get_output_port(),
+                    mux->get_input_port(0));
+    builder.Connect(wsg_qd_passthrough->get_output_port(),
+                    mux->get_input_port(1));
+
+    // Connect command to the plant
+    // TODO: connect desired velocities for "faster" gripper response.
+    builder.Connect(
+        mux->get_output_port(0),
+        plant_->get_desired_positions_input_port(wsg_model_.model_instance));
+#endif        
+
+    // Quick hack, only positions are commanded. Velocities are zero.
+    builder.Connect(
+        iiwa_position->get_output_port(),
+        plant_->get_desired_positions_input_port(iiwa_model_.model_instance));
+
+#if 0
     // Approximate desired state command from a discrete derivative of the
     // position command input port.
     auto desired_state_from_position = builder.template AddSystem<
@@ -672,6 +723,7 @@ void ManipulationStation<T>::Finalize(
                     iiwa_controller->get_input_port_desired_state());
     builder.Connect(iiwa_position->get_output_port(),
                     desired_state_from_position->get_input_port());
+#endif 
 
     // Export commanded torques:
     builder.ExportOutput(adder->get_output_port(), "iiwa_torque_commanded");

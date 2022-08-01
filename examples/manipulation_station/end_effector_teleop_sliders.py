@@ -227,8 +227,9 @@ def main():
         station.Connect(wait_for_cameras=False)
     else:
         station = builder.AddSystem(ManipulationStation(time_step=0.01))
-        kp_gain = 10 * np.ones(7)  # 100
-        kd_gain = 2 * np.sqrt(kp_gain)  # 2* sqrt(kp)
+        kp_gain = 100000 * np.ones(7)  # 100
+        #kd_gain = 2 * np.sqrt(kp_gain)  # 2* sqrt(kp)
+        kd_gain = np.zeros(7)
         print(kp_gain)
         print(kd_gain)
         station.SetIiwaPositionGains(kp_gain)

@@ -33,6 +33,8 @@ class JointActuator final
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(JointActuator)
 
+  /// PD controller gains. This enables the modeling of a simple low level PD
+  /// controllers, see JointActuator::set_controller_gains().
   struct PdControllerGains {
     T proportional_gain;
     T derivative_gain;
@@ -253,7 +255,16 @@ class JointActuator final
   }
   /// @} <!-- Reflected Inertia -->
 
-  /// Set controller gains for this joint actuator. 
+  /// Set controller gains for this joint actuator.
+  /// This enables the modeling of a simple PD controller of the form:
+  ///   ũ = -Kp⋅(q − qd) - Kv⋅(v − vd)
+  ///   u = max(−e, min(e, ũ))
+  /// where qd and vd a desired configuration and velocity for joint(), Kp and
+  /// Kv are the position and velocity gains specified in `gains` and `e`
+  /// corresponds to effort_limit().
+  ///
+  /// Desired configuration and velocity are specified as an input to the owning
+  /// MultibodyPlant model, see MultibodyPlant::get_desired_state_input_port().
   void set_controller_gains(PdControllerGains gains) {
     pd_controller_gains_ = gains;
   }

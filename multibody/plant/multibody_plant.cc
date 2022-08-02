@@ -499,40 +499,6 @@ ConstraintIndex MultibodyPlant<T>::AddCouplerConstraint(const Joint<T>& joint0,
 }
 
 template <typename T>
-ConstraintIndex MultibodyPlant<T>::AddPdController(
-    const JointActuator<T>& actuator, const T& proportional_gain,
-    const T& derivative_gain) {
-  DRAKE_DEMAND(proportional_gain > 0.0);
-  DRAKE_DEMAND(derivative_gain >= 0.0);
-
-  // N.B. The manager is setup at Finalize() and therefore we must require
-  // constraints to be added pre-finalize.
-  DRAKE_MBP_THROW_IF_FINALIZED();
-
-  if (!is_discrete()) {
-    throw std::runtime_error(
-        "Currently PD controller constraints are only supported for discrete "
-        "MultibodyPlant models.");
-  }
-
-  // TAMSI does not support coupler constraints. For all other solvers, we let
-  // the discrete update manger to throw an exception at finalize time.
-  if (contact_solver_enum_ == DiscreteContactSolver::kTamsi) {
-    throw std::runtime_error(
-        "Currently this MultibodyPlant is set to use the TAMSI solver. TAMSI "
-        "does not support constraints. Use "
-        "set_discrete_contact_solver() to set a different solver type.");
-  }
-
-  const ConstraintIndex constraint_index(total_num_constraints_++);
-
-  pd_controller_specs_.push_back(internal::PdControllerConstraintSpecs<T>{
-      actuator.index(), proportional_gain, derivative_gain});
-
-  return constraint_index;
-}
-
-template <typename T>
 std::string MultibodyPlant<T>::GetTopologyGraphvizString() const {
   std::string graphviz = "digraph MultibodyPlant {\n";
   graphviz += "label=\"" + this->get_name() + "\";\n";
@@ -922,6 +888,25 @@ void MultibodyPlant<T>::Finalize() {
       }
     }
   }
+
+  // TODO: throw exception if any JointActuator has controller gains but the
+  // plant is continuous or we are not using SAP.
+#if 0
+if (!is_discrete()) {
+    throw std::runtime_error(
+        "Currently PD controller constraints are only supported for discrete "
+        "MultibodyPlant models.");
+  }
+
+  // TAMSI does not support coupler constraints. For all other solvers, we let
+  // the discrete update manger to throw an exception at finalize time.
+  if (contact_solver_enum_ == DiscreteContactSolver::kTamsi) {
+    throw std::runtime_error(
+        "Currently this MultibodyPlant is set to use the TAMSI solver. TAMSI "
+        "does not support constraints. Use "
+        "set_discrete_contact_solver() to set a different solver type.");
+  }
+#endif  
 }
 
 template<typename T>

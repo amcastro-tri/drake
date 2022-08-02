@@ -133,11 +133,6 @@ class MultibodyPlantDiscreteUpdateManagerAttorney {
     return plant.coupler_constraints_specs_;
   }
 
-  static const std::vector<internal::PdControllerConstraintSpecs<T>>&
-  pd_controllers_specs(const MultibodyPlant<T>& plant) {
-    return plant.pd_controller_specs_;
-  }
-
 };
 }  // namespace internal
 }  // namespace multibody

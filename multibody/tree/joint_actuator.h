@@ -2,6 +2,7 @@
 
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,11 @@ class JointActuator final
     : public MultibodyElement<JointActuator, T, JointActuatorIndex> {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(JointActuator)
+
+  struct PdControllerGains {
+    T proportional_gain;
+    T derivative_gain;
+  };
 
   /// Creates an actuator for `joint` with the given `name`.
   /// The name must be unique within the given multibody model. This is
@@ -247,6 +253,24 @@ class JointActuator final
   }
   /// @} <!-- Reflected Inertia -->
 
+  /// Set controller gains for this joint actuator. 
+  void set_controller_gains(PdControllerGains gains) {
+    pd_controller_gains_ = gains;
+  }
+
+  /// Returns `true` if controller gains have been specified with a call to
+  /// set_controller_gains().
+  bool has_controller() const {
+    return pd_controller_gains_.has_value();
+  }
+
+  /// Returns a reference to the controller gains for this actuator.
+  /// @pre has_controller() is `true`.
+  const PdControllerGains& get_controller_gains() const {
+    DRAKE_DEMAND(has_controller());
+    return *pd_controller_gains_;
+  }
+
   /// @cond
   // For internal use only.
   // NVI to DoCloneToScalar() templated on the scalar type of the new clone to
@@ -332,6 +356,8 @@ class JointActuator final
 
   // The topology of this actuator. Only valid post- MultibodyTree::Finalize().
   internal::JointActuatorTopology topology_;
+
+  std::optional<PdControllerGains> pd_controller_gains_{std::nullopt};
 };
 
 }  // namespace multibody

@@ -955,7 +955,7 @@ void CompliantContactManager<T>::AddPdControllerConstraints(
   DRAKE_DEMAND(problem != nullptr);
 
   // Do nothing if not PD controllers were specified.
-  if (this->pd_controllers_specs().size() == 0) return;
+  if (this->pd_controller_specs_.size() == 0) return;
 
   // Previous time step positions.
   const VectorX<T> q0 = plant().GetPositions(context);
@@ -972,7 +972,7 @@ void CompliantContactManager<T>::AddPdControllerConstraints(
   const double beta = 0.1;      
 
   for (const PdControllerConstraintSpecs<T>& info :
-       this->pd_controllers_specs()) {
+       this->pd_controller_specs_) {
     const JointActuator<T>& actuator =
         plant().get_joint_actuator(info.actuator_index);
     const Joint<T>& joint = actuator.joint();        
@@ -1085,6 +1085,18 @@ void CompliantContactManager<T>::ExtractModelInfo() {
     const int nv = joint.num_velocities();
     joint_damping_.segment(velocity_start, nv) = joint.damping_vector();
   }
+
+  // Extract specs for PD controllers, modeled as constraints.
+  for (JointActuatorIndex a(0); a < plant().num_actuators(); ++a) {
+    const JointActuator<T>& actuator = plant().get_joint_actuator(a);
+    if (actuator.has_controller()) {
+      const typename JointActuator<T>::PdControllerGains& gains =
+          actuator.get_controller_gains();
+      pd_controller_specs_.push_back(PdControllerConstraintSpecs<T>{
+          a, gains.proportional_gain, gains.derivative_gain});
+    }
+  }
+
 }
 
 template <typename T>

@@ -498,9 +498,10 @@ void ManipulationStation<T>::Finalize(
 
     //const auto& left_actuator =
       //  plant.GetJointActuatorByName("left_finger_sliding_joint");
-    const auto& right_actuator =
+    const auto& actuator =
         plant_->GetJointActuatorByName("right_finger_sliding_joint");
-    plant_->AddPdController(right_actuator, wsg_kp_, wsg_kd_);    
+    auto& mutable_actuator = plant_->get_mutable_joint_actuator(actuator.index());
+    mutable_actuator.set_controller_gains({wsg_kp_, wsg_kd_});    
   }
 
   // Setup PD control for the arm (before Finalize())
@@ -520,8 +521,9 @@ void ManipulationStation<T>::Finalize(
     for (int joint_index = 1; joint_index <= 7; ++joint_index) {
       const std::string name = fmt::format("iiwa_joint_{}", joint_index);
       const auto& actuator = plant_->GetJointActuatorByName(name);
-      plant_->AddPdController(actuator, iiwa_kp_[joint_index - 1],
-                              iiwa_kd_[joint_index - 1]);
+      auto& mutable_actuator = plant_->get_mutable_joint_actuator(actuator.index());
+      mutable_actuator.set_controller_gains(
+          {iiwa_kp_[joint_index - 1], iiwa_kd_[joint_index - 1]});
     }
   }
 

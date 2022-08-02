@@ -182,13 +182,6 @@ DiscreteUpdateManager<T>::coupler_constraints_specs() const {
       T>::coupler_constraints_specs(*plant_);
 }
 
-template <typename T>
-const std::vector<internal::PdControllerConstraintSpecs<T>>&
-DiscreteUpdateManager<T>::pd_controllers_specs() const {
-  return MultibodyPlantDiscreteUpdateManagerAttorney<T>::pd_controllers_specs(
-      *plant_);
-}
-
 }  // namespace internal
 }  // namespace multibody
 }  // namespace drake

@@ -1213,12 +1213,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
                                        const T& gear_ratio,
                                        const T& offset = 0.0);
 
-  // TODO(amcstro-tri): Consider having these parameters in the JointActuator
-  // and removing this API.
-  ConstraintIndex AddPdController(const JointActuator<T>& actuator,
-                                  const T& proportional_gain,
-                                  const T& derivative_gain);
-
   /// @}
 
   /// @anchor mbp_geometry
@@ -5124,8 +5118,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
 
   // Vector of coupler constraints specifications.
   std::vector<internal::CouplerConstraintSpecs<T>> coupler_constraints_specs_;
-
-  std::vector<internal::PdControllerConstraintSpecs<T>> pd_controller_specs_;
 
   // All MultibodyPlant cache indexes are stored in cache_indexes_.
   CacheIndexes cache_indexes_;

@@ -100,16 +100,10 @@ class MultibodyPlantDiscreteUpdateManagerAttorney {
     return plant.AssembleActuationInput(context);
   }
 
-  static VectorX<T> AssembleDesiredPositionsInput(
+  static VectorX<T> AssembleDesiredStateInput(
       const MultibodyPlant<T>& plant,
       const systems::Context<T>& context) {
-    return plant.AssembleDesiredPositionsInput(context);
-  }
-
-  static VectorX<T> AssembleDesiredVelocitiesInput(
-      const MultibodyPlant<T>& plant,
-      const systems::Context<T>& context) {
-    return plant.AssembleDesiredVelocitiesInput(context);
+    return plant.AssembleDesiredStateInput(context);
   }
 
   // TODO(xuchenhan-tri): Remove this when SceneGraph takes control of all

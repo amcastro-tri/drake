@@ -252,8 +252,7 @@
         <limit>
           <lower>-0.055</lower>
           <upper>0</upper>
-          <effort>80</effort>
-          <stiffness>15000</stiffness>
+          <effort>0</effort>
         </limit>
         <dynamics>
           <spring_reference>0</spring_reference>

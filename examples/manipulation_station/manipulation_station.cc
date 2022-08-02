@@ -704,26 +704,20 @@ void ManipulationStation<T>::Finalize(
     builder.Connect(
         mux->get_output_port(0),
         plant_->get_desired_positions_input_port(wsg_model_.model_instance));
-#endif        
+#endif
 
-    // Quick hack, only positions are commanded. Velocities are zero.
-    builder.Connect(
-        iiwa_position->get_output_port(),
-        plant_->get_desired_positions_input_port(iiwa_model_.model_instance));
-
-#if 0
     // Approximate desired state command from a discrete derivative of the
     // position command input port.
     auto desired_state_from_position = builder.template AddSystem<
         systems::StateInterpolatorWithDiscreteDerivative>(
-            num_iiwa_positions, plant_->time_step(),
-            true /* suppress_initial_transient */);
+        num_iiwa_positions, plant_->time_step(),
+        true /* suppress_initial_transient */);
     desired_state_from_position->set_name("desired_state_from_position");
-    builder.Connect(desired_state_from_position->get_output_port(),
-                    iiwa_controller->get_input_port_desired_state());
     builder.Connect(iiwa_position->get_output_port(),
                     desired_state_from_position->get_input_port());
-#endif 
+    builder.Connect(
+        desired_state_from_position->get_output_port(),
+        plant_->get_desired_state_input_port(iiwa_model_.model_instance));    
 
     // Export commanded torques:
     builder.ExportOutput(adder->get_output_port(), "iiwa_torque_commanded");
@@ -732,21 +726,21 @@ void ManipulationStation<T>::Finalize(
 
   // Gripper ports.
   {
-    // As a quick hack, I combine the single scalar valued position into a
-    // vector of size 2.
+    // For now, create a desired state for the gripper with zero velocities.
     auto wsg_qd_passthrough =
         builder.template AddSystem<systems::PassThrough>(1);
     auto mux = builder.template AddSystem<systems::Multiplexer>(2);
     builder.Connect(wsg_qd_passthrough->get_output_port(),
                     mux->get_input_port(0));
-    builder.Connect(wsg_qd_passthrough->get_output_port(),
+    auto wsg_zero_vd =
+        builder.template AddSystem<systems::ConstantVectorSource>(0.0);
+    builder.Connect(wsg_zero_vd->get_output_port(),
                     mux->get_input_port(1));
 
-    // Connect command to the plant
-    // TODO: connect desired velocities for "faster" gripper response.
+    // Connect command to the plant    
     builder.Connect(
         mux->get_output_port(0),
-        plant_->get_desired_positions_input_port(wsg_model_.model_instance));
+        plant_->get_desired_state_input_port(wsg_model_.model_instance));
 
     // Export an input of a vector of size one.
     builder.ExportInput(wsg_qd_passthrough->get_input_port(), "wsg_position");

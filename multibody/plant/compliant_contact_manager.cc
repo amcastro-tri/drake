@@ -962,10 +962,9 @@ void CompliantContactManager<T>::AddPdControllerConstraints(
 
   // Desired positions & velocities.
   // TODO: makes this EvalFoo() instead to avoid heap allocations.
-  const VectorX<T> desired_positions =
-      this->AssembleDesiredPositionsInput(context);
-  const VectorX<T> desired_velocities =
-      this->AssembleDesiredVelocitiesInput(context);
+  const int num_actuators = plant().num_actuators();
+  const VectorX<T> desired_state =
+      this->AssembleDesiredStateInput(context);
   const VectorX<T> feed_forward_actuation =
       this->AssembleActuationInput(context);
 
@@ -979,8 +978,8 @@ void CompliantContactManager<T>::AddPdControllerConstraints(
     const Joint<T>& joint = actuator.joint();        
     const double effort_limit = actuator.effort_limit();
     DRAKE_DEMAND(effort_limit > 0.0);
-    const T& qd = desired_positions[actuator.index()];
-    const T& vd = desired_velocities[actuator.index()];    
+    const T& qd = desired_state[actuator.index()];
+    const T& vd = desired_state[num_actuators + actuator.index()];    
     const T& u0 = feed_forward_actuation[info.actuator_index];
 
     const int dof = joint.velocity_start();

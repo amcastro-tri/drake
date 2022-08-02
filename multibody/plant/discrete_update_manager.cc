@@ -143,16 +143,9 @@ VectorX<T> DiscreteUpdateManager<T>::AssembleActuationInput(
 }
 
 template <typename T>
-VectorX<T> DiscreteUpdateManager<T>::AssembleDesiredPositionsInput(
+VectorX<T> DiscreteUpdateManager<T>::AssembleDesiredStateInput(
     const systems::Context<T>& context) const {
-  return MultibodyPlantDiscreteUpdateManagerAttorney<T>::AssembleDesiredPositionsInput(
-      plant(), context);
-}
-
-template <typename T>
-VectorX<T> DiscreteUpdateManager<T>::AssembleDesiredVelocitiesInput(
-    const systems::Context<T>& context) const {
-  return MultibodyPlantDiscreteUpdateManagerAttorney<T>::AssembleDesiredVelocitiesInput(
+  return MultibodyPlantDiscreteUpdateManagerAttorney<T>::AssembleDesiredStateInput(
       plant(), context);
 }
 

@@ -25,9 +25,11 @@ namespace internal {
 template <typename T>
 struct ImpulsesCache {
   void Resize(int num_constraint_equations) {
+    vhat_eff.resize(num_constraint_equations);
     y.resize(num_constraint_equations);
     gamma.resize(num_constraint_equations);
   }
+  VectorX<T> vhat_eff;  // = v̂ + Rprox⋅z
   VectorX<T> y;      // The (unprojected) impulse y = −R⁻¹⋅(vc − v̂).
   VectorX<T> gamma;  // Impulse γ = P(y), with P(y) the projection operator.
 };
@@ -205,6 +207,12 @@ class SapModel {
    @pre `context` is created with a call to MakeContext(). */
   void SetVelocities(const VectorX<T>& v, systems::Context<T>* context) const;
 
+  const VectorX<T>& GetNominalImpulses(
+      const systems::Context<T>& context) const;
+  VectorX<T>& GetMutableNominalImpulses(systems::Context<T>* context) const;
+  void SetNominalImpulses(const VectorX<T>& gamma_nominal,
+                          systems::Context<T>* context) const;
+
   /* Evaluates the constraint velocities vc = J⋅v.
    @pre `context` is created with a call to MakeContext(). */
   const VectorX<T>& EvalConstraintVelocities(
@@ -302,8 +310,10 @@ class SapModel {
 
     /* Constructs a system that declares a discrete state of size
      num_velocities. */
-    explicit SapModelSystem(int num_velocities) {
+    SapModelSystem(int num_velocities, int num_constraint_equations) {
       velocities_index_ = this->DeclareDiscreteState(num_velocities);
+      nominal_impulses_index_ =
+          this->DeclareDiscreteState(num_constraint_equations);
     }
 
     /* Promote system methods so that SapModel can use them to declare state and
@@ -315,11 +325,16 @@ class SapModel {
       return velocities_index_;
     }
 
+    systems::DiscreteStateIndex nominal_impulses_index() const {
+      return nominal_impulses_index_;
+    }
+
     /* Accessors to cache indexes. */
     const CacheIndexes& cache_indexes() const { return cache_indexes_; }
     CacheIndexes& mutable_cache_indexes() { return cache_indexes_; }
 
    private:
+    systems::DiscreteStateIndex nominal_impulses_index_;
     systems::DiscreteStateIndex velocities_index_;
     CacheIndexes cache_indexes_;
   };

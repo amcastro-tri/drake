@@ -73,7 +73,8 @@ SapModel<T>::SapModel(const SapContactProblem<T>* problem_ptr)
   const_model_data_.inv_sqrt_A = std::move(inv_sqrt_A);
   const_model_data_.delassus_diagonal = std::move(delassus_diagonal);
 
-  system_ = std::make_unique<SapModelSystem>(num_velocities());
+  system_ = std::make_unique<SapModelSystem>(num_velocities(),
+                                             num_constraint_equations());
   DeclareCacheEntries();
 }
 
@@ -85,15 +86,16 @@ void SapModel<T>::DeclareCacheEntries() {
   const auto& constraint_velocities_cache_entry = system_->DeclareCacheEntry(
       "Constraint velocities, vc = J⋅v.",
       systems::ValueProducer(this, &SapModel<T>::CalcConstraintVelocities),
-      {systems::System<T>::xd_ticket()});
+      {systems::System<T>::discrete_state_ticket(velocities_index())});
   system_->mutable_cache_indexes().constraint_velocities =
       constraint_velocities_cache_entry.cache_index();
 
   const auto& impulses_cache_entry = system_->DeclareCacheEntry(
-      "Impulses, γ = P(−R⁻¹(vc − v̂)).",
+      "Impulses, γ = P(−R⁻¹(vc − v̂(z))).",
       systems::ValueProducer(this, &SapModel<T>::CalcImpulsesCache),
       {system_->cache_entry_ticket(
-          system_->cache_indexes().constraint_velocities)});
+           system_->cache_indexes().constraint_velocities),
+       systems::System<T>::discrete_state_ticket(nominal_impulses_index())});
   system_->mutable_cache_indexes().impulses =
       impulses_cache_entry.cache_index();
 
@@ -155,6 +157,30 @@ void SapModel<T>::SetVelocities(const VectorX<T>& v,
 }
 
 template <typename T>
+const VectorX<T>& SapModel<T>::GetNominalImpulses(
+    const systems::Context<T>& context) const {
+  system_->ValidateContext(context);
+  return context.get_discrete_state(system_->nominal_impulses_index()).value();
+}
+
+template <typename T>
+VectorX<T>& SapModel<T>::GetMutableNominalImpulses(
+    systems::Context<T>* context) const {
+  DRAKE_DEMAND(context != nullptr);
+  system_->ValidateContext(*context);
+  return context->get_mutable_discrete_state(system_->nominal_impulses_index())
+      .get_mutable_value();
+}
+
+template <typename T>
+void SapModel<T>::SetNominalImpulses(const VectorX<T>& gamma_nominal,
+                                     systems::Context<T>* context) const {
+  DRAKE_DEMAND(gamma_nominal.size() == num_constraint_equations());
+  system_->ValidateContext(*context);
+  context->SetDiscreteState(system_->nominal_impulses_index(), gamma_nominal);
+}
+
+template <typename T>
 void SapModel<T>::CalcConstraintVelocities(const Context<T>& context,
                                            VectorX<T>* vc) const {
   system_->ValidateContext(context);
@@ -183,7 +209,10 @@ void SapModel<T>::CalcImpulsesCache(const Context<T>& context,
   system_->ValidateContext(context);
   cache->Resize(num_constraint_equations());
   const VectorX<T>& vc = EvalConstraintVelocities(context);
-  constraints_bundle().CalcUnprojectedImpulses(vc, &cache->y);
+  const VectorX<T>& gamma_nominal = GetNominalImpulses(context);
+  constraints_bundle().CalcEffectiveConstraintBias(gamma_nominal,
+                                                   &cache->vhat_eff);
+  constraints_bundle().CalcUnprojectedImpulses(vc, cache->vhat_eff, &cache->y);
   constraints_bundle().ProjectImpulses(cache->y, &cache->gamma);
 }
 
@@ -207,8 +236,9 @@ void SapModel<T>::CalcCostCache(const Context<T>& context,
   const VectorX<T>& momentum_gain = gain_cache.momentum_gain;
   cache->momentum_cost = 0.5 * velocity_gain.dot(momentum_gain);
   const VectorX<T>& gamma = EvalImpulses(context);
-  const VectorX<T>& R = constraints_bundle().R();
-  cache->regularizer_cost = 0.5 * T(gamma.transpose() * R.asDiagonal() * gamma);
+  const VectorX<T>& Reff = constraints_bundle().Reff();
+  cache->regularizer_cost =
+      0.5 * T(gamma.transpose() * Reff.asDiagonal() * gamma);
   cache->cost = cache->momentum_cost + cache->regularizer_cost;
 }
 
@@ -229,7 +259,11 @@ void SapModel<T>::CalcHessianCache(const systems::Context<T>& context,
   system_->ValidateContext(context);
   cache->Resize(num_constraints(), num_constraint_equations());
   const VectorX<T>& vc = EvalConstraintVelocities(context);
-  constraints_bundle().CalcUnprojectedImpulses(vc, &cache->impulses.y);
+  const VectorX<T>& gamma_nominal = GetNominalImpulses(context);
+  constraints_bundle().CalcEffectiveConstraintBias(gamma_nominal,
+                                                   &cache->impulses.vhat_eff);
+  constraints_bundle().CalcUnprojectedImpulses(vc, cache->impulses.vhat_eff,
+                                               &cache->impulses.y);
   constraints_bundle().ProjectImpulsesAndCalcConstraintsHessian(
       cache->impulses.y, &cache->impulses.gamma, &cache->G);
 }

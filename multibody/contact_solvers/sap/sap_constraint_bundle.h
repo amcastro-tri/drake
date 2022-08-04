@@ -97,11 +97,15 @@ class SapConstraintBundle {
    num_constraint_equations().*/
   const VectorX<T>& vhat() const { return vhat_; }
 
+  CalcEffectiveConstraintBias(const VectorX<T>& gamma_nominal,
+                              VectorX<T>* vhat_eff) const;
+
   /* Computes unprojected impulses y according to y = −R⁻¹⋅(v−v̂), where R is
    the regularization matrix, R(), and v̂ is the bias term, vhat().
    @pre vc.size() equals num_constraint_equations().
    @pre y != nullptr and y->size() equals num_constraint_equations(). */
-  void CalcUnprojectedImpulses(const VectorX<T>& vc, VectorX<T>* y) const;
+  void CalcUnprojectedImpulses(const VectorX<T>& vc, const VectorX<T>& vhat_eff,
+                               VectorX<T>* y) const;
 
   /* Computes the projection γ = P(y) for all impulses and the gradient
    dP/dy if dPdy != nullptr. On output dPdy[i] stores the gradient dPᵢ/dyᵢ for
@@ -131,8 +135,16 @@ class SapConstraintBundle {
 
   BlockSparseMatrix<T> J_;
   VectorX<T> vhat_;
+  // "Physical" regularization.
   VectorX<T> R_;
   VectorX<T> Rinv_;
+  // "Proximal" regularization.
+  VectorX<T> Rprox_;
+  VectorX<T> Rprox_inv_;
+  // "Effective" regularization. Reff = R + Rprox.
+  VectorX<T> Reff_;
+  VectorX<T> Reff_inv_;
+
   // Constraint references in the order dictated by the ContactProblemGraph.
   std::vector<const SapConstraint<T>*> constraints_;
 };

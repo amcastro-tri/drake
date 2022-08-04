@@ -123,12 +123,22 @@ void SapConstraintBundle<T>::MakeConstraintBundleJacobian(
 }
 
 template <typename T>
+void SapConstraintBundle<T>::CalcEffectiveConstraintBias(
+    const VectorX<T>& gamma_nominal, VectorX<T>* vhat_eff) const {
+  DRAKE_DEMAND(gamma_nominal.size() == num_constraint_equations());
+  DRAKE_DEMAND(vhat_eff != nullptr);
+  DRAKE_DEMAND(vhat_eff->size() == num_constraint_equations());
+  *vhat_eff = vhat() + Rprox_ * gamma_nominal;
+}
+
+template <typename T>
 void SapConstraintBundle<T>::CalcUnprojectedImpulses(const VectorX<T>& vc,
+                                                     const VectorX<T>& vhat_eff,
                                                      VectorX<T>* y) const {
   DRAKE_DEMAND(vc.size() == num_constraint_equations());
   DRAKE_DEMAND(y != nullptr);
   DRAKE_DEMAND(y->size() == num_constraint_equations());
-  *y = Rinv_.asDiagonal() * (vhat_ - vc);
+  *y = Reff_.asDiagonal() * (vhat_eff - vc);
 }
 
 template <typename T>
@@ -146,7 +156,7 @@ void SapConstraintBundle<T>::ProjectImpulses(
     const SapConstraint<T>& c = *constraints_[i];
     const int ni = c.num_constraint_equations();
     const auto y_i = y.segment(constraint_start, ni);
-    const auto R_i = R().segment(constraint_start, ni);
+    const auto R_i = Reff().segment(constraint_start, ni);
     auto gamma_i = gamma->segment(constraint_start, ni);
     if (dPdy != nullptr) {
       MatrixX<T>& dPdy_i = (*dPdy)[i];
@@ -173,7 +183,7 @@ void SapConstraintBundle<T>::ProjectImpulsesAndCalcConstraintsHessian(
   for (int i = 0; i < num_constraints(); ++i) {
     const SapConstraint<T>& c = *constraints_[i];
     const int ni = c.num_constraint_equations();
-    const auto Rinv_i = Rinv().segment(constraint_start, ni);
+    const auto Rinv_i = Reff_inv().segment(constraint_start, ni);
     const MatrixX<T>& dPdy_i = (*G)[i];
     (*G)[i] = dPdy_i * Rinv_i.asDiagonal();
     constraint_start += ni;

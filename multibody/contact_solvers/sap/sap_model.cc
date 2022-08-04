@@ -86,7 +86,7 @@ void SapModel<T>::DeclareCacheEntries() {
   const auto& constraint_velocities_cache_entry = system_->DeclareCacheEntry(
       "Constraint velocities, vc = J⋅v.",
       systems::ValueProducer(this, &SapModel<T>::CalcConstraintVelocities),
-      {systems::System<T>::discrete_state_ticket(velocities_index())});
+      {system_->discrete_state_ticket(system_->velocities_index())});
   system_->mutable_cache_indexes().constraint_velocities =
       constraint_velocities_cache_entry.cache_index();
 
@@ -95,7 +95,8 @@ void SapModel<T>::DeclareCacheEntries() {
       systems::ValueProducer(this, &SapModel<T>::CalcImpulsesCache),
       {system_->cache_entry_ticket(
            system_->cache_indexes().constraint_velocities),
-       systems::System<T>::discrete_state_ticket(nominal_impulses_index())});
+       system_->discrete_state_ticket(
+           system_->nominal_impulses_index())});
   system_->mutable_cache_indexes().impulses =
       impulses_cache_entry.cache_index();
 
@@ -164,7 +165,7 @@ const VectorX<T>& SapModel<T>::GetNominalImpulses(
 }
 
 template <typename T>
-VectorX<T>& SapModel<T>::GetMutableNominalImpulses(
+Eigen::VectorBlock<VectorX<T>> SapModel<T>::GetMutableNominalImpulses(
     systems::Context<T>* context) const {
   DRAKE_DEMAND(context != nullptr);
   system_->ValidateContext(*context);

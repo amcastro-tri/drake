@@ -93,12 +93,15 @@ class SapConstraintBundle {
    num_constraint_equations(). */
   const VectorX<T>& Rinv() const { return Rinv_; }
 
+  const VectorX<T>& Reff() const { return Reff_; }
+  const VectorX<T>& Reff_inv() const { return Reff_inv_; }
+
   /* Returns the bias v̂ for the entire bundle. Of size
    num_constraint_equations().*/
   const VectorX<T>& vhat() const { return vhat_; }
 
-  CalcEffectiveConstraintBias(const VectorX<T>& gamma_nominal,
-                              VectorX<T>* vhat_eff) const;
+  void CalcEffectiveConstraintBias(const VectorX<T>& gamma_nominal,
+                                   VectorX<T>* vhat_eff) const;
 
   /* Computes unprojected impulses y according to y = −R⁻¹⋅(v−v̂), where R is
    the regularization matrix, R(), and v̂ is the bias term, vhat().

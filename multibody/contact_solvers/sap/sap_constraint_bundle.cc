@@ -23,6 +23,8 @@ SapConstraintBundle<T>::SapConstraintBundle(
   // Vector of bias velocities and diagonal matrix R.
   vhat_.resize(problem->num_constraint_equations());
   R_.resize(problem->num_constraint_equations());
+  Rprox_.resize(problem->num_constraint_equations());
+  Reff_.resize(problem->num_constraint_equations());
   int impulse_index_start = 0;
   for (const ContactProblemGraph::ConstraintCluster& e :
        problem->graph().clusters()) {
@@ -38,10 +40,18 @@ SapConstraintBundle<T>::SapConstraintBundle(
       R_.segment(impulse_index_start, ni) =
           c.CalcDiagonalRegularization(problem->time_step(), wi);
 
+      // "Proximal" regularization.
+      const T Rprox_i = 0.0 * wi;  // TODO: expose this parameter.
+      Rprox_.segment(impulse_index_start, ni).setConstant(Rprox_i);
+
       impulse_index_start += ni;
     }
   }
+  Reff_ = R_ + Rprox_;
+
   Rinv_ = R_.cwiseInverse();
+  Rprox_inv_ = Rprox_.cwiseInverse();
+  Reff_inv_ = Reff_.cwiseInverse();
 
   MakeConstraintBundleJacobian(*problem);
 }

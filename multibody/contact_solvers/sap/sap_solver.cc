@@ -221,6 +221,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
 
     ell_previous = ell;
     ell = model_->EvalCost(*context);
+    model_->SetNominalImpulses(model_->EvalImpulses(*context), context.get());
 
     const double ell_scale = (ell + ell_previous) / 2.0;
     // N.B. Even though theoretically we expect ell < ell_previous, round-off

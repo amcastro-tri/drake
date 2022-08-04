@@ -209,7 +209,8 @@ class SapModel {
 
   const VectorX<T>& GetNominalImpulses(
       const systems::Context<T>& context) const;
-  VectorX<T>& GetMutableNominalImpulses(systems::Context<T>* context) const;
+  Eigen::VectorBlock<VectorX<T>> GetMutableNominalImpulses(
+      systems::Context<T>* context) const;
   void SetNominalImpulses(const VectorX<T>& gamma_nominal,
                           systems::Context<T>* context) const;
 

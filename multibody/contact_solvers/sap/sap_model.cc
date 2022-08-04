@@ -8,6 +8,10 @@
 #include "drake/multibody/contact_solvers/block_sparse_matrix.h"
 #include "drake/multibody/contact_solvers/sap/contact_problem_graph.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
+
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
@@ -211,6 +215,7 @@ void SapModel<T>::CalcImpulsesCache(const Context<T>& context,
   cache->Resize(num_constraint_equations());
   const VectorX<T>& vc = EvalConstraintVelocities(context);
   const VectorX<T>& gamma_nominal = GetNominalImpulses(context);
+  PRINT_VAR(gamma_nominal.transpose());
   constraints_bundle().CalcEffectiveConstraintBias(gamma_nominal,
                                                    &cache->vhat_eff);
   constraints_bundle().CalcUnprojectedImpulses(vc, cache->vhat_eff, &cache->y);

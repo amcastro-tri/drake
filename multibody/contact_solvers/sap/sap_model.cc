@@ -215,7 +215,6 @@ void SapModel<T>::CalcImpulsesCache(const Context<T>& context,
   cache->Resize(num_constraint_equations());
   const VectorX<T>& vc = EvalConstraintVelocities(context);
   const VectorX<T>& gamma_nominal = GetNominalImpulses(context);
-  PRINT_VAR(gamma_nominal.transpose());
   constraints_bundle().CalcEffectiveConstraintBias(gamma_nominal,
                                                    &cache->vhat_eff);
   constraints_bundle().CalcUnprojectedImpulses(vc, cache->vhat_eff, &cache->y);

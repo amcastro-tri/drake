@@ -143,7 +143,6 @@ class SapConstraintBundle {
   VectorX<T> Rinv_;
   // "Proximal" regularization.
   VectorX<T> Rprox_;
-  VectorX<T> Rprox_inv_;
   // "Effective" regularization. Reff = R + Rprox.
   VectorX<T> Reff_;
   VectorX<T> Reff_inv_;

@@ -53,7 +53,6 @@ SapConstraintBundle<T>::SapConstraintBundle(
   Reff_ = R_ + Rprox_;
 
   Rinv_ = R_.cwiseInverse();
-  Rprox_inv_ = Rprox_.cwiseInverse();
   Reff_inv_ = Reff_.cwiseInverse();
 
   MakeConstraintBundleJacobian(*problem);
@@ -141,7 +140,7 @@ void SapConstraintBundle<T>::CalcEffectiveConstraintBias(
   DRAKE_DEMAND(gamma_nominal.size() == num_constraint_equations());
   DRAKE_DEMAND(vhat_eff != nullptr);
   DRAKE_DEMAND(vhat_eff->size() == num_constraint_equations());
-  *vhat_eff = vhat() + Rprox_ * gamma_nominal;
+  *vhat_eff = vhat() + Rprox_.asDiagonal() * gamma_nominal;
 }
 
 template <typename T>
@@ -149,9 +148,10 @@ void SapConstraintBundle<T>::CalcUnprojectedImpulses(const VectorX<T>& vc,
                                                      const VectorX<T>& vhat_eff,
                                                      VectorX<T>* y) const {
   DRAKE_DEMAND(vc.size() == num_constraint_equations());
+  DRAKE_DEMAND(vhat_eff.size() == num_constraint_equations());
   DRAKE_DEMAND(y != nullptr);
   DRAKE_DEMAND(y->size() == num_constraint_equations());
-  *y = Reff_.asDiagonal() * (vhat_eff - vc);
+  *y = Reff_inv_.asDiagonal() * (vhat_eff - vc);
 }
 
 template <typename T>

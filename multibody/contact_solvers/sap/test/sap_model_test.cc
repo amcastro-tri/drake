@@ -714,7 +714,8 @@ TEST_F(DummyModelTest, Impulses) {
   const auto& bundle = sap_model_->constraints_bundle();
   const VectorXd& vc = sap_model_->EvalConstraintVelocities(*context_);
   VectorXd y(sap_model_->num_constraint_equations());
-  bundle.CalcUnprojectedImpulses(vc, &y);
+  const VectorXd& vhat = bundle.vhat();
+  bundle.CalcUnprojectedImpulses(vc, vhat, &y);
   VectorXd gamma_expected(sap_model_->num_constraint_equations());
   bundle.ProjectImpulses(y, &gamma_expected);
 
@@ -758,6 +759,7 @@ TEST_F(DummyModelTest, CostGradients) {
   auto context_ad = sap_model_ad->MakeContext();
   const VectorXd v = arbitrary_v();
   VectorX<AutoDiffXd> v_ad = drake::math::InitializeAutoDiff(v);
+  sap_model_ad->GetMutableNominalImpulses(context_ad.get()).setZero();
   sap_model_ad->SetVelocities(v_ad, context_ad.get());
   // AutoDiffXd computation of the gradient.
   const AutoDiffXd& cost_ad = sap_model_ad->EvalCost(*context_ad);

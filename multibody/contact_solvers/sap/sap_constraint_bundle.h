@@ -93,8 +93,13 @@ class SapConstraintBundle {
    num_constraint_equations(). */
   const VectorX<T>& Rinv() const { return Rinv_; }
 
+  const VectorX<T>& Rprox() const { return Rprox_; }
+  VectorX<T>& mutable_Rprox() { return Rprox_; }
+
   const VectorX<T>& Reff() const { return Reff_; }
+  VectorX<T>& mutable_Reff() { return Reff_; }
   const VectorX<T>& Reff_inv() const { return Reff_inv_; }
+  VectorX<T>& mutable_Reff_inv() { return Reff_inv_; }
 
   /* Returns the bias v̂ for the entire bundle. Of size
    num_constraint_equations().*/

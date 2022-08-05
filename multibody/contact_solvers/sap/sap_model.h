@@ -180,6 +180,10 @@ class SapModel {
   /* Const access to the bundle for this model. */
   const SapConstraintBundle<T>& constraints_bundle() const;
 
+  SapConstraintBundle<T>& constraints_bundle() {
+    return *const_model_data_.constraints_bundle;
+  }
+
   /* Performs multiplication p = A⋅v. Only participating velocities are
    considered.
    @pre p must be a valid pointer.

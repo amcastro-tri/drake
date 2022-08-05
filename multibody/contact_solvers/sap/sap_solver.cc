@@ -500,6 +500,15 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
                SapSolverParameters::LineSearchType::kExact);
   DRAKE_DEMAND(scratch != nullptr);
   DRAKE_DEMAND(scratch != &context);
+
+  // Pefrom LS on the "true" cost.
+  const VectorX<double> Rprox = model_->constraints_bundle().Rprox();
+  model_->constraints_bundle().mutable_Reff() =
+      model_->constraints_bundle().R();
+  model_->constraints_bundle().mutable_Reff_inv() =
+      model_->constraints_bundle().R().cwiseInverse();
+  model_->constraints_bundle().mutable_Rprox().setZero();
+
   // dℓ/dα(α = 0) = ∇ᵥℓ(α = 0)⋅Δv.
   const VectorX<double>& ell_grad_v0 = model_->EvalCostGradient(context);
   const VectorX<double>& dv = search_direction_data.dv;
@@ -592,6 +601,13 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   const auto [alpha, iters] = DoNewtonWithBisectionFallback(
       cost_and_gradient, bracket, alpha_guess, alpha_tolerance, f_tolerance,
       parameters_.exact_line_search.max_iterations);
+
+  // Return model back.
+  model_->constraints_bundle().mutable_Reff() =
+      model_->constraints_bundle().R() + Rprox;
+  model_->constraints_bundle().mutable_Reff_inv() =
+      model_->constraints_bundle().Reff().cwiseInverse();
+  model_->constraints_bundle().mutable_Rprox() = Rprox;
 
   return std::make_pair(alpha, iters);
 }

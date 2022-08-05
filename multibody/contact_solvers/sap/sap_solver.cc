@@ -12,6 +12,9 @@
 #include "drake/multibody/contact_solvers/newton_with_bisection.h"
 #include "drake/multibody/contact_solvers/supernodal_solver.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
@@ -71,6 +74,8 @@ void SapSolver<T>::CalcStoppingCriteriaResidual(const Context<T>& context,
   const VectorX<T>& p = model_->EvalMomentum(context);
   const VectorX<T>& jc = model_->EvalGeneralizedImpulses(context);
   const VectorX<T>& ell_grad = model_->EvalCostGradient(context);
+  //PRINT_VAR(ell_grad.norm());
+  //PRINT_VAR(jc.transpose());
 
   // Scale generalized momentum quantities using inv_sqrt_A so that all entries
   // have the same units and we can weigh them equally.
@@ -149,6 +154,10 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
   double alpha = 1.0;
   int num_line_search_iters = 0;
   for (;; ++k) {
+    //std::cout << std::string(80, '=') << std::endl;
+    //std::cout << std::string(80, '=') << std::endl;
+    
+
     // We first verify the stopping criteria. If satisfied, we skip expensive
     // factorizations.
     double momentum_residual, momentum_scale;
@@ -216,12 +225,19 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
     }
     stats_.num_line_search_iters += num_line_search_iters;
 
+    //std::cout << fmt::format("{} {} {} \n", k, alpha, num_line_search_iters);
+
     // Update state.
     model_->GetMutableVelocities(context.get()) += alpha * dv;
 
+    //PRINT_VAR(model_->GetNominalImpulses(*context).transpose());
+    //PRINT_VAR(model_->EvalImpulses(*context).transpose());
+
     ell_previous = ell;
     ell = model_->EvalCost(*context);
-    model_->SetNominalImpulses(model_->EvalImpulses(*context), context.get());
+    model_->GetMutableNominalImpulses(context.get()) =
+        model_->EvalImpulses(*context);
+    //model_->SetNominalImpulses(model_->EvalImpulses(*context), context.get());
 
     const double ell_scale = (ell + ell_previous) / 2.0;
     // N.B. Even though theoretically we expect ell < ell_previous, round-off
@@ -239,14 +255,14 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
         alpha > 0.5;
   }
 
-  if (!converged) return SapSolverStatus::kFailure;
-
-  PackSapSolverResults(*context, results);
-
   // N.B. If the stopping criteria is satisfied for k = 0, the solver is not
   // even instantiated and no factorizations are performed (the expensive part
   // of the computation). We report zero number of iterations.
   stats_.num_iters = k;
+
+  if (!converged) return SapSolverStatus::kFailure;
+
+  PackSapSolverResults(*context, results);
 
   return SapSolverStatus::kSuccess;
 }
@@ -275,6 +291,10 @@ T SapSolver<T>::CalcCostAlongLine(
   Context<T>& context_alpha = *scratch;
   const VectorX<T>& v = model_->GetVelocities(context);
   model_->GetMutableVelocities(&context_alpha) = v + alpha * dv;
+
+  // TODO: Move outside this call to avoid extra copy.
+  model_->GetMutableNominalImpulses(&context_alpha) =
+      model_->GetNominalImpulses(context);
 
   if (d2ell_dalpha2 != nullptr) {
     // Since it is more efficient to calculate impulses (gamma) and their

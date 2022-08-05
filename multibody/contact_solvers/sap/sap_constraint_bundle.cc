@@ -44,7 +44,7 @@ SapConstraintBundle<T>::SapConstraintBundle(
           c.CalcDiagonalRegularization(problem->time_step(), wi);
 
       // "Proximal" regularization.
-      const T Rprox_i = 0.0 * wi;  // TODO: expose this parameter.
+      const T Rprox_i = 1.e-4 * wi;  // TODO: expose this parameter.
       Rprox_.segment(impulse_index_start, ni).setConstant(Rprox_i);
 
       impulse_index_start += ni;

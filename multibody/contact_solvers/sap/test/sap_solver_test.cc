@@ -15,6 +15,10 @@
 #include "drake/multibody/contact_solvers/system_dynamics_data.h"
 #include "drake/systems/framework/context.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
+
 using drake::systems::Context;
 using Eigen::Matrix3d;
 using Eigen::MatrixXd;
@@ -265,6 +269,17 @@ class PizzaSaverTest
           problem.MakeContactProblem(q, v, tau, beta, kDefaultSigma);
       const SapSolverStatus status =
           sap.SolveWithGuess(*contact_problem, v_guess, &result);
+      if (status != SapSolverStatus::kSuccess) {
+        PRINT_VAR(i);
+        const auto& stats = sap.get_statistics();
+        PRINT_VAR(stats.num_iters);
+        PRINT_VAR(stats.num_line_search_iters);
+        PRINT_VAR(stats.cost.size());
+        std::cout << fmt::format("Cost - Alpha - Mom. Res.\n");
+        for (int it=0;it<=stats.num_iters;++it){
+          std::cout << fmt::format("{} {} {}\n", stats.cost[it], stats.alpha[i], stats.momentum_residual[i]);
+        }
+      }
       EXPECT_EQ(status, SapSolverStatus::kSuccess);
       v = result.v;
       q += problem.time_step() * v;
@@ -354,19 +369,20 @@ class PizzaSaverTest
 // Solve a problem with no applied torque. In this case contact forces should
 // balance weight.
 TEST_P(PizzaSaverTest, NoAppliedTorque) {
-  const double dt = 1.0;
+  const double dt = 0.01;
   const double mu = 1.0;
   const double k = 1.0e4;
   const double taud = dt;
   const PizzaSaverProblem problem(dt, mu, k, taud);
 
   SapSolverParameters params;  // Default set of parameters.
+  //params.max_iterations = 20;
   params.line_search_type = GetParam();
   const double beta = kEps;  // No near-rigid regime.
 
   const Vector4d tau(0.0, 0.0, -problem.mass() * problem.g(), 0.0);
   const SapSolverResults<double> result =
-      AdvanceNumSteps(problem, tau, 1, params, beta);
+      AdvanceNumSteps(problem, tau, 30, params, beta);
 
   // N.B. The accuracy of the solutions is significantly higher when using exact
   // line search.

@@ -98,11 +98,18 @@ void SapModel<T>::DeclareCacheEntries() {
       "Impulses, γ = P(−R⁻¹(vc − v̂(z))).",
       systems::ValueProducer(this, &SapModel<T>::CalcImpulsesCache),
       {system_->cache_entry_ticket(
-           system_->cache_indexes().constraint_velocities),
-       system_->discrete_state_ticket(
-           system_->nominal_impulses_index())});
+           system_->cache_indexes().constraint_velocities)});
   system_->mutable_cache_indexes().impulses =
       impulses_cache_entry.cache_index();
+
+  const auto& aug_impulses_cache_entry = system_->DeclareCacheEntry(
+      "Impulses, γ = P(−D⁻¹(vc − v̂(z)+Rz)).",
+      systems::ValueProducer(this, &SapModel<T>::CalcAugmentedImpulsesCache),
+      {system_->cache_entry_ticket(
+           system_->cache_indexes().constraint_velocities),
+       system_->discrete_state_ticket(system_->nominal_impulses_index())});
+  system_->mutable_cache_indexes().aug_impulses =
+      aug_impulses_cache_entry.cache_index();
 
   const auto& momentum_gain_cache_entry = system_->DeclareCacheEntry(
       "Momentum gain. Δv = v - v*, Δp = A⋅Δv.",
@@ -197,9 +204,23 @@ void SapModel<T>::CalcConstraintVelocities(const Context<T>& context,
 template <typename T>
 void SapModel<T>::CalcImpulsesCache(const Context<T>& context,
                                     ImpulsesCache<T>* cache) const {
-  // Impulses are computed as a side effect of updating the Hessian cache.
-  // Therefore if the Hessian cache is up to date we do not need to recompute
-  // the impulses but simply make a copy into the impulses cache.
+  system_->ValidateContext(context);
+  cache->Resize(num_constraint_equations());
+  const VectorX<T>& Rinv = constraints_bundle().Rinv();
+  const VectorX<T>& vhat = constraints_bundle().vhat();
+  const VectorX<T>& vc = EvalConstraintVelocities(context);
+  cache->y = Rinv.asDiagonal() * (vhat - vc);
+  // Project in the R norm of the original problem.
+  const VectorX<T>& R = constraints_bundle().R();
+  constraints_bundle().ProjectImpulses(cache->y, R, &cache->gamma);
+}
+
+template <typename T>
+void SapModel<T>::CalcAugmentedImpulsesCache(
+    const Context<T>& context, AugmentedImpulsesCache<T>* cache) const {
+  // Augmented impulses are computed as a side effect of updating the Hessian
+  // cache. Therefore if the Hessian cache is up to date we do not need to
+  // recompute the impulses but simply make a copy into the impulses cache.
   const systems::CacheEntry& hessian_cache_entry =
       system_->get_cache_entry(system_->cache_indexes().hessian);
   const systems::CacheEntryValue& hessian_value =
@@ -213,12 +234,13 @@ void SapModel<T>::CalcImpulsesCache(const Context<T>& context,
 
   system_->ValidateContext(context);
   cache->Resize(num_constraint_equations());
+  const VectorX<T>& vhat = constraints_bundle().vhat();
+  const VectorX<T>& R = constraints_bundle().R();
+  const VectorX<T>& Raug = constraints_bundle().Raug();
   const VectorX<T>& vc = EvalConstraintVelocities(context);
-  const VectorX<T>& gamma_nominal = GetNominalImpulses(context);
-  constraints_bundle().CalcEffectiveConstraintBias(gamma_nominal,
-                                                   &cache->vhat_eff);
-  constraints_bundle().CalcUnprojectedImpulses(vc, cache->vhat_eff, &cache->y);
-  constraints_bundle().ProjectImpulses(cache->y, &cache->gamma);
+  const VectorX<T>& z = GetNominalImpulses(context);
+  cache->y_aug = -Raug.asDiagonal() * (vc - vhat + R.asDiagonal() * z);
+  constraints_bundle().ProjectImpulses(cache->y_aug, Raug, &cache->gamma_aug);
 }
 
 template <typename T>
@@ -263,14 +285,18 @@ void SapModel<T>::CalcHessianCache(const systems::Context<T>& context,
                                    HessianCache<T>* cache) const {
   system_->ValidateContext(context);
   cache->Resize(num_constraints(), num_constraint_equations());
+  const VectorX<T>& R = constraints_bundle().R();
+  const VectorX<T>& Raug = constraints_bundle().Raug();
+  const VectorX<T>& Raug_inv = constraints_bundle().Raug_inv();
+  const VectorX<T>& vhat = constraints_bundle().vhat();
   const VectorX<T>& vc = EvalConstraintVelocities(context);
-  const VectorX<T>& gamma_nominal = GetNominalImpulses(context);
-  constraints_bundle().CalcEffectiveConstraintBias(gamma_nominal,
-                                                   &cache->impulses.vhat_eff);
-  constraints_bundle().CalcUnprojectedImpulses(vc, cache->impulses.vhat_eff,
-                                               &cache->impulses.y);
+  const VectorX<T>& z = GetNominalImpulses(context);
+
+  cache->impulses.y_aug = -Raug.asDiagonal() * (vc - vhat + R.asDiagonal() * z);
+
   constraints_bundle().ProjectImpulsesAndCalcConstraintsHessian(
-      cache->impulses.y, &cache->impulses.gamma, &cache->G);
+      cache->impulses.y_aug, Raug, Raug_inv, &cache->impulses.gamma_aug,
+      &cache->G);
 }
 
 template <typename T>

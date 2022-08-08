@@ -124,6 +124,9 @@ class SapConstraintBundle {
   void ProjectImpulses(const VectorX<T>& y, VectorX<T>* gamma,
                        std::vector<MatrixX<T>>* dPdy = nullptr) const;
 
+  void ProjectImpulses(const VectorX<T>& y, const VectorX<T>& R,
+                       VectorX<T>* gamma, std::vector<MatrixX<T>>* dPdy) const;
+
   /*  SAP's regularizer cost is defined as ℓᵣ = 1/2γᵀ⋅R⋅γ. The Hessian computed
    with respect to vc (defined as vc = J⋅v, see class's documentation) is a
    block diagonal matrix G where the i-th block diagonal entry corresponds to
@@ -134,6 +137,10 @@ class SapConstraintBundle {
    @pre G != nullptr and G->size() equals num_constraints(). */
   void ProjectImpulsesAndCalcConstraintsHessian(
       const VectorX<T>& y, VectorX<T>* gamma, std::vector<MatrixX<T>>* G) const;
+
+  void ProjectImpulsesAndCalcConstraintsHessian(
+      const VectorX<T>& y, const VectorX<T>& R, const VectorX<T>& Rinv,
+      VectorX<T>* gamma, std::vector<MatrixX<T>>* G) const;
 
  private:
   /* This method builds the BlockSparseMatrix representation of the Jacobian

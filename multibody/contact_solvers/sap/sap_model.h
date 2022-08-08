@@ -25,13 +25,24 @@ namespace internal {
 template <typename T>
 struct ImpulsesCache {
   void Resize(int num_constraint_equations) {
-    vhat_eff.resize(num_constraint_equations);
     y.resize(num_constraint_equations);
     gamma.resize(num_constraint_equations);
   }
-  VectorX<T> vhat_eff;  // = v̂ + Rprox⋅z
   VectorX<T> y;      // The (unprojected) impulse y = −R⁻¹⋅(vc − v̂).
-  VectorX<T> gamma;  // Impulse γ = P(y), with P(y) the projection operator.
+  VectorX<T> gamma;  // Impulse γ = P(y), with P(y) the projection operator, using R.
+};
+
+// Struct to store:
+//  - gamma_aug = P_D(y_aug(v, z)) + z
+//  - y_aug = −D⁻¹⋅(vc−v̂+R⋅z)
+template <typename T>
+struct AugmentedImpulsesCache {
+  void Resize(int num_constraint_equations) {
+    y_aug.resize(num_constraint_equations);
+    gamma_aug.resize(num_constraint_equations);
+  }
+  VectorX<T> y_aug;      // The (unprojected) aug. impulse y = −D⁻¹⋅(vc − v̂ + R⋅z).
+  VectorX<T> gamma_aug;  // Aug. impulse γ = P(y), with P(y) the projection operator, using D.
 };
 
 // Struct used to store the result of updating the momentum gain A⋅(v−v*).
@@ -74,9 +85,9 @@ struct HessianCache {
     impulses.Resize(num_constraint_equations);
     G.resize(num_constraints);
   }
-  // Impulses are computed as a side effect of updating G. We keep a separate
-  // copy to avoid heap allocation of auxiliary variables.
-  ImpulsesCache<T> impulses;
+  // Augmented impulses are computed as a side effect of updating G. We keep a
+  // separate copy to avoid heap allocation of auxiliary variables.
+  AugmentedImpulsesCache<T> impulses;
   std::vector<MatrixX<T>> G;  // Constraint Hessian, G = -dγ/dvc = dP/dy⋅R⁻¹.
 };
 
@@ -310,6 +321,7 @@ class SapModel {
       systems::CacheIndex gradients;
       systems::CacheIndex hessian;
       systems::CacheIndex impulses;
+      systems::CacheIndex aug_impulses;
       systems::CacheIndex momentum_gain;
     };
 
@@ -420,6 +432,8 @@ class SapModel {
                                 VectorX<T>* vc) const;
   void CalcImpulsesCache(const systems::Context<T>& context,
                          ImpulsesCache<T>* cache) const;
+  void CalcAugmentedImpulsesCache(const systems::Context<T>& context,
+                                  AugmentedImpulsesCache<T>* cache) const;
   void CalcMomentumGainCache(const systems::Context<T>& context,
                              MomentumGainCache<T>* cache) const;
   void CalcCostCache(const systems::Context<T>& context,

@@ -265,6 +265,9 @@ class PizzaSaverTest
     VectorXd v = VectorXd::Zero(problem.kNumVelocities);
 
     for (int i = 0; i < num_steps; ++i) {
+      std::cout << std::string(80, '=') << std::endl;
+      std::cout << fmt::format("Step: {}\n", i);
+
       const auto contact_problem =
           problem.MakeContactProblem(q, v, tau, beta, kDefaultSigma);
       const SapSolverStatus status =
@@ -369,7 +372,7 @@ class PizzaSaverTest
 // Solve a problem with no applied torque. In this case contact forces should
 // balance weight.
 TEST_P(PizzaSaverTest, NoAppliedTorque) {
-  const double dt = 0.01;
+  const double dt = 0.1;
   const double mu = 1.0;
   const double k = 1.0e4;
   const double taud = dt;

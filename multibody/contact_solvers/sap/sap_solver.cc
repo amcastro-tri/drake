@@ -226,10 +226,14 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
 
     //std::cout << fmt::format("{} {} {} \n", k, alpha, num_line_search_iters);
 
+    PRINT_VAR(model_->EvalImpulses(*context).transpose());
+    PRINT_VAR(model_->EvalAugmentedImpulses(*context).transpose());
+
     // Update state.
     model_->GetMutableVelocities(context.get()) += alpha * dv;
     model_->GetMutableNominalImpulses(context.get()) =
-        model_->EvalAugmentedImpulses(*context);
+        model_->EvalImpulses(*context);
+    // model_->EvalAugmentedImpulses(*context);
 
     //PRINT_VAR(model_->GetNominalImpulses(*context).transpose());
     //PRINT_VAR(model_->EvalImpulses(*context).transpose());
@@ -391,6 +395,15 @@ std::pair<T, int> SapSolver<T>::PerformBackTrackingLineSearch(
   // dℓ/dα(α = 0) = ∇ᵥℓ(α = 0)⋅Δv.
   const VectorX<T>& dv = search_direction_data.dv;
   const T dell_dalpha0 = ell_grad_v0.dot(dv);
+
+  const VectorX<T>& aug_lag_grad =
+      model_->EvalAugmentedLagrangianGradient(context);
+
+  PRINT_VAR(dv.transpose());
+  PRINT_VAR(aug_lag_grad.transpose());
+  PRINT_VAR(ell_grad_v0.transpose());
+  PRINT_VAR(aug_lag_grad.dot(dv));
+  PRINT_VAR(ell_grad_v0.dot(dv));
 
   // dℓ/dα(α = 0) is guaranteed to be strictly negative given the the Hessian of
   // the cost is positive definite. Only round-off errors in the factorization

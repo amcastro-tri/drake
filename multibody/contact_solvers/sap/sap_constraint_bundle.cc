@@ -44,7 +44,7 @@ SapConstraintBundle<T>::SapConstraintBundle(
           c.CalcDiagonalRegularization(problem->time_step(), wi);
 
       // Augumented Lagrangian regularization.
-      const T Raug_i = 1e-3 * wi;  // TODO: expose this parameter.
+      const T Raug_i = 1e-1 * wi;  // TODO: expose this parameter.
       Raug_.segment(impulse_index_start, ni).setConstant(Raug_i);
 
       impulse_index_start += ni;
@@ -53,6 +53,13 @@ SapConstraintBundle<T>::SapConstraintBundle(
 
   Rinv_ = R_.cwiseInverse();
   Raug_inv_ = Raug_.cwiseInverse();
+
+  PRINT_VAR(R_.transpose());
+  PRINT_VAR(Raug_.transpose());
+
+  // This falls back to the original SAP formulation (along with making z = 0)
+  //Raug_ = R_;
+  //Raug_inv_ = Rinv_;
 
   MakeConstraintBundleJacobian(*problem);
 }

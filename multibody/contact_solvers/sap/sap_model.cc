@@ -275,6 +275,7 @@ void SapModel<T>::CalcAugmentedImpulsesCache(
   const VectorX<T>& z = GetNominalImpulses(context);
   cache->y = Raug_inv.asDiagonal() * (vhat - vc - R.asDiagonal() * z);
   constraints_bundle().ProjectImpulses(cache->y, Raug, &cache->gamma);
+  cache->gamma += z;
 }
 
 template <typename T>
@@ -358,6 +359,7 @@ void SapModel<T>::CalcAugmentedHessianCache(const systems::Context<T>& context,
 
   constraints_bundle().ProjectImpulsesAndCalcConstraintsHessian(
       cache->impulses.y, Raug, Raug_inv, &cache->impulses.gamma, &cache->G);
+  cache->impulses.gamma += z;      
 }
 
 template <typename T>

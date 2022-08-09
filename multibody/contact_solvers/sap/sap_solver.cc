@@ -142,7 +142,9 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
     model_->velocities_permutation().Apply(v_guess, &v);
 
     // The first iteration solves with gamma_nominal = 0.
-    model_->GetMutableNominalImpulses(context.get()).setZero();
+    // model_->GetMutableNominalImpulses(context.get()).setZero();
+    model_->GetMutableNominalImpulses(context.get()) =
+        model_->EvalImpulses(*context);
   }
 
   // Start Newton iterations.
@@ -153,8 +155,9 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
   double alpha = 1.0;
   int num_line_search_iters = 0;
   for (;; ++k) {
-    //std::cout << std::string(80, '=') << std::endl;
-    //std::cout << std::string(80, '=') << std::endl;
+    std::cout << std::string(80, '=') << std::endl;
+    std::cout << std::string(80, '=') << std::endl;
+    std::cout << fmt::format("Iter: {}\n", k);
     
 
     // We first verify the stopping criteria. If satisfied, we skip expensive
@@ -226,13 +229,20 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
 
     //std::cout << fmt::format("{} {} {} \n", k, alpha, num_line_search_iters);
 
-    PRINT_VAR(model_->EvalImpulses(*context).transpose());
-    PRINT_VAR(model_->EvalAugmentedImpulses(*context).transpose());
+    //PRINT_VAR(model_->EvalImpulses(*context).transpose());
+    //PRINT_VAR(model_->EvalAugmentedImpulses(*context).transpose());    
 
     // Update state.
     model_->GetMutableVelocities(context.get()) += alpha * dv;
-    model_->GetMutableNominalImpulses(context.get()) =
-        model_->EvalImpulses(*context);
+
+    // N.B. This difference will be zero if we update both v and z given we are
+    // using analytical ID.
+    const auto& gamma = model_->EvalImpulses(*context);
+    const auto& gamma_aug = model_->EvalAugmentedImpulses(*context);
+    PRINT_VAR((gamma-gamma_aug).norm());
+
+    model_->GetMutableNominalImpulses(context.get()) = gamma_aug;
+    // model_->EvalImpulses(*context);
     // model_->EvalAugmentedImpulses(*context);
 
     //PRINT_VAR(model_->GetNominalImpulses(*context).transpose());

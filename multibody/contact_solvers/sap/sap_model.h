@@ -32,19 +32,6 @@ struct ImpulsesCache {
   VectorX<T> gamma;  // Impulse γ = P(y), with P(y) the projection operator, using R.
 };
 
-// Struct to store:
-//  - gamma_aug = P_D(y_aug(v, z)) + z
-//  - y_aug = −D⁻¹⋅(vc−v̂+R⋅z)
-template <typename T>
-struct AugmentedImpulsesCache {
-  void Resize(int num_constraint_equations) {
-    y_aug.resize(num_constraint_equations);
-    gamma_aug.resize(num_constraint_equations);
-  }
-  VectorX<T> y_aug;      // The (unprojected) aug. impulse y = −D⁻¹⋅(vc − v̂ + R⋅z).
-  VectorX<T> gamma_aug;  // Aug. impulse γ = P(y), with P(y) the projection operator, using D.
-};
-
 // Struct used to store the result of updating the momentum gain A⋅(v−v*).
 template <typename T>
 struct MomentumGainCache {
@@ -87,7 +74,7 @@ struct HessianCache {
   }
   // Augmented impulses are computed as a side effect of updating G. We keep a
   // separate copy to avoid heap allocation of auxiliary variables.
-  AugmentedImpulsesCache<T> impulses;
+  ImpulsesCache<T> impulses;
   std::vector<MatrixX<T>> G;  // Constraint Hessian, G = -dγ/dvc = dP/dy⋅R⁻¹.
 };
 
@@ -247,7 +234,7 @@ class SapModel {
 
   const VectorX<T>& EvalAugmentedImpulses(
       const systems::Context<T>& context) const {
-    return EvalAugmentedImpulsesCache(context).gamma_aug;
+    return EvalAugmentedImpulsesCache(context).gamma;
   }
 
   /* Evaluates the generalized impulses j = Jᵀ⋅γ, where J is the constraints'
@@ -299,6 +286,13 @@ class SapModel {
         .cost_gradient;
   }
 
+  const VectorX<T>& EvalAugmentedLagrangianGradient(
+      const systems::Context<T>& context) const {
+    return system_->get_cache_entry(system_->cache_indexes().aug_gradients)
+        .template Eval<GradientsCache<T>>(context)
+        .cost_gradient;
+  }
+
   /* Evaluates the constraints's Hessian G, a vector of size num_constraints().
    For the i-th constraint, its Hessian is defined as Gᵢ(v) = d²ℓᵢ/dvcᵢ², where
    ℓᵢ is the regularizer's cost ℓᵢ = 1/2⋅γᵢᵀ⋅Rᵢ⋅γᵢ and vcᵢ is the constraint's
@@ -308,6 +302,12 @@ class SapModel {
   const std::vector<MatrixX<T>>& EvalConstraintsHessian(
       const systems::Context<T>& context) const {
     return system_->get_cache_entry(system_->cache_indexes().hessian)
+        .template Eval<HessianCache<T>>(context).G;
+  }
+
+  const std::vector<MatrixX<T>>& EvalAugmentedConstraintsHessian(
+      const systems::Context<T>& context) const {
+    return system_->get_cache_entry(system_->cache_indexes().aug_hessian)
         .template Eval<HessianCache<T>>(context).G;
   }
 
@@ -324,7 +324,9 @@ class SapModel {
       systems::CacheIndex constraint_velocities;
       systems::CacheIndex cost;
       systems::CacheIndex gradients;
+      systems::CacheIndex aug_gradients;
       systems::CacheIndex hessian;
+      systems::CacheIndex aug_hessian;
       systems::CacheIndex impulses;
       systems::CacheIndex aug_impulses;
       systems::CacheIndex momentum_gain;
@@ -438,7 +440,7 @@ class SapModel {
   void CalcImpulsesCache(const systems::Context<T>& context,
                          ImpulsesCache<T>* cache) const;
   void CalcAugmentedImpulsesCache(const systems::Context<T>& context,
-                                  AugmentedImpulsesCache<T>* cache) const;
+                                  ImpulsesCache<T>* cache) const;
   void CalcMomentumGainCache(const systems::Context<T>& context,
                              MomentumGainCache<T>* cache) const;
   void CalcCostCache(const systems::Context<T>& context,
@@ -451,6 +453,8 @@ class SapModel {
                                    GradientsCache<T>* cache) const;
   void CalcHessianCache(const systems::Context<T>& context,
                         HessianCache<T>* cache) const;
+  void CalcAugmentedHessianCache(const systems::Context<T>& context,
+                                 HessianCache<T>* cache) const;
 
   /* Evaluates the velocity gain defined as velocity_gain = v - v*. */
   const VectorX<T>& EvalVelocityGain(const systems::Context<T>& context) const {
@@ -471,10 +475,10 @@ class SapModel {
         .template Eval<ImpulsesCache<T>>(context);
   }
 
-  const AugmentedImpulsesCache<T>& EvalAugmentedImpulsesCache(
+  const ImpulsesCache<T>& EvalAugmentedImpulsesCache(
       const systems::Context<T>& context) const {
     return system_->get_cache_entry(system_->cache_indexes().aug_impulses)
-        .template Eval<AugmentedImpulsesCache<T>>(context);
+        .template Eval<ImpulsesCache<T>>(context);
   }
 
   const SapContactProblem<T>* problem_{nullptr};

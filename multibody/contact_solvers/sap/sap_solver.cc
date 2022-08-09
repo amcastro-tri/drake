@@ -141,8 +141,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
         model_->GetMutableVelocities(context.get());
     model_->velocities_permutation().Apply(v_guess, &v);
 
-    // The first iteration solves with gamma_nominal = 0, which is equivalent to
-    // solving a regularized (softer) problem with Reff.
+    // The first iteration solves with gamma_nominal = 0.
     model_->GetMutableNominalImpulses(context.get()).setZero();
   }
 
@@ -229,15 +228,14 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
 
     // Update state.
     model_->GetMutableVelocities(context.get()) += alpha * dv;
+    model_->GetMutableNominalImpulses(context.get()) =
+        model_->EvalAugmentedImpulses(*context);
 
     //PRINT_VAR(model_->GetNominalImpulses(*context).transpose());
     //PRINT_VAR(model_->EvalImpulses(*context).transpose());
 
     ell_previous = ell;
     ell = model_->EvalCost(*context);
-    model_->GetMutableNominalImpulses(context.get()) =
-        model_->EvalImpulses(*context);
-    //model_->SetNominalImpulses(model_->EvalImpulses(*context), context.get());
 
     const double ell_scale = (ell + ell_previous) / 2.0;
     // N.B. Even though theoretically we expect ell < ell_previous, round-off
@@ -278,7 +276,7 @@ T SapSolver<T>::CalcCostAlongLine(
   if (d2ell_dalpha2 != nullptr) DRAKE_DEMAND(d2ell_dalpha2_scratch != nullptr);
 
   // Data.
-  const VectorX<T>& Reff = model_->constraints_bundle().Reff();
+  const VectorX<T>& R = model_->constraints_bundle().R();
   const VectorX<T>& v_star = model_->v_star();
 
   // Search direction quantities at state v.
@@ -293,8 +291,9 @@ T SapSolver<T>::CalcCostAlongLine(
   model_->GetMutableVelocities(&context_alpha) = v + alpha * dv;
 
   // TODO: Move outside this call to avoid extra copy.
-  model_->GetMutableNominalImpulses(&context_alpha) =
-      model_->GetNominalImpulses(context);
+  // Set to NAN to verify it does not affect this computation of the original
+  // unconstrained cost.
+  model_->GetMutableNominalImpulses(&context_alpha).setConstant(NAN);
 
   if (d2ell_dalpha2 != nullptr) {
     // Since it is more efficient to calculate impulses (gamma) and their
@@ -309,7 +308,7 @@ T SapSolver<T>::CalcCostAlongLine(
   const VectorX<T>& gamma = model_->EvalImpulses(context_alpha);
 
   // Regularizer cost.
-  const T ellR = 0.5 * gamma.dot(Reff.asDiagonal() * gamma);
+  const T ellR = 0.5 * gamma.dot(R.asDiagonal() * gamma);
 
   // Momentum cost. We use the O(n) strategy described in [Castro et al., 2021].
   // The momentum cost is: ellA(α) = 0.5‖v(α)−v*‖², where ‖⋅‖ is the norm
@@ -501,14 +500,6 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   DRAKE_DEMAND(scratch != nullptr);
   DRAKE_DEMAND(scratch != &context);
 
-  // Pefrom LS on the "true" cost.
-  const VectorX<double> Raug = model_->constraints_bundle().Raug();
-  model_->constraints_bundle().mutable_Reff() =
-      model_->constraints_bundle().R();
-  model_->constraints_bundle().mutable_Reff_inv() =
-      model_->constraints_bundle().R().cwiseInverse();
-  model_->constraints_bundle().mutable_Raug().setZero();
-
   // dℓ/dα(α = 0) = ∇ᵥℓ(α = 0)⋅Δv.
   const VectorX<double>& ell_grad_v0 = model_->EvalCostGradient(context);
   const VectorX<double>& dv = search_direction_data.dv;
@@ -602,13 +593,6 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
       cost_and_gradient, bracket, alpha_guess, alpha_tolerance, f_tolerance,
       parameters_.exact_line_search.max_iterations);
 
-  // Return model back.
-  model_->constraints_bundle().mutable_Reff() =
-      model_->constraints_bundle().R() + Raug;
-  model_->constraints_bundle().mutable_Reff_inv() =
-      model_->constraints_bundle().Reff().cwiseInverse();
-  model_->constraints_bundle().mutable_Raug() = Raug;
-
   return std::make_pair(alpha, iters);
 }
 
@@ -635,7 +619,8 @@ MatrixX<T> SapSolver<T>::CalcDenseHessian(const Context<T>& context) const {
   const MatrixX<T> Jdense = model_->constraints_bundle().J().MakeDenseMatrix();
 
   // Make dense Hessian matrix G.
-  const std::vector<MatrixX<T>>& G = model_->EvalConstraintsHessian(context);
+  const std::vector<MatrixX<T>>& G =
+      model_->EvalAugmentedConstraintsHessian(context);
   MatrixX<T> Gdense = MatrixX<T>::Zero(nk, nk);
   offset = 0;
   for (const auto& Gi : G) {
@@ -682,7 +667,7 @@ void SapSolver<T>::CallDenseSolver(const Context<T>& context,
   }
 
   // Compute search direction.
-  const VectorX<T> rhs = -model_->EvalCostGradient(context);
+  const VectorX<T> rhs = -model_->EvalAugmentedLagrangianGradient(context);
   *dv = H_ldlt.Solve(rhs);
 }
 
@@ -691,7 +676,7 @@ void SapSolver<T>::UpdateSuperNodalSolver(
     const Context<T>& context, SuperNodalSolver* supernodal_solver) const {
   if constexpr (std::is_same_v<T, double>) {
     const std::vector<MatrixX<double>>& G =
-        model_->EvalConstraintsHessian(context);
+        model_->EvalAugmentedConstraintsHessian(context);
     supernodal_solver->SetWeightMatrix(G);
   } else {
     unused(context);
@@ -713,7 +698,7 @@ void SapSolver<T>::CallSuperNodalSolver(const Context<T>& context,
     }
     // We solve in place to avoid heap allocating additional memory for the
     // right hand side.
-    *dv = -model_->EvalCostGradient(context);
+    *dv = -model_->EvalAugmentedLagrangianGradient(context);
     supernodal_solver->SolveInPlace(dv);
   } else {
     unused(context);

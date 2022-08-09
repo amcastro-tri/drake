@@ -134,53 +134,6 @@ void SapConstraintBundle<T>::MakeConstraintBundleJacobian(
 }
 
 template <typename T>
-void SapConstraintBundle<T>::CalcEffectiveConstraintBias(
-    const VectorX<T>& gamma_nominal, VectorX<T>* vhat_eff) const {
-  DRAKE_DEMAND(gamma_nominal.size() == num_constraint_equations());
-  DRAKE_DEMAND(vhat_eff != nullptr);
-  DRAKE_DEMAND(vhat_eff->size() == num_constraint_equations());
-  *vhat_eff = vhat() + Raug_.asDiagonal() * gamma_nominal;
-}
-
-template <typename T>
-void SapConstraintBundle<T>::CalcUnprojectedImpulses(const VectorX<T>& vc,
-                                                     const VectorX<T>& vhat_eff,
-                                                     VectorX<T>* y) const {
-  DRAKE_DEMAND(vc.size() == num_constraint_equations());
-  DRAKE_DEMAND(vhat_eff.size() == num_constraint_equations());
-  DRAKE_DEMAND(y != nullptr);
-  DRAKE_DEMAND(y->size() == num_constraint_equations());
-  *y = Reff_inv_.asDiagonal() * (vhat_eff - vc);
-}
-
-template <typename T>
-void SapConstraintBundle<T>::ProjectImpulses(
-    const VectorX<T>& y, VectorX<T>* gamma,
-    std::vector<MatrixX<T>>* dPdy) const {
-  DRAKE_DEMAND(y.size() == num_constraint_equations());
-  DRAKE_DEMAND(gamma != nullptr);
-  DRAKE_DEMAND(gamma->size() == num_constraint_equations());
-  if (dPdy != nullptr) {
-    DRAKE_DEMAND(static_cast<int>(dPdy->size()) == num_constraints());
-  }
-  int constraint_start = 0;
-  for (int i = 0; i < num_constraints(); ++i) {
-    const SapConstraint<T>& c = *constraints_[i];
-    const int ni = c.num_constraint_equations();
-    const auto y_i = y.segment(constraint_start, ni);
-    const auto R_i = Reff().segment(constraint_start, ni);
-    auto gamma_i = gamma->segment(constraint_start, ni);
-    if (dPdy != nullptr) {
-      MatrixX<T>& dPdy_i = (*dPdy)[i];
-      c.Project(y_i, R_i, &gamma_i, &dPdy_i);
-    } else {
-      c.Project(y_i, R_i, &gamma_i);
-    }
-    constraint_start += ni;
-  }
-}
-
-template <typename T>
 void SapConstraintBundle<T>::ProjectImpulses(
     const VectorX<T>& y, const VectorX<T>& R, VectorX<T>* gamma,
     std::vector<MatrixX<T>>* dPdy) const {
@@ -204,28 +157,6 @@ void SapConstraintBundle<T>::ProjectImpulses(
     } else {
       c.Project(y_i, R_i, &gamma_i);
     }
-    constraint_start += ni;
-  }
-}
-
-template <typename T>
-void SapConstraintBundle<T>::ProjectImpulsesAndCalcConstraintsHessian(
-    const VectorX<T>& y, VectorX<T>* gamma, std::vector<MatrixX<T>>* G) const {
-  DRAKE_DEMAND(y.size() == num_constraint_equations());
-  DRAKE_DEMAND(gamma != nullptr);
-  DRAKE_DEMAND(gamma->size() == num_constraint_equations());
-  DRAKE_DEMAND(static_cast<int>(G->size()) == num_constraints());
-  // G = dPdy after call to ProjectImpulses. We add in the R⁻¹ next.
-  ProjectImpulses(y, gamma, G);
-
-  // The regularizer Hessian is G = d²ℓ/dvc² = dP/dy⋅R⁻¹.
-  int constraint_start = 0;
-  for (int i = 0; i < num_constraints(); ++i) {
-    const SapConstraint<T>& c = *constraints_[i];
-    const int ni = c.num_constraint_equations();
-    const auto Rinv_i = Reff_inv().segment(constraint_start, ni);
-    const MatrixX<T>& dPdy_i = (*G)[i];
-    (*G)[i] = dPdy_i * Rinv_i.asDiagonal();
     constraint_start += ni;
   }
 }

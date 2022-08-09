@@ -100,27 +100,15 @@ class SapConstraintBundle {
    num_constraint_equations().*/
   const VectorX<T>& vhat() const { return vhat_; }
 
-  void CalcEffectiveConstraintBias(const VectorX<T>& gamma_nominal,
-                                   VectorX<T>* vhat_eff) const;
-
-  /* Computes unprojected impulses y according to y = −R⁻¹⋅(v−v̂), where R is
-   the regularization matrix, R(), and v̂ is the bias term, vhat().
-   @pre vc.size() equals num_constraint_equations().
-   @pre y != nullptr and y->size() equals num_constraint_equations(). */
-  void CalcUnprojectedImpulses(const VectorX<T>& vc, const VectorX<T>& vhat_eff,
-                               VectorX<T>* y) const;
-
   /* Computes the projection γ = P(y) for all impulses and the gradient
    dP/dy if dPdy != nullptr. On output dPdy[i] stores the gradient dPᵢ/dyᵢ for
    the i-th constraint.
    @pre y.size() equals num_constraint_equations().
    @pre gamma != nullptr and gamma->size() equals num_constraint_equations().
    @pre if dPdy != nullptr, then dPdy->size() equals num_constraints(). */
-  void ProjectImpulses(const VectorX<T>& y, VectorX<T>* gamma,
-                       std::vector<MatrixX<T>>* dPdy = nullptr) const;
-
   void ProjectImpulses(const VectorX<T>& y, const VectorX<T>& R,
-                       VectorX<T>* gamma, std::vector<MatrixX<T>>* dPdy) const;
+                       VectorX<T>* gamma,
+                       std::vector<MatrixX<T>>* dPdy = nullptr) const;
 
   /*  SAP's regularizer cost is defined as ℓᵣ = 1/2γᵀ⋅R⋅γ. The Hessian computed
    with respect to vc (defined as vc = J⋅v, see class's documentation) is a
@@ -130,9 +118,6 @@ class SapConstraintBundle {
    @pre y.size() equals num_constraint_equations().
    @pre gamma != nullptr and gamma->size() equals num_constraint_equations().
    @pre G != nullptr and G->size() equals num_constraints(). */
-  void ProjectImpulsesAndCalcConstraintsHessian(
-      const VectorX<T>& y, VectorX<T>* gamma, std::vector<MatrixX<T>>* G) const;
-
   void ProjectImpulsesAndCalcConstraintsHessian(
       const VectorX<T>& y, const VectorX<T>& R, const VectorX<T>& Rinv,
       VectorX<T>* gamma, std::vector<MatrixX<T>>* G) const;

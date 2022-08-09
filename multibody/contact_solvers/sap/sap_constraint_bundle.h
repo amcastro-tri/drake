@@ -93,13 +93,8 @@ class SapConstraintBundle {
    num_constraint_equations(). */
   const VectorX<T>& Rinv() const { return Rinv_; }
 
-  const VectorX<T>& Rprox() const { return Rprox_; }
-  VectorX<T>& mutable_Rprox() { return Rprox_; }
-
-  const VectorX<T>& Reff() const { return Reff_; }
-  VectorX<T>& mutable_Reff() { return Reff_; }
-  const VectorX<T>& Reff_inv() const { return Reff_inv_; }
-  VectorX<T>& mutable_Reff_inv() { return Reff_inv_; }
+  const VectorX<T>& Raug() const { return Raug_; }
+  const VectorX<T>& Raug_inv() const { return Raug_inv_; }
 
   /* Returns the bias v̂ for the entire bundle. Of size
    num_constraint_equations().*/
@@ -153,11 +148,9 @@ class SapConstraintBundle {
   // "Physical" regularization.
   VectorX<T> R_;
   VectorX<T> Rinv_;
-  // "Proximal" regularization.
-  VectorX<T> Rprox_;
-  // "Effective" regularization. Reff = R + Rprox.
-  VectorX<T> Reff_;
-  VectorX<T> Reff_inv_;
+  // Augumented Lagrangian regularization.
+  VectorX<T> Raug_;
+  VectorX<T> Raug_inv_;
 
   // Constraint references in the order dictated by the ContactProblemGraph.
   std::vector<const SapConstraint<T>*> constraints_;

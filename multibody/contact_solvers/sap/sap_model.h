@@ -245,6 +245,11 @@ class SapModel {
     return EvalImpulsesCache(context).gamma;
   }
 
+  const VectorX<T>& EvalAugmentedImpulses(
+      const systems::Context<T>& context) const {
+    return EvalAugmentedImpulsesCache(context).gamma_aug;
+  }
+
   /* Evaluates the generalized impulses j = Jᵀ⋅γ, where J is the constraints'
    Jacobian and γ is the vector of impulses, see EvalImpulses(). The size of the
    generalized impulses j is num_velocities().
@@ -438,8 +443,12 @@ class SapModel {
                              MomentumGainCache<T>* cache) const;
   void CalcCostCache(const systems::Context<T>& context,
                      CostCache<T>* cache) const;
+  // Gradient (w.r.t. v) of the (unconstrained) primal cost.
   void CalcGradientsCache(const systems::Context<T>& context,
                           GradientsCache<T>* cache) const;
+  // Gradient (w.r.t. v) of the augmented Lagrangian.
+  void CalcAugmentedGradientsCache(const systems::Context<T>& context,
+                                   GradientsCache<T>* cache) const;
   void CalcHessianCache(const systems::Context<T>& context,
                         HessianCache<T>* cache) const;
 
@@ -460,6 +469,12 @@ class SapModel {
       const systems::Context<T>& context) const {
     return system_->get_cache_entry(system_->cache_indexes().impulses)
         .template Eval<ImpulsesCache<T>>(context);
+  }
+
+  const AugmentedImpulsesCache<T>& EvalAugmentedImpulsesCache(
+      const systems::Context<T>& context) const {
+    return system_->get_cache_entry(system_->cache_indexes().aug_impulses)
+        .template Eval<AugmentedImpulsesCache<T>>(context);
   }
 
   const SapContactProblem<T>* problem_{nullptr};

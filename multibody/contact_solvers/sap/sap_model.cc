@@ -218,6 +218,8 @@ void SapModel<T>::CalcImpulsesCache(const Context<T>& context,
 template <typename T>
 void SapModel<T>::CalcAugmentedImpulsesCache(
     const Context<T>& context, AugmentedImpulsesCache<T>* cache) const {
+  system_->ValidateContext(context);
+
   // Augmented impulses are computed as a side effect of updating the Hessian
   // cache. Therefore if the Hessian cache is up to date we do not need to
   // recompute the impulses but simply make a copy into the impulses cache.
@@ -231,15 +233,15 @@ void SapModel<T>::CalcAugmentedImpulsesCache(
     *cache = hessian_cache.impulses;
     return;
   }
-
-  system_->ValidateContext(context);
+  
   cache->Resize(num_constraint_equations());
   const VectorX<T>& vhat = constraints_bundle().vhat();
   const VectorX<T>& R = constraints_bundle().R();
   const VectorX<T>& Raug = constraints_bundle().Raug();
+  const VectorX<T>& Raug_inv = constraints_bundle().Raug_inv();
   const VectorX<T>& vc = EvalConstraintVelocities(context);
   const VectorX<T>& z = GetNominalImpulses(context);
-  cache->y_aug = -Raug.asDiagonal() * (vc - vhat + R.asDiagonal() * z);
+  cache->y_aug = -Raug_inv.asDiagonal() * (vc - vhat + R.asDiagonal() * z);
   constraints_bundle().ProjectImpulses(cache->y_aug, Raug, &cache->gamma_aug);
 }
 
@@ -263,9 +265,9 @@ void SapModel<T>::CalcCostCache(const Context<T>& context,
   const VectorX<T>& momentum_gain = gain_cache.momentum_gain;
   cache->momentum_cost = 0.5 * velocity_gain.dot(momentum_gain);
   const VectorX<T>& gamma = EvalImpulses(context);
-  const VectorX<T>& Reff = constraints_bundle().Reff();
+  const VectorX<T>& R = constraints_bundle().R();
   cache->regularizer_cost =
-      0.5 * T(gamma.transpose() * Reff.asDiagonal() * gamma);
+      0.5 * T(gamma.transpose() * R.asDiagonal() * gamma);
   cache->cost = cache->momentum_cost + cache->regularizer_cost;
 }
 
@@ -281,6 +283,17 @@ void SapModel<T>::CalcGradientsCache(const systems::Context<T>& context,
 }
 
 template <typename T>
+void SapModel<T>::CalcAugmentedGradientsCache(
+    const systems::Context<T>& context, GradientsCache<T>* cache) const {
+  cache->Resize(num_velocities());
+  const VectorX<T>& momentum_gain = EvalMomentumGain(context);  // = A⋅(v−v*)
+  const VectorX<T>& gamma_aug = EvalAugmentedImpulses(context);
+  constraints_bundle().J().MultiplyByTranspose(gamma_aug, &cache->j);  // = Jᵀ⋅γ
+  // Update ∇ᵥℒₐ = A⋅(v−v*) - Jᵀ⋅γₐ
+  cache->cost_gradient = momentum_gain - cache->j;
+}
+
+template <typename T>
 void SapModel<T>::CalcHessianCache(const systems::Context<T>& context,
                                    HessianCache<T>* cache) const {
   system_->ValidateContext(context);
@@ -292,7 +305,8 @@ void SapModel<T>::CalcHessianCache(const systems::Context<T>& context,
   const VectorX<T>& vc = EvalConstraintVelocities(context);
   const VectorX<T>& z = GetNominalImpulses(context);
 
-  cache->impulses.y_aug = -Raug.asDiagonal() * (vc - vhat + R.asDiagonal() * z);
+  cache->impulses.y_aug =
+      -Raug_inv.asDiagonal() * (vc - vhat + R.asDiagonal() * z);
 
   constraints_bundle().ProjectImpulsesAndCalcConstraintsHessian(
       cache->impulses.y_aug, Raug, Raug_inv, &cache->impulses.gamma_aug,

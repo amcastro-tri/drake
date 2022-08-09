@@ -502,12 +502,12 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
   DRAKE_DEMAND(scratch != &context);
 
   // Pefrom LS on the "true" cost.
-  const VectorX<double> Rprox = model_->constraints_bundle().Rprox();
+  const VectorX<double> Raug = model_->constraints_bundle().Raug();
   model_->constraints_bundle().mutable_Reff() =
       model_->constraints_bundle().R();
   model_->constraints_bundle().mutable_Reff_inv() =
       model_->constraints_bundle().R().cwiseInverse();
-  model_->constraints_bundle().mutable_Rprox().setZero();
+  model_->constraints_bundle().mutable_Raug().setZero();
 
   // dℓ/dα(α = 0) = ∇ᵥℓ(α = 0)⋅Δv.
   const VectorX<double>& ell_grad_v0 = model_->EvalCostGradient(context);
@@ -604,10 +604,10 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
 
   // Return model back.
   model_->constraints_bundle().mutable_Reff() =
-      model_->constraints_bundle().R() + Rprox;
+      model_->constraints_bundle().R() + Raug;
   model_->constraints_bundle().mutable_Reff_inv() =
       model_->constraints_bundle().Reff().cwiseInverse();
-  model_->constraints_bundle().mutable_Rprox() = Rprox;
+  model_->constraints_bundle().mutable_Raug() = Raug;
 
   return std::make_pair(alpha, iters);
 }

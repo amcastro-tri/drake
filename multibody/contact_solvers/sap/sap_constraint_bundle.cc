@@ -26,8 +26,8 @@ SapConstraintBundle<T>::SapConstraintBundle(
   // Vector of bias velocities and diagonal matrix R.
   vhat_.resize(problem->num_constraint_equations());
   R_.resize(problem->num_constraint_equations());
-  Rprox_.resize(problem->num_constraint_equations());
-  Reff_.resize(problem->num_constraint_equations());
+  Raug_.resize(problem->num_constraint_equations());
+  Raug_inv_.resize(problem->num_constraint_equations());
   int impulse_index_start = 0;
   for (const ContactProblemGraph::ConstraintCluster& e :
        problem->graph().clusters()) {
@@ -43,17 +43,16 @@ SapConstraintBundle<T>::SapConstraintBundle(
       R_.segment(impulse_index_start, ni) =
           c.CalcDiagonalRegularization(problem->time_step(), wi);
 
-      // "Proximal" regularization.
-      const T Rprox_i = 1e-3 * wi;  // TODO: expose this parameter.
-      Rprox_.segment(impulse_index_start, ni).setConstant(Rprox_i);
+      // Augumented Lagrangian regularization.
+      const T Raug_i = 1e-3 * wi;  // TODO: expose this parameter.
+      Raug_.segment(impulse_index_start, ni).setConstant(Raug_i);
 
       impulse_index_start += ni;
     }
   }
-  Reff_ = R_ + Rprox_;
 
   Rinv_ = R_.cwiseInverse();
-  Reff_inv_ = Reff_.cwiseInverse();
+  Raug_inv_ = Raug_.cwiseInverse();
 
   MakeConstraintBundleJacobian(*problem);
 }
@@ -140,7 +139,7 @@ void SapConstraintBundle<T>::CalcEffectiveConstraintBias(
   DRAKE_DEMAND(gamma_nominal.size() == num_constraint_equations());
   DRAKE_DEMAND(vhat_eff != nullptr);
   DRAKE_DEMAND(vhat_eff->size() == num_constraint_equations());
-  *vhat_eff = vhat() + Rprox_.asDiagonal() * gamma_nominal;
+  *vhat_eff = vhat() + Raug_.asDiagonal() * gamma_nominal;
 }
 
 template <typename T>

@@ -275,6 +275,7 @@ class TrajectoryOptimizer {
    * @param tau generalized forces
    */
   void CalcInverseDynamicsSingleTimeStep(
+      const Context<T>& frozen_context,
       const VectorX<T>& q, const VectorX<T>& v, const VectorX<T>& a,
       TrajectoryOptimizerWorkspace<T>* workspace, VectorX<T>* tau) const;
 
@@ -405,6 +406,9 @@ class TrajectoryOptimizer {
 
   // A context corresponding to plant_, to enable dynamics computations.
   std::unique_ptr<Context<T>> context_;
+
+  // Contexts to compute inverse dynamics at each stpe t.  
+  std::vector<std::unique_ptr<Context<T>>> context_t_;
 
   // Stores the problem definition, including cost, time horizon, initial state,
   // target state, etc.

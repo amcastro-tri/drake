@@ -26,6 +26,11 @@ TrajectoryOptimizer<T>::TrajectoryOptimizer(const MultibodyPlant<T>* plant,
   // Create a context for dynamics computations
   context_ = plant_->CreateDefaultContext();
 
+  context_t_.resize(prob.num_steps + 1);
+  for (int t = 0; t <= prob.num_steps; ++t) {
+    context_t_[t] = plant_->CreateDefaultContext();
+  }
+
   // Define joint damping coefficients.
   joint_damping_ = VectorX<T>::Zero(plant_->num_velocities());
 
@@ -125,21 +130,35 @@ void TrajectoryOptimizer<T>::CalcInverseDynamics(
   DRAKE_DEMAND(static_cast<int>(tau->size()) == num_steps());
 
   for (int t = 0; t < num_steps(); ++t) {
+    // TODO: pass array of contexts from the outside so we avoid invalidating
+    // already computed quantities in the cache.
+    // Solve() should be doing this within the Newton iteration once for
+    // everyone who needs to use context_t_.
+    plant().SetPositions(context_t_[t + 1].get(), q[t + 1]);
+    plant().SetVelocities(context_t_[t + 1].get(), v[t + 1]);
     // All dynamics terms are treated implicitly, i.e.,
     // tau[t] = M(q[t+1]) * a[t] - k(q[t+1],v[t+1]) - f_ext[t+1]
-    CalcInverseDynamicsSingleTimeStep(q[t + 1], v[t + 1], a[t], workspace,
-                                      &tau->at(t));
+    CalcInverseDynamicsSingleTimeStep(*context_t_[t+1], q[t + 1], v[t + 1], a[t],
+                                      workspace, &tau->at(t));
   }
 }
 
 template <typename T>
 void TrajectoryOptimizer<T>::CalcInverseDynamicsSingleTimeStep(
+    const Context<T>& frozen_context,
     const VectorX<T>& q, const VectorX<T>& v, const VectorX<T>& a,
     TrajectoryOptimizerWorkspace<T>* workspace, VectorX<T>* tau) const {
+  // The scratch context_ is used to compute force element contributions,
+  // implicitly. This makes sense for as long as the force elements are not
+  // expensive to compute, like damping.
   plant().SetPositions(context_.get(), q);
   plant().SetVelocities(context_.get(), v);
   plant().CalcForceElementsContribution(*context_, &workspace->f_ext);
+
   // Inverse dynamics computes tau = M*a - k(q,v) - f_ext
+  // We freeze M, C, J to the state in frozen_context, pressumably with values
+  // fom a previous iteration.
+  (void)frozen_context; 
   *tau = plant().CalcInverseDynamics(*context_, a, workspace->f_ext);
 
   // TODO(vincekurtz) add in contact/constriant contribution
@@ -183,6 +202,13 @@ void TrajectoryOptimizer<T>::CalcInverseDynamicsPartialsFiniteDiff(
   VectorX<T>& tau_eps_tm = workspace->tau_size_tmp1;
   VectorX<T>& tau_eps_t = workspace->tau_size_tmp2;
   VectorX<T>& tau_eps_tp = workspace->tau_size_tmp3;
+
+  // TODO: pass array of contexts from the outside so we avoid invalidating
+  // already computed quantities in the cache, when computing tau.
+  for (int t = 0; t <= num_steps(); ++t) {
+    plant().SetPositions(context_t_[t].get(), q[t]);
+    plant().SetVelocities(context_t_[t].get(), v[t]);
+  }
 
   // Store small perturbations
   const double eps = sqrt(std::numeric_limits<double>::epsilon());
@@ -244,20 +270,22 @@ void TrajectoryOptimizer<T>::CalcInverseDynamicsPartialsFiniteDiff(
       // via finite differencing
       if (t > 0) {
         // tau[t-1] = ID(q[t], v[t], a[t-1])
-        CalcInverseDynamicsSingleTimeStep(q_eps_t, v_eps_t, a_eps_tm, workspace,
-                                          &tau_eps_tm);
+        CalcInverseDynamicsSingleTimeStep(*context_t_[t], q_eps_t, v_eps_t,
+                                          a_eps_tm, workspace, &tau_eps_tm);
         dtau_dqp[t - 1].col(i) = (tau_eps_tm - tau[t - 1]) / dq_i;
       }
       if (t < num_steps()) {
         // tau[t] = ID(q[t+1], v[t+1], a[t])
-        CalcInverseDynamicsSingleTimeStep(q[t + 1], v_eps_tp, a_eps_t,
-                                          workspace, &tau_eps_t);
+        CalcInverseDynamicsSingleTimeStep(*context_t_[t + 1], q[t + 1],
+                                          v_eps_tp, a_eps_t, workspace,
+                                          &tau_eps_t);
         dtau_dqt[t].col(i) = (tau_eps_t - tau[t]) / dq_i;
       }
       if (t < num_steps() - 1) {
         // tau[t+1] = ID(q[t+2], v[t+2], a[t+1])
-        CalcInverseDynamicsSingleTimeStep(q[t + 2], v[t + 2], a_eps_tp,
-                                          workspace, &tau_eps_tp);
+        CalcInverseDynamicsSingleTimeStep(*context_t_[t + 2], q[t + 2],
+                                          v[t + 2], a_eps_tp, workspace,
+                                          &tau_eps_tp);
         dtau_dqm[t + 1].col(i) = (tau_eps_tp - tau[t + 1]) / dq_i;
       }
 

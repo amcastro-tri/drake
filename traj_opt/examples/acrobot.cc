@@ -18,6 +18,11 @@
 
 #include "drake/common/profiler.h"
 
+// To profile with Valgrind run with (the defaults are good):
+// valgrind --tool=callgrind --separate-callers=10 --instr-atstart=no
+// bazel-bin/examples/multibody/mp_convex_solver/clutter
+#include <valgrind/callgrind.h>
+
 namespace drake {
 namespace traj_opt {
 namespace examples {
@@ -148,7 +153,9 @@ void solve_trajectory_optimization(double time_step, int num_steps) {
   TrajectoryOptimizerSolution<double> solution;
   TrajectoryOptimizerStats<double> stats;
 
+  CALLGRIND_START_INSTRUMENTATION;
   SolverFlag status = optimizer.Solve(q_guess, &solution, &stats);
+  CALLGRIND_STOP_INSTRUMENTATION;
 
   if (status == SolverFlag::kSuccess) {
     std::cout << "Solved in " << stats.solve_time << " seconds." << std::endl;

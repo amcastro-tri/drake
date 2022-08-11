@@ -5,6 +5,7 @@
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
 #include "drake/traj_opt/penta_diagonal_matrix.h"
+#include "drake/common/profiler.h"
 
 namespace drake {
 namespace traj_opt {
@@ -110,6 +111,8 @@ PentaDiagonalFactorization<kBlockSize>::PentaDiagonalFactorization(
 template <int kBlockSize>
 void PentaDiagonalFactorization<kBlockSize>::Factorize(
     const PentaDiagonalMatrix<double>& M) {
+  INSTRUMENT_FUNCTION("Peforms factorization of M.");    
+
   DRAKE_DEMAND(M.is_symmetric());
 
   const int k = M.block_size();
@@ -184,6 +187,8 @@ void PentaDiagonalFactorization<kBlockSize>::Factorize(
 template <int kBlockSize>
 void PentaDiagonalFactorization<kBlockSize>::SolveInPlace(
     EigenPtr<Eigen::VectorXd> b) {
+  INSTRUMENT_FUNCTION("Backwards pass.");    
+
   DRAKE_DEMAND(b->size() == size());
 
   const int block_size = factorization_.block_size;

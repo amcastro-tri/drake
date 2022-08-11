@@ -16,6 +16,9 @@
 #include "drake/traj_opt/problem_definition.h"
 #include "drake/traj_opt/trajectory_optimizer.h"
 
+#include "drake/common/profiler.h"
+
+
 namespace drake {
 namespace traj_opt {
 namespace examples {
@@ -166,6 +169,8 @@ int do_main() {
 
   // Solve an optimization problem to swing-up the pendulum
   solve_trajectory_optimization(FLAGS_time_step, FLAGS_num_steps);
+
+  std::cout << TableOfAverages() << "\n";
 
   return 0;
 }

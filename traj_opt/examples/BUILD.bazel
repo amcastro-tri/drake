@@ -12,6 +12,7 @@ package(default_visibility = ["//visibility:public"])
 drake_cc_binary(
     name = "acrobot",
     srcs = ["acrobot.cc"],
+    copts = ["-DENABLE_TIMERS"],
     add_test_rule = 1,
     data = [
         "//examples/acrobot:prod_models",
@@ -22,6 +23,7 @@ drake_cc_binary(
     ],
     deps = [
         "//common:find_resource",
+        "//common:profiler",
         "//geometry:drake_visualizer",
         "//multibody/parsing",
         "//multibody/plant",
@@ -44,6 +46,7 @@ drake_cc_binary(
     ],
     deps = [
         "//common:find_resource",
+        "//common:profiler",
         "//geometry:drake_visualizer",
         "//multibody/parsing",
         "//multibody/plant",

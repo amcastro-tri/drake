@@ -202,6 +202,7 @@ drake_cc_library(
     name = "profiler",
     srcs = ["profiler.cc"],
     hdrs = ["profiler.h"],
+    copts = ["-DENABLE_TIMERS"],
     deps = [
         ":scope_exit",
         ":type_safe_index",

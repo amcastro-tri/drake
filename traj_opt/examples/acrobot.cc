@@ -16,6 +16,8 @@
 #include "drake/traj_opt/problem_definition.h"
 #include "drake/traj_opt/trajectory_optimizer.h"
 
+#include "drake/common/profiler.h"
+
 namespace drake {
 namespace traj_opt {
 namespace examples {
@@ -186,7 +188,7 @@ void solve_trajectory_optimization(double time_step, int num_steps) {
 int do_main() {
   // Solve an optimization problem to swing-up the acrobot
   solve_trajectory_optimization(FLAGS_time_step, FLAGS_num_steps);
-
+  std::cout << TableOfAverages() << "\n";
   return 0;
 }
 

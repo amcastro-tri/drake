@@ -7,6 +7,7 @@
 #include <limits>
 
 #include "drake/traj_opt/penta_diagonal_solver.h"
+#include "drake/common/profiler.h"
 
 namespace drake {
 namespace traj_opt {
@@ -65,6 +66,7 @@ T TrajectoryOptimizer<T>::CalcCost(
     const std::vector<VectorX<T>>& q, const std::vector<VectorX<T>>& v,
     const std::vector<VectorX<T>>& tau,
     TrajectoryOptimizerWorkspace<T>* workspace) const {
+  INSTRUMENT_FUNCTION("Computes cost from q, v, a and tau.");          
   T cost = 0;
   VectorX<T>& q_err = workspace->q_size_tmp;
   VectorX<T>& v_err = workspace->v_size_tmp1;
@@ -148,6 +150,7 @@ void TrajectoryOptimizer<T>::CalcInverseDynamicsSingleTimeStep(
     const Context<T>& frozen_context,
     const VectorX<T>& q, const VectorX<T>& v, const VectorX<T>& a,
     TrajectoryOptimizerWorkspace<T>* workspace, VectorX<T>* tau) const {
+  INSTRUMENT_FUNCTION("Computes tau[t].");    
   // The scratch context_ is used to compute force element contributions,
   // implicitly. This makes sense for as long as the force elements are not
   // expensive to compute, like damping.
@@ -170,6 +173,7 @@ void TrajectoryOptimizer<T>::CalcInverseDynamicsPartials(
     const std::vector<VectorX<T>>& a, const std::vector<VectorX<T>>& tau,
     TrajectoryOptimizerWorkspace<T>* workspace,
     InverseDynamicsPartials<T>* id_partials) const {
+  INSTRUMENT_FUNCTION("Computes dtau/dq.");              
   // TODO(vincekurtz): use a solver flag to choose between finite differences
   // and an analytical approximation
   CalcInverseDynamicsPartialsFiniteDiff(q, v, a, tau, workspace, id_partials);
@@ -370,6 +374,8 @@ void TrajectoryOptimizer<T>::CalcGradientFiniteDiff(
 template <typename T>
 void TrajectoryOptimizer<T>::CalcGradient(
     const TrajectoryOptimizerState<T>& state, EigenPtr<VectorX<T>> g) const {
+  INSTRUMENT_FUNCTION("Assembles dtau/dq into g.");    
+
   const double dt = time_step();
   const int nq = plant().num_positions();
   TrajectoryOptimizerWorkspace<T>* workspace = &state.workspace;
@@ -451,6 +457,8 @@ const VectorX<T>& TrajectoryOptimizer<T>::EvalGradient(
 template <typename T>
 void TrajectoryOptimizer<T>::CalcHessian(
     const TrajectoryOptimizerState<T>& state, PentaDiagonalMatrix<T>* H) const {
+  INSTRUMENT_FUNCTION("Assembles dtau/dq into H.");    
+
   DRAKE_DEMAND(H->is_symmetric());
   DRAKE_DEMAND(H->block_rows() == num_steps() + 1);
   DRAKE_DEMAND(H->block_size() == plant().num_positions());
@@ -533,6 +541,7 @@ const PentaDiagonalMatrix<T>& TrajectoryOptimizer<T>::EvalHessian(
 template <typename T>
 void TrajectoryOptimizer<T>::UpdateCacheTrajectoryData(
     const TrajectoryOptimizerState<T>& state) const {
+  INSTRUMENT_FUNCTION("Computes v, a and tau.");              
   TrajectoryOptimizerCache<T>& cache = state.mutable_cache();
   TrajectoryOptimizerWorkspace<T>& workspace = state.workspace;
 
@@ -796,6 +805,8 @@ SolverFlag TrajectoryOptimizer<double>::Solve(
   // The guess must be consistent with the initial condition
   DRAKE_DEMAND(q_guess[0] == prob_.q_init);
   DRAKE_DEMAND(static_cast<int>(q_guess.size()) == num_steps() + 1);
+
+  INSTRUMENT_FUNCTION("Solver entry point.");
 
   // stats must be empty
   DRAKE_DEMAND(stats->is_empty());

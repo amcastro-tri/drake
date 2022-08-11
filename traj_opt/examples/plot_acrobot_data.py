@@ -49,7 +49,7 @@ options_string += f"--gravity={gravity} "
 options_string += f"--linesearch=armijo "
 
 os.system("cd " + drake_root)
-code = os.system("bazel run //traj_opt/examples:acrobot" + options_string)
+code = os.system("bazel run --copt=-DENABLE_TIMERS //traj_opt/examples:acrobot" + options_string)
 
 if code != 0:
     # Solving failed (probably a compiler error)

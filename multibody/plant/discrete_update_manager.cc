@@ -8,6 +8,8 @@ namespace drake {
 namespace multibody {
 namespace internal {
 
+using contact_solvers::internal::ContactSolverResults;  
+
 template <typename T>
 void DiscreteUpdateManager<T>::DeclareCacheEntries() {
   // Cache discrete contact pairs.
@@ -19,8 +21,35 @@ void DiscreteUpdateManager<T>::DeclareCacheEntries() {
        systems::System<T>::all_parameters_ticket()});
   cache_indexes_.contact_results = contact_results_cache_entry.cache_index();
 
+  // Cache discrete contact pairs.
+  const auto& contact_solver_results_cache_entry = this->DeclareCacheEntry(
+      "Discrete update results.",
+      systems::ValueProducer(
+          this, &DiscreteUpdateManager<T>::CalcContactSolverResults),
+      {systems::System<T>::xd_ticket(),
+       systems::System<T>::all_parameters_ticket()});
+  cache_indexes_.contact_solver_results =
+      contact_solver_results_cache_entry.cache_index();
+
   // Now allow concrete instances to declare the cache entries they need.
   DoDeclareCacheEntries();
+}
+
+template <typename T>
+const ContactSolverResults<T>&
+DiscreteUpdateManager<T>::EvalContactSolverResults(
+    const systems::Context<T>& context) const {
+  return plant()
+      .get_cache_entry(cache_indexes_.contact_solver_results)
+      .template Eval<ContactSolverResults<T>>(context);
+}
+
+template <typename T>
+const ContactResults<T>& DiscreteUpdateManager<T>::EvalContactResults(
+    const systems::Context<T>& context) const {
+  return plant()
+      .get_cache_entry(cache_indexes_.contact_results)
+      .template Eval<ContactResults<T>>(context);
 }
 
 template <typename T>
@@ -76,14 +105,6 @@ systems::CacheEntry& DiscreteUpdateManager<T>::DeclareCacheEntry(
   return MultibodyPlantDiscreteUpdateManagerAttorney<T>::DeclareCacheEntry(
       mutable_plant_, std::move(description), std::move(value_producer),
       std::move(prerequisites_of_calc));
-}
-
-template <typename T>
-const contact_solvers::internal::ContactSolverResults<T>&
-DiscreteUpdateManager<T>::EvalContactSolverResults(
-    const systems::Context<T>& context) const {
-  return MultibodyPlantDiscreteUpdateManagerAttorney<
-      T>::EvalContactSolverResults(plant(), context);
 }
 
 template <typename T>
@@ -181,14 +202,6 @@ const std::vector<internal::CouplerConstraintSpecs<T>>&
 DiscreteUpdateManager<T>::coupler_constraints_specs() const {
   return MultibodyPlantDiscreteUpdateManagerAttorney<
       T>::coupler_constraints_specs(*plant_);
-}
-
-template <typename T>
-const ContactResults<T>& DiscreteUpdateManager<T>::EvalContactResults(
-    const systems::Context<T>& context) const {
-  return plant()
-      .get_cache_entry(cache_indexes_.contact_results)
-      .template Eval<ContactResults<T>>(context);
 }
 
 }  // namespace internal

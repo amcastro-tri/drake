@@ -1651,6 +1651,9 @@ void MultibodyPlant<T>::CalcContactResultsDiscrete(
 
   // Contact results are handled by the manager if available, and therefore this
   // method should not even be called.
+  // When a manager is provided, MultibodyPlant retrieves contact results
+  // calling EvalContactResults() on the manager. E.g. the evaluation of the
+  // contact results output port.
   DRAKE_DEMAND(discrete_update_manager_ == nullptr);
 
   switch (contact_model_) {
@@ -2448,16 +2451,10 @@ void MultibodyPlant<T>::CalcContactSolverResults(
   this->ValidateContext(context0);
   DRAKE_ASSERT(context0.num_continuous_states() == 0);
 
-  // We use the custom manager if provided.
-  // TODO(amcastro-tri): remove the entirety of the code we are bypassing here.
-  // This requires one of our custom managers to become the default
-  // MultibodyPlant manager.
-  if (discrete_update_manager_ != nullptr) {
-    discrete_update_manager_->CalcContactSolverResults(context0, results);
-    return;
-  } else {
-    DRAKE_ASSERT(context0.num_discrete_state_groups() == 1);
-  }
+  // Sanity check that this method is not called in when a manager is available.
+  // MultibodyPlant should retrieve thes results calling
+  // EvalContactSolverResults() on the manager.
+  DRAKE_DEMAND(discrete_update_manager_ == nullptr);
 
   const int nq = this->num_positions();
   const int nv = this->num_velocities();
@@ -2534,7 +2531,7 @@ void MultibodyPlant<T>::CalcContactSolverResults(
   if (indices.empty()) {
     // Everything is locked! Return a result that indicates no velocity, but
     // reports normal forces.
-    results->Resize(nv, num_contacts);
+    results->Resize(nq, nv, num_contacts);
     results->v_next.setZero();
     results->fn = fn0;
     results->ft.setZero();
@@ -2553,8 +2550,12 @@ void MultibodyPlant<T>::CalcContactSolverResults(
 
   VectorX<T> v0_unlocked = SelectRows(v0, indices);
 
+  // N.B. Num postions are irrelevant in `results_unlocked` since TAMSI does not
+  // update nor use results_unlocked.q_next.
+  // TODO(amcastro-tri): Clean this up when TAMSI is called from the discrete
+  // update manager.
   contact_solvers::internal::ContactSolverResults<T> results_unlocked;
-  results_unlocked.Resize(indices.size(), num_contacts);
+  results_unlocked.Resize(nq, indices.size(), num_contacts);
 
   if (contact_solver_ != nullptr) {
     CallContactSolver(contact_solver_.get(), context0.get_time(), v0_unlocked,
@@ -2596,6 +2597,11 @@ void MultibodyPlant<T>::CalcContactSolverResults(
   results->ft = results_unlocked.ft;
   results->vn = results_unlocked.vn;
   results->vt = results_unlocked.vt;
+
+  // Update the next step configurations.
+  VectorX<T> qdot_next(nq);
+  MapVelocityToQDot(context0, results->v_next, &qdot_next);
+  results->q_next = q0 + time_step() * qdot_next;
 }
 
 template <typename T>
@@ -3010,40 +3016,14 @@ void MultibodyPlant<T>::DoCalcForwardDynamicsDiscrete(
 
 template<typename T>
 void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
-    const drake::systems::Context<T>& context0,
+    const drake::systems::Context<T>& context,
     const std::vector<const drake::systems::DiscreteUpdateEvent<T>*>&,
     drake::systems::DiscreteValues<T>* updates) const {
-  this->ValidateContext(context0);
-
-  // TODO(amcastro-tri): remove the entirety of the code we are bypassing here.
-  // This requires one of our custom managers to become the default
-  // MultibodyPlant manager.
-  if (discrete_update_manager_) {
-    discrete_update_manager_->CalcDiscreteValues(context0, updates);
-    return;
-  }
-
-  // Get the system state as raw Eigen vectors
-  // (solution at the previous time step).
-  auto x0 = context0.get_discrete_state(0).get_value();
-  VectorX<T> q0 = x0.topRows(this->num_positions());
-  VectorX<T> v0 = x0.bottomRows(this->num_velocities());
-
-  // For a discrete model this evaluates vdot = (v_next - v0)/time_step() and
-  // includes contact forces.
-  const VectorX<T>& vdot = this->EvalForwardDynamics(context0).get_vdot();
-
-  // TODO(amcastro-tri): Consider replacing this by:
-  //   const VectorX<T>& v_next = solver_results.v_next;
-  // to avoid additional vector operations.
-  const VectorX<T>& v_next = v0 + time_step() * vdot;
-
-  VectorX<T> qdot_next(this->num_positions());
-  MapVelocityToQDot(context0, v_next, &qdot_next);
-  VectorX<T> q_next = q0 + time_step() * qdot_next;
-
+  this->ValidateContext(context);
+  const contact_solvers::internal::ContactSolverResults<T>& results =
+      discrete_update_manager_->EvalContactSolverResults(context);
   VectorX<T> x_next(this->num_multibody_states());
-  x_next << q_next, v_next;
+  x_next << results.q_next, results.v_next;
   updates->set_value(0, x_next);
 }
 

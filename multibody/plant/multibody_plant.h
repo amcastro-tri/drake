@@ -4440,17 +4440,19 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const VectorX<T>& mu, const VectorX<T>& v0, const VectorX<T>& fn0) const;
 
   // This method performs the computation of the impulses to advance the state
-  // stored in `context0` in time.
+  // stored in `context0` in time, using the TAMSI solver.
   // Contact forces and velocities are computed and stored in `results`. See
   // ContactSolverResults for further details on the returned data.
   void CalcContactSolverResults(
       const drake::systems::Context<T>& context0,
       contact_solvers::internal::ContactSolverResults<T>* results) const;
 
-
   // Eval version of the method CalcContactSolverResults().
   const contact_solvers::internal::ContactSolverResults<T>&
   EvalContactSolverResults(const systems::Context<T>& context) const {
+    if (discrete_update_manager_) {
+      return discrete_update_manager_->EvalContactSolverResults(context);
+    }
     return this->get_cache_entry(cache_indexes_.contact_solver_results)
         .template Eval<contact_solvers::internal::ContactSolverResults<T>>(
             context);

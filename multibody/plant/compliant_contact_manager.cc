@@ -688,7 +688,8 @@ void CompliantContactManager<T>::PackContactSolverResults(
     const SapSolverResults<T>& sap_results,
     ContactSolverResults<T>* contact_results) const {
   DRAKE_DEMAND(contact_results != nullptr);
-  contact_results->Resize(plant().num_velocities(), num_contacts);
+  contact_results->Resize(plant().num_positions(), plant().num_velocities(),
+                          num_contacts);
   contact_results->v_next = sap_results.v;
   // The manager adds all contact constraints first and therefore we know the
   // head of the impulses corresponds to contact impulses.

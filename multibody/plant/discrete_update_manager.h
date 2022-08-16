@@ -99,21 +99,15 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
     multibody_state_index_ = plant_->GetDiscreteStateIndexOrThrow();
     ExtractModelInfo();
     DeclareCacheEntries();
-  }
+  }  
 
+  /* Performs the evaluation of the discrete dynamics to the next time step. */
+  const contact_solvers::internal::ContactSolverResults<T>&
+  EvalContactSolverResults(const systems::Context<T>& context) const;
+
+  /* Evaluates contact results for the state stored in `context`. */
   const ContactResults<T>& EvalContactResults(
-      const systems::Context<T>& context) const;  
-
-  /* Given the state of the model stored in `context`, this method performs the
-   entire computation that is needed to obtain contact forces and advance
-   state to the next step. Results pertaining to the multibody rigid degrees of
-   freedoms are written to the ContactSolverResults output parameter. */
-  void CalcContactSolverResults(
-      const systems::Context<T>& context,
-      contact_solvers::internal::ContactSolverResults<T>* results) const {
-    DRAKE_DEMAND(results != nullptr);
-    DoCalcContactSolverResults(context, results);
-  }
+      const systems::Context<T>& context) const;
 
   /* Computes acceleration kinematics quantities. MultibodyPlant evaluates (in
    the systems:: sense of the word) the acceleration kinematics cache for
@@ -126,14 +120,6 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
       internal::AccelerationKinematicsCache<T>* ac) const {
     DRAKE_DEMAND(ac != nullptr);
     DoCalcAccelerationKinematicsCache(context, ac);
-  }
-
-  /* MultibodyPlant invokes this method to perform the discrete variables
-   update. */
-  void CalcDiscreteValues(const systems::Context<T>& context,
-                          systems::DiscreteValues<T>* updates) const {
-    DRAKE_DEMAND(updates != nullptr);
-    DoCalcDiscreteValues(context, updates);
   }
 
  protected:
@@ -182,9 +168,6 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
   systems::CacheEntry& DeclareCacheEntry(std::string description,
                                          systems::ValueProducer,
                                          std::set<systems::DependencyTicket>);
-
-  const contact_solvers::internal::ContactSolverResults<T>&
-  EvalContactSolverResults(const systems::Context<T>& context) const;
 
   const internal::ContactJacobians<T>& EvalContactJacobians(
       const systems::Context<T>& context) const;
@@ -248,6 +231,17 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
 
  private:
   void DeclareCacheEntries();
+  
+  /* Given the state of the model stored in `context`, this method performs the
+   entire computation that is needed to obtain contact forces and advance
+   state to the next step. Results pertaining to the multibody rigid degrees of
+   freedoms are written to the ContactSolverResults output parameter. */
+  void CalcContactSolverResults(
+      const systems::Context<T>& context,
+      contact_solvers::internal::ContactSolverResults<T>* results) const {
+    DRAKE_DEMAND(results != nullptr);
+    DoCalcContactSolverResults(context, results);
+  }
 
   void CalcContactResults(const systems::Context<T>& context,
                           ContactResults<T>* contact_results) const {
@@ -261,6 +255,7 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
   // manager.
   struct CacheIndexes {
     systems::CacheIndex contact_results;
+    systems::CacheIndex contact_solver_results;
   };
 
   const MultibodyPlant<T>* plant_{nullptr};

@@ -1649,6 +1649,10 @@ void MultibodyPlant<T>::CalcContactResultsDiscrete(
   contact_results->set_plant(this);
   if (num_collision_geometries() == 0) return;
 
+  // Contact results are handled by the manager if available, and therefore this
+  // method should not even be called.
+  DRAKE_DEMAND(discrete_update_manager_ == nullptr);
+
   switch (contact_model_) {
     case ContactModel::kPoint:
       AppendContactResultsDiscretePointPair(context, contact_results);
@@ -3375,6 +3379,8 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
   }
 
   // Cache contact results.
+  // N.B. If a discrete update manager is available, contact results are
+  // computed/cached by discrete_update_manager_ and this entry is not used.
   // In discrete mode contact forces computation requires to advance the system
   // from step n to n+1. Therefore they are a function of state and input.
   // In continuous mode contact forces are simply a function of state.

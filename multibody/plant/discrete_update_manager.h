@@ -13,6 +13,7 @@
 #include "drake/multibody/contact_solvers/contact_solver_results.h"
 #include "drake/multibody/plant/constraint_specs.h"
 #include "drake/multibody/plant/contact_jacobians.h"
+#include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/coulomb_friction.h"
 #include "drake/multibody/plant/discrete_contact_pair.h"
 #include "drake/multibody/plant/scalar_convertible_component.h"
@@ -100,6 +101,9 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
     DeclareCacheEntries();
   }
 
+  const ContactResults<T>& EvalContactResults(
+      const systems::Context<T>& context) const;  
+
   /* Given the state of the model stored in `context`, this method performs the
    entire computation that is needed to obtain contact forces and advance
    state to the next step. Results pertaining to the multibody rigid degrees of
@@ -159,7 +163,7 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
 
   /* Derived DiscreteUpdateManager should override this method to declare
    cache entries in the owning MultibodyPlant. */
-  virtual void DeclareCacheEntries() {}
+  virtual void DoDeclareCacheEntries() {}  
 
   /* Returns the discrete state index of the rigid position and velocity states
    declared by MultibodyPlant. */
@@ -225,6 +229,11 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
   /* Concrete DiscreteUpdateManagers must override these NVI Calc methods to
    provide an implementation. The output parameters are guaranteed to be
    non-null and do not need to be checked again. */
+  virtual void DoCalcContactResults(
+      const systems::Context<T>& context,
+      ContactResults<T>* contact_results) const = 0;
+
+  // TODO: remove DoCalcContactSolverResults? or at least remove the public NVI?
   virtual void DoCalcContactSolverResults(
       const systems::Context<T>& context,
       contact_solvers::internal::ContactSolverResults<T>* results) const = 0;
@@ -238,9 +247,26 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
       systems::DiscreteValues<T>* updates) const = 0;
 
  private:
+  void DeclareCacheEntries();
+
+  void CalcContactResults(const systems::Context<T>& context,
+                          ContactResults<T>* contact_results) const {
+    DRAKE_DEMAND(contact_results != nullptr);
+    contact_results->Clear();
+    contact_results->set_plant(&plant());
+    DoCalcContactResults(context, contact_results);
+  }
+
+  // Struct used to conglomerate the indexes of cache entries declared by the
+  // manager.
+  struct CacheIndexes {
+    systems::CacheIndex contact_results;
+  };
+
   const MultibodyPlant<T>* plant_{nullptr};
   MultibodyPlant<T>* mutable_plant_{nullptr};
   systems::DiscreteStateIndex multibody_state_index_;
+  CacheIndexes cache_indexes_;
 };
 }  // namespace internal
 }  // namespace multibody

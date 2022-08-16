@@ -176,9 +176,12 @@ class CompliantContactManager final
   // DiscreteUpdateManager for details.
   void ExtractModelInfo() final;
 
-  void DeclareCacheEntries() final;
+  void DoDeclareCacheEntries() final;
 
   // TODO(amcastro-tri): implement these APIs according to #16955.
+  void DoCalcContactResults(const systems::Context<T>& context,
+                            ContactResults<T>* contact_results) const final;
+
   void DoCalcContactSolverResults(
       const systems::Context<T>&,
       contact_solvers::internal::ContactSolverResults<T>*) const final;

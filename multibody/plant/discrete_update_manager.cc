@@ -9,6 +9,21 @@ namespace multibody {
 namespace internal {
 
 template <typename T>
+void DiscreteUpdateManager<T>::DeclareCacheEntries() {
+  // Cache discrete contact pairs.
+  const auto& contact_results_cache_entry = this->DeclareCacheEntry(
+      "Contact results.",
+      systems::ValueProducer(this,
+                             &DiscreteUpdateManager<T>::CalcContactResults),
+      {systems::System<T>::xd_ticket(),
+       systems::System<T>::all_parameters_ticket()});
+  cache_indexes_.contact_results = contact_results_cache_entry.cache_index();
+
+  // Now allow concrete instances to declare the cache entries they need.
+  DoDeclareCacheEntries();
+}
+
+template <typename T>
 std::unique_ptr<DiscreteUpdateManager<double>>
 DiscreteUpdateManager<T>::CloneToDouble() const {
   throw std::logic_error(
@@ -166,6 +181,14 @@ const std::vector<internal::CouplerConstraintSpecs<T>>&
 DiscreteUpdateManager<T>::coupler_constraints_specs() const {
   return MultibodyPlantDiscreteUpdateManagerAttorney<
       T>::coupler_constraints_specs(*plant_);
+}
+
+template <typename T>
+const ContactResults<T>& DiscreteUpdateManager<T>::EvalContactResults(
+    const systems::Context<T>& context) const {
+  return plant()
+      .get_cache_entry(cache_indexes_.contact_results)
+      .template Eval<ContactResults<T>>(context);
 }
 
 }  // namespace internal

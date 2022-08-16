@@ -4558,6 +4558,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Evaluate contact results.
   const ContactResults<T>& EvalContactResults(
       const systems::Context<T>& context) const {
+    if (discrete_update_manager_) {
+      return discrete_update_manager_->EvalContactResults(context);
+    }
     return this->get_cache_entry(cache_indexes_.contact_results)
         .template Eval<ContactResults<T>>(context);
   }

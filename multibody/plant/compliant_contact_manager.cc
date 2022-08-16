@@ -59,7 +59,7 @@ template <typename T>
 CompliantContactManager<T>::~CompliantContactManager() {}
 
 template <typename T>
-void CompliantContactManager<T>::DeclareCacheEntries() {
+void CompliantContactManager<T>::DoDeclareCacheEntries() {
   // N.B. We use xd_ticket() instead of q_ticket() since discrete
   // multibody plant does not have q's, but rather discrete state.
   // Therefore if we make it dependent on q_ticket() the Jacobian only
@@ -1052,6 +1052,15 @@ void CompliantContactManager<T>::DoCalcAccelerationKinematicsCache(
       context0, plant().EvalPositionKinematics(context0),
       plant().EvalVelocityKinematics(context0), ac->get_vdot(),
       &ac->get_mutable_A_WB_pool());
+}
+
+template <typename T>
+void CompliantContactManager<T>::DoCalcContactResults(
+    const systems::Context<T>& context,
+    ContactResults<T>* contact_results) const {
+  throw std::runtime_error("Implement me!!");
+  (void)context;
+  (void)contact_results;
 }
 
 }  // namespace internal

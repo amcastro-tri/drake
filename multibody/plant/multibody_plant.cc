@@ -3020,10 +3020,11 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
     const std::vector<const drake::systems::DiscreteUpdateEvent<T>*>&,
     drake::systems::DiscreteValues<T>* updates) const {
   this->ValidateContext(context);
-  const contact_solvers::internal::ContactSolverResults<T>& results =
-      discrete_update_manager_->EvalContactSolverResults(context);
-  VectorX<T> x_next(this->num_multibody_states());
-  x_next << results.q_next, results.v_next;
+  // TODO: Document. Is this always guaranteed to be non-nullptr? is it because
+  // how the MultibodyTreeSystem makes this call?
+  DRAKE_DEMAND(discrete_udpate_manager_ != nullptr);
+  const VectorX<T>& x_next =
+      discrete_update_manager_->EvalNextDiscreteState(context);
   updates->set_value(0, x_next);
 }
 
@@ -3118,7 +3119,7 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
               [this](const systems::Context<T>& context,
                      systems::BasicVector<T>* result) {
                 result->SetFromVector(
-                    this->EvalForwardDynamics(context).get_vdot());
+                    this->EvalAccelerationKinematicsCache(context).get_vdot());
               },
               {this->acceleration_kinematics_cache_entry().ticket()})
           .get_index();
@@ -3155,7 +3156,7 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
                 [this, model_instance_index](const systems::Context<T>& context,
                                              systems::BasicVector<T>* result) {
                   const auto& vdot =
-                      this->EvalForwardDynamics(context).get_vdot();
+                      this->EvalAccelerationKinematicsCache(context).get_vdot();
                   result->SetFromVector(
                       this->GetVelocitiesFromArray(model_instance_index, vdot));
                 },
@@ -3598,7 +3599,8 @@ void MultibodyPlant<T>::CalcBodySpatialAccelerationsOutput(
   DRAKE_MBP_THROW_IF_NOT_FINALIZED();
   this->ValidateContext(context);
   A_WB_all->resize(num_bodies());
-  const AccelerationKinematicsCache<T>& ac = this->EvalForwardDynamics(context);
+  const AccelerationKinematicsCache<T>& ac =
+      this->EvalAccelerationKinematicsCache(context);
   for (BodyIndex body_index(0); body_index < this->num_bodies(); ++body_index) {
     const Body<T>& body = get_body(body_index);
     A_WB_all->at(body_index) = ac.get_A_WB(body.node_index());
@@ -3608,13 +3610,13 @@ void MultibodyPlant<T>::CalcBodySpatialAccelerationsOutput(
 template <typename T>
 const SpatialAcceleration<T>&
 MultibodyPlant<T>::EvalBodySpatialAccelerationInWorld(
-    const Context<T>& context,
-    const Body<T>& body_B) const {
+    const Context<T>& context, const Body<T>& body_B) const {
   DRAKE_MBP_THROW_IF_NOT_FINALIZED();
   this->ValidateContext(context);
   DRAKE_DEMAND(this == &body_B.GetParentPlant());
   this->ValidateContext(context);
-  const AccelerationKinematicsCache<T>& ac = this->EvalForwardDynamics(context);
+  const AccelerationKinematicsCache<T>& ac =
+      this->EvalAccelerationKinematicsCache(context);
   return ac.get_A_WB(body_B.node_index());
 }
 
@@ -3655,7 +3657,8 @@ void MultibodyPlant<T>::CalcReactionForces(
   // Guard against failure to acquire the geometry input deep in the call graph.
   ValidateGeometryInput(context, get_reaction_forces_output_port());
 
-  const VectorX<T>& vdot = this->EvalForwardDynamics(context).get_vdot();
+  const VectorX<T>& vdot =
+      this->EvalAccelerationKinematicsCache(context).get_vdot();
 
   // TODO(sherm1) EvalForwardDynamics() should record the forces it used
   //              so that we don't have to attempt to reconstruct them

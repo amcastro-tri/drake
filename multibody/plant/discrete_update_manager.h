@@ -101,13 +101,31 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
     DeclareCacheEntries();
   }  
 
-  /* Performs the evaluation of the discrete dynamics to the next time step. */
+  /****************************************************************************/
+  /* BELOW ARE THE ACTUAL APIS WE WANT. SEE IF WE CAN MOVE TAMSI OUT OF THE WAY
+  FIRST. */
+  /****************************************************************************/
+  
+  const VectorX<T>& EvalNextDiscreteState(
+      const systems::Context<T>& context) const;
+
+  // TODO: for other models such as deformables, consider.
+  // const VectorX<T>& EvalNextDiscreteState(
+  //    const systems::Context<T>& context, int discrete_state_index) const;
+
+  // Evaluates the vector of generalized contact forces that act on the
+  // (non-deformable) multibody system, whether these forces stem from
+  // interactions among non-deformables bodies or with other physical models
+  // such as deformables bodies, particles, etc.
+  const VectorX<T>& EvalGeneralizedContactForces(
+      const systems::Context<T>& context) const;
+
+  // These results are evaluated mostly for reporting from the MultibodyPlant.
+  // E.g. any contact that we want visualized.
+  // TODO: different evaluation method for deformables?
   const contact_solvers::internal::ContactSolverResults<T>&
   EvalContactSolverResults(const systems::Context<T>& context) const;
 
-  /* Evaluates contact results for the state stored in `context`. */
-  const ContactResults<T>& EvalContactResults(
-      const systems::Context<T>& context) const;
 
   /* Computes acceleration kinematics quantities. MultibodyPlant evaluates (in
    the systems:: sense of the word) the acceleration kinematics cache for
@@ -115,12 +133,18 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
    forces and the reporting of spatial accelerations. */
   // TODO(amcastro-tri): Update AccelerationKinematicsCache to allow storing
   // additional acceleration kinematics data for deformable models.
-  void CalcAccelerationKinematicsCache(
-      const systems::Context<T>& context,
-      internal::AccelerationKinematicsCache<T>* ac) const {
-    DRAKE_DEMAND(ac != nullptr);
-    DoCalcAccelerationKinematicsCache(context, ac);
-  }
+  const internal::AccelerationKinematicsCache<T>&
+  EvalAccelerationKinematicsCache(const systems::Context<T>& context) const;  
+
+  /****************************************************************************/
+  /****************************************************************************/
+
+
+  /* Performs the evaluation of the discrete dynamics to the next time step. */
+  // TODO: most likely make this one private. Upgrade ContactSolverResults later
+  // to store more general solver results.
+  const contact_solvers::internal::ContactSolverResults<T>&
+  EvalContactSolverResults(const systems::Context<T>& context) const;
 
  protected:
   /* Derived classes that support making a clone that uses double as a scalar
@@ -209,25 +233,20 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
   coupler_constraints_specs() const;
   /* @} */
 
+  virtual void DoCalcContactSolverResults(
+      const systems::Context<T>& context,
+      contact_solvers::internal::ContactSolverResults<T>* results) const = 0;
+
   /* Concrete DiscreteUpdateManagers must override these NVI Calc methods to
    provide an implementation. The output parameters are guaranteed to be
    non-null and do not need to be checked again. */
   virtual void DoCalcContactResults(
       const systems::Context<T>& context,
-      ContactResults<T>* contact_results) const = 0;
-
-  // TODO: remove DoCalcContactSolverResults? or at least remove the public NVI?
-  virtual void DoCalcContactSolverResults(
-      const systems::Context<T>& context,
-      contact_solvers::internal::ContactSolverResults<T>* results) const = 0;
+      ContactResults<T>* contact_results) const = 0;  
 
   virtual void DoCalcAccelerationKinematicsCache(
       const systems::Context<T>& context,
       internal::AccelerationKinematicsCache<T>* ac) const = 0;
-
-  virtual void DoCalcDiscreteValues(
-      const systems::Context<T>& context,
-      systems::DiscreteValues<T>* updates) const = 0;
 
  private:
   void DeclareCacheEntries();
@@ -251,11 +270,19 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
     DoCalcContactResults(context, contact_results);
   }
 
+  void CalcAccelerationKinematicsCache(
+      const systems::Context<T>& context,
+      internal::AccelerationKinematicsCache<T>* ac) const {
+    DRAKE_DEMAND(ac != nullptr);
+    DoCalcAccelerationKinematicsCache(context, ac);
+  }
+
   // Struct used to conglomerate the indexes of cache entries declared by the
   // manager.
   struct CacheIndexes {
     systems::CacheIndex contact_results;
     systems::CacheIndex contact_solver_results;
+    systems::CacheIndex acceleration_kinematics;
   };
 
   const MultibodyPlant<T>* plant_{nullptr};

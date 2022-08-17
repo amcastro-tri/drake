@@ -4407,6 +4407,14 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const drake::systems::Context<T>& context,
       internal::AccelerationKinematicsCache<T>* ac) const override;
 
+  const internal::AccelerationKinematicsCache<T>&
+  EvalAccelerationKinematicsCache(const drake::systems::Context<T>& context) {
+    if (discrete_update_manager_) {
+      return discrete_update_manager_->EvalAccelerationKinematicsCache(context);
+    }
+    return this->EvalForwardDynamics(context);
+  }
+
   // If the plant is modeled as a discrete system with periodic updates (see
   // is_discrete()), this method computes the periodic updates of the state
   // using a semi-explicit Euler strategy, that is:

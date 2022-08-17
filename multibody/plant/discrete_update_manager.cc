@@ -8,19 +8,10 @@ namespace drake {
 namespace multibody {
 namespace internal {
 
-using contact_solvers::internal::ContactSolverResults;  
+using contact_solvers::internal::ContactSolverResults;
 
 template <typename T>
 void DiscreteUpdateManager<T>::DeclareCacheEntries() {
-  // Cache discrete contact pairs.
-  const auto& contact_results_cache_entry = this->DeclareCacheEntry(
-      "Contact results.",
-      systems::ValueProducer(this,
-                             &DiscreteUpdateManager<T>::CalcContactResults),
-      {systems::System<T>::xd_ticket(),
-       systems::System<T>::all_parameters_ticket()});
-  cache_indexes_.contact_results = contact_results_cache_entry.cache_index();
-
   // Cache discrete contact pairs.
   const auto& contact_solver_results_cache_entry = this->DeclareCacheEntry(
       "Discrete update results.",
@@ -30,6 +21,24 @@ void DiscreteUpdateManager<T>::DeclareCacheEntries() {
        systems::System<T>::all_parameters_ticket()});
   cache_indexes_.contact_solver_results =
       contact_solver_results_cache_entry.cache_index();
+
+  // Cache discrete contact pairs.
+  const auto& contact_results_cache_entry = this->DeclareCacheEntry(
+      "Contact results.",
+      systems::ValueProducer(this,
+                             &DiscreteUpdateManager<T>::CalcContactResults),
+      {systems::System<T>::xd_ticket(),
+       systems::System<T>::all_parameters_ticket()});
+  cache_indexes_.contact_results = contact_results_cache_entry.cache_index();
+
+  // Accelerations consistent with the discrete update.
+  const auto& acceleration_kinematics_cache_entry = this->DeclareCacheEntry(
+      "Acceleration kinematics.",
+      systems::ValueProducer(
+          this, &DiscreteUpdateManager<T>::CalcAccelerationKinematicsCache),
+      {plant().cache_entry_ticket(cache_indexes_.contact_solver_results)});
+  cache_indexes_.acceleration_kinematics =
+      acceleration_kinematics_cache_entry.cache_index();
 
   // Now allow concrete instances to declare the cache entries they need.
   DoDeclareCacheEntries();
@@ -50,6 +59,15 @@ const ContactResults<T>& DiscreteUpdateManager<T>::EvalContactResults(
   return plant()
       .get_cache_entry(cache_indexes_.contact_results)
       .template Eval<ContactResults<T>>(context);
+}
+
+template <typename T>
+const internal::AccelerationKinematicsCache<T>&
+DiscreteUpdateManager<T>::EvalAccelerationKinematicsCache(
+    const systems::Context<T>& context) const {
+  return plant()
+      .get_cache_entry(cache_indexes_.acceleration_kinematics)
+      .template Eval<internal::AccelerationKinematicsCache<T>>(context);
 }
 
 template <typename T>

@@ -688,8 +688,9 @@ void CompliantContactManager<T>::PackContactSolverResults(
     const SapSolverResults<T>& sap_results,
     ContactSolverResults<T>* contact_results) const {
   DRAKE_DEMAND(contact_results != nullptr);
-  contact_results->Resize(plant().num_positions(), plant().num_velocities(),
-                          num_contacts);
+  const int nq = plant().num_positions();
+  const int nv = plant().num_velocities();
+  contact_results->Resize(nq, nv, num_contacts);
   contact_results->v_next = sap_results.v;
   // The manager adds all contact constraints first and therefore we know the
   // head of the impulses corresponds to contact impulses.
@@ -728,6 +729,12 @@ void CompliantContactManager<T>::PackContactSolverResults(
     }
   }
   tau_contact /= time_step;
+
+  // Update next time step configurations.
+  VectorX<T> qdot_next(plant().num_positions());
+  plant().MapVelocityToQDot(context, contact_results->v_next, &qdot_next);
+  contact_results->q_next = q0 + time_step * qdot_next;
+}
 }
 
 template <typename T>
@@ -971,32 +978,6 @@ CompliantContactManager<T>::EvalContactProblemCache(
   return plant()
       .get_cache_entry(cache_indexes_.contact_problem)
       .template Eval<ContactProblemCache<T>>(context);
-}
-
-template <typename T>
-void CompliantContactManager<T>::DoCalcDiscreteValues(
-    const drake::systems::Context<T>& context,
-    drake::systems::DiscreteValues<T>* updates) const {
-  const ContactSolverResults<T>& results =
-      this->EvalContactSolverResults(context);
-
-  // Previous time step positions.
-  const int nq = plant().num_positions();
-  const VectorX<T>& x0 =
-      context.get_discrete_state(this->multibody_state_index()).value();
-  const auto q0 = x0.topRows(nq);
-
-  // Retrieve the solution velocity for the next time step.
-  const VectorX<T>& v_next = results.v_next;
-
-  // Update generalized positions.
-  VectorX<T> qdot_next(plant().num_positions());
-  plant().MapVelocityToQDot(context, v_next, &qdot_next);
-  const VectorX<T> q_next = q0 + plant().time_step() * qdot_next;
-
-  VectorX<T> x_next(plant().num_multibody_states());
-  x_next << q_next, v_next;
-  updates->set_value(this->multibody_state_index(), x_next);
 }
 
 // TODO(xuchenhan-tri): Consider a scalar converting constructor to cut down

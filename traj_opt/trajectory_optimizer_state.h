@@ -244,6 +244,15 @@ class TrajectoryOptimizerState {
     return q_;
   }
 
+  /** Levenberg-Marquardt damping parameter. Zero if not used. **/
+  double lambda() const { return lambda_; }
+
+  /** Sets Levenberg-Marquardt damping parameter. **/
+  void set_lambda(double lambda) {
+    lambda_ = lambda;
+    cache_.hessian_up_to_date = false;
+  }
+
   /**
    * Setter for the sequence of generalized positions. Invalidates the cache.
    *
@@ -344,6 +353,10 @@ class TrajectoryOptimizerState {
   // TODO(vincekurtz): consider storing as a single VectorX<T> for better memory
   // layout.
   std::vector<VectorX<T>> q_;
+
+  // Levenberg-Marquardt damping parameter. Zero if not used (i.e. it does not
+  // modify the computation of the Hessian.)
+  double lambda_{0.0};
 
   // Struct to store the diagonal of the Hessian and the decision variables (q)
   // from the previous iteration

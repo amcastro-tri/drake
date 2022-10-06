@@ -226,6 +226,8 @@ void TrajOptExample::SetSolverParameters(
     solver_params->method = SolverMethod::kLinesearch;
   } else if (options.method == "trust_region") {
     solver_params->method = SolverMethod::kTrustRegion;
+  } else if (options.method == "levenberg_marquardt") {
+    solver_params->method = SolverMethod::kLevenbergMarquardt;      
   } else {
     throw std::runtime_error(
         fmt::format("Unknown solver method '{}'", options.method));

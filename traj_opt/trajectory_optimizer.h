@@ -344,6 +344,11 @@ class TrajectoryOptimizer {
                                   TrajectoryOptimizerStats<T>* stats,
                                   ConvergenceReason* reason) const;
 
+  SolverFlag SolveWithLevenbergMarquardt(
+      const std::vector<VectorX<T>>& q_guess,
+      TrajectoryOptimizerSolution<T>* solution,
+      TrajectoryOptimizerStats<T>* stats, ConvergenceReason* reason) const;
+
   // Updates `cache` to store q and v from `state`.
   void CalcContextCache(
       const TrajectoryOptimizerState<T>& state,
@@ -746,6 +751,9 @@ class TrajectoryOptimizer {
                        const double Delta, VectorX<T>* dq,
                        VectorX<T>* dqH) const;
 
+  void CalcLevenbergMarquardtUpdate(const TrajectoryOptimizerState<T>& state,
+                                    const double Delta, VectorX<T>* dq) const;
+
   /**
    * Solve the scalar quadratic equation
    *
@@ -892,6 +900,11 @@ template <>
 SolverFlag TrajectoryOptimizer<double>::SolveWithTrustRegion(
     const std::vector<VectorXd>&, TrajectoryOptimizerSolution<double>*,
     TrajectoryOptimizerStats<double>*, ConvergenceReason*) const;
+
+template <>
+SolverFlag TrajectoryOptimizer<double>::SolveWithLevenbergMarquardt(
+    const std::vector<VectorXd>&, TrajectoryOptimizerSolution<double>*,
+    TrajectoryOptimizerStats<double>*, ConvergenceReason*) const;    
 
 }  // namespace traj_opt
 }  // namespace drake

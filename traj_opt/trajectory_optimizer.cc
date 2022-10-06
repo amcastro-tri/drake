@@ -1357,6 +1357,12 @@ void TrajectoryOptimizer<T>::CalcHessian(
     }
   }
 
+  // Add Levenberg-Marquardt damping term.
+  for (int t = 0; t <= num_steps(); ++t) {
+    C[t] +=
+        state.lambda() * state.proximal_operator_data().H_diag[t].asDiagonal();
+  }
+
   // Copy lower triangular part to upper triangular part
   H->MakeSymmetric();
 }
@@ -2033,6 +2039,42 @@ bool TrajectoryOptimizer<double>::CalcDoglegPoint(
 }
 
 template <typename T>
+void TrajectoryOptimizer<T>::CalcLevenbergMarquardtUpdate(
+    const TrajectoryOptimizerState<T>&, const double, VectorX<T>*) const {
+  // Only T=double is supported here, since pentadigonal matrix factorization is
+  // (sometimes) required to compute the dogleg point.
+  throw std::runtime_error(
+      "TrajectoryOptimizer::CalcLevenbergMarquardtUpdate only supports "
+      "T=double");
+}
+
+template <>
+void TrajectoryOptimizer<double>::CalcLevenbergMarquardtUpdate(
+    const TrajectoryOptimizerState<double>& state, const double,
+    VectorXd* dq) const {
+  INSTRUMENT_FUNCTION("Find search direction with dogleg method.");
+
+  // N.B. We'll rescale pU and pH by Δ to avoid roundoff error
+  const VectorXd& g = EvalGradient(state);
+
+  // N.B. This Hessain appproximation already includes the term with lambda.
+  const PentaDiagonalMatrix<double>& H = EvalHessian(state);
+
+  *dq = -g;
+  SolveLinearSystemInPlace(H, dq);
+
+  if (params_.debug_compare_against_dense) {
+    // From experiments in penta_diagonal_solver_test.cc
+    // (PentaDiagonalMatrixTest.SolvePentaDiagonal), LDLT is the most stable
+    // solver to round-off errors. We therefore use it as a reference solution
+    // for debugging.
+    const VectorXd dq_dense = H.MakeDense().ldlt().solve(-g);
+    std::cout << fmt::format("Sparse vs. Dense error: {}\n",
+                             (*dq - dq_dense).norm() / dq_dense.norm());
+  }
+}
+
+template <typename T>
 SolverFlag TrajectoryOptimizer<T>::Solve(const std::vector<VectorX<T>>&,
                                          TrajectoryOptimizerSolution<T>*,
                                          TrajectoryOptimizerStats<T>*,
@@ -2059,6 +2101,8 @@ SolverFlag TrajectoryOptimizer<double>::Solve(
     return SolveWithLinesearch(q_guess, solution, stats);
   } else if (params_.method == SolverMethod::kTrustRegion) {
     return SolveWithTrustRegion(q_guess, solution, stats, reason);
+  } else if (params_.method == SolverMethod::kLevenbergMarquardt) {
+    return SolveWithLevenbergMarquardt(q_guess, solution, stats, reason);
   } else {
     throw std::runtime_error("Unsupported solver strategy!");
   }
@@ -2413,6 +2457,192 @@ SolverFlag TrajectoryOptimizer<double>::SolveWithTrustRegion(
       // If the ratio is large and we're at the boundary of the trust
       // region, increase the size of the trust region.
       Delta = min(2 * Delta, Delta_max);
+    }
+
+    ++k;
+  }
+
+  // Finish our printout
+  if (params_.verbose) {
+    std::cout << separator_bar << std::endl;
+  }
+
+  solve_time = std::chrono::high_resolution_clock::now() - start_time;
+  stats->solve_time = solve_time.count();
+
+  // Record the solution
+  solution->q = state.q();
+  solution->v = EvalV(state);
+  solution->tau = EvalTau(state);
+
+  // Record L(q) for various values of q so we can make plots
+  if (params_.save_contour_data) {
+    SaveContourPlotDataFirstTwoVariables(&scratch_state);
+  }
+  if (params_.save_lineplot_data) {
+    SaveLinePlotDataFirstVariable(&scratch_state);
+  }
+
+  if (k == params_.max_iterations) return SolverFlag::kMaxIterationsReached;
+
+  return SolverFlag::kSuccess;
+}
+
+template <typename T>
+SolverFlag TrajectoryOptimizer<T>::SolveWithLevenbergMarquardt(
+    const std::vector<VectorX<T>>&, TrajectoryOptimizerSolution<T>*,
+    TrajectoryOptimizerStats<T>*, ConvergenceReason*) const {
+  throw std::runtime_error(
+      "TrajectoryOptimizer::SolveLevenbergMarquardt only supports T=double.");
+}
+
+template <>
+SolverFlag TrajectoryOptimizer<double>::SolveWithLevenbergMarquardt(
+    const std::vector<VectorXd>& q_guess,
+    TrajectoryOptimizerSolution<double>* solution,
+    TrajectoryOptimizerStats<double>* stats,
+    ConvergenceReason* reason_out) const {
+  INSTRUMENT_FUNCTION("Least squares Levenberg-Marquardt solver.");
+  using std::min;
+  // Allocate a state variable to store q and everything that is computed from q
+  TrajectoryOptimizerState<double> state = CreateState();
+  state.set_q(q_guess);
+
+  // Initialize damping matrix.
+  state.set_proximal_operator_data(state.q(), EvalHessian(state));
+
+  // Allocate a separate state variable for computations like L(q + dq)
+  TrajectoryOptimizerState<double> scratch_state = CreateState();
+
+  // Allocate the update vector q_{k+1} = q_k + dq
+  VectorXd dq(plant().num_positions() * (num_steps() + 1));
+
+  // Store previous state.
+  std::vector<VectorXd> q_tmp(dq.size());
+
+  // Set up a file to record iteration data for a contour plot
+  if (params_.save_contour_data) {
+    SetupQuadraticDataFile();
+  }
+  if (params_.save_lineplot_data) {
+    SetupIterationDataFile();
+  }
+
+  // Allocate timing variables
+  auto start_time = std::chrono::high_resolution_clock::now();
+  auto iter_start_time = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> iter_time;
+  std::chrono::duration<double> solve_time;
+
+  // Variables that we'll update throughout the main loop
+  int k = 0;                  // iteration counter
+  double lambda = 0.01;
+  state.set_lambda(lambda);
+
+  // Define printout data
+  const std::string separator_bar =
+      "------------------------------------------------------------------------"
+      "--------";
+  const std::string printout_labels =
+      "|  iter  |   cost   |    λ    |    ρ    |  time (s)  |  |g|/cost  | "
+      "dL_dq/cost |";
+
+  double previous_cost = EvalCost(state);
+  while (k < params_.max_iterations) {
+    // Obtain the candiate update dq.
+    CalcLevenbergMarquardtUpdate(
+        state, NAN /* TODO: goes through the state, remove. */, &dq);
+
+    // Sanity check, since our Hessian approximation is SPD.
+    const VectorXd& g = EvalGradient(state);
+    DRAKE_DEMAND(dq.transpose() * g < 0);    
+
+    // Compute some quantities for logging.
+    // N.B. These should be computed before q is updated.
+    const double dL_dq = g.dot(dq) / previous_cost;
+    const double q_norm = state.norm();
+    const double rho = CalcTrustRatio(state, dq, &scratch_state);
+
+    // Verify that dq is a descent direction.
+    q_tmp = state.q();  // store previous state.
+    state.AddToQ(dq);    
+
+    if (params_.normalize_quaternions) NormalizeQuaternions(&state);
+    const double cost = EvalCost(state);
+
+    PRINT_VAR(g.norm());
+    PRINT_VAR(dq.dot(g));
+    PRINT_VAR(previous_cost);
+    PRINT_VAR(cost);
+    PRINT_VAR(dq.norm());
+
+    // We only accept steps that decrease the cost.
+    if (cost < previous_cost) {
+      // Valid step.
+      lambda /= 3.0;
+
+      // Update damping matrix.
+      state.set_proximal_operator_data(state.q(), EvalHessian(state));
+    } else {
+      // Invalid step. Set to previous state and try again.
+      // TODO: this is trashing the cache!!!!
+      state.set_q(q_tmp);
+      lambda *= 2.0;
+    }
+    state.set_lambda(lambda);
+
+    // Save data related to our quadratic approximation (for the first two
+    // variables)
+    if (params_.save_contour_data) {
+      SaveQuadraticDataFirstTwoVariables(k, lambda, dq, state);
+    }
+    if (params_.save_lineplot_data) {
+      SaveIterationData(k, lambda, rho, dq(1), state);
+    }
+
+    // Compute iteration timing.
+    iter_time = std::chrono::high_resolution_clock::now() - iter_start_time;
+    iter_start_time = std::chrono::high_resolution_clock::now();
+
+    // Printout statistics from this iteration
+    if (params_.verbose) {
+      if ((k % 50) == 0) {
+        // Refresh the labels for easy reading
+        std::cout << separator_bar << std::endl;
+        std::cout << printout_labels << std::endl;
+        std::cout << separator_bar << std::endl;
+      }
+      std::cout << fmt::format(
+          "| {:>6} | {:>8.3g} | {:>7.2} | {:>7.1} | {:>10.5} | {:>10.5} | "
+          "{:>10.4} |\n",
+          k, cost, lambda, rho, iter_time.count(), g.norm() / cost, dL_dq);
+    }
+
+    // Record statistics from this iteration
+    stats->push_data(iter_time.count(),  // iteration time
+                     previous_cost,      // cost
+                     0,                  // linesearch iterations
+                     NAN,                // linesearch parameter
+                     lambda,             // N.B. header says Δ.
+                     q_norm,             // q norm
+                     dq.norm(),          // step size
+                     dq.norm(),          // Not used.
+                     rho,                // trust region ratio
+                     g.norm(),           // gradient size
+                     dL_dq,             // Gradient along dq
+                     dL_dq);             // Not used.
+
+    // Only check convergence criteria for valid steps.
+    ConvergenceReason reason{
+        ConvergenceReason::kNoConvergenceCriteriaSatisfied};
+    if (cost < previous_cost) {
+      reason = VerifyConvergenceCriteria(state, previous_cost, dq);
+      previous_cost = EvalCost(state);
+      if (reason_out) *reason_out = reason;
+    }
+
+    if (reason != ConvergenceReason::kNoConvergenceCriteriaSatisfied) {
+      break;
     }
 
     ++k;

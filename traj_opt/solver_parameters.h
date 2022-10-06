@@ -15,7 +15,7 @@ enum LinesearchMethod {
   kBacktracking
 };
 
-enum SolverMethod { kLinesearch, kTrustRegion };
+enum SolverMethod { kLinesearch, kTrustRegion, kLevenbergMarquardt };
 
 enum GradientsMethod {
   // First order forward differences.

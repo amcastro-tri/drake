@@ -4,6 +4,7 @@
 
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
+#include "drake/multibody/math/spatial_algebra.h"
 
 namespace drake {
 namespace multibody {
@@ -195,6 +196,15 @@ class SapConstraint {
   /* Derived classes must override to provide polymorphic deep-copy into a new
    instance. */
   virtual std::unique_ptr<SapConstraint<T>> Clone() const = 0;
+
+  virtual void AccumulateMultibodyForces(
+      const Eigen::Ref<const VectorX<T>>& gamma, VectorX<T>* generalized_forces,
+      std::vector<SpatialForce<T>>* spatial_forces) const {
+        (void)gamma;
+        (void)generalized_forces;
+        (void)spatial_forces;
+    throw std::logic_error("Implement me!!!");
+  }
 
  protected:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(SapConstraint);

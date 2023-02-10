@@ -15,6 +15,7 @@
 #include "drake/multibody/plant/contact_pair_kinematics.h"
 #include "drake/multibody/tree/multibody_tree_topology.h"
 #include "drake/systems/framework/context.h"
+#include "drake/multibody/tree/multibody_forces.h"
 
 namespace drake {
 namespace multibody {
@@ -76,6 +77,9 @@ class SapDriver {
   void CalcContactSolverResults(
       const systems::Context<T>&,
       contact_solvers::internal::ContactSolverResults<T>*) const;
+
+  void CalcDiscreteUpdateMultibodyForces(const systems::Context<T>& context,
+                                         MultibodyForces<T>* forces) const;
 
  private:
   // Provide private access for unit testing only.
@@ -213,11 +217,21 @@ class SapDriver {
   const ContactProblemCache<T>& EvalContactProblemCache(
       const systems::Context<T>& context) const;
 
+  void AccumulateConstraintMultibodyForces(const systems::Context<T>& context,
+                                           MultibodyForces<T>* forces) const;
+
+  void CalcSapSolverResults(
+      const systems::Context<T>& context,
+      contact_solvers::internal::SapSolverResults<T>* results) const;
+  const contact_solvers::internal::SapSolverResults<T>& EvalSapSolverResults(
+      const systems::Context<T>& context) const;
+
   // The driver only has mutable access at construction time, when it can
   // declare additional state, cache entries, ports, etc. After construction,
   // the driver only has const access to the manager.
   const CompliantContactManager<T>* const manager_{nullptr};
   systems::CacheIndex contact_problem_;
+  systems::CacheIndex sap_results_;
   // Vector of joint damping coefficients, of size plant().num_velocities().
   // This information is extracted during the call to ExtractModelInfo().
   VectorX<T> joint_damping_;

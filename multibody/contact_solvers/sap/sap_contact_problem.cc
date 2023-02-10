@@ -103,6 +103,20 @@ int SapContactProblem<T>::AddConstraint(std::unique_ptr<SapConstraint<T>> c) {
   return constraint_index;
 }
 
+template <typename T>
+void SapContactProblem<T>::AccumulateConstraintMultibodyForces(
+    const VectorX<T>& gamma, VectorX<T>* generalized_forces,
+    std::vector<SpatialForce<T>>* spatial_forces) const {
+  int offset = 0;
+  for (int i = 0; i < num_constraints(); ++i) {
+    const SapConstraint<T>& c = get_constraint(i);
+    const int ne = c.num_constraint_equations();
+    const auto gamma_i = gamma.segment(offset, ne);
+    c.AccumulateMultibodyForces(gamma_i, generalized_forces, spatial_forces);
+    offset += ne;
+  }
+}
+
 }  // namespace internal
 }  // namespace contact_solvers
 }  // namespace multibody

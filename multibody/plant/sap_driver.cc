@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -58,6 +59,17 @@ template <typename T>
 void SapDriver<T>::DeclareCacheEntries(
     CompliantContactManager<T>* mutable_manager) {
   DRAKE_DEMAND(mutable_manager == manager_);
+
+  const systems::DependencyTicket xd_ticket =
+      plant().discrete_state_ticket(manager().multibody_state_index());
+  const systems::DependencyTicket inputs_ticket =
+      plant().all_input_ports_ticket();
+  const systems::DependencyTicket parameters_ticket =
+      plant().all_parameters_ticket();
+  // TODO: include deformables.    
+  const std::set<systems::DependencyTicket> state_input_and_parameters = {
+      xd_ticket, inputs_ticket, parameters_ticket};
+
   const auto& contact_problem_cache_entry = mutable_manager->DeclareCacheEntry(
       "contact problem",
       systems::ValueProducer(this, ContactProblemCache<T>(plant().time_step()),
@@ -65,6 +77,22 @@ void SapDriver<T>::DeclareCacheEntries(
       {plant().cache_entry_ticket(
           manager().cache_indexes_.discrete_contact_pairs)});
   contact_problem_ = contact_problem_cache_entry.cache_index();
+
+  const auto& sap_results_cache_entry = mutable_manager->DeclareCacheEntry(
+      "SAP solver results",
+      systems::ValueProducer(this, &SapDriver<T>::CalcSapSolverResults),
+      state_input_and_parameters);
+  sap_results_ = sap_results_cache_entry.cache_index();
+
+#if 0
+  const auto& non_constraint_forces_cache_entry =
+      mutable_manager->DeclareCacheEntry(
+          "Non constraint contact forces",
+          systems::ValueProducer(this, MultibodyForces<T>(plant()),
+                                 &SapDriver<T>::CalcNonConstraintForces),
+          state_input_and_parameters);
+  non_constraint_forces_ = non_constraint_forces_cache_entry.cache_index();
+#endif
 }
 
 template <typename T>
@@ -73,6 +101,14 @@ const ContactProblemCache<T>& SapDriver<T>::EvalContactProblemCache(
   return plant()
       .get_cache_entry(contact_problem_)
       .template Eval<ContactProblemCache<T>>(context);
+}
+
+template <typename T>
+const SapSolverResults<T>& SapDriver<T>::EvalSapSolverResults(
+    const systems::Context<T>& context) const {
+  return plant()
+      .get_cache_entry(sap_results_)
+      .template Eval<SapSolverResults<T>>(context);
 }
 
 template <typename T>
@@ -658,9 +694,8 @@ void SapDriver<T>::AddCliqueContribution(
 }
 
 template <typename T>
-void SapDriver<T>::CalcContactSolverResults(
-    const systems::Context<T>& context,
-    contact_solvers::internal::ContactSolverResults<T>* results) const {
+void SapDriver<T>::CalcSapSolverResults(const systems::Context<T>& context,
+                                        SapSolverResults<T>* results) const {
   const ContactProblemCache<T>& contact_problem_cache =
       EvalContactProblemCache(context);
   const SapContactProblem<T>& sap_problem = *contact_problem_cache.sap_problem;
@@ -683,9 +718,8 @@ void SapDriver<T>::CalcContactSolverResults(
   // Solve contact problem.
   SapSolver<T> sap;
   sap.set_parameters(sap_parameters_);
-  SapSolverResults<T> sap_results;
   const SapSolverStatus status =
-      sap.SolveWithGuess(sap_problem, v0, &sap_results);
+      sap.SolveWithGuess(sap_problem, v0, results);
   if (status != SapSolverStatus::kSuccess) {
     const std::string msg = fmt::format(
         "The SAP solver failed to converge at simulation time = {}. "
@@ -706,6 +740,16 @@ void SapDriver<T>::CalcContactSolverResults(
         context.get_time());
     throw std::runtime_error(msg);
   }
+}
+
+template <typename T>
+void SapDriver<T>::CalcContactSolverResults(
+    const systems::Context<T>& context,
+    contact_solvers::internal::ContactSolverResults<T>* results) const {
+  const ContactProblemCache<T>& contact_problem_cache =
+      EvalContactProblemCache(context);
+  const SapContactProblem<T>& sap_problem = *contact_problem_cache.sap_problem;
+  const SapSolverResults<T>& sap_results = EvalSapSolverResults(context);
 
   const std::vector<DiscreteContactPair<T>>& discrete_pairs =
       manager().EvalDiscreteContactPairs(context);
@@ -713,6 +757,42 @@ void SapDriver<T>::CalcContactSolverResults(
 
   PackContactSolverResults(context, sap_problem, num_contacts, sap_results,
                            results);
+}
+
+template <typename T>
+void SapDriver<T>::CalcDiscreteUpdateMultibodyForces(
+    const systems::Context<T>& context, MultibodyForces<T>* forces) const {
+
+  // Thus far only contact constraints are considered.
+  // Therefore here we throw an exception to inform the user this feature is
+  // missing, instead of returning an incomplete result.
+  // TODO(amcastro-tri): extend this functionality to include arbitrary
+  // constraints, see #18749.
+  if (plant().num_constraints() > 0) {
+    throw std::logic_error(
+        "Currently reaction forces do not include the effect of additional "
+        "constraints in the model, but only contact constraints. See Drake "
+        "issue #18749.");
+  }
+
+  *forces = manager().EvalNonConstraintMultibodyForces(context);
+
+  AccumulateConstraintMultibodyForces(context, forces);
+}
+
+template <typename T>
+void SapDriver<T>::AccumulateConstraintMultibodyForces(
+    const systems::Context<T>& context, MultibodyForces<T>* forces) const {
+  const ContactProblemCache<T>& contact_problem_cache =
+      EvalContactProblemCache(context);
+  const SapContactProblem<T>& sap_problem = *contact_problem_cache.sap_problem;
+  const SapSolverResults<T>& results = EvalSapSolverResults(context);
+  const VectorX<T>& gamma = results.gamma;
+
+  VectorX<T>& generalized_forces = forces->mutable_generalized_forces();
+  std::vector<SpatialForce<T>>& spatial_forces = forces->mutable_body_forces();
+  sap_problem.AccumulateConstraintMultibodyForces(gamma, &generalized_forces,
+                                                  &spatial_forces);
 }
 
 }  // namespace internal

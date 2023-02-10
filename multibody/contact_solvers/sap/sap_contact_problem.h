@@ -7,6 +7,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/contact_solvers/sap/contact_problem_graph.h"
 #include "drake/multibody/contact_solvers/sap/sap_constraint.h"
+#include "drake/multibody/math/spatial_algebra.h"
 
 namespace drake {
 namespace multibody {
@@ -170,6 +171,10 @@ class SapContactProblem {
   const VectorX<T>& v_star() const { return v_star_; }
 
   const ContactProblemGraph& graph() const { return graph_; }
+
+  void AccumulateConstraintMultibodyForces(
+      const VectorX<T>& gamma, VectorX<T>* generalized_forces,
+      std::vector<SpatialForce<T>>* spatial_forces) const;
 
  private:
   int nv_{0};                    // Total number of generalized velocities.

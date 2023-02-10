@@ -567,6 +567,7 @@ void CompliantContactManager<T>::CalcAccelerationsDueToNonContactForcesCache(
 
   // N.B. Joint limits are modeled as constraints. Therefore here we only add
   // all other external forces.
+  // Per notes below, this corresponds to the term k(x₀).
   CalcNonContactForcesExcludingJointLimits(context,
                                            &forward_dynamics_cache->forces);
 
@@ -597,9 +598,10 @@ void CompliantContactManager<T>::CalcAccelerationsDueToNonContactForcesCache(
   // below in terms of MultibodyTree APIs.
 
   // We must include reflected rotor inertias along with the new term dt⋅D.
+  const double dt = plant().time_step();
   const VectorX<T> diagonal_inertia =
       plant().EvalReflectedInertiaCache(context) +
-      joint_damping_ * plant().time_step();
+      joint_damping_ * dt;
 
   // We compute the articulated body inertia including the contribution of the
   // additional diagonal elements arising from the implicit treatment of joint
@@ -614,6 +616,16 @@ void CompliantContactManager<T>::CalcAccelerationsDueToNonContactForcesCache(
   this->internal_tree().CalcArticulatedBodyAccelerations(
       context, forward_dynamics_cache->abic, forward_dynamics_cache->aba_forces,
       &forward_dynamics_cache->ac);
+
+  // From the momentum equation above:
+  //   (M + dt⋅D)⋅(v-v₀)/dt = k₁(x₀) - D⋅v₀ = k(x₀)
+  // And therefore:
+  //   M⋅(v-v₀)/dt = k(x₀) - dt⋅D⋅a = k̃
+  // corresponds to the effective multibody forces used in the discrete update,
+  // consistent with the generalized accelerations a = (v-v₀)/dt.
+  const VectorX<T>& a = forward_dynamics_cache->ac.get_vdot();
+  const VectorX<T> damping = dt * diagonal_inertia.array() * a.array();
+  forward_dynamics_cache->forces.mutable_generalized_forces() -= damping;
 }
 
 template <typename T>
@@ -633,6 +645,16 @@ CompliantContactManager<T>::EvalAccelerationsDueToNonContactForcesCache(
       .get_cache_entry(cache_indexes_.non_contact_forces_accelerations)
       .template Eval<AccelerationsDueToExternalForcesCache<T>>(context)
       .ac;
+}
+
+template <typename T>
+const MultibodyForces<T>&
+CompliantContactManager<T>::EvalNonConstraintMultibodyForces(
+    const systems::Context<T>& context) const {
+  return plant()
+      .get_cache_entry(cache_indexes_.non_contact_forces_accelerations)
+      .template Eval<AccelerationsDueToExternalForcesCache<T>>(context)
+      .forces;
 }
 
 template <typename T>
@@ -1041,6 +1063,20 @@ template <typename T>
 void CompliantContactManager<T>::DoCalcDiscreteUpdateMultibodyForces(
       const systems::Context<T>& context,
       MultibodyForces<T>* forces) const {
+  DRAKE_DEMAND(sap_driver_ != nullptr || tamsi_driver_ != nullptr);
+
+  // Computation with SAP solver.
+  if (sap_driver_) {
+    if constexpr (std::is_same_v<T, symbolic::Expression>) {
+      throw std::logic_error(
+          "Discrete updates with the SAP solver are not supported for T = "
+          "symbolic::Expression");
+    } else {
+      sap_driver_->CalcDiscreteUpdateMultibodyForces(context, forces);
+      return;
+    }
+  }
+
   // Thus far only contact constraints are considered.
   // Therefore here we throw an exception to inform the user this feature is
   // missing, instead of returning an incomplete result.

@@ -249,6 +249,9 @@ class CompliantContactManager final
   EvalAccelerationsDueToNonContactForcesCache(
       const systems::Context<T>& context) const;
 
+  const MultibodyForces<T>& EvalNonConstraintMultibodyForces(
+      const systems::Context<T>& context) const;
+
   // Helper method to fill in contact_results with point contact information
   // for the given state stored in `context`.
   // @param[in,out] contact_results is appended to

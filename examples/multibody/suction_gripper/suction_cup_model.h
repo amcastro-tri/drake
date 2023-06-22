@@ -8,24 +8,7 @@ namespace examples {
 namespace multibody {
 namespace suction_gripper {
 
-/* Parameters for a SuctionCupModel. */
-struct SuctionCupModelParameters {
-  // The normal vector, expressed in a frame B, specifies the direction in which
-  // the cup opening is pointing. That is, points on the side of the normal are
-  // affected by the suction of cup. Points behind the plane defined by this
-  // normal are behind the cup and are not affected by suction forces.
-  Vector3<double> cup_normal_B;
-  // The effective area of the cup. Typically the area defined by the outer rim
-  // of a suction cup. For non-circular shapes a model could decide to use the
-  // hydraulic diameter or similar quantities to define the area. In meters.
-  double area;
-  // Force at distances farther than max_suction_distance are zero, in meters.
-  double max_suction_distance;
-  // Maximum pump pressure when the cup is fully blocked and the flow rate is
-  // zero. In Pa.
-  double zero_flow_pressure;
-};
-
+#if 0
 /** Model for a suction cup.
 
  Assumptions:
@@ -105,16 +88,22 @@ class SuctionCupModel {
  private:
   SuctionCupModelParameters parameters_;
 };
+#endif
 
-/* Convenience struct to store the triplet {body, relative postion, cup
- * parameters} for a suction cup model attached at point C on a given body. */
-struct SuctionCupPerBodyParameters {
-  // Index for the body on which cup C attaches.
-  multibody::BodyIndex body_index;
-  // Position of cup C on body B.
-  Vector3<double> p_BC;
-  // Parameters for a SuctionCupModel.
-  SuctionCupModelParameters cup_parameters;
+/* Parameters for a SuctionCup system. */
+struct SuctionCupParameters {
+  // The mass of the suction cup device, in kilograms.
+  double mass;
+  // The effective linear stiffness k, in N/m, of the suction cup device. That
+  // is, if we press the suction cup a distance d, we'd need to apply a force f
+  // = k⋅d.
+  double stiffness;
+  // Radius of the circular rim of the suction cup, in meters.
+  double suction_rim_radius;
+  // Force at distances farther than max_suction_distance are zero, in meters.
+  double max_suction_distance;  
+  // The rim geometry is discretized with a number of discrete points.
+  int num_rim_nodes;
 };
 
 /** A System that connects to the MultibodyPlant in order to model the effects
@@ -122,20 +111,29 @@ struct SuctionCupPerBodyParameters {
 
  Each suction cup is modeled according to SuctionCupModel, refer to
  SuctionCupModel's documentation for details.
- 
+
  @system
- name: SuctionCupsSystem
+ name: SuctionCup
  input_ports:
- - command
+ - suction_pressure
+ - body_poses
  - query_object
  output_ports:
  - spatial_forces
+ TODO: consider adding a flow entrance loss output port (see Section 6.9 of
+ White, F.M., 2011. Fluid mechanics, seventh edition) to allow modeling
+hydraulic circuits involving this suction cup model.
  @endsystem
 
- - The command input is a BasicVector<T> with one element per suction cup. It is a scalar multiplier on the total force computed with SuctionCupModel. Typically a number in (0, 1) to model actuation on the suction strength.
+ - The suction_pressure input is a scalar value for the pressure on the
+   suction side of the cup. It is a gage pressure relative to atmospheric (i.e.
+   negative for vacuum).
  - The query_object port must be the same query object used by the
    MultibodyPlant model. It can be requested with MultibodPlat::
    get_geometry_query_input_port().
+ - It is expected that the body_poses input should be connected to the
+  @ref MultibodyPlant::get_body_poses_output_port() "MultibodyPlant body_poses
+  output port".
  - The output is of type std::vector<ExternallyAppliedSpatialForce<T>>; it is
   expected that this output will be connected to the @ref
   MultibodyPlant::get_applied_spatial_force_input_port()
@@ -146,37 +144,102 @@ struct SuctionCupPerBodyParameters {
 @tparam_default_scalar
 **/
 template <typename T>
-class SuctionCupsSystem : public drake::systems::LeafSystem<T> {
+class SuctionCup : public drake::systems::LeafSystem<T> {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(SuctionCupModel)
 
-  /* Constructor for a suction cup model on a single body B specified in
-    `parameters` */
-  SuctionCupModel(const MultibodyPlant<T>* plant, const Body<T>& body,
-                  Vector3<double> p_BC, SuctionCupParameters parameters)
-      : plant_(plant), parameters_{body.index(), std::move(p_BC), std::move(parameters)} {
+  /** This function adds the necessary mass and spring elements into  `plant` to
+   model a compliant suction cup model, and returns a new SuctionCup system
+   modeled with these elements. Refer to this class's documentation for further
+   details on the model.
+
+   @param[in,out] plant On ouput, `plant` will contain new mass and spring
+   elements needed to model a suction cup. After this call, plant.num_bodies()
+   and plant.num_velocities() will increase by cup_parameters.num_rim_nodes+1.
+   @param[in] body_index Index of a body already present in the input `plant` to
+   which this new suction cup model is attached.
+   @param[in] X_BC The pose of the cup frame C in the body frame B. Per this
+   class's documentation, the z-axis points towards the outside of the cup,
+   perpendicular to its suction area.
+   @param[in] cup_parameters Parameters of the model defining the cup's size,
+   mass and compliance. **/
+  static std::unique_ptr<SuctionCup<T>> MakeAndAddToPlant(
+      MultibodyPlant<T>* plant, BodyIndex body_index,
+      const RigidTransform<double>& X_BC,
+      SuctionCupModelParameters cup_parameters);
+
+  /** This function makes a new SuctionCup model with MakeAndAddToPlant(), adds
+   it to `builder` and connects its ports accordingly. **/
+  static SuctionCup<T>* AddToBuilder(systems::DiagramBuilder<T>* builder,
+                                     MultibodyPlant<T>* plant,
+                                     BodyIndex body_index,
+                                     const RigidTransform<double>& X_BC,
+                                     SuctionCupModelParameters cup_parameters);
+
+  /** The plant model to which this cup is added. **/
+  const MultibodyPlant<T>& plant() const { return plant_; }
+
+ private:
+  // Struct to store MultibodyPlant quantities used to model a suction cup model
+  // of mass m and linear stiffness k, with its rim discretized in N nodes.
+  // There is a total of N + 1 bodies, with a total
+  // mass of m.
+  struct MultibodyElements {
+    // Main body of the cup model, of mass m / 2.
+    BodyIndex cup_body;
+    // Bodies conforming the discretized rim of the cup.
+    // Each of mass m / (2 * N).
+    std::vector<BodyIndex> rim_bodies_;
+    // rim_contact_points_[i] stores he id for the contact point (zero radius
+    // sphere) for body rim_bodies_[i].
+    std::vector<GeometryId> rim_contact_points_;
+  };
+
+  /* Constructor for a suction cup model attached on a body B.
+   N.B. Since making a cup model requires the coordination of constructing the
+   system, adding new elements to a MultibodyPlant and appropriately wiring
+   input ports, we make construction private and provide users with helper
+   methods MakeAndAddToPlant() and AddToBuilder(). */
+  SuctionCupModel(MultibodyPlant<T>* plant, BodyIndex body_index,
+                  const RigidTransform<double>& X_BC,
+                  SuctionCupModelParameters cup_parameters)
+      : plant_(plant),
+        body_index_(body_index),
+        X_BC_(X_BC),
+        parameters_{std::move(parameters)} {
     // N.B. This system has not state. It is a feedthrough with its outputs
     // being completely determined from the inputs.
+
+    // Input ports.
+    suction_pressure_index_ =
+        this->DeclareInputPort("suction_pressure", systems::kVectorValued, 1)
+            .get_index();
+    body_poses_index_ =
+        this->DeclareAbstractInputPort("body_poses",
+                                       Value<std::vector<RigidTransform<T>>>())
+            .get_index();
     query_object_input_port_ =
         DeclareAbstractInputPort(
             "query_object",
             drake::Value<drake::geometry::QueryObject<double>>())
             .get_index();
-    this->DeclareInputPort("command", systems::kVectorValued,
-                           num_suction_cups());
+
+    // Output ports.
     this->DeclareAbstractOutputPort(
         "spatial_forces", std::vector<ExternallyAppliedSpatialForce<T>>(),
-        &SuctionCupsSystem<T>::CalcSpatialForces);
+        &SuctionCup<T>::CalcSpatialForces);
+
+    // Add elements to `plant` to model the suction cup.
+    multibody_elements_ = MakeMultibodyPlantModel(plant);
   }
 
-  /* Constructor for a model with a set of suction cup models. */
-  SuctionCupModel(std::vector<SuctionCupPerBodyParameters> parameters);
+  // The suction cup is modeled as a network of spring and masses. 
+  MultibodyElements MakeMultibodyPlantModel(MultibodyPlant<T>* plant) const {
 
-  int num_suction_cups() const { return parameters_.size(); }
+    
+  }
 
-  const MultibodyPlant<T>& plant() const { return plant_; }
-
- private:
+  // Helper method to get the body corresponding to a given geometry.
   const Body<T>& GetBodyGivenGeometryId(
       const drake::geometry::QueryObject<T>& query_object,
       GeometryId id) const {
@@ -243,7 +306,11 @@ class SuctionCupsSystem : public drake::systems::LeafSystem<T> {
 
   const MultibodyPlant<T>* plant_{nullptr};
   std::vector<SuctionCupPerBodyParameters> parameters_;
-  systems::InputPortIndex query_object_input_port_{};  
+  systems::InputPortIndex suction_pressure_index_{};
+  systems::InputPortIndex body_poses_index_{};
+  systems::InputPortIndex query_object_input_port_{};
+  // MultibodyPlant elements used in the modeling of the suction cup.
+  MultibodyElements multibody_elements_;
 };
 
 }  // namespace suction_gripper

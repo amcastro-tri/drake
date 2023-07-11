@@ -9,6 +9,7 @@ const char* const kFriction = "coulomb_friction";
 const char* const kHcDissipation = "hunt_crossley_dissipation";
 const char* const kRelaxationTime = "relaxation_time";
 const char* const kPointStiffness = "point_contact_stiffness";
+const char* const kStiffCoreDepth = "stiff_core_depth";
 
 const char* const kHydroGroup = "hydroelastic";
 const char* const kElastic = "hydroelastic_modulus";

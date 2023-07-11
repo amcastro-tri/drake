@@ -14,6 +14,9 @@
 #include "drake/systems/framework/leaf_system.h"
 #include "drake/systems/primitives/adder.h"
 #include "drake/systems/primitives/constant_vector_source.h"
+#include "drake/geometry/meshcat.h"
+#include "drake/geometry/meshcat_animation.h"
+#include "drake/geometry/meshcat_visualizer.h"
 
 // Parameters for squeezing the spatula.
 DEFINE_double(gripper_force, 1,
@@ -23,6 +26,8 @@ DEFINE_double(amplitude, 5,
               "carried out by the gripper. [N].");
 DEFINE_double(duty_cycle, 0.5, "Duty cycle of the control signal.");
 DEFINE_double(period, 3, "Period of the control signal. [s].");
+DEFINE_double(stiff_core_depth, 1.0, "Stiff core depth [m].");
+DEFINE_double(initial_width, 0.01, "Initial width of the grasp [m].");
 
 // DrakeVisualizer Settings.
 DEFINE_bool(visualize_collision, false,
@@ -151,9 +156,37 @@ int DoMain() {
   parser.AddModelsFromUrl(
       "package://drake/examples/hydroelastic/spatula_slip_control/models/"
       "schunk_wsg_50_hydro_bubble.sdf");
+
+  // Update proximity properties to provide stiff layer depth.
+  const auto& inspector = scene_graph.model_inspector();
+  const auto left_geo_id = plant.GetCollisionGeometriesForBody(
+      plant.GetBodyByName("left_finger_bubble"))[0];
+  const auto right_geo_id = plant.GetCollisionGeometriesForBody(
+      plant.GetBodyByName("right_finger_bubble"))[0];
+  geometry::ProximityProperties left_props(
+      *inspector.GetProximityProperties(left_geo_id));
+  geometry::ProximityProperties right_props(
+      *inspector.GetProximityProperties(right_geo_id));
+  left_props.AddProperty("material", "stiff_core_depth",
+                         FLAGS_stiff_core_depth);
+  right_props.AddProperty("material", "stiff_core_depth",
+                          FLAGS_stiff_core_depth);
+  scene_graph.AssignRole(*plant.get_source_id(), left_geo_id, left_props,
+                         geometry::RoleAssign::kReplace);
+  scene_graph.AssignRole(*plant.get_source_id(), right_geo_id, right_props,
+                         geometry::RoleAssign::kReplace);
+
   parser.AddModelsFromUrl(
       "package://drake/examples/hydroelastic/spatula_slip_control/models/"
       "spatula.sdf");
+  const auto geo_id =
+      plant.GetCollisionGeometriesForBody(plant.GetBodyByName("spatula"))[0];
+  geometry::ProximityProperties props(
+      *inspector.GetProximityProperties(geo_id));
+  props.AddProperty("material", "stiff_core_depth", FLAGS_stiff_core_depth);
+  scene_graph.AssignRole(*plant.get_source_id(), geo_id, props,
+                         geometry::RoleAssign::kReplace);
+
   // Pose the gripper and weld it to the world.
   const math::RigidTransform<double> X_WF0 = math::RigidTransform<double>(
       math::RollPitchYaw(0.0, -1.57, 0.0), Eigen::Vector3d(0, 0, 0.25));
@@ -183,6 +216,7 @@ int DoMain() {
 
   // Create a visualizer for the system and ensure contact results are
   // visualized.
+
   geometry::DrakeVisualizerParams params;
   params.role = FLAGS_visualize_collision ? geometry::Role::kProximity
                                           : geometry::Role::kIllustration;
@@ -191,6 +225,18 @@ int DoMain() {
   multibody::ConnectContactResultsToDrakeVisualizer(&builder, plant,
                                                     scene_graph,
                                                     /* lcm */ nullptr);
+
+
+#if 0  
+  auto meshcat = std::make_shared<geometry::Meshcat>();
+  geometry::MeshcatVisualizerParams params;
+  params.delete_on_initialization_event = false;
+  //params.role = geometry::Role::kProximity;
+  params.show_hydroelastic = false;
+  auto& visualizer = geometry::MeshcatVisualizerd::AddToBuilder(
+      &builder, scene_graph, meshcat, std::move(params));
+  (void)visualizer;
+#endif  
 
   // Construct a simulator.
   std::unique_ptr<systems::Diagram<double>> diagram = builder.Build();
@@ -220,10 +266,10 @@ int DoMain() {
   // Set finger joint positions.
   const PrismaticJoint<double>& left_joint =
       plant.GetJointByName<PrismaticJoint>("left_finger_sliding_joint");
-  left_joint.set_translation(&plant_context, -0.01);
+  left_joint.set_translation(&plant_context, -FLAGS_initial_width);
   const PrismaticJoint<double>& right_joint =
       plant.GetJointByName<PrismaticJoint>("right_finger_sliding_joint");
-  right_joint.set_translation(&plant_context, 0.01);
+  right_joint.set_translation(&plant_context, FLAGS_initial_width);
 
   // Simulate.
   simulator.Initialize();

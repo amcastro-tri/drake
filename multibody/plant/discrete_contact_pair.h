@@ -46,6 +46,7 @@ struct DiscreteContactPair {
   /* Coefficient of friction. It's always initialized to NAN here and remains
    set to NAN if unused. */
   T friction_coefficient{NAN};
+  T stiff_core_depth{NAN};
   /* For mesh contact, the index of the surface this discrete pair corresponds
    * to. No value if the pair does not correspond to mesh contact.*/
   std::optional<int> surface_index{};

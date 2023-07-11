@@ -11,6 +11,10 @@ namespace drake {
 namespace multibody {
 namespace internal {
 
+template <typename T>
+T GetStiffCoreDepth(geometry::GeometryId id, double default_value,
+                    const geometry::SceneGraphInspector<T>& inspector);    
+
 /* Returns the point contact stiffness stored in group
  geometry::internal::kMaterialGroup with property
  geometry::internal::kPointStiffness for the specified geometry.

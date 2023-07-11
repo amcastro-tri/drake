@@ -340,6 +340,8 @@ template <typename T>
 void CompliantContactManager<T>::AppendDiscreteContactPairsForPointContact(
     const systems::Context<T>& context,
     std::vector<DiscreteContactPair<T>>* result) const {
+  using std::min;
+
   std::vector<DiscreteContactPair<T>>& contact_pairs = *result;
 
   const geometry::QueryObject<T>& query_object =
@@ -379,6 +381,10 @@ void CompliantContactManager<T>::AppendDiscreteContactPairsForPointContact(
     const T mu =
         GetCombinedDynamicCoulombFriction(pair.id_A, pair.id_B, inspector);
 
+    const T xeA = GetStiffCoreDepth(pair.id_A, 1.0e-3, inspector);
+    const T xeB = GetStiffCoreDepth(pair.id_B, 1.0e-3, inspector);
+    const T xe = min(xeA, xeB);
+
     // We compute the position of the point contact based on Hertz's theory
     // for contact between two elastic bodies.
     const T denom = kA + kB;
@@ -390,7 +396,7 @@ void CompliantContactManager<T>::AppendDiscreteContactPairsForPointContact(
     const T fn0 = k * pair.depth;  // Used by TAMSI, ignored by SAP.
 
     contact_pairs.push_back({pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W, phi0,
-                             fn0, k, d, tau, mu, {} /* no surface index */,
+                             fn0, k, d, tau, mu, xe, {} /* no surface index */,
                              {} /* no face index */});
   }
 }
@@ -410,6 +416,8 @@ void CompliantContactManager<T>::
     AppendDiscreteContactPairsForHydroelasticContact(
         const systems::Context<T>& context,
         std::vector<DiscreteContactPair<T>>* result) const {
+  using std::min;
+          
   std::vector<DiscreteContactPair<T>>& contact_pairs = *result;
 
   // N.B. For discrete hydro we use a first order quadrature rule. As such,
@@ -463,6 +471,10 @@ void CompliantContactManager<T>::
     // Combine friction coefficients.
     const T mu =
         GetCombinedDynamicCoulombFriction(s.id_M(), s.id_N(), inspector);
+
+    const T xeA = GetStiffCoreDepth(s.id_M(), 1.0e-1, inspector);
+    const T xeB = GetStiffCoreDepth(s.id_N(), 1.0e-1, inspector);
+    const T xe = min(xeA, xeB);        
 
     for (int face = 0; face < s.num_faces(); ++face) {
       const T& Ae = s.area(face);  // Face element area.
@@ -539,9 +551,9 @@ void CompliantContactManager<T>::
         // phi < 0 when in penetration.
         const T phi0 = -p0 / g;
 
-        if (k > 0) {
+        if (k > 0 && phi0 > -5.0) {
           contact_pairs.push_back({s.id_M(), s.id_N(), p_WQ, nhat_W, phi0, fn0,
-                                   k, d, tau, mu, surface_index, face});
+                                   k, d, tau, mu, xe, surface_index, face});
         }
       }
     }

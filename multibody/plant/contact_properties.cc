@@ -30,6 +30,18 @@ T GetPointContactStiffness(geometry::GeometryId id, double default_value,
 }
 
 template <typename T>
+T GetStiffCoreDepth(geometry::GeometryId id, double default_value,
+                    const geometry::SceneGraphInspector<T>& inspector) {
+  DRAKE_DEMAND(default_value >= 0.0);
+  const geometry::ProximityProperties* prop =
+      inspector.GetProximityProperties(id);
+  DRAKE_DEMAND(prop != nullptr);
+  return prop->template GetPropertyOrDefault<double>(
+      geometry::internal::kMaterialGroup, geometry::internal::kStiffCoreDepth,
+      default_value);
+}
+
+template <typename T>
 T GetHydroelasticModulus(geometry::GeometryId id, double default_value,
                          const geometry::SceneGraphInspector<T>& inspector) {
   DRAKE_DEMAND(default_value >= 0.0);
@@ -160,7 +172,8 @@ double GetCombinedDynamicCoulombFriction(
 }
 
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
-    (&GetPointContactStiffness<T>, &GetHydroelasticModulus<T>,
+    (&GetStiffCoreDepth<T>,
+     &GetPointContactStiffness<T>, &GetHydroelasticModulus<T>,
      &GetHuntCrossleyDissipation<T>, &GetCombinedHuntCrossleyDissipation<T>,
      &GetDissipationTimeConstant<T>, &GetCoulombFriction<T>,
      &GetCombinedPointContactStiffness<T>,

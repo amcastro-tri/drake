@@ -11,12 +11,21 @@
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
 #include "drake/multibody/contact_solvers/sap/sap_contact_problem.h"
 #include "drake/multibody/contact_solvers/sap/sap_friction_cone_constraint.h"
+#include "drake/multibody/contact_solvers/sap/sap_hunt_crossley.h"
 #include "drake/multibody/contact_solvers/sap/sap_holonomic_constraint.h"
 #include "drake/multibody/contact_solvers/sap/sap_limit_constraint.h"
 #include "drake/multibody/contact_solvers/sap/sap_solver.h"
 #include "drake/multibody/contact_solvers/sap/sap_solver_results.h"
 #include "drake/multibody/plant/compliant_contact_manager.h"
 #include "drake/multibody/plant/multibody_plant.h"
+
+#if 0
+#define FNC_HEADER()                              \
+   std::cout << std::string(80, '*') << std::endl; \
+   std::cout << __PRETTY_FUNCTION__ << std::endl;
+#endif
+
+#define FNC_HEADER();
 
 using drake::geometry::GeometryId;
 using drake::math::RotationMatrix;
@@ -27,6 +36,7 @@ using drake::multibody::contact_solvers::internal::MatrixBlock;
 using drake::multibody::contact_solvers::internal::SapConstraint;
 using drake::multibody::contact_solvers::internal::SapContactProblem;
 using drake::multibody::contact_solvers::internal::SapFrictionConeConstraint;
+using drake::multibody::contact_solvers::internal::SapHuntCrossley;
 using drake::multibody::contact_solvers::internal::SapHolonomicConstraint;
 using drake::multibody::contact_solvers::internal::SapLimitConstraint;
 using drake::multibody::contact_solvers::internal::SapSolver;
@@ -165,7 +175,11 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
   // Parameters used by SAP to estimate regularization, see [Castro et al.,
   // 2021].
   // TODO(amcastro-tri): consider exposing these parameters.
-  constexpr double sigma = 1.0e-3;
+  constexpr double beta = 0.01;  // 0.2 leads to R = 1e-3 * wi.
+  //constexpr double sigma = 0.001;
+  const double vs = plant().stiction_tolerance();
+  //constexpr double vs = 1.0e-4;
+  //constexpr double xe = 1.0e-4;  // mm.  
 
   const std::vector<DiscreteContactPair<T>>& contact_pairs =
       manager().EvalDiscreteContactPairs(context);
@@ -183,30 +197,29 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
     const auto& discrete_pair = contact_pairs[icontact];
 
     const T stiffness = discrete_pair.stiffness;
-    const T dissipation_time_scale = discrete_pair.dissipation_time_scale;
+    //const T dissipation_time_scale = discrete_pair.dissipation_time_scale;
+    const T damping = discrete_pair.damping;
     const T friction = discrete_pair.friction_coefficient;
+    //const T xe = discrete_pair.stiff_core_depth;
     const T phi = contact_kinematics[icontact].phi;
     const auto& jacobian_blocks = contact_kinematics[icontact].jacobian;
 
-    // Stiffness equal to infinity is used to indicate a rigid contact. Since
-    // SAP is inherently compliant, we must use the "near rigid regime"
-    // approximation, with near rigid parameter equal to 1.0.
-    // TODO(amcastrot-tri): This is mostly for deformables, consider exposing
-    // this parameter.
-    const double beta = (stiffness == std::numeric_limits<double>::infinity())
-                            ? 1.0
-                            : near_rigid_threshold_;
-    const typename SapFrictionConeConstraint<T>::Parameters parameters{
-        friction, stiffness, dissipation_time_scale, beta, sigma};
+    const typename SapHuntCrossley<T>::Parameters parameters{
+         friction, stiffness, damping, beta, vs};
 
+    //const typename SapFrictionConeConstraint<T>::Parameters parameters{
+    //    friction, stiffness, dissipation_time_scale, beta, sigma};
+
+    const T x0 = -phi;
+    //const T xdot0 = 0.0; // UNUSED
     if (jacobian_blocks.size() == 1) {
-      problem->AddConstraint(std::make_unique<SapFrictionConeConstraint<T>>(
-          jacobian_blocks[0].tree, std::move(jacobian_blocks[0].J), phi,
+      problem->AddConstraint(std::make_unique<SapHuntCrossley<T>>(
+          jacobian_blocks[0].tree, std::move(jacobian_blocks[0].J), x0,
           parameters));
     } else {
-      problem->AddConstraint(std::make_unique<SapFrictionConeConstraint<T>>(
+      problem->AddConstraint(std::make_unique<SapHuntCrossley<T>>(
           jacobian_blocks[0].tree, jacobian_blocks[1].tree,
-          std::move(jacobian_blocks[0].J), std::move(jacobian_blocks[1].J), phi,
+          std::move(jacobian_blocks[0].J), std::move(jacobian_blocks[1].J), x0,
           parameters));
     }
     R_WC.emplace_back(std::move(contact_kinematics[icontact].R_WC));
@@ -602,9 +615,9 @@ void SapDriver<T>::CalcContactProblemCache(
   // Do not change this order here!
   cache->R_WC = AddContactConstraints(context, &problem);
   AddLimitConstraints(context, problem.v_star(), &problem);
-  AddCouplerConstraints(context, &problem);
-  AddDistanceConstraints(context, &problem);
-  AddBallConstraints(context, &problem);
+  //AddCouplerConstraints(context, &problem);
+  //AddDistanceConstraints(context, &problem);
+  //AddBallConstraints(context, &problem);
 }
 
 template <typename T>

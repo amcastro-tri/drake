@@ -20,6 +20,8 @@ drake_cc_package_library(
         ":sap_constraint_bundle",
         ":sap_contact_problem",
         ":sap_friction_cone_constraint",
+#        ":sap_lagged_hunt_crossley",
+        ":sap_hunt_crossley",
         ":sap_holonomic_constraint",
         ":sap_limit_constraint",
         ":sap_model",
@@ -53,6 +55,7 @@ drake_cc_library(
     srcs = ["sap_constraint.cc"],
     hdrs = ["sap_constraint.h"],
     deps = [
+        "//common:value",
         "//common:default_scalars",
         "//common:essential",
         "//multibody/contact_solvers:matrix_block",
@@ -110,6 +113,28 @@ drake_cc_library(
     name = "sap_friction_cone_constraint",
     srcs = ["sap_friction_cone_constraint.cc"],
     hdrs = ["sap_friction_cone_constraint.h"],
+    deps = [
+        ":sap_constraint",
+        "//common:default_scalars",
+        "//common:essential",
+    ],
+)
+
+#drake_cc_library(
+#    name = "sap_lagged_hunt_crossley",
+#    srcs = ["sap_lagged_hunt_crossley.cc"],
+#    hdrs = ["sap_lagged_hunt_crossley.h"],
+#    deps = [
+#        ":sap_constraint",
+#        "//common:default_scalars",
+#        "//common:essential",
+#    ],
+#)
+
+drake_cc_library(
+    name = "sap_hunt_crossley",
+    srcs = ["sap_hunt_crossley.cc"],
+    hdrs = ["sap_hunt_crossley.h"],
     deps = [
         ":sap_constraint",
         "//common:default_scalars",

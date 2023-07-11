@@ -213,6 +213,9 @@
           <effort>80</effort>
           <stiffness>15000</stiffness>
         </limit>
+        <dynamics>
+          <damping>200.0</damping>
+        </dynamics>  
       </axis>
     </joint>
     <joint name="left_finger_weld_joint" type="fixed">
@@ -232,7 +235,10 @@
           <effort>80</effort>
           <stiffness>15000</stiffness>
         </limit>
-      </axis>
+        <dynamics>
+          <damping>200.0</damping>
+        </dynamics>
+      </axis>      
     </joint>
     <joint name="right_finger_weld_joint" type="fixed">
       <parent>right_finger_bubble</parent>

@@ -20,6 +20,7 @@
 #include "drake/geometry/scene_graph.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/contact_solvers/contact_solver_results.h"
+#include "drake/multibody/contact_solvers/sap/sap_solver.h"
 #include "drake/multibody/plant/constraint_specs.h"
 #include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/coulomb_friction.h"
@@ -1811,6 +1812,16 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
 
   /// Returns the contact solver type used for discrete %MultibodyPlant models.
   DiscreteContactSolver get_discrete_contact_solver() const;
+
+  /// Sets SAP solver parameters. Ignored if the SAP solver is not used.
+  /// @throws std::exception iff called post-finalize.
+  void set_sap_solver_parameters(
+      contact_solvers::internal::SapSolverParameters p);
+
+  const contact_solvers::internal::SapSolverParameters&
+  get_sap_solver_parameters() const {
+    return sap_parameters_;
+  }
 
   /// Non-negative dimensionless number typically in the range [0.0, 1.0],
   /// though larger values are allowed even if uncommon. This parameter controls
@@ -5314,6 +5325,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // with the default value in multibody_plant_config.h; there are already
   // assertions in the cc file that enforce this.
   DiscreteContactSolver contact_solver_enum_{DiscreteContactSolver::kTamsi};
+
+  contact_solvers::internal::SapSolverParameters sap_parameters_{};
 
   // Near rigid regime parameter from [Castro et al., 2021]. Refer to
   // set_near_rigid_threshold() for details.

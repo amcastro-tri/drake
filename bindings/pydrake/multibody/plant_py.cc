@@ -24,6 +24,7 @@
 #include "drake/multibody/plant/propeller.h"
 #include "drake/multibody/plant/wing.h"
 #include "drake/multibody/tree/spatial_inertia.h"
+#include "drake/multibody/contact_solvers/sap/sap_solver.h"
 
 namespace drake {
 namespace pydrake {
@@ -967,6 +968,7 @@ void DoScalarDependentDefinitions(py::module m, T) {
         .def("get_sap_near_rigid_threshold",
             &Class::get_sap_near_rigid_threshold,
             cls_doc.get_sap_near_rigid_threshold.doc)
+        .def("set_sap_solver_parameters", &Class::set_sap_solver_parameters)
         .def_static("GetDefaultContactSurfaceRepresentation",
             &Class::GetDefaultContactSurfaceRepresentation,
             py::arg("time_step"),
@@ -1463,6 +1465,36 @@ PYBIND11_MODULE(plant, m) {
     DefAttributesUsingSerialize(&cls, cls_doc);
     DefReprUsingSerialize(&cls);
     DefCopyAndDeepCopy(&cls);
+  }
+
+  {
+    using Class =
+        drake::multibody::contact_solvers::internal::SapSolverParameters;
+    py::class_<contact_solvers::internal::SapSolverParameters> cls(
+        m, "SapSolverParameters");
+    // LineSearchType enumeration
+    {
+      using NestedEnum = Class::LineSearchType;
+      py::enum_<NestedEnum>(m, "LineSearchType", py::arithmetic())
+          .value("kBackTracking", NestedEnum::kBackTracking)
+          .value("kExact", NestedEnum::kExact);
+    }
+    {
+      using Nested = Class::BackTrackingLineSearchParameters;
+      py::class_<Nested> nested(cls, "BackTrackingLineSearchParameters");
+      nested  // BR
+          .def_readwrite("max_iterations", &Nested::max_iterations)
+          .def_readwrite("armijos_parameter", &Nested::armijos_parameter)
+          .def_readwrite("rho", &Nested::rho)
+          .def_readwrite("alpha_max", &Nested::alpha_max);
+      m.attr("BackTrackingLineSearchParameters") = nested;
+    }
+    cls  // BR
+        .def_readwrite("abs_tolerance", &Class::abs_tolerance)
+        .def_readwrite("rel_tolerance", &Class::rel_tolerance)
+        .def_readwrite("line_search_type", &Class::line_search_type)
+        .def_readwrite(
+            "backtracking_line_search", &Class::backtracking_line_search);
   }
 
   // PhysicalModel

@@ -82,6 +82,7 @@ from pydrake.multibody.plant import (
     MultibodyPlant,
     MultibodyPlant_,
     MultibodyPlantConfig,
+    SapSolverParameters,
     PointPairContactInfo_,
     PropellerInfo,
     Propeller_,
@@ -2517,6 +2518,10 @@ class TestPlant(unittest.TestCase):
             self.assertEqual(plant.get_discrete_contact_solver(), model)
         plant.get_sap_near_rigid_threshold()
         plant.set_sap_near_rigid_threshold(near_rigid_threshold=0.03)
+        sap_params = SapSolverParameters()
+        sap_params.line_search_type = SapSolverParameters.LineSearchType.kBackTracking
+        sap_params.backtracking_line_search.max_iterations = 20
+        plant.set_sap_solver_parameters(sap_params)
 
     def test_contact_surface_representation(self):
         for time_step in [0.0, 0.1]:

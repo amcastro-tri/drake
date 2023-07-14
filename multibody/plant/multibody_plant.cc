@@ -599,6 +599,13 @@ void MultibodyPlant<T>::set_discrete_contact_solver(
 }
 
 template <typename T>
+void MultibodyPlant<T>::set_sap_solver_parameters(
+    contact_solvers::internal::SapSolverParameters p) {
+  DRAKE_MBP_THROW_IF_FINALIZED();
+  sap_parameters_ = std::move(p);
+}
+
+template <typename T>
 DiscreteContactSolver MultibodyPlant<T>::get_discrete_contact_solver()
     const {
   return contact_solver_enum_;

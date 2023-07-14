@@ -1036,7 +1036,7 @@ void CompliantContactManager<T>::ExtractModelInfo() {
   DRAKE_DEMAND(sap_driver_ == nullptr && tamsi_driver_ == nullptr);
 
   switch (plant().get_discrete_contact_solver()) {
-    case DiscreteContactSolver::kSap:
+    case DiscreteContactSolver::kSap:      
       // N.B. SAP is not supported for T = symbolic::Expression.
       // However, exception will only be thrown if we attempt to use a SapDriver
       // to compute discrete updates. This allows a user to scalar convert a
@@ -1047,6 +1047,8 @@ void CompliantContactManager<T>::ExtractModelInfo() {
             plant().get_sap_near_rigid_threshold();
         sap_driver_ =
             std::make_unique<SapDriver<T>>(this, near_rigid_threshold);
+        sap_driver_->set_sap_solver_parameters(
+            plant().get_sap_solver_parameters());
       }
       break;
     case DiscreteContactSolver::kTamsi:

@@ -106,7 +106,7 @@ T SapHuntCrossley<T>::CalcDiscreteHuntCrossleyAntiderivative(
                   x_dot * (fe0 + 1.0 / 2.0 * df));
   };
 
-  return -N(xdot);
+  return N(xdot);
 }
 
 template <typename T>
@@ -145,8 +145,8 @@ T SapHuntCrossley<T>::CalcDiscreteHuntCrossleyImpulseGradient(
   const T damping = 1.0 + d * xdot;
   if (damping <= 0.0) return 0.0;
 
-  // dn/dv = -δt⋅[k⋅δt + d⋅(fe₀+δt⋅k⋅ẋ)]
-  const T dn_dvn = -dt * (k * dt + d * fe);
+  // dn/dv = -δt⋅[k⋅δt⋅(1+d⋅ẋ) + d⋅(fe₀+δt⋅k⋅ẋ)]
+  const T dn_dvn = -dt * (k * dt * damping + d * fe);
 
   return dn_dvn;
 }
@@ -191,7 +191,9 @@ void SapHuntCrossley<T>::DoCalcImpulse(const AbstractValue& abstract_data,
   const T& mu = data.frozen_data.mu;
   const T& n = data.nz;
   const Vector2<T>& t_soft = data.t_soft;
-  const Vector2<T> gt = -mu * n * t_soft;
+  const Vector2<T> gt = -mu * n * t_soft;  
+  PRINT_VAR(n);
+  PRINT_VAR(gt.transpose());
   *gamma << gt, n;
 }
 

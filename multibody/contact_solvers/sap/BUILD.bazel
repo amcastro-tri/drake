@@ -286,6 +286,18 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "sap_hunt_crossley_constraint_test",
+    deps = [
+        ":sap_hunt_crossley",
+        ":validate_constraint_gradients",
+        "//common:pointer_cast",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//math:gradient",
+        "//solvers:constraint",
+    ],
+)
+
+drake_cc_googletest(
     name = "contact_problem_graph_test",
     deps = [
         ":contact_problem_graph",

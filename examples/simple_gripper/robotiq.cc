@@ -36,6 +36,13 @@ int do_main() {
       parser.package_map().GetPath("kinova-movo") +
       "/movo_common/movo_description/package.xml");
 
+  // Print path to see where files end up.
+  std::cout << fmt::format(" Path: {}\n",
+                           parser.package_map().GetPath("kinova-movo"));
+
+  // /home/amcastro/.cache/drake/package_map/a9201477a23f410f10d00e86847de778c175d3d3c8971be52a9ac881194e4887-660e65fbc966cbcbcef5a5b4a87cd8a4d93a4e88bba0b78d4d6495d95e119b22/movo_common/movo_description/urdf/manipulation/robotiq/robotiq_85_gripper.urdf
+  // /home/amcastro/.cache/drake/package_map/a9201477a23f410f10d00e86847de778c175d3d3c8971be52a9ac881194e4887-660e65fbc966cbcbcef5a5b4a87cd8a4d93a4e88bba0b78d4d6495d95e119b22/movo_common/movo_description/urdf/manipulation/robotiq/robotiq_85_gripper.urdf.xacro
+
   std::string with_mimic = R"""(
 directives:
 - add_model:

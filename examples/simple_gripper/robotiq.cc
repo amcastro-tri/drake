@@ -3,14 +3,26 @@
 #include <string>
 
 #include <fmt/format.h>
+#include <gflags/gflags.h>
 
+#include "drake/common/fmt_eigen.h"
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/parsing/package_map.h"
 #include "drake/multibody/plant/multibody_plant.h"
+#include "drake/multibody/plant/contact_results.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/primitives/constant_vector_source.h"
 #include "drake/visualization/visualization_config_functions.h"
+#include "drake/systems/analysis/simulator_print_stats.h"
+
+using drake::systems::PrintSimulatorStatistics;
+using drake::multibody::ContactResults;
+using drake::geometry::CollisionFilterDeclaration;
+using drake::geometry::GeometrySet;
+
+DEFINE_double(simulation_time, 2.0, "Simulation duration in seconds");
+
 namespace drake {
 namespace examples {
 namespace simple_gripper {
@@ -21,7 +33,7 @@ int do_main() {
   systems::DiagramBuilder<double> builder;
 
   auto [plant, scene_graph] =
-      multibody::AddMultibodyPlantSceneGraph(&builder, 0.002);
+      multibody::AddMultibodyPlantSceneGraph(&builder, 0.01);
   plant.set_discrete_contact_solver(multibody::DiscreteContactSolver::kSap);
 
   multibody::Parser parser(&plant);
@@ -79,6 +91,20 @@ directives:
 
   parser.AddModelsFromString(with_mimic, "dmd.yaml");
 
+  auto get_gid = [&](const std::string& body_name,
+                     const std::string& geo_name) {
+    const auto frame_id = plant.GetBodyFrameIdOrThrow(
+        plant.GetRigidBodyByName(body_name).index());
+    const auto geo_id = scene_graph.model_inspector().GetGeometryIdByName(
+        frame_id, geometry::Role::kProximity, geo_name);
+    return geo_id;
+  };
+
+  auto meat_box_geo = get_gid("base_link_meat", "spam::box_collision");
+  auto ground_geo = get_gid("link", "table::surface");
+  scene_graph.collision_filter_manager().Apply(
+      CollisionFilterDeclaration().ExcludeBetween(GeometrySet(meat_box_geo), GeometrySet(ground_geo)));
+
   plant.Finalize();
 
   auto torque = builder.AddSystem<systems::ConstantVectorSource>(Vector1d(1));
@@ -91,10 +117,38 @@ directives:
   // Set up simulator.
   systems::Simulator simulator(*diagram);
 
-  meshcat->StartRecording(32.0, false);
-  simulator.AdvanceTo(20.0);
-  meshcat->PublishRecording();
+  auto monitor = [&plant](const systems::Context<double>& diagram_context) {
+    const auto& context = plant.GetMyContextFromRoot(diagram_context);
+    const auto& contacts_port = plant.get_contact_results_output_port();
+    const ContactResults<double>& results =
+        contacts_port.Eval<ContactResults<double>>(context);
 
+    std::cout << std::string(80, '*') << std::endl;        
+    std::cout << fmt::format(
+        " Time: {}. num_points = {}. num_hydro = {}.\n", context.get_time(),
+        results.num_point_pair_contacts(), results.num_hydroelastic_contacts());
+    for (int i = 0; i < results.num_point_pair_contacts(); ++i) {
+      const auto& pp = results.point_pair_contact_info(i);
+      const std::string bodyA = plant.get_body(pp.bodyA_index()).name();
+      const std::string bodyB = plant.get_body(pp.bodyB_index()).name();
+      const std::string finger2 = "gripper_finger2_finger_tip_link";
+      if (bodyA == finger2 || bodyB == finger2) {
+        std::cout << fmt::format("{}: A = {}. B = {}\n", i, bodyA, bodyB);
+        std::cout << fmt::format("  p_WC = {}\n",
+                                 fmt_eigen(pp.contact_point().transpose()));
+        std::cout << fmt::format(
+            "  n_W  = {}\n", fmt_eigen(pp.point_pair().nhat_BA_W.transpose()));
+      }
+    }
+    return systems::EventStatus::Succeeded();
+  };
+
+  simulator.set_monitor(monitor);
+
+  meshcat->StartRecording(32.0, false);
+  simulator.AdvanceTo(FLAGS_simulation_time);
+  meshcat->PublishRecording();
+  PrintSimulatorStatistics(simulator);
   // Pause so that you can see the meshcat output.
   std::cout << "[Press Ctrl-C to finish]." << std::endl;
   std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
@@ -107,6 +161,7 @@ directives:
 }  // namespace examples
 }  // namespace drake
 
-int main(int, char*[]) {
+int main(int argc, char* argv[]) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
   return drake::examples::simple_gripper::do_main();
 }

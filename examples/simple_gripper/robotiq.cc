@@ -18,6 +18,7 @@
 
 using drake::systems::PrintSimulatorStatistics;
 using drake::multibody::ContactResults;
+using drake::multibody::ContactModel;
 using drake::geometry::CollisionFilterDeclaration;
 using drake::geometry::GeometrySet;
 
@@ -35,6 +36,7 @@ int do_main() {
   auto [plant, scene_graph] =
       multibody::AddMultibodyPlantSceneGraph(&builder, 0.01);
   plant.set_discrete_contact_solver(multibody::DiscreteContactSolver::kSap);
+  //plant.set_contact_model(ContactModel::kHydroelastic);
 
   multibody::Parser parser(&plant);
   multibody::PackageMap::RemoteParams params;
@@ -99,11 +101,12 @@ directives:
         frame_id, geometry::Role::kProximity, geo_name);
     return geo_id;
   };
+  (void)get_gid;
 
-  auto meat_box_geo = get_gid("base_link_meat", "spam::box_collision");
-  auto ground_geo = get_gid("link", "table::surface");
-  scene_graph.collision_filter_manager().Apply(
-      CollisionFilterDeclaration().ExcludeBetween(GeometrySet(meat_box_geo), GeometrySet(ground_geo)));
+  //auto meat_box_geo = get_gid("base_link_meat", "spam::box_collision");
+  //auto ground_geo = get_gid("link", "table::surface");
+  //scene_graph.collision_filter_manager().Apply(
+  //    CollisionFilterDeclaration().ExcludeBetween(GeometrySet(meat_box_geo), GeometrySet(ground_geo)));
 
   plant.Finalize();
 

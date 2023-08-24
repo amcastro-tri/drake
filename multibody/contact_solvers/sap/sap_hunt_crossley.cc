@@ -6,8 +6,8 @@
 
 #include "drake/common/default_scalars.h"
 #include "drake/common/eigen_types.h"
-//#define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
-//#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
+// #define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
+// #define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
 #define PRINT_VAR(a) (void)a;
 #define PRINT_VARn(a) (void)a;
 
@@ -61,25 +61,21 @@ T SapHuntCrossley<T>::CalcDiscreteHuntCrossleyAntiderivative(
 
   // With:
   //  - v̂  = x₀/δt
-  //  - vd = 1/d
-  // vₘ = min(v̂, vd)
+  //  - vd = 1/d vₘ = min(v̂, vd)
   //
-  // For v >= vₘ we define N(v; x₀) = 0
-  // Then v < vₘ we have:
-  //   N(v; x₀) = δt⋅k⋅[d⋅v²⋅(δt⋅v/3−x₀/2)+v⋅(x₀−δt⋅v/2)] + C
-  //   N(v; x₀) = δt⋅k⋅[d⋅v²⋅(δt⋅v/3−x₀/2) - (x₀−δt⋅v)²/(2δt)] + C
-  //   n(v; x₀) = N'(v; x₀) = k⋅(x₀−δt⋅v)⋅(1-d⋅v)
-  // Where the constant of integration C is set so that N(vₘ; x₀) = 0.
-  // Notice that with x = x₀−δt⋅v, we have:
-  //   N(v; x₀) = δt⋅k⋅[d⋅v²⋅(δt⋅v/3−x₀/2)] - k⋅x²/2 + C
-  // And therefore when d = 0 we have:
-  //   N(v; x₀) = k⋅x²/2 + C, the elastic component only.
+  // For v >= vₘ we define N(v; x₀) = 0 Then v < vₘ we have: N(v; x₀) =
+  // δt⋅k⋅[d⋅v²⋅(δt⋅v/3−x₀/2)+v⋅(x₀−δt⋅v/2)] + C N(v; x₀) =
+  // δt⋅k⋅[d⋅v²⋅(δt⋅v/3−x₀/2) - (x₀−δt⋅v)²/(2δt)] + C n(v; x₀) = N'(v; x₀) =
+  // k⋅(x₀−δt⋅v)⋅(1-d⋅v) Where the constant of integration C is set so that
+  // N(vₘ; x₀) = 0. Notice that with x = x₀−δt⋅v, we have: N(v; x₀) =
+  // δt⋅k⋅[d⋅v²⋅(δt⋅v/3−x₀/2)] - k⋅x²/2 + C And therefore when d = 0 we have:
+  // N(v; x₀) = k⋅x²/2 + C, the elastic component only.
 
   // Version in terms of forces, to avoid x₀, which might go to infinity for
-  // some discrete-hydroelastic configurations.
-  //  N(v; f₀) = δt⋅[d⋅v²⋅(δt⋅k⋅v/3−f₀/2)+v⋅(f₀−δt⋅k⋅v/2)]
-  //  N(v; f₀) = -δt⋅[d⋅ẋ²⋅(δt⋅k⋅ẋ/3 + f₀/2) + ẋ⋅(f₀ + δt⋅k⋅ẋ/2)]
-  //  N(v; f₀) = -δt⋅[d⋅ẋ²/2⋅(f₀ + 2/3⋅δt⋅k⋅ẋ) + ẋ⋅(f₀ + 1/2⋅δt⋅k⋅ẋ)]
+  // some discrete-hydroelastic configurations. N(v; f₀) =
+  // δt⋅[d⋅v²⋅(δt⋅k⋅v/3−f₀/2)+v⋅(f₀−δt⋅k⋅v/2)] N(v; f₀) = -δt⋅[d⋅ẋ²⋅(δt⋅k⋅ẋ/3
+  // + f₀/2) + ẋ⋅(f₀ + δt⋅k⋅ẋ/2)] N(v; f₀) = -δt⋅[d⋅ẋ²/2⋅(f₀ + 2/3⋅δt⋅k⋅ẋ) +
+  // ẋ⋅(f₀ + 1/2⋅δt⋅k⋅ẋ)]
 
   // Parameters:
   const T& k = parameters_.stiffness;
@@ -87,26 +83,39 @@ T SapHuntCrossley<T>::CalcDiscreteHuntCrossleyAntiderivative(
   const T& dt = frozen_data.dt;
   const T& fe0 = frozen_data.fe0;
 
-  // Penetration and rate:
-  const T xdot = -vn;
-  const T fe_dot = k * xdot;
-  const T fe = fe0 + dt * fe_dot;
+  // We define the "dissipation" velocity vd at which the dissipation term
+  // vanishes using a small tolerance so that vd goes to a large number in the
+  // limit to d = 0.
+  const T vd = 1.0 / (d + 1.0e-20);
 
-  // Quick exits.
-  if (fe <= 0.0) return 0.0;
-  const T damping = 1.0 + d * xdot;
-  if (damping <= 0.0) return 0.0;
+  // Similarly, we define v_hat as the velocity at which the elastic term goes
+  // to zero. Using a small tolerance so that it goes to a infinity (a large
+  // number) in the limit to small k (e.g. from discrete hydroelastic).
+  const T v_hat = fe0 / dt / (k + 1.0e-20);
 
-  // Integral of n(v; fe₀).
-  //  N(v; fe₀) = -δt⋅[d⋅ẋ²/2⋅(f₀ + 2/3⋅δt⋅k⋅ẋ) + ẋ⋅(f₀ + 1/2⋅δt⋅k⋅ẋ)]
-  //  N(v; fe₀) = -δt⋅[d⋅ẋ²/2⋅(f₀ + 2/3⋅Δf) + ẋ⋅(f₀ + 1/2⋅Δf)]; Δf = δt⋅k⋅ẋ
-  auto N = [&k, &d, &fe0, &dt](const T& x_dot) {
+  // With these tolerances in vd and v_hat, we can define a v_max that goes to a
+  // large number in the limit to either d = 0 or k = 0.
+  const T v_max = min(v_hat, vd);
+
+  // With these definitions, then the cost can be computed as: N(vn) =
+  // N0(min(vn, v_max)), since for large values of v_max we'll correctly get
+  // min(vn, v_max) = vn.
+  const T xdot = -min(vn, v_max);
+
+  // Integral of n(v; fe₀). N(v; fe₀) = -δt⋅[d⋅ẋ²/2⋅(f₀ + 2/3⋅δt⋅k⋅ẋ) + ẋ⋅(f₀
+  //  + 1/2⋅δt⋅k⋅ẋ)] N(v; fe₀) = -δt⋅[d⋅ẋ²/2⋅(f₀ + 2/3⋅Δf) + ẋ⋅(f₀ +
+  //  1/2⋅Δf)]; Δf = δt⋅k⋅ẋ
+  //
+  // N.B. Here we define N0 as the integral of the impulse including the portion
+  // of the functional form at which the impulse is negative.
+
+  auto N0 = [&k, &d, &fe0, &dt](const T& x_dot) {
     const T df = dt * k * x_dot;
     return -dt * (d * x_dot * x_dot / 2.0 * (fe0 + 2.0 / 3.0 * df) +
                   x_dot * (fe0 + 1.0 / 2.0 * df));
   };
 
-  return N(xdot);
+  return N0(xdot);
 }
 
 template <typename T>
@@ -191,7 +200,7 @@ void SapHuntCrossley<T>::DoCalcImpulse(const AbstractValue& abstract_data,
   const T& mu = data.frozen_data.mu;
   const T& n = data.nz;
   const Vector2<T>& t_soft = data.t_soft;
-  const Vector2<T> gt = -mu * n * t_soft;  
+  const Vector2<T> gt = -mu * n * t_soft;
   PRINT_VAR(n);
   PRINT_VAR(gt.transpose());
   *gamma << gt, n;

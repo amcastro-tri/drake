@@ -1,5 +1,3 @@
-#include "drake/multibody/contact_solvers/sap/sap_hunt_crossley.h"
-
 #include <gtest/gtest.h>
 
 #include "drake/common/autodiff.h"
@@ -7,6 +5,7 @@
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/math/autodiff_gradient.h"
 #include "drake/math/rotation_matrix.h"
+#include "drake/multibody/contact_solvers/sap/sap_hunt_crossley.h"
 #include "drake/multibody/contact_solvers/sap/validate_constraint_gradients.h"
 #include "drake/solvers/constraint.h"
 
@@ -56,7 +55,7 @@ GTEST_TEST(SapHuntCrossley, SingleCliqueConstraint) {
       MakeArbitraryParameters();
   SapHuntCrossley<double> c(fe0, std::move(J), parameters);
 
-  //EXPECT_EQ(c.num_objects(), 2);
+  // EXPECT_EQ(c.num_objects(), 2);
   EXPECT_EQ(c.num_constraint_equations(), 3);
   EXPECT_EQ(c.num_cliques(), 1);
   EXPECT_EQ(c.first_clique(), clique);
@@ -80,7 +79,7 @@ GTEST_TEST(SapHuntCrossley, TwoCliquesConstraint) {
       MakeArbitraryParameters();
   SapHuntCrossley<double> c(fe0, std::move(J), parameters);
 
-  //EXPECT_EQ(c.num_objects(), 2);
+  // EXPECT_EQ(c.num_objects(), 2);
   EXPECT_EQ(c.num_constraint_equations(), 3);
   EXPECT_EQ(c.num_cliques(), 2);
   EXPECT_EQ(c.first_clique(), clique0);
@@ -95,7 +94,7 @@ GTEST_TEST(SapHuntCrossley, TwoCliquesConstraint) {
   EXPECT_EQ(c.parameters().vs, parameters.vs);
 }
 
-// This method validates analytical gradients implemented by 
+// This method validates analytical gradients implemented by
 // SapHuntCrossley using automatic differentiation.
 void ValidateProjection(const SapHuntCrossley<double>::Parameters& p,
                         const Vector3d& vc) {
@@ -184,6 +183,50 @@ GTEST_TEST(SapHuntCrossley, RegionIII) {
   }
 }
 
+GTEST_TEST(SapHuntCrossley, RegionIZeroStiffnessAndZeroDissipation) {
+  // An arbitrary set of parameters.
+  SapHuntCrossley<double>::Parameters p;
+  p.mu = 0.5;
+  p.stiffness = 1.0e-14;
+  p.dissipation = 0.0;
+
+  // Below we use an arbitrary set of values so that vc leads to stiction.
+  {
+    const Vector3d vc(1e-5, 0, -0.1);
+    ValidateProjection(p, vc);
+  }
+  {
+    const Vector3d vc(1e-5, 2e-5, -0.1);
+    ValidateProjection(p, vc);
+  }
+  {
+    const Vector3d vc(-1e-5, 2e-5, -0.05);
+    ValidateProjection(p, vc);
+  }
+}
+
+GTEST_TEST(SapHuntCrossley, RegionIIZeroStiffnessAndZeroDissipation) {
+  // An arbitrary set of parameters.
+  SapHuntCrossley<double>::Parameters p;
+  p.mu = 0.5;
+  p.stiffness = 1.0e-14;
+  p.dissipation = 0.0;
+
+  // Below we use an arbitrary set of values so that vc leads to sliding.
+  {
+    const Vector3d vc(0.1, 0, -0.1);
+    ValidateProjection(p, vc);
+  }
+  {
+    const Vector3d vc(0.1, -0.2, -0.1);
+    ValidateProjection(p, vc);
+  }
+  {
+    const Vector3d vc(0.1, 0.05, 0.0);
+    ValidateProjection(p, vc);
+  }
+}
+
 GTEST_TEST(SapHuntCrossley, SingleCliqueConstraintClone) {
   const int clique = 12;
   const double fe0 = 150.0;
@@ -194,8 +237,7 @@ GTEST_TEST(SapHuntCrossley, SingleCliqueConstraintClone) {
 
   // N.B. Here we dynamic cast to the derived type so that we can test that the
   // clone is a deep-copy of the original constraint.
-  auto clone =
-      dynamic_pointer_cast<SapHuntCrossley<double>>(c.Clone());
+  auto clone = dynamic_pointer_cast<SapHuntCrossley<double>>(c.Clone());
   ASSERT_NE(clone, nullptr);
   EXPECT_EQ(clone->num_constraint_equations(), 3);
   EXPECT_EQ(clone->num_cliques(), 1);

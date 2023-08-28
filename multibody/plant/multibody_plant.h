@@ -1909,6 +1909,10 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @see See set_sap_near_rigid_threshold().
   double get_sap_near_rigid_threshold() const;
 
+  /// See MultibodyPlantConfig::sdf_max_distance.
+  void set_sdf_max_distance(double sdf_max_distance);
+  double get_sdf_max_distance() const;
+
   /// Return the default value for contact representation, given the desired
   /// time step. Discrete systems default to use polygons; continuous systems
   /// default to use triangles.
@@ -2984,17 +2988,40 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
             .template Eval<std::vector<geometry::PenetrationAsPointPair<T>>>(
             context);
       case ContactModel::kHydroelasticWithFallback: {
-        const auto& data =
-            this->get_cache_entry(cache_indexes_.hydro_fallback)
-                .template Eval<internal::HydroelasticFallbackCacheData<T>>(
-                    context);
-        return data.point_pairs;
+        const bool using_sdf = this->get_sdf_max_distance() > 0.0;
+        if (using_sdf) {
+          return this->get_cache_entry(cache_indexes_.point_pairs)
+              .template Eval<std::vector<geometry::PenetrationAsPointPair<T>>>(
+                  context);
+        } else {
+          const auto& data =
+              this->get_cache_entry(cache_indexes_.hydro_fallback)
+                  .template Eval<internal::HydroelasticFallbackCacheData<T>>(
+                      context);
+          return data.point_pairs;
+        }
       }
       default:
         throw std::logic_error(
             "Attempting to evaluate point pair contact for contact model that "
             "doesn't use it");
     }
+  }
+
+  const std::vector<geometry::SignedDistancePair<T>>& EvalSignedDistancePairs(
+      const systems::Context<T>& context) const {
+    // TODO(jwnimmer-tri) This function is too large to be inline.
+    // Move its definition to the cc file.
+    DRAKE_MBP_THROW_IF_NOT_FINALIZED();
+    this->ValidateContext(context);
+    if (contact_model_ != ContactModel::kPoint &&
+        contact_model_ != ContactModel::kHydroelasticWithFallback) {
+      throw std::logic_error(
+          "Attempting to evaluate signed distance pair for a contact model "
+          "that doesn't use it");
+    }
+    return this->get_cache_entry(cache_indexes_.sdf_pairs)
+        .template Eval<std::vector<geometry::SignedDistancePair<T>>>(context);
   }
 
   /// Calculates the rigid transform (pose) `X_FG` relating frame F and frame G.
@@ -4813,6 +4840,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     systems::CacheIndex spatial_contact_forces_continuous;
     systems::CacheIndex discrete_contact_pairs;
     systems::CacheIndex joint_locking_data;
+    systems::CacheIndex sdf_pairs;
   };
 
   // This struct stores in one single place all indices related to
@@ -5219,6 +5247,10 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const systems::Context<T>& context,
       std::vector<geometry::PenetrationAsPointPair<T>>*) const;
 
+  void CalcSignedDistancePairs(
+      const systems::Context<T>& context,
+      std::vector<geometry::SignedDistancePair<T>>*) const;
+
   // (Advanced) Helper method to compute contact forces in the normal direction
   // using a penalty method.
   void CalcAndAddContactForcesByPenaltyMethod(
@@ -5406,6 +5438,10 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // set_near_rigid_threshold() for details.
   double sap_near_rigid_threshold_{
       MultibodyPlantConfig{}.sap_near_rigid_threshold};
+
+  // When using signed distance point contact queries, geometries at distances
+  // larger than sdf_max_distance_ are not considered.
+  double sdf_max_distance_{MultibodyPlantConfig{}.sdf_max_distance};
 
   // User's choice of the representation of contact surfaces in discrete
   // systems. The default value is dependent on whether the system is

@@ -15,6 +15,7 @@ AddResult AddMultibodyPlant(
     const MultibodyPlantConfig& config,
     systems::DiagramBuilder<double>* builder) {
   AddResult result = AddMultibodyPlantSceneGraph(builder, config.time_step);
+  result.plant.set_sdf_max_distance(config.sdf_max_distance);
   result.plant.set_penetration_allowance(config.penetration_allowance);
   result.plant.set_stiction_tolerance(config.stiction_tolerance);
   result.plant.set_contact_model(

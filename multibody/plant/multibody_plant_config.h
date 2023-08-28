@@ -24,6 +24,7 @@ struct MultibodyPlantConfig {
     a->Visit(DRAKE_NVP(sap_near_rigid_threshold));
     a->Visit(DRAKE_NVP(contact_surface_representation));
     a->Visit(DRAKE_NVP(adjacent_bodies_collision_filters));
+    a->Visit(DRAKE_NVP(sdf_max_distance));
   }
 
   /// Configures the MultibodyPlant::MultibodyPlant() constructor time_step.
@@ -69,6 +70,12 @@ struct MultibodyPlantConfig {
   ///      need to use a low value if the solver fails to converge.
   ///      For instance, set values in the range (1e-3, 1e-2).
   double sap_near_rigid_threshold{1.0};
+
+  /// If lower or equal than zero, point contact uses a penetration query, that
+  /// only detects collision when objects already are overlapping.
+  /// If positive, the point contact model will use a signed distance query and
+  /// objects farther than this distance won't be considered.
+  double sdf_max_distance{0.0};
 
   /// Configures the MultibodyPlant::set_contact_surface_representation().
   /// Refer to drake::geometry::HydroelasticContactRepresentation for details.

@@ -104,7 +104,7 @@ class JointActuator final : public MultibodyElement<T> {
       MultibodyForces<T>* forces) const;
 
   /// Gets the actuation values for `this` actuator from the actuation vector u
-  /// for the entire model.
+  /// for the entire plant model.
   /// @return a reference to a nv-dimensional vector, where nv is the number
   ///         of velocity variables of joint().
   const Eigen::Ref<const VectorX<T>> get_actuation_vector(
@@ -113,18 +113,18 @@ class JointActuator final : public MultibodyElement<T> {
     return u.segment(topology_.actuator_index_start, joint().num_velocities());
   }
 
-  /// Given the actuation values u_actuator for `this` actuator, this method
-  /// sets the actuation vector u for the entire multibody model to which this
-  /// actuator belongs to.
+  /// Given the actuation values `u_actuator` for `this` actuator, updates the
+  /// actuation vector `u` for the entire multibody model to which this actuator
+  /// belongs to.
   /// @param[in] u_actuator
   ///   Actuation values for `this` actuator. It must be of size equal to the
   ///   number of degrees of freedom of the actuated Joint, see
   ///   Joint::num_velocities(). For units and sign conventions refer to the
   ///   specific Joint sub-class documentation.
-  /// @param[out] u
-  ///   The vector containing the actuation values for the entire model to which
-  ///   `this` actuator belongs to. Entries in this vector are in asscending
-  ///   order by JointActuatorIndex.
+  /// @param[in,out] u
+  ///   Actuation values for the entire plant model to which `this` actuator
+  ///   belongs to, indexed by JointActuatorIndex. Only values corresponding to
+  ///   this actuator are changed.
   /// @throws std::exception if
   ///   `u_actuator.size() != this->joint().num_velocities()`.
   /// @throws std::exception if u is nullptr.

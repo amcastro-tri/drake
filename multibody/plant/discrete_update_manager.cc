@@ -1053,6 +1053,302 @@ void DiscreteUpdateManager<symbolic::Expression>::
                   NiceTypeName::Get<symbolic::Expression>()));
 }
 
+
+// TODO: only specialize the method that uses geometry meshes (which do not
+// support symbolic) if you can.
+template <>
+void DiscreteUpdateManager<symbolic::Expression>::CalcContactSurfacePairs(
+    const systems::Context<symbolic::Expression>&,
+    std::vector<ContactSurfacePair<symbolic::Expression>>*) const {
+  throw std::domain_error(
+      fmt::format("This method doesn't support T = {}.",
+                  NiceTypeName::Get<symbolic::Expression>()));
+}
+
+template <typename T>
+std::vector<typename ContactSurfacePair<T>::JacobianTreeBlock>
+DiscreteUpdateManager<T>::CalcRelativeVelocityJacobian(
+    const Body<T>& body_M, const Body<T>& body_N, const Vector3<T>& p_WS,
+    const systems::Context<T>& context) const {
+  const Frame<T>& frame_W = plant().world_frame();
+
+  // Scratch workspace variables.
+  // TODO(amcastro-tri): get rid of these heap allocations.
+  const int nv = plant().num_velocities();
+  Matrix3X<T> J_WMs_W(6, nv);
+  Matrix3X<T> J_WNs_W(6, nv);
+  Matrix3X<T> J_MsNs_W(6, nv);
+
+  // Gather the kinematic state of each body.
+  const RigidTransform<T>& X_WM = plant().EvalBodyPoseInWorld(context, body_M);
+  const Vector3<T>& p_WM = X_WM.translation();
+  const RotationMatrix<T>& R_WM = X_WM.rotation();
+  const RigidTransform<T>& X_WN = plant().EvalBodyPoseInWorld(context, body_N);
+  const Vector3<T>& p_WN = X_WN.translation();
+  const RotationMatrix<T>& R_WN = X_WN.rotation();
+
+  // Position of S in M and N.
+  const Vector3<T> p_MS = R_WM.transpose() * (p_WS - p_WM);
+  const Vector3<T> p_NS = R_WN.transpose() * (p_WS - p_WN);
+
+  // Compute constraint Jacobian for the spatial velocity V_MsNs_W.
+  plant().CalcJacobianSpatialVelocity(context, JacobianWrtVariable::kV,
+                                      body_M.body_frame(), p_MS, frame_W,
+                                      frame_W, &J_WMs_W);
+  plant().CalcJacobianSpatialVelocity(context, JacobianWrtVariable::kV,
+                                      body_N.body_frame(), p_NS, frame_W,
+                                      frame_W, &J_WNs_W);
+  J_MsNs_W = J_WNs_W - J_WMs_W;
+
+  const MultibodyTreeTopology& topology = internal_tree().get_topology();
+  const TreeIndex& treeM_index = topology.body_to_tree_index(body_M.index());
+  const TreeIndex& treeN_index = topology.body_to_tree_index(body_N.index());
+
+  const bool treeM_has_dofs = topology.tree_has_dofs(treeM_index);
+  const bool treeN_has_dofs = topology.tree_has_dofs(treeN_index);
+  // Sanity check at least one body is not World or anchored to World.
+  DRAKE_DEMAND(treeM_has_dofs || treeN_has_dofs);
+
+  // We have at most two blocks per contact.
+  std::vector<typename ContactSurfacePair<T>::JacobianTreeBlock>
+      jacobian_blocks;
+  jacobian_blocks.reserve(2);
+
+  // Tree M contribution to Jacobian.
+  if (treeM_has_dofs) {
+    Matrix3X<T> J =
+        J_MsNs_W.middleCols(topology.tree_velocities_start_in_v(treeM_index),
+                            topology.num_tree_velocities(treeM_index));
+    jacobian_blocks.emplace_back(treeM_index, MatrixBlock<T>(std::move(J)));
+  }
+
+  // Tree N contribution to Jacobian.
+  // This contribution must be added only if N is different from M.
+  if ((treeN_has_dofs && !treeM_has_dofs) ||
+      (treeN_has_dofs && treeN_index != treeM_index)) {
+    Matrix3X<T> J =
+        J_MsNs_W.middleCols(topology.tree_velocities_start_in_v(treeN_index),
+                            topology.num_tree_velocities(treeN_index));
+    jacobian_blocks.emplace_back(treeN_index, MatrixBlock<T>(std::move(J)));
+  }
+
+  return jacobian_blocks;
+}
+
+template <typename T>
+std::tuple<T, T, T, T, T> DiscreteUpdateManager<T>::GetSurfaceProperties(
+    GeometryId id_M, GeometryId id_N,
+    const geometry::SceneGraphInspector<T>& inspector) const {
+  const BodyIndex body_M_index = geometry_id_to_body_index().at(id_M);
+  const BodyIndex body_N_index = geometry_id_to_body_index().at(id_N);
+  const Body<T>& body_M = plant().get_body(body_M_index);
+  const Body<T>& body_N = plant().get_body(body_N_index);
+
+  const T hydro_modulus_M = GetHydroelasticModulus(
+      id_M, std::numeric_limits<double>::infinity(), inspector);
+  const T hydro_modulus_N = GetHydroelasticModulus(
+      id_N, std::numeric_limits<double>::infinity(), inspector);
+
+  // Hunt & Crossley dissipation. Used by TAMSI, ignored by SAP.
+  const T d = GetCombinedHuntCrossleyDissipation(
+      id_M, id_N, hydro_modulus_M, hydro_modulus_N, 0.0 /* Default value */,
+      inspector);
+
+  // Dissipation time scale. Used by SAP, ignored by TAMSI.
+  const double default_dissipation_time_constant = 0.1;
+  const T tau = GetCombinedDissipationTimeConstant(
+      id_M, id_N, default_dissipation_time_constant, body_M.name(),
+      body_N.name(), inspector);
+
+  // Combine friction coefficients.
+  const T mu = GetCombinedDynamicCoulombFriction(id_M, id_N, inspector);
+
+  return std::make_tuple(hydro_modulus_M, hydro_modulus_N, d, tau, mu);
+}
+
+template <>
+std::vector<typename ContactSurfacePair<symbolic::Expression>::FaceData>
+DiscreteUpdateManager<symbolic::Expression>::CalcFaceData(
+    const geometry::ContactSurface<symbolic::Expression>&) const {
+  // N.B. ContactSurface does not support symbolic::Expression.
+  throw std::domain_error(
+      fmt::format("This method doesn't support T = {}.",
+                  NiceTypeName::Get<symbolic::Expression>()));
+}
+
+template <typename T>
+std::vector<typename ContactSurfacePair<T>::FaceData>
+DiscreteUpdateManager<T>::CalcFaceData(
+    const geometry::ContactSurface<T>& s) const {
+  // Gather face data.
+  using FaceData = typename ContactSurfacePair<T>::FaceData;
+
+  // Surface's centroid.
+  const Vector3<T>& p_WS =
+      s.is_triangle() ? s.tri_mesh_W().centroid() : s.poly_mesh_W().centroid();
+
+  std::vector<FaceData> face_data;
+  face_data.reserve(s.num_faces());
+  const bool M_is_compliant = s.HasGradE_M();
+  const bool N_is_compliant = s.HasGradE_N();
+  DRAKE_DEMAND(M_is_compliant || N_is_compliant);
+  for (int face = 0; face < s.num_faces(); ++face) {
+    const T& Ae = s.area(face);  // Face element area.
+
+    // We found out that the hydroelastic query might report
+    // infinitesimally small triangles (consider for instance an initial
+    // condition that perfectly places an object at zero distance from the
+    // ground.) While the area of zero sized triangles is not a problem by
+    // itself, the badly computed normal on these triangles leads to
+    // problems when computing the contact Jacobians (since we need to
+    // obtain an orthonormal basis based on that normal.)
+    // We therefore ignore infinitesimally small triangles. The tolerance
+    // below is somewhat arbitrary and could possibly be tightened.
+    if (Ae > 1.0e-14) {
+      // From ContactSurface's documentation: The normal of each face is
+      // guaranteed to point "out of" N and "into" M. We want the normal to
+      // point from M into N, and thus the minus sign.
+      const Vector3<T>& nhat_W = -s.face_normal(face);
+
+      // One dimensional pressure gradient (in Pa/m). Unlike [Masterjohn
+      // 2022], for convenience we define both pressure gradients
+      // to be positive in the direction "into" the bodies. Therefore,
+      // we use the minus sign for gN.
+      // [Masterjohn 2022] Velocity Level Approximation of Pressure
+      // Field Contact Patches.
+      const T gM = M_is_compliant ? s.EvaluateGradE_M_W(face).dot(nhat_W)
+                                  : T(std::numeric_limits<double>::infinity());
+      const T gN = N_is_compliant ? -s.EvaluateGradE_N_W(face).dot(nhat_W)
+                                  : T(std::numeric_limits<double>::infinity());
+
+      constexpr double kGradientEpsilon = 1.0e-14;
+      if (gM < kGradientEpsilon || gN < kGradientEpsilon) {
+        // Mathematically g = gN*gM/(gN+gM) and therefore g = 0 when
+        // either gradient on one of the bodies is zero. A zero gradient
+        // means there is no contact constraint, and therefore we
+        // ignore it to avoid numerical problems in the discrete solver.
+        continue;
+      }
+
+      // Effective hydroelastic pressure gradient g result of
+      // compliant-compliant interaction, see [Masterjohn 2022].
+      // The expression below is mathematically equivalent to g =
+      // gN*gM/(gN+gM) but it has the advantage of also being valid if
+      // one of the gradients is infinity.
+      const T g = 1.0 / (1.0 / gM + 1.0 / gN);
+
+      // Position of quadrature point Q in the world frame (since mesh_W
+      // is measured and expressed in W).
+      const Vector3<T>& p_WQ = s.centroid(face);
+      // For a triangle, its centroid has the fixed barycentric
+      // coordinates independent of the shape of the triangle. Using
+      // barycentric coordinates to evaluate field value could be
+      // faster than using Cartesian coordinates, especially if the
+      // TriangleSurfaceMeshFieldLinear<> does not store gradients and
+      // has to solve linear equations to convert Cartesian to
+      // barycentric coordinates.
+      const Vector3<T> tri_centroid_barycentric(1 / 3., 1 / 3., 1 / 3.);
+      // Pressure at the quadrature point.
+      const T p0 = s.is_triangle()
+                       ? s.tri_e_MN().Evaluate(face, tri_centroid_barycentric)
+                       : s.poly_e_MN().EvaluateCartesian(face, p_WQ);
+
+      // Force contribution by this quadrature point.
+      // const T fn0 = Ae * p0;
+
+      // Effective compliance in the normal direction for the given
+      // discrete patch, refer to [Masterjohn 2022] for details.
+      // [Masterjohn 2022] Masterjohn J., Guoy D., Shepherd J. and
+      // Castro A., 2022. Velocity Level Approximation of Pressure Field
+      // Contact Patches. Available at https://arxiv.org/abs/2110.04157.
+      const T k = Ae * g;
+
+      // phi < 0 when in penetration.
+      const T phi0 = -p0 / g;
+
+      if (k > 0) {
+        // Define a contact frame C at the contact point such that the z-axis
+        // Cz equals nhat_W. The tangent vectors are arbitrary, with the only
+        // requirement being that they form a valid right handed basis with
+        // nhat_W.
+        math::RotationMatrix<T> R_WC =
+            math::RotationMatrix<T>::MakeFromOneVector(nhat_W, 2);
+        const Vector3<T> p_SQ_W = p_WQ - p_WS;
+        Vector3<T> p_SQ_C = R_WC.inverse() * p_SQ_W;
+
+        face_data.push_back(
+            FaceData{phi0, k, std::move(p_SQ_C), std::move(R_WC)});
+      }
+    }  // Ae > 1.0e-14
+  }    // face
+
+  return face_data;
+}
+
+template <typename T>
+void DiscreteUpdateManager<T>::CalcContactSurfacePairs(
+    const systems::Context<T>& context,
+    std::vector<ContactSurfacePair<T>>* result) const {
+  std::vector<ContactSurfacePair<T>>& surface_pairs = *result;
+
+  const geometry::QueryObject<T>& query_object =
+      plant()
+          .get_geometry_query_input_port()
+          .template Eval<geometry::QueryObject<T>>(context);
+  const geometry::SceneGraphInspector<T>& inspector = query_object.inspector();
+  const std::vector<geometry::ContactSurface<T>>& surfaces =
+      EvalContactSurfaces(context);
+
+  const std::vector<std::vector<int>>& per_tree_unlocked_indices =
+      EvalJointLockingCache(context).unlocked_velocity_indices_per_tree;
+  const MultibodyTreeTopology& topology = internal_tree().get_topology();
+
+  const int num_surfaces = surfaces.size();
+  for (int surface_index = 0; surface_index < num_surfaces; ++surface_index) {
+    const auto& s = surfaces[surface_index];
+
+    const BodyIndex body_M_index = geometry_id_to_body_index().at(s.id_M());
+    const BodyIndex body_N_index = geometry_id_to_body_index().at(s.id_N());
+    const TreeIndex& treeM_index = topology.body_to_tree_index(body_M_index);
+    const TreeIndex& treeN_index = topology.body_to_tree_index(body_N_index);
+
+    // A tree has no mobility if it is either anchored or all its dofs are
+    // locked.
+    const bool treeM_has_mobility =
+        treeM_index.is_valid() &&
+        per_tree_unlocked_indices[treeM_index].size() != 0;
+    const bool treeN_has_mobility =
+        treeN_index.is_valid() &&
+        per_tree_unlocked_indices[treeN_index].size() != 0;
+
+    // Skip contact processing between immobile trees.
+    if (!treeM_has_mobility && !treeN_has_mobility) continue;
+
+    // Surface's centroid.
+    const Vector3<T>& p_WS = s.is_triangle() ? s.tri_mesh_W().centroid()
+                                             : s.poly_mesh_W().centroid();
+
+    const Body<T>& body_M = plant().get_body(body_M_index);
+    const Body<T>& body_N = plant().get_body(body_N_index);
+    const std::vector<typename ContactSurfacePair<T>::JacobianTreeBlock>
+        jacobian_blocks =
+            CalcRelativeVelocityJacobian(body_M, body_N, p_WS, context);
+
+    const auto [hydro_modulus_M, hydro_modulus_N, d, tau, mu] =
+        GetSurfaceProperties(s.id_M(), s.id_N(), inspector);
+
+    using FaceData = typename ContactSurfacePair<T>::FaceData;
+    std::vector<FaceData> face_data = CalcFaceData(s);
+
+    using SurfaceData = typename ContactSurfacePair<T>::SurfaceData;
+    SurfaceData surface_data{d, tau, mu, std::move(face_data)};
+
+    surface_pairs.push_back(ContactSurfacePair<T>{
+        surface_index, s.id_M(), body_M_index, s.id_N(), body_N_index,
+        std::move(jacobian_blocks), std::move(surface_data)});
+  }
+}
+
 template <typename T>
 void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
     const systems::Context<T>& context,

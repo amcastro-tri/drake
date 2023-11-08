@@ -21,6 +21,7 @@
 #include "drake/multibody/plant/deformable_model.h"
 #include "drake/multibody/plant/discrete_contact_data.h"
 #include "drake/multibody/plant/discrete_contact_pair.h"
+#include "drake/multibody/plant/contact_surface_pair.h"
 #include "drake/multibody/plant/hydroelastic_contact_info.h"
 #include "drake/multibody/plant/scalar_convertible_component.h"
 #include "drake/multibody/tree/multibody_tree.h"
@@ -461,6 +462,23 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
       const systems::Context<T>& context,
       DiscreteContactData<DiscreteContactPair<T>>* result) const;
 
+  // PLAN: for surface put everything in here, surface pairs + kinematics.
+  void CalcContactSurfacePairs(
+      const systems::Context<T>& context,
+      std::vector<ContactSurfacePair<T>>* result) const;
+
+  std::vector<typename ContactSurfacePair<T>::JacobianTreeBlock>
+  CalcRelativeVelocityJacobian(const Body<T>& body_M, const Body<T>& body_N,
+                               const Vector3<T>& p_WS,
+                               const systems::Context<T>& context) const;
+
+  std::tuple<T, T, T, T, T> GetSurfaceProperties(
+      geometry::GeometryId id_M, geometry::GeometryId id_N,
+      const geometry::SceneGraphInspector<T>& inspector) const;
+
+  std::vector<typename ContactSurfacePair<T>::FaceData> CalcFaceData(
+      const geometry::ContactSurface<T>& s) const;
+
   /* Given the configuration stored in `context`, this method appends discrete
    pairs corresponding to point contact into `pairs`.
    @pre pairs != nullptr. */
@@ -527,6 +545,14 @@ void DiscreteUpdateManager<symbolic::Expression>::
     AppendDiscreteContactPairsForHydroelasticContact(
         const drake::systems::Context<symbolic::Expression>&,
         DiscreteContactData<DiscreteContactPair<symbolic::Expression>>*) const;
+template <>
+void DiscreteUpdateManager<symbolic::Expression>::CalcContactSurfacePairs(
+    const systems::Context<symbolic::Expression>&,
+    std::vector<ContactSurfacePair<symbolic::Expression>>*) const;
+template <>    
+std::vector<typename ContactSurfacePair<symbolic::Expression>::FaceData>
+DiscreteUpdateManager<symbolic::Expression>::CalcFaceData(
+    const geometry::ContactSurface<symbolic::Expression>&) const;
 
 }  // namespace internal
 }  // namespace multibody

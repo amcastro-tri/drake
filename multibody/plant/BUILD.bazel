@@ -25,6 +25,7 @@ drake_cc_package_library(
         ":deformable_ids",
         ":discrete_contact_data",
         ":discrete_contact_pair",
+        ":contact_surface_pair",
         ":externally_applied_spatial_force",
         ":externally_applied_spatial_force_multiplexer",
         ":hydroelastic_contact_info",
@@ -66,6 +67,16 @@ drake_cc_library(
     name = "discrete_contact_pair",
     srcs = [],
     hdrs = ["discrete_contact_pair.h"],
+    deps = [
+        "//common:essential",
+        "//geometry:geometry_ids",
+    ],
+)
+
+drake_cc_library(
+    name = "contact_surface_pair",
+    srcs = [],
+    hdrs = ["contact_surface_pair.h"],
     deps = [
         "//common:essential",
         "//geometry:geometry_ids",
@@ -133,6 +144,7 @@ drake_cc_library(
         ":deformable_ids",
         ":discrete_contact_data",
         ":discrete_contact_pair",
+        ":contact_surface_pair",
         ":externally_applied_spatial_force",
         ":hydroelastic_traction",
         ":multibody_plant_config",

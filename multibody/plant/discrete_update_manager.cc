@@ -913,6 +913,7 @@ void DiscreteUpdateManager<T>::CalcDiscreteContactPairs(
   }
 
   int num_quadrature_pairs = 0;
+#if 0  
   // N.B. For discrete hydro we use a first order quadrature rule. As such,
   // the per-face quadrature point is the face's centroid and the weight is 1.
   // This is compatible with a mesh that is triangle or polygon. If we attempted
@@ -927,16 +928,19 @@ void DiscreteUpdateManager<T>::CalcDiscreteContactPairs(
       num_quadrature_pairs += s.num_faces();
     }
   }
+#endif  
   result->Reserve(num_point_pairs, num_quadrature_pairs, 0);
 
   if (contact_model == ContactModel::kPoint ||
       contact_model == ContactModel::kHydroelasticWithFallback) {
     AppendDiscreteContactPairsForPointContact(context, result);
   }
+#if 0  
   if (contact_model == ContactModel::kHydroelastic ||
       contact_model == ContactModel::kHydroelasticWithFallback) {
     AppendDiscreteContactPairsForHydroelasticContact(context, result);
   }
+#endif  
   if constexpr (std::is_same_v<T, double>) {
     if (deformable_driver_ != nullptr) {
       deformable_driver_->AppendDiscreteContactPairs(context, result);

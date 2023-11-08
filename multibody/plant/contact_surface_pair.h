@@ -61,10 +61,12 @@ struct ContactSurfacePair {
   /* The id of the first geometry in the contact. */
   geometry::GeometryId id_A;
   int object_A;
+  // TODO: Add p_AoS_W for multibody forces reporting.
 
   /* The id of the second geometry in the contact. */
   geometry::GeometryId id_B;
   int object_B;
+  // TODO: Add p_BoS_W for multibody forces reporting.
 
   /* Jacobian for the relative spatial velocity V_AsBs_W of centroid S of the
   contact surface. */

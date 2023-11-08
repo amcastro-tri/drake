@@ -256,6 +256,44 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
 }
 
 template <typename T>
+void SapDriver<T>::AddContactSurfaceConstraints(
+    const systems::Context<T>& context, SapContactProblem<T>* problem) const {
+  INSTRUMENT_FUNCTION("Makes and adds contact surface constraints");
+  DRAKE_DEMAND(problem != nullptr);
+
+  const double sigma = 1.0e-3;
+  const double beta = near_rigid_threshold_;
+
+  std::vector<ContactSurfacePair<T>> surface_pairs;
+  manager().CalcContactSurfacePairs(context, &surface_pairs);
+
+  for (const auto& pair : surface_pairs) {
+    const T& tau = pair.surface_data.dissipation_time_scale;
+    const T& mu = pair.surface_data.friction_coefficient;
+    auto& jacobian_blocks = pair.jacobian;
+
+    typename SapContactSurfaceConstraint<T>::Parameters parameters{mu, tau,
+                                                                   beta, sigma};
+
+    // TODO: consider SapContactSurfaceConstraint to store a pointer to the
+    // surface pair. That way we could Eval the surface pairs and presumably
+    // Eval them again when we need to load the contact results.
+    if (jacobian_blocks.size() == 1) {
+      SapConstraintJacobian<T> J(jacobian_blocks[0].tree,
+                                 std::move(jacobian_blocks[0].J));
+      problem->AddConstraint(std::make_unique<SapContactSurfaceConstraint<T>>(
+          std::move(J), std::move(pair.face_data), std::move(parameters)));
+    } else {
+      SapConstraintJacobian<T> J(
+          jacobian_blocks[0].tree, std::move(jacobian_blocks[0].J),
+          jacobian_blocks[1].tree, std::move(jacobian_blocks[1].J));
+      problem->AddConstraint(std::make_unique<SapContactSurfaceConstraint<T>>(
+          std::move(J), std::move(pair.face_data) std::move(parameters)));
+    }
+  }
+}
+
+template <typename T>
 void SapDriver<T>::AddLimitConstraints(const systems::Context<T>& context,
                                        const VectorX<T>& v_star,
                                        SapContactProblem<T>* problem) const {
@@ -771,6 +809,7 @@ void SapDriver<T>::CalcContactProblemCache(
   // extract contact impulses for reporting contact results.
   // Do not change this order here!
   cache->R_WC = AddContactConstraints(context, &problem);
+  AddContactSurfaceConstraints(context, &problem);
   AddLimitConstraints(context, problem.v_star(), &problem);
   AddPdControllerConstraints(context, &problem);
   AddCouplerConstraints(context, &problem);

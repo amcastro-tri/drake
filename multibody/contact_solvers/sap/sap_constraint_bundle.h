@@ -114,6 +114,10 @@ class SapConstraintBundle {
   void CalcImpulses(const SapConstraintBundleData& bundle_data,
                     VectorX<T>* gamma) const;
 
+  T CalcMeanVs(const SapConstraintBundleData& bundle_data) const;
+  T CalcMeanPhi0(const SapConstraintBundleData& bundle_data) const;
+  T CalcMeanPhi(const SapConstraintBundleData& bundle_data) const;
+
   /* Computes the constraints's Hessian G(vc) = −∂γ/∂vc = ∂²ℓ/∂vc².
    @pre vc.size() equals num_constraint_equations().
    @pre gamma != nullptr and gamma->size() equals num_constraint_equations().

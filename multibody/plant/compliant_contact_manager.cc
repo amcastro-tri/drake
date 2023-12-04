@@ -193,6 +193,8 @@ void CompliantContactManager<T>::AppendContactKinematics(
   Matrix3X<T> Jv_WBc_W(3, nv);
   Matrix3X<T> Jv_AcBc_W(3, nv);
 
+  const auto v = plant().GetVelocities(context);
+
   const Frame<T>& frame_W = plant().world_frame();
   for (int icontact = 0; icontact < ssize(contact_pairs); ++icontact) {
     const auto& point_pair = contact_pairs[icontact];
@@ -226,13 +228,18 @@ void CompliantContactManager<T>::AppendContactKinematics(
     this->internal_tree().CalcJacobianTranslationalVelocity(
         context, JacobianWrtVariable::kV, bodyB.body_frame(), frame_W, p_WC,
         frame_W, frame_W, &Jv_WBc_W);
-    Jv_AcBc_W = Jv_WBc_W - Jv_WAc_W;
+    Jv_AcBc_W = Jv_WBc_W - Jv_WAc_W;    
 
     // Define a contact frame C at the contact point such that the z-axis Cz
     // equals nhat_W. The tangent vectors are arbitrary, with the only
     // requirement being that they form a valid right handed basis with nhat_W.
     math::RotationMatrix<T> R_WC =
         math::RotationMatrix<T>::MakeFromOneVector(nhat_W, 2);
+
+    // Contact velocity stored in the current context (previous time step).
+    const Vector3<T> v_AcBc_W = Jv_AcBc_W * v;
+    const Vector3<T> v_AcBc_C = R_WC.transpose() * v_AcBc_W;
+    const T vn0 = v_AcBc_C(2);
 
     const TreeIndex& treeA_index =
         tree_topology().body_to_tree_index(bodyA_index);
@@ -271,6 +278,7 @@ void CompliantContactManager<T>::AppendContactKinematics(
                                           .objectB = bodyB_index,
                                           .p_BqC_W = p_BC_W,
                                           .phi = point_pair.phi0,
+                                          .vn = vn0,
                                           .R_WC = R_WC};
     switch (type) {
       case DiscreteContactType::kPoint: {
@@ -435,7 +443,7 @@ void CompliantContactManager<T>::AppendDiscreteContactPairsForPointContact(
       const Vector3<T> p_WC = wA * pair.p_WCa + wB * pair.p_WCb;
 
       const T phi0 = -pair.depth;
-      const T fn0 = k * pair.depth;  // Used by TAMSI, ignored by SAP.
+      const T fn0 = k * pair.depth;
 
       contact_pairs.AppendPointData(
           DiscreteContactPair<T>{pair.id_A,
@@ -1049,7 +1057,7 @@ void CompliantContactManager<T>::ExtractModelInfo() {
   DRAKE_DEMAND(sap_driver_ == nullptr && tamsi_driver_ == nullptr);
 
   switch (plant().get_discrete_contact_solver()) {
-    case DiscreteContactSolver::kSap:
+    case DiscreteContactSolver::kSap:      
       // N.B. SAP is not supported for T = symbolic::Expression.
       // However, exception will only be thrown if we attempt to use a SapDriver
       // to compute discrete updates. This allows a user to scalar convert a
@@ -1060,6 +1068,10 @@ void CompliantContactManager<T>::ExtractModelInfo() {
             plant().get_sap_near_rigid_threshold();
         sap_driver_ =
             std::make_unique<SapDriver<T>>(this, near_rigid_threshold);
+        sap_driver_->set_sap_sigma(plant().get_sap_sigma());
+        sap_driver_->set_margin(plant().get_margin());
+        sap_driver_->set_sap_solver_parameters(
+            plant().get_sap_solver_parameters());
       }
       break;
     case DiscreteContactSolver::kTamsi:

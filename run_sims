@@ -1,0 +1,22 @@
+bazel run examples/multibody/clutter:clutter -- --estimate_cond_number=1 --objects_per_pile=10 --simulation_time=3 --near_rigid_threshold=0 --dissipation_time_constant=1e-4 --sdf_max_distance=0.0025 --mbp_time_step=1.6e-5 --stiction_tolerance=1e-4 --visualize=0 --discrete_contact_model=sap --box_stiffness=1e7 --sphere_stiffness=1e7 --sap_sigma=0
+
+mv bazel-bin/examples/multibody/clutter/clutter.runfiles/drake/sap_stats.dat /home/amcastro/Documents/Research/ConvexPotentials/TestCases/Clutter/Stiff/stats_sap_1p6em5.dat
+
+
+bazel run examples/multibody/clutter:clutter -- --estimate_cond_number=1 --objects_per_pile=10 --simulation_time=3 --near_rigid_threshold=0 --dissipation_time_constant=1e-4 --sdf_max_distance=0.0025 --mbp_time_step=1.6e-5 --stiction_tolerance=1e-4 --visualize=0 --discrete_contact_model=lagged --box_stiffness=1e7 --sphere_stiffness=1e7 --sap_sigma=0
+
+mv bazel-bin/examples/multibody/clutter/clutter.runfiles/drake/sap_stats.dat /home/amcastro/Documents/Research/ConvexPotentials/TestCases/Clutter/Stiff/stats_lagged_1p6em5.dat
+
+
+bazel run examples/multibody/clutter:clutter -- --estimate_cond_number=1 --objects_per_pile=10 --simulation_time=3 --near_rigid_threshold=0 --dissipation_time_constant=1e-4 --sdf_max_distance=0.0025 --mbp_time_step=1.6e-5 --stiction_tolerance=1e-4 --visualize=0 --discrete_contact_model=lagged --box_stiffness=1e7 --sphere_stiffness=1e7 --sap_sigma=1e-3
+
+mv bazel-bin/examples/multibody/clutter/clutter.runfiles/drake/sap_stats.dat /home/amcastro/Documents/Research/ConvexPotentials/TestCases/Clutter/Stiff/stats_lagged_reg_1p6em5.dat
+
+
+bazel run examples/multibody/clutter:clutter -- --estimate_cond_number=1 --objects_per_pile=10 --simulation_time=3 --near_rigid_threshold=0 --dissipation_time_constant=1e-4 --sdf_max_distance=0.0025 --mbp_time_step=1.6e-5 --stiction_tolerance=1e-4 --visualize=0 --discrete_contact_model=convex --box_stiffness=1e7 --sphere_stiffness=1e7 --sap_sigma=0
+
+mv bazel-bin/examples/multibody/clutter/clutter.runfiles/drake/sap_stats.dat /home/amcastro/Documents/Research/ConvexPotentials/TestCases/Clutter/Stiff/stats_convex_1p6em5.dat
+
+
+
+

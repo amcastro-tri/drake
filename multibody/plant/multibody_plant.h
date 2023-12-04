@@ -20,6 +20,7 @@
 #include "drake/geometry/scene_graph.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/contact_solvers/contact_solver_results.h"
+#include "drake/multibody/contact_solvers/sap/sap_solver.h"
 #include "drake/multibody/plant/constraint_specs.h"
 #include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/coulomb_friction.h"
@@ -173,6 +174,21 @@ enum class DiscreteContactSolver {
   kTamsi,
   /// SAP solver, see [Castro et al., 2022].
   kSap,
+};
+
+enum class DiscreteContactModel {
+  /// TAMSI solver, see [Castro et al., 2019].
+  /// This options sets DiscreteContactSolver::kTamsi.
+  kTamsi,
+  /// SAP solver, see [Castro et al., 2022].
+  /// This options sets DiscreteContactSolver::kSap.
+  kSap,
+  /// Convex model by Castro A.
+  /// This options sets DiscreteContactSolver::kSap.
+  kConvex,
+  /// Normal force is lagged in Coulomb's law, such that ‖γₜ‖ ≤ μ γₙ₀.
+  /// This options sets DiscreteContactSolver::kSap.
+  kLagged,
 };
 
 /// @cond
@@ -2057,7 +2073,26 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   void set_discrete_contact_solver(DiscreteContactSolver contact_solver);
 
   /// Returns the contact solver type used for discrete %MultibodyPlant models.
+  /// kTamsi sets DiscreteContactModel::kTamsi.
+  /// kSap sets DiscreteContactModel::kSap.
   DiscreteContactSolver get_discrete_contact_solver() const;
+
+  // TODO(amcastro-tri): consider deprecating DiscreteContactSolver since the
+  // model automatically sets the solver.
+  /// kTamsi sets DiscreteContactSolver::kTamsi.
+  /// kSap, kConvex and kLagged set DiscreteContactSolver::kSap.
+  void set_discrete_contact_model(DiscreteContactModel contact_model);
+  DiscreteContactModel get_discrete_contact_model() const;
+
+  void set_sap_solver_parameters(
+      contact_solvers::internal::SapSolverParameters p) {
+    sap_parameters_ = std::move(p);
+  }
+
+  const contact_solvers::internal::SapSolverParameters&
+  get_sap_solver_parameters() const {
+    return sap_parameters_;
+  }
 
   /// Non-negative dimensionless number typically in the range [0.0, 1.0],
   /// though larger values are allowed even if uncommon. This parameter controls
@@ -2079,6 +2114,18 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @returns the SAP near rigid regime threshold.
   /// @see See set_sap_near_rigid_threshold().
   double get_sap_near_rigid_threshold() const;
+
+  /// See MultibodyPlantConfig::sdf_max_distance.
+  void set_sdf_max_distance(double sdf_max_distance);
+  double get_sdf_max_distance() const;
+
+  /// See MultibodyPlantConfig::sap_sigma.
+  void set_sap_sigma(double sigma);
+  double get_sap_sigma() const;
+
+  /// See MultibodyPlantConfig::margin
+  void set_margin(double margin);
+  double get_margin() const;
 
   /// Return the default value for contact representation, given the desired
   /// time step. Discrete systems default to use polygons; continuous systems
@@ -3167,17 +3214,40 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
             .template Eval<std::vector<geometry::PenetrationAsPointPair<T>>>(
             context);
       case ContactModel::kHydroelasticWithFallback: {
-        const auto& data =
-            this->get_cache_entry(cache_indexes_.hydro_fallback)
-                .template Eval<internal::HydroelasticFallbackCacheData<T>>(
-                    context);
-        return data.point_pairs;
+        const bool using_sdf = this->get_sdf_max_distance() > 0.0;
+        if (using_sdf) {
+          return this->get_cache_entry(cache_indexes_.point_pairs)
+              .template Eval<std::vector<geometry::PenetrationAsPointPair<T>>>(
+                  context);
+        } else {
+          const auto& data =
+              this->get_cache_entry(cache_indexes_.hydro_fallback)
+                  .template Eval<internal::HydroelasticFallbackCacheData<T>>(
+                      context);
+          return data.point_pairs;
+        }
       }
       default:
         throw std::logic_error(
             "Attempting to evaluate point pair contact for contact model that "
             "doesn't use it");
     }
+  }
+
+  const std::vector<geometry::SignedDistancePair<T>>& EvalSignedDistancePairs(
+      const systems::Context<T>& context) const {
+    // TODO(jwnimmer-tri) This function is too large to be inline.
+    // Move its definition to the cc file.
+    DRAKE_MBP_THROW_IF_NOT_FINALIZED();
+    this->ValidateContext(context);
+    if (contact_model_ != ContactModel::kPoint &&
+        contact_model_ != ContactModel::kHydroelasticWithFallback) {
+      throw std::logic_error(
+          "Attempting to evaluate signed distance pair for a contact model "
+          "that doesn't use it");
+    }
+    return this->get_cache_entry(cache_indexes_.sdf_pairs)
+        .template Eval<std::vector<geometry::SignedDistancePair<T>>>(context);
   }
 
   /// Calculates the rigid transform (pose) `X_FG` relating frame F and frame G.
@@ -5011,6 +5081,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     systems::CacheIndex spatial_contact_forces_continuous;
     systems::CacheIndex discrete_contact_pairs;
     systems::CacheIndex joint_locking_data;
+    systems::CacheIndex sdf_pairs;
   };
 
   // This struct stores in one single place all indices related to
@@ -5422,6 +5493,10 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const systems::Context<T>& context,
       std::vector<geometry::PenetrationAsPointPair<T>>*) const;
 
+  void CalcSignedDistancePairs(
+      const systems::Context<T>& context,
+      std::vector<geometry::SignedDistancePair<T>>*) const;
+
   // (Advanced) Helper method to compute contact forces in the normal direction
   // using a penalty method.
   void CalcAndAddContactForcesByPenaltyMethod(
@@ -5605,10 +5680,24 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // assertions in the cc file that enforce this.
   DiscreteContactSolver contact_solver_enum_{DiscreteContactSolver::kTamsi};
 
+  // For backwards compatibility, we make it consistent with
+  // contact_solver_enum_'s default.
+  DiscreteContactModel contact_model_enum_{DiscreteContactModel::kTamsi};
+
+  contact_solvers::internal::SapSolverParameters sap_parameters_{};
+
   // Near rigid regime parameter from [Castro et al., 2021]. Refer to
   // set_near_rigid_threshold() for details.
   double sap_near_rigid_threshold_{
       MultibodyPlantConfig{}.sap_near_rigid_threshold};
+
+  // When using signed distance point contact queries, geometries at distances
+  // larger than sdf_max_distance_ are not considered.
+  double sdf_max_distance_{MultibodyPlantConfig{}.sdf_max_distance};
+
+  double sap_sigma_{MultibodyPlantConfig{}.sap_sigma};
+
+  double margin_{MultibodyPlantConfig{}.margin};
 
   // User's choice of the representation of contact surfaces in discrete
   // systems. The default value is dependent on whether the system is

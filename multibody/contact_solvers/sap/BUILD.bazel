@@ -25,6 +25,7 @@ drake_cc_package_library(
         ":sap_distance_constraint",
         ":sap_fixed_constraint",
         ":sap_friction_cone_constraint",
+        ":sap_hunt_crossley",
         ":sap_holonomic_constraint",
         ":sap_limit_constraint",
         ":sap_model",
@@ -79,6 +80,8 @@ drake_cc_library(
     deps = [
         ":partial_permutation",
         ":sap_contact_problem",
+        ":sap_hunt_crossley",
+        ":sap_friction_cone_constraint",
         "//common:default_scalars",
         "//common:essential",
         "//multibody/contact_solvers:block_sparse_matrix",
@@ -226,6 +229,18 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "sap_hunt_crossley",
+    srcs = ["sap_hunt_crossley.cc"],
+    hdrs = ["sap_hunt_crossley.h"],
+    deps = [
+        ":sap_constraint",
+        ":sap_constraint_jacobian",
+        "//common:default_scalars",
+        "//common:essential",
+    ],
+)
+
+drake_cc_library(
     name = "sap_model",
     srcs = ["sap_model.cc"],
     hdrs = ["sap_model.h"],
@@ -252,6 +267,7 @@ drake_cc_library(
         ":sap_solver_results",
         "//common:default_scalars",
         "//common:essential",
+        "//common:profiler",
         "//math:linear_solve",
         "//multibody/contact_solvers:block_sparse_matrix",
         "//multibody/contact_solvers:block_sparse_supernodal_solver",
@@ -412,6 +428,18 @@ drake_cc_googletest(
         ":validate_constraint_gradients",
         "//common:pointer_cast",
         "//common/test_utilities:eigen_matrix_compare",
+    ],
+)        
+
+drake_cc_googletest(
+    name = "sap_hunt_crossley_constraint_test",
+    deps = [
+        ":sap_hunt_crossley",
+        ":validate_constraint_gradients",
+        "//common:pointer_cast",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//math:gradient",
+        "//solvers:constraint",
     ],
 )
 

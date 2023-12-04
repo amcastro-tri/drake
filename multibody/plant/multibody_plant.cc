@@ -51,9 +51,10 @@ using geometry::GeometryInstance;
 using geometry::GeometrySet;
 using geometry::PenetrationAsPointPair;
 using geometry::ProximityProperties;
-using geometry::render::RenderLabel;
 using geometry::SceneGraph;
+using geometry::SignedDistancePair;
 using geometry::SourceId;
+using geometry::render::RenderLabel;
 using systems::InputPort;
 using systems::OutputPort;
 using systems::State;
@@ -312,6 +313,10 @@ MultibodyPlant<T>::MultibodyPlant(double time_step)
                "hydroelastic_with_fallback");
   DRAKE_DEMAND(contact_solver_enum_ == DiscreteContactSolver::kTamsi);
   DRAKE_DEMAND(MultibodyPlantConfig{}.discrete_contact_solver == "tamsi");
+  // By default, the model config is empty and therefore the solver determines
+  // the contact model.
+  DRAKE_DEMAND(contact_model_enum_ == DiscreteContactModel::kTamsi);
+  DRAKE_DEMAND(MultibodyPlantConfig{}.discrete_contact_model == "");
 }
 
 template <typename T>
@@ -375,7 +380,10 @@ MultibodyPlant<T>::MultibodyPlant(const MultibodyPlant<U>& other)
     num_collision_geometries_ = other.num_collision_geometries_;
     contact_model_ = other.contact_model_;
     contact_solver_enum_ = other.contact_solver_enum_;
+    contact_model_enum_ = other.contact_model_enum_;
     sap_near_rigid_threshold_ = other.sap_near_rigid_threshold_;
+    sdf_max_distance_ = other.sdf_max_distance_;
+    sap_sigma_ = other.sap_sigma_;
     contact_surface_representation_ = other.contact_surface_representation_;
     // geometry_query_port_ is set during DeclareSceneGraphPorts() below.
     // geometry_pose_port_ is set during DeclareSceneGraphPorts() below.
@@ -687,6 +695,23 @@ DiscreteContactSolver MultibodyPlant<T>::get_discrete_contact_solver()
 }
 
 template <typename T>
+void MultibodyPlant<T>::set_discrete_contact_model(
+    DiscreteContactModel contact_model) {
+  DRAKE_MBP_THROW_IF_FINALIZED();
+  contact_model_enum_ = contact_model;
+  if (contact_model == DiscreteContactModel::kTamsi) {
+    set_discrete_contact_solver(DiscreteContactSolver::kTamsi);
+  } else {
+    set_discrete_contact_solver(DiscreteContactSolver::kSap);
+  }
+}
+
+template <typename T>
+DiscreteContactModel MultibodyPlant<T>::get_discrete_contact_model() const {
+  return contact_model_enum_;
+}
+
+template <typename T>
 void MultibodyPlant<T>::set_sap_near_rigid_threshold(
     double near_rigid_threshold) {
   DRAKE_MBP_THROW_IF_FINALIZED();
@@ -697,6 +722,40 @@ void MultibodyPlant<T>::set_sap_near_rigid_threshold(
 template <typename T>
 double MultibodyPlant<T>::get_sap_near_rigid_threshold() const {
   return sap_near_rigid_threshold_;
+}
+
+template <typename T>
+void MultibodyPlant<T>::set_sdf_max_distance(
+    double sdf_max_distance) {
+  DRAKE_MBP_THROW_IF_FINALIZED();
+  sdf_max_distance_ = sdf_max_distance;
+}
+
+template <typename T>
+double MultibodyPlant<T>::get_sdf_max_distance() const {
+  return sdf_max_distance_;
+}
+
+template <typename T>
+void MultibodyPlant<T>::set_sap_sigma(double sigma) {
+  DRAKE_MBP_THROW_IF_FINALIZED();
+  sap_sigma_ = sigma;
+}
+
+template <typename T>
+double MultibodyPlant<T>::get_sap_sigma() const {
+  return sap_sigma_;
+}
+
+template <typename T>
+double MultibodyPlant<T>::get_margin() const {
+  return margin_;
+}
+
+template <typename T>
+void MultibodyPlant<T>::set_margin(double margin) {
+  DRAKE_MBP_THROW_IF_FINALIZED();
+  margin_ = margin;
 }
 
 template <typename T>
@@ -1795,9 +1854,55 @@ void MultibodyPlant<T>::CalcPointPairPenetrations(
     const systems::Context<T>& context,
     std::vector<PenetrationAsPointPair<T>>* output) const {
   this->ValidateContext(context);
+
+  auto get_body = [this](geometry::GeometryId id) -> const Body<T>& {
+    const BodyIndex body_index = geometry_id_to_body_index_.at(id);
+    return this->get_body(body_index);
+  };
+
+  if (num_collision_geometries() > 0) {
+    const bool using_sdf = this->get_sdf_max_distance() > 0.0;
+    const auto& query_object = EvalGeometryQueryInput(context, __func__);
+    if (using_sdf) {
+      const auto& inspector = query_object.inspector();
+      const std::vector<SignedDistancePair<T>> sdf_pairs =
+          query_object.ComputeSignedDistancePairwiseClosestPoints(
+              sdf_max_distance_);
+      // N.B. This is an abuse of the PenetrationAsPointPair struct, but it
+      // allows us to modify the code in a single place.
+      output->clear();
+      for (const auto& p : sdf_pairs) {
+        const RigidTransform<T> X_AGa =
+            inspector.GetPoseInFrame(p.id_A).template cast<T>();
+        const RigidTransform<T> X_WGa =
+            get_body(p.id_A).EvalPoseInWorld(context) * X_AGa;
+        const RigidTransform<T> X_BGb =
+            inspector.GetPoseInFrame(p.id_B).template cast<T>();
+        const RigidTransform<T> X_WGb =
+            get_body(p.id_B).EvalPoseInWorld(context) * X_BGb;
+        const Vector3<T> p_WCa = X_WGa * p.p_ACa;
+        const Vector3<T> p_WCb = X_WGb * p.p_BCb;
+        output->push_back(
+            {p.id_A, p.id_B, p_WCa, p_WCb, p.nhat_BA_W, -p.distance});
+      }
+    } else {
+      *output = query_object.ComputePointPairPenetration();
+    }
+  } else {
+    output->clear();
+  }
+}
+
+template <typename T>
+void MultibodyPlant<T>::CalcSignedDistancePairs(
+    const systems::Context<T>& context,
+    std::vector<SignedDistancePair<T>>* output) const {
+  this->ValidateContext(context);
+  DRAKE_DEMAND(sdf_max_distance_ > 0.0);
   if (num_collision_geometries() > 0) {
     const auto& query_object = EvalGeometryQueryInput(context, __func__);
-    *output = query_object.ComputePointPairPenetration();
+    *output = query_object.ComputeSignedDistancePairwiseClosestPoints(
+        sdf_max_distance_);
   } else {
     output->clear();
   }
@@ -3037,6 +3142,13 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
       &MultibodyPlant<T>::CalcPointPairPenetrations,
       {this->configuration_ticket()});
   cache_indexes_.point_pairs = point_pairs_cache_entry.cache_index();
+
+  // Cache entry for signed distance contact queries.
+  auto& sdf_pairs_cache_entry = this->DeclareCacheEntry(
+      std::string("Signed distances"),
+      &MultibodyPlant<T>::CalcSignedDistancePairs,
+      {this->configuration_ticket()});
+  cache_indexes_.sdf_pairs = sdf_pairs_cache_entry.cache_index();
 
   // Cache entry for hydroelastic contact surfaces.
   auto& contact_surfaces_cache_entry = this->DeclareCacheEntry(

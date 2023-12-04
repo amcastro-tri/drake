@@ -82,6 +82,10 @@ class SapDriver {
   explicit SapDriver(const CompliantContactManager<T>* manager,
                      double near_rigid_threshold = 1.0);
 
+  void set_sap_sigma(double sigma) { sap_sigma_ = sigma; }
+
+  void set_margin(double margin) { margin_ = margin; }
+
   void set_sap_solver_parameters(
       const contact_solvers::internal::SapSolverParameters& parameters);
 
@@ -275,6 +279,8 @@ class SapDriver {
   const CompliantContactManager<T>* const manager_{nullptr};
   // Near rigid regime parameter for contact constraints.
   const double near_rigid_threshold_;
+  double sap_sigma_{0.0};
+  double margin_{0.0};
   systems::CacheIndex contact_problem_;
   systems::CacheIndex sap_results_;
   // Vector of joint damping coefficients, of size plant().num_velocities().

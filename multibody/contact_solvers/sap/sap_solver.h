@@ -119,7 +119,7 @@ struct SapSolverParameters {
   // SolverStats::optimality_condition_reached indicates if this condition was
   // reached.
   double abs_tolerance{1.e-14};  // Absolute tolerance εₐ, square root of Joule.
-  double rel_tolerance{1.e-6};  // Relative tolerance εᵣ.
+  double rel_tolerance{1.e-5};  // Relative tolerance εᵣ.
 
   // Cost condition criterion: We monitor the decrease of the cost on each
   // iteration. It is not worth it to keep iterating if round-off errors do not
@@ -149,7 +149,7 @@ struct SapSolverParameters {
   //    square root of Joule) squared.
   double cost_abs_tolerance{1.e-30};  // Absolute tolerance εₐ, in Joules.
   double cost_rel_tolerance{1.e-15};  // Relative tolerance εᵣ.
-  int max_iterations{100};            // Maximum number of Newton iterations.
+  int max_iterations{500};            // Maximum number of Newton iterations.
 
   LineSearchType line_search_type{LineSearchType::kExact};
 
@@ -179,6 +179,9 @@ struct SapSolverParameters {
   bool nonmonotonic_convergence_is_error{false};
 
   LinearSolverType linear_solver_type{LinearSolverType::kBlockSparseCholesky};
+
+  // Estimate condition number. This is VERY expensive. Only for testing.
+  bool estimate_cond_number{false};
 };
 
 // This class implements the Semi-Analytic Primal (SAP) solver described in
@@ -224,9 +227,19 @@ class SapSolver {
       momentum_scale.clear();
       cost.clear();
       alpha.clear();
+      delta_ell.clear();
+      ell_scale.clear();
     }
     int num_iters{0};              // Number of Newton iterations.
     int num_line_search_iters{0};  // Total number of line search iterations.
+
+    // Condition number estimate on the last iteration. Only computed if
+    // requested with SapSolverParams::estimate_cond_number.
+    double cond_number{0.0};
+
+    double mean_vs{0.0};
+    double mean_phi0{0.0};
+    double mean_phi{0.0};
 
     // Indicates if the optimality condition was reached.
     bool optimality_criterion_reached{false};
@@ -249,6 +262,8 @@ class SapSolver {
     // Dimensionless momentum scale at each SAP Newton iteration. Of size
     // num_iters + 1.
     std::vector<double> momentum_scale;
+
+    std::vector<double> delta_ell, ell_scale;
   };
 
   SapSolver() = default;

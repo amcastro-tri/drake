@@ -6,6 +6,7 @@
 #include "drake/examples/multibody/cylinder_with_multicontact/populate_cylinder_plant.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/lcm/drake_lcm.h"
+#include "drake/multibody/plant/multibody_plant_config_functions.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/lcm/lcm_publisher_system.h"
@@ -24,11 +25,9 @@ DEFINE_double(target_realtime_rate, 0.5,
 DEFINE_double(simulation_time, 10.0,
               "Desired duration of the simulation in seconds.");
 
-DEFINE_double(z0, 0.5,
-              "The initial height of the cylinder, m.");
+DEFINE_double(z0, 0.5, "The initial height of the cylinder, m.");
 
-DEFINE_double(vx0, 1.0,
-              "The initial x-velocity of the cylinder, m/s.");
+DEFINE_double(vx0, 1.0, "The initial x-velocity of the cylinder, m/s.");
 
 DEFINE_double(wx0, 0.1,
               "The initial x-angular velocity of the cylinder, rad/s.");
@@ -48,20 +47,32 @@ DEFINE_double(time_step, 1.0e-3,
               "If positive, the period (in seconds) of the discrete updates "
               "for the plant modeled as a discrete system."
               "This parameter must be non-negative.");
+DEFINE_double(sdf_max_distance, 0.0,
+              "If negative, a point penetration query is used. Otherwise a "
+              "signed distance query with max-distance threshold.");
+DEFINE_string(
+    discrete_model, "sap",
+    "Discrete contact model. Options are: 'tamsi', 'sap', 'convex', 'lagged'");
 
 using Eigen::Vector3d;
 using geometry::SceneGraph;
 
 // "multibody" namespace is ambiguous here without "drake::".
-using drake::multibody::AddMultibodyPlantSceneGraph;
+using drake::multibody::AddMultibodyPlant;
 using drake::multibody::CoulombFriction;
+using drake::multibody::MultibodyPlantConfig;
 using drake::multibody::SpatialVelocity;
 
 int do_main() {
   systems::DiagramBuilder<double> builder;
 
-  auto [plant, scene_graph] =
-      AddMultibodyPlantSceneGraph(&builder, FLAGS_time_step);
+  MultibodyPlantConfig plant_config;
+  plant_config.time_step = FLAGS_time_step;
+  plant_config.stiction_tolerance = FLAGS_stiction_tolerance;
+  plant_config.penetration_allowance = FLAGS_penetration_allowance;
+  plant_config.discrete_contact_model = FLAGS_discrete_model;
+  plant_config.sdf_max_distance = FLAGS_sdf_max_distance;
+  auto [plant, scene_graph] = AddMultibodyPlant(plant_config, &builder);
 
   // Plant's parameters.
   const double radius = 0.05;          // The cylinder's radius, m
@@ -76,14 +87,12 @@ int do_main() {
                         -g * Vector3d::UnitZ(), &plant);
   plant.Finalize();
 
-  // Set how much penetration (in meters) we are willing to accept.
-  plant.set_penetration_allowance(FLAGS_penetration_allowance);
-  plant.set_stiction_tolerance(FLAGS_stiction_tolerance);
-
   DRAKE_DEMAND(plant.num_velocities() == 6);
   DRAKE_DEMAND(plant.num_positions() == 7);
 
-  visualization::AddDefaultVisualization(&builder);
+  std::shared_ptr<geometry::Meshcat> meshcat =
+      std::make_shared<geometry::Meshcat>();
+  visualization::AddDefaultVisualization(&builder, meshcat);
 
   auto diagram = builder.Build();
 
@@ -99,16 +108,18 @@ int do_main() {
   plant.SetFreeBodyPose(&plant_context, cylinder, X_WB);
   plant.SetFreeBodySpatialVelocity(
       &plant_context, cylinder,
-      SpatialVelocity<double>(
-          Vector3<double>(FLAGS_wx0, 0.0, 0.0),
-          Vector3<double>(FLAGS_vx0, 0.0, 0.0)));
+      SpatialVelocity<double>(Vector3<double>(FLAGS_wx0, 0.0, 0.0),
+                              Vector3<double>(FLAGS_vx0, 0.0, 0.0)));
 
   systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
 
   simulator.set_publish_every_time_step(true);
   simulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
   simulator.Initialize();
+  meshcat->StartRecording();
   simulator.AdvanceTo(FLAGS_simulation_time);
+  meshcat->StopRecording();
+  meshcat->PublishRecording();
 
   return 0;
 }

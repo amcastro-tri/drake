@@ -20,10 +20,14 @@ struct MultibodyPlantConfig {
     a->Visit(DRAKE_NVP(penetration_allowance));
     a->Visit(DRAKE_NVP(stiction_tolerance));
     a->Visit(DRAKE_NVP(contact_model));
+    a->Visit(DRAKE_NVP(discrete_contact_model));
     a->Visit(DRAKE_NVP(discrete_contact_solver));
     a->Visit(DRAKE_NVP(sap_near_rigid_threshold));
     a->Visit(DRAKE_NVP(contact_surface_representation));
     a->Visit(DRAKE_NVP(adjacent_bodies_collision_filters));
+    a->Visit(DRAKE_NVP(sdf_max_distance));
+    a->Visit(DRAKE_NVP(sap_sigma));
+    a->Visit(DRAKE_NVP(margin));
   }
 
   /// Configures the MultibodyPlant::MultibodyPlant() constructor time_step.
@@ -47,12 +51,26 @@ struct MultibodyPlantConfig {
   /// - "hydroelastic_with_fallback"
   std::string contact_model{"hydroelastic_with_fallback"};
 
+  // TODO(amcastro-tri): Deprecate. Use discrete_contact_model instead.
   /// Configures the MultibodyPlant::set_discrete_contact_solver().
   /// Refer to drake::multibody::DiscreteContactSolver for details.
   /// Valid strings are:
-  /// - "tamsi"
-  /// - "sap"
+  /// - "tamsi", uses the TAMSI model.
+  /// - "sap"  , uses the SAP model.
+  /// @warning This option is ignored if discrete_contact_model not empty.
   std::string discrete_contact_solver{"tamsi"};
+
+  /// Configures the MultibodyPlant::set_discrete_contact_model().
+  /// Refer to drake::multibody::DiscreteContactModel for details.
+  /// Valid strings are:
+  /// - "tamsi",  uses TAMSI solver.
+  /// - "sap",    uses SAP solver.
+  /// - "convex", uses SAP solver.
+  /// - "lagged", uses SAP solver.
+  /// - "" (ignored, discrete_contact_solver is respected)
+  /// N.B. If non-empty, this options determines the discrete solver that gets
+  /// used.
+  std::string discrete_contact_model{""};
 
   // TODO(amcastro-tri): Change default to zero, or simply eliminate.
   /// Non-negative dimensionless number typically in the range [0.0, 1.0],
@@ -69,6 +87,19 @@ struct MultibodyPlantConfig {
   ///      need to use a low value if the solver fails to converge.
   ///      For instance, set values in the range (1e-3, 1e-2).
   double sap_near_rigid_threshold{1.0};
+
+  /// If lower or equal than zero, point contact uses a penetration query, that
+  /// only detects collision when objects already are overlapping.
+  /// If positive, the point contact model will use a signed distance query and
+  /// objects farther than this distance won't be considered.
+  double sdf_max_distance{0.0};
+
+  // Controls the amount of SAP friction regularization in the Hunt&Crossley
+  // model.
+  double sap_sigma{0.0};
+
+  // Models compliant contact with a geometric margin, in meters.
+  double margin{0.0};
 
   /// Configures the MultibodyPlant::set_contact_surface_representation().
   /// Refer to drake::geometry::HydroelasticContactRepresentation for details.

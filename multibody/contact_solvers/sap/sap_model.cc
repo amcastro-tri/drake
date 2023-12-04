@@ -210,6 +210,27 @@ void SapModel<T>::CalcImpulsesCache(const Context<T>& context,
 }
 
 template <typename T>
+T SapModel<T>::CalcMeanVs(const Context<T>& context) const {
+  const SapConstraintBundleData& bundle_data =
+      EvalSapConstraintBundleData(context);
+  return constraints_bundle().CalcMeanVs(bundle_data);
+}
+
+template <typename T>
+T SapModel<T>::CalcMeanPhi(const Context<T>& context) const {
+  const SapConstraintBundleData& bundle_data =
+      EvalSapConstraintBundleData(context);
+  return constraints_bundle().CalcMeanPhi(bundle_data);
+}
+
+template <typename T>
+T SapModel<T>::CalcMeanPhi0(const Context<T>& context) const {
+  const SapConstraintBundleData& bundle_data =
+      EvalSapConstraintBundleData(context);
+  return constraints_bundle().CalcMeanPhi0(bundle_data);
+}
+
+template <typename T>
 void SapModel<T>::CalcMomentumGainCache(const Context<T>& context,
                                         MomentumGainCache<T>* cache) const {
   system_->ValidateContext(context);

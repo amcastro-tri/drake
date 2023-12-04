@@ -11,9 +11,8 @@ namespace multibody {
 
 using AddResult = AddMultibodyPlantSceneGraphResult<double>;
 
-AddResult AddMultibodyPlant(
-    const MultibodyPlantConfig& config,
-    systems::DiagramBuilder<double>* builder) {
+AddResult AddMultibodyPlant(const MultibodyPlantConfig& config,
+                            systems::DiagramBuilder<double>* builder) {
   AddResult result = AddMultibodyPlantSceneGraph(builder, config.time_step);
   ApplyMultibodyPlantConfig(config, &result.plant);
   return result;
@@ -24,14 +23,26 @@ void ApplyMultibodyPlantConfig(const MultibodyPlantConfig& config,
   DRAKE_THROW_UNLESS(plant != nullptr);
   // TODO(russt): Add MultibodyPlant.set_time_step() and use it here.
   DRAKE_THROW_UNLESS(plant->time_step() == config.time_step);
+  plant->set_sdf_max_distance(config.sdf_max_distance);
   plant->set_penetration_allowance(config.penetration_allowance);
   plant->set_stiction_tolerance(config.stiction_tolerance);
   plant->set_contact_model(
       internal::GetContactModelFromString(config.contact_model));
-  plant->set_discrete_contact_solver(
-      internal::GetDiscreteContactSolverFromString(
-          config.discrete_contact_solver));
+  if (config.discrete_contact_model.empty()) {
+    // Solver is respected.
+    plant->set_discrete_contact_solver(
+        internal::GetDiscreteContactSolverFromString(
+            config.discrete_contact_solver));
+  } else {
+    // Contact model determines the solver to be used. Therefore
+    // discrete_contact_solver is ignored.
+    plant->set_discrete_contact_model(
+        internal::GetDiscreteContactModelFromString(
+            config.discrete_contact_model));
+  }
   plant->set_sap_near_rigid_threshold(config.sap_near_rigid_threshold);
+  plant->set_sap_sigma(config.sap_sigma);
+  plant->set_margin(config.margin);
   plant->set_contact_surface_representation(
       internal::GetContactSurfaceRepresentationFromString(
           config.contact_surface_representation));
@@ -65,6 +76,19 @@ constexpr const char* EnumToChars(DiscreteContactSolver enum_value) {
       return "tamsi";
     case DiscreteContactSolver::kSap:
       return "sap";
+  }
+}
+
+constexpr const char* EnumToChars(DiscreteContactModel enum_value) {
+  switch (enum_value) {
+    case DiscreteContactModel::kTamsi:
+      return "tamsi";
+    case DiscreteContactModel::kSap:
+      return "sap";
+    case DiscreteContactModel::kConvex:
+      return "convex";
+    case DiscreteContactModel::kLagged:
+      return "lagged";
   }
 }
 
@@ -104,6 +128,14 @@ constexpr std::array<NamedEnum<DiscreteContactSolver>, 2> kContactSolvers{{
   {DiscreteContactSolver::kTamsi},
   {DiscreteContactSolver::kSap},
 }};
+
+constexpr std::array<NamedEnum<DiscreteContactModel>, 4> kDiscreteContactModels{
+    {
+        {DiscreteContactModel::kTamsi},
+        {DiscreteContactModel::kSap},
+        {DiscreteContactModel::kConvex},
+        {DiscreteContactModel::kLagged},
+    }};
 
 constexpr std::array<NamedEnum<ContactRep>, 2> kContactReps{{
   {ContactRep::kTriangle},
@@ -147,6 +179,28 @@ std::string GetStringFromDiscreteContactSolver(
     DiscreteContactSolver contact_solver) {
   for (const auto& [value, name] : kContactSolvers) {
     if (value == contact_solver) {
+      return name;
+    }
+  }
+  DRAKE_UNREACHABLE();
+}
+
+DiscreteContactModel GetDiscreteContactModelFromString(
+    std::string_view discrete_contact_model) {
+  for (const auto& [value, name] : kDiscreteContactModels) {
+    if (name == discrete_contact_model) {
+      return value;
+    }
+  }
+  throw std::logic_error(
+      fmt::format("Unknown discrete_contact_model: '{}'",
+                  discrete_contact_model));
+}
+
+std::string GetStringFromDiscreteContactModel(
+    DiscreteContactModel contact_model) {
+  for (const auto& [value, name] : kDiscreteContactModels) {
+    if (value == contact_model) {
       return name;
     }
   }

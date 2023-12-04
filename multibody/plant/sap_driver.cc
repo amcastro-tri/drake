@@ -8,6 +8,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <iostream>
+#include <fstream>
 
 #include "drake/common/unused.h"
 #include "drake/multibody/contact_solvers/contact_configuration.h"
@@ -18,6 +20,7 @@
 #include "drake/multibody/contact_solvers/sap/sap_distance_constraint.h"
 #include "drake/multibody/contact_solvers/sap/sap_fixed_constraint.h"
 #include "drake/multibody/contact_solvers/sap/sap_friction_cone_constraint.h"
+#include "drake/multibody/contact_solvers/sap/sap_hunt_crossley.h"
 #include "drake/multibody/contact_solvers/sap/sap_holonomic_constraint.h"
 #include "drake/multibody/contact_solvers/sap/sap_limit_constraint.h"
 #include "drake/multibody/contact_solvers/sap/sap_pd_controller_constraint.h"
@@ -45,9 +48,11 @@ using drake::multibody::contact_solvers::internal::SapDistanceConstraint;
 using drake::multibody::contact_solvers::internal::SapFixedConstraint;
 using drake::multibody::contact_solvers::internal::SapFrictionConeConstraint;
 using drake::multibody::contact_solvers::internal::SapHolonomicConstraint;
+using drake::multibody::contact_solvers::internal::SapHuntCrossley;
 using drake::multibody::contact_solvers::internal::SapLimitConstraint;
 using drake::multibody::contact_solvers::internal::SapPdControllerConstraint;
 using drake::multibody::contact_solvers::internal::SapSolver;
+using drake::multibody::contact_solvers::internal::SapSolverParameters;
 using drake::multibody::contact_solvers::internal::SapSolverResults;
 using drake::multibody::contact_solvers::internal::SapSolverStatus;
 using drake::multibody::contact_solvers::internal::SapWeldConstraint;
@@ -195,11 +200,7 @@ template <typename T>
 std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
     const systems::Context<T>& context, SapContactProblem<T>* problem) const {
   DRAKE_DEMAND(problem != nullptr);
-
-  // Parameters used by SAP to estimate regularization, see [Castro et al.,
-  // 2021].
-  // TODO(amcastro-tri): consider exposing these parameters.
-  constexpr double sigma = 1.0e-3;
+  DRAKE_DEMAND(plant().get_discrete_contact_model() != DiscreteContactModel::kTamsi);
 
   const DiscreteContactData<DiscreteContactPair<T>>& contact_pairs =
       manager().EvalDiscreteContactPairs(context);
@@ -218,6 +219,7 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
 
     const T stiffness = discrete_pair.stiffness;
     const T dissipation_time_scale = discrete_pair.dissipation_time_scale;
+    const T damping = discrete_pair.damping;
     const T friction = discrete_pair.friction_coefficient;
     const ContactConfiguration<T>& configuration =
         contact_kinematics[icontact].configuration;
@@ -231,24 +233,63 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
     const double beta = (stiffness == std::numeric_limits<double>::infinity())
                             ? 1.0
                             : near_rigid_threshold_;
-    typename SapFrictionConeConstraint<T>::Parameters parameters{
-        friction, stiffness, dissipation_time_scale, beta, sigma};
 
-    // TODO(amcastro-tri): remove this extra copy of R_WC. Contact constraints
-    // store R_WC in their ContactConfiguration.
-    R_WC.push_back(configuration.R_WC);
+    auto make_sap_parameters = [&]() {
+      // Parameters used by SAP to estimate regularization, see [Castro et al.,
+      // 2021].
+      // TODO(amcastro-tri): consider exposing these parameters.
+      constexpr double sigma = 1.0e-3;
+      return typename SapFrictionConeConstraint<T>::Parameters{
+          friction, stiffness, dissipation_time_scale, beta, sigma};
+    };
+
+    auto make_hunt_crossley_parameters = [&]() {
+      const double vs = plant().stiction_tolerance();
+      using ModelType = typename SapHuntCrossley<T>::ModelType;
+      ModelType model;
+      switch (plant().get_discrete_contact_model()) {
+        case DiscreteContactModel::kConvex:
+          model = ModelType::kConvex;
+          break;
+        case DiscreteContactModel::kLagged:
+          model = ModelType::kLagged;
+          break;
+        default:
+          DRAKE_UNREACHABLE();
+      }
+      return typename SapHuntCrossley<T>::Parameters{
+          friction, stiffness, damping, beta, sap_sigma_, vs, margin_, model};
+    };
+
+    const T fe0 = discrete_pair.fn0;
+    const T vn0 = configuration.vn;
     if (jacobian_blocks.size() == 1) {
       SapConstraintJacobian<T> J(jacobian_blocks[0].tree,
                                  std::move(jacobian_blocks[0].J));
-      problem->AddConstraint(std::make_unique<SapFrictionConeConstraint<T>>(
-          configuration, std::move(J), std::move(parameters)));
+      if (plant().get_discrete_contact_model() == DiscreteContactModel::kSap) {
+        auto parameters = make_sap_parameters();
+        problem->AddConstraint(std::make_unique<SapFrictionConeConstraint<T>>(
+            std::move(configuration), std::move(J), parameters));
+      } else {
+        auto parameters = make_hunt_crossley_parameters();
+        problem->AddConstraint(std::make_unique<SapHuntCrossley<T>>(
+            fe0, vn0, std::move(J), parameters));
+      }
     } else {
       SapConstraintJacobian<T> J(
           jacobian_blocks[0].tree, std::move(jacobian_blocks[0].J),
           jacobian_blocks[1].tree, std::move(jacobian_blocks[1].J));
-      problem->AddConstraint(std::make_unique<SapFrictionConeConstraint<T>>(
-          configuration, std::move(J), std::move(parameters)));
+      if (plant().get_discrete_contact_model() == DiscreteContactModel::kSap) {
+        auto parameters = make_sap_parameters();
+        problem->AddConstraint(std::make_unique<SapFrictionConeConstraint<T>>(
+            std::move(configuration), std::move(J), parameters));
+      } else {
+        auto parameters = make_hunt_crossley_parameters();
+        problem->AddConstraint(std::make_unique<SapHuntCrossley<T>>(
+            fe0, vn0, std::move(J), parameters));
+      }
     }
+    R_WC.emplace_back(std::move(configuration.R_WC));
   }
   return R_WC;
 }
@@ -922,6 +963,30 @@ void SapDriver<T>::CalcSapSolverResults(
   } else {
     status = sap.SolveWithGuess(sap_problem, v0, sap_results);
   }
+
+  // Record some stats.
+  const typename SapSolver<T>::SolverStats& stats = sap.get_statistics();
+  std::ofstream outfile("sap_stats.dat", std::ios::app);
+  const double mom_res =
+      stats.momentum_residual.size() > 0 ? stats.momentum_residual.back() : 0.0;
+  const double mom_scale = stats.momentum_scale.size() > 0
+                               ? stats.momentum_scale.back()
+                               : std::numeric_limits<double>::epsilon();
+  const double delta_ell =
+      stats.delta_ell.size() > 0 ? stats.delta_ell.back() : 0.0;
+  const double ell_scale = stats.ell_scale.size() > 0
+                               ? stats.ell_scale.back()
+                               : std::numeric_limits<double>::epsilon();
+
+  /*outfile << fmt::format("{} {} {} {} {} {}\n", context.get_time(),
+                         stats.num_iters, stats.momentum_residual.back(),
+                         stats.momentum_scale.back(), stats.cost.back(),
+                         stats.alpha.back());*/
+  outfile << fmt::format("{} {} {} {} {} {} {} {} {} {} {}\n", context.get_time(),
+                         stats.num_iters, stats.cond_number, stats.mean_vs,
+                         stats.mean_phi0, stats.mean_phi, mom_res, mom_scale,
+                         delta_ell, ell_scale, sap_problem.num_constraints());
+  outfile.close();
 
   if (status != SapSolverStatus::kSuccess) {
     const std::string msg = fmt::format(

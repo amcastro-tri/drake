@@ -39,8 +39,13 @@ struct SapFrictionConeConstraintData {
 
      @warning Data stored is left uninitialized to avoid the cost of an
      unnecessary initialization. */
-  SapFrictionConeConstraintData(const T& mu, const T& Rt, const T& Rn,
+  SapFrictionConeConstraintData(const T& time_step, const T& mu, const T& Rt, const T& Rn,
                                 const T& vn_hat);
+
+  const T& time_step() const { return parameters_.dt; }
+
+  const T& phi() const { return phi_; }
+  T& mutable_phi() { return phi_; }
 
   /* Getters for regularization R, R⁻¹,  sqrt(R) and sqrt(R)⁻¹. */
   const Vector3<T>& R() const { return parameters_.R; }
@@ -82,6 +87,7 @@ struct SapFrictionConeConstraintData {
  private:
   // Values stored in this struct remain const after construction.
   struct ConstParameters {
+    T dt;
     Vector3<T> R;          // Regularization R.
     Vector3<T> R_inv;      // Inverse of regularization R⁻¹.
     Vector3<T> v_hat;      // Constraint velocity bias.
@@ -94,6 +100,7 @@ struct SapFrictionConeConstraintData {
   ConstParameters parameters_;
 
   ContactMode mode_{};  // The contact mode.
+  T phi_{};
   Vector3<T> vc_;       // Contact velocity.
   Vector3<T> y_;        // Un-projected impulse y = −R⁻¹⋅(vc−v̂)
   T yr_{}, yn_{};       // Radial and normal components of y, respectively.
@@ -208,6 +215,10 @@ class SapFrictionConeConstraint final : public SapConstraint<T> {
   const ContactConfiguration<T>& configuration() const {
     return configuration_;
   }
+
+  T epsilon_soft(const AbstractValue& abstract_data) const;
+  T phi0(const AbstractValue& abstract_data) const;
+  T phi(const AbstractValue& abstract_data) const;
 
  private:
   /* Private copy construction is enabled to use in the implementation of

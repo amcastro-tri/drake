@@ -30,8 +30,10 @@ SapFrictionConeConstraint<T>::SapFrictionConeConstraint(
 
 template <typename T>
 SapFrictionConeConstraintData<T>::SapFrictionConeConstraintData(
+    const T& time_step,
     const T& mu, const T& Rt, const T& Rn, const T& vn_hat) {
   using std::sqrt;
+  parameters_.dt = time_step;
   parameters_.mu = mu;
   parameters_.mu_tilde = mu * sqrt(Rt / Rn);
   parameters_.mu_hat = mu * Rt / Rn;
@@ -75,7 +77,7 @@ std::unique_ptr<AbstractValue> SapFrictionConeConstraint<T>::DoMakeData(
   // Bias term.
   const T vn_hat = -configuration_.phi / (time_step + taud);
 
-  SapFrictionConeConstraintData<T> data(parameters_.mu, Rt, Rn, vn_hat);
+  SapFrictionConeConstraintData<T> data(time_step, parameters_.mu, Rt, Rn, vn_hat);
   return SapConstraint<T>::MoveAndMakeAbstractValue(std::move(data));
 }
 
@@ -107,6 +109,10 @@ void SapFrictionConeConstraint<T>::DoCalcData(
       CalcContactMode(data.mu(), data.mu_hat(), data.yr(), data.yn());
 
   ProjectImpulse(data, &data.mutable_gamma());
+
+  const T& dt = data.time_step();
+  const T vn = vc(2);
+  data.mutable_phi() = configuration_.phi + dt * vn;
 }
 
 template <typename T>
@@ -138,6 +144,33 @@ void SapFrictionConeConstraint<T>::ProjectImpulse(
       break;
     }
   }
+}
+
+template <typename T>
+T SapFrictionConeConstraint<T>::epsilon_soft(
+    const AbstractValue& abstract_data) const {
+  const auto& data =
+      abstract_data.get_value<SapFrictionConeConstraintData<T>>();
+  const T& Rt = data.Rt();
+  const T& mu = data.mu();
+  const Vector3<T>& gamma = data.gamma();
+  const T& gn = gamma(2);
+  const T epsilon_soft = mu * Rt * gn;
+  return epsilon_soft;
+}
+
+template <typename T>
+T SapFrictionConeConstraint<T>::phi(
+    const AbstractValue& abstract_data) const {
+  const auto& data =
+      abstract_data.get_value<SapFrictionConeConstraintData<T>>();
+  return data.phi();
+}
+
+template <typename T>
+T SapFrictionConeConstraint<T>::phi0(
+    const AbstractValue&) const {
+  return configuration_.phi;
 }
 
 template <typename T>

@@ -21,8 +21,12 @@ DEFINE_double(
     "multibody plant modeled as a discrete system. Strictly positive. "
     "Set to zero for a continuous plant model. When using TAMSI, a smaller "
     "time step of 1.0e-3 is recommended.");
-DEFINE_string(discrete_solver, "sap",
-              "Discrete contact solver. Options are: 'tamsi', 'sap'.");
+DEFINE_string(
+    discrete_model, "sap",
+    "Discrete contact model. Options are: 'tamsi', 'sap', 'convex', 'lagged'");
+DEFINE_double(sdf_max_distance, 0.0,
+              "If negative, a point penetration query is used. Otherwise a "
+              "signed distance query with max-distance threshold.");
 
 namespace drake {
 namespace examples {
@@ -33,6 +37,7 @@ using drake::math::RigidTransformd;
 using drake::multibody::MultibodyPlant;
 using drake::multibody::MultibodyPlantConfig;
 using Eigen::Translation3d;
+using Eigen::Vector3d;
 using Eigen::VectorXd;
 
 int do_main() {
@@ -47,7 +52,8 @@ int do_main() {
   MultibodyPlantConfig plant_config;
   plant_config.time_step = FLAGS_mbp_discrete_update_period;
   plant_config.stiction_tolerance = FLAGS_stiction_tolerance;
-  plant_config.discrete_contact_solver = FLAGS_discrete_solver;
+  plant_config.discrete_contact_model = FLAGS_discrete_model;
+  plant_config.sdf_max_distance = FLAGS_sdf_max_distance;
   auto [plant, scene_graph] =
       multibody::AddMultibodyPlant(plant_config, &builder);
 
@@ -57,14 +63,15 @@ int do_main() {
   // Add model of the ground.
   const double static_friction = 1.0;
   const Vector4<double> green(0.5, 1.0, 0.5, 1.0);
-  plant.RegisterVisualGeometry(plant.world_body(), RigidTransformd(),
-                               geometry::HalfSpace(), "GroundVisualGeometry",
-                               green);
+  const RigidTransformd X_WGround(Vector3d(0.0, 0.0, -0.1));
+  plant.RegisterVisualGeometry(plant.world_body(), X_WGround,
+                               geometry::Box(5.0, 5.0, 0.2),
+                               "GroundVisualGeometry", green);
   // For a time-stepping model only static friction is used.
   const multibody::CoulombFriction<double> ground_friction(static_friction,
                                                            static_friction);
-  plant.RegisterCollisionGeometry(plant.world_body(), RigidTransformd(),
-                                  geometry::HalfSpace(),
+  plant.RegisterCollisionGeometry(plant.world_body(), X_WGround,
+                                  geometry::Box(5.0, 5.0, 0.2),
                                   "GroundCollisionGeometry", ground_friction);
 
   plant.Finalize();
@@ -92,7 +99,9 @@ int do_main() {
   // is stacked as x = [q; v].
   DRAKE_DEMAND(pelvis.floating_velocities_start() == plant.num_positions());
 
-  visualization::AddDefaultVisualization(&builder);
+  std::shared_ptr<geometry::Meshcat> meshcat =
+      std::make_shared<geometry::Meshcat>();
+  visualization::AddDefaultVisualization(&builder, meshcat);
 
   auto diagram = builder.Build();
 
@@ -106,12 +115,15 @@ int do_main() {
   plant.get_actuation_input_port().FixValue(&plant_context, tau);
 
   // Set the pelvis frame P initial pose.
-  const Translation3d X_WP(0.0, 0.0, 0.95);
+  const Translation3d X_WP(0.0, 0.0, 0.95 + 0.5);
   plant.SetFreeBodyPoseInWorldFrame(&plant_context, pelvis, X_WP);
 
   auto simulator =
       MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
+  meshcat->StartRecording();
   simulator->AdvanceTo(FLAGS_simulation_time);
+  meshcat->StopRecording();
+  meshcat->PublishRecording();
 
   return 0;
 }

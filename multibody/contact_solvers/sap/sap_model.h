@@ -320,6 +320,10 @@ class SapModel {
         .G;
   }
 
+  T CalcMeanVs(const systems::Context<T>& context) const;
+  T CalcMeanPhi(const systems::Context<T>& context) const;
+  T CalcMeanPhi0(const systems::Context<T>& context) const;
+
  private:
   // Facilitate testing.
   friend class SapModelTester;

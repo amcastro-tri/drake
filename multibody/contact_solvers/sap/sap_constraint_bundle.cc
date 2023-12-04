@@ -5,6 +5,8 @@
 #include "drake/common/default_scalars.h"
 #include "drake/common/ssize.h"
 #include "drake/multibody/contact_solvers/sap/contact_problem_graph.h"
+#include "drake/multibody/contact_solvers/sap/sap_hunt_crossley.h"
+#include "drake/multibody/contact_solvers/sap/sap_friction_cone_constraint.h"
 
 namespace drake {
 namespace multibody {
@@ -170,6 +172,115 @@ void SapConstraintBundle<T>::CalcImpulses(
     c.CalcImpulse(data, &gamma_i);
     constraint_start += ni;
   }
+}
+
+template <typename T>
+T SapConstraintBundle<T>::CalcMeanVs(
+    const SapConstraintBundleData& bundle_data) const {
+  DRAKE_DEMAND(ssize(bundle_data) == num_constraints());
+  T mean_vs = 0.0;
+  int nc = 0;
+  for (int i = 0; i < num_constraints(); ++i) {
+    // H&C constraints
+    {
+      const auto* c = dynamic_cast<const SapHuntCrossley<T>*>(constraints_[i]);
+      if (c != nullptr) {
+        nc++;
+        const AbstractValue& data = *bundle_data[i];
+        mean_vs += c->epsilon_soft(data);
+      }
+    }
+    // SAP constraints
+    {
+      const auto* c =
+          dynamic_cast<const SapFrictionConeConstraint<T>*>(constraints_[i]);
+      if (c != nullptr) {
+        nc++;
+        const AbstractValue& data = *bundle_data[i];
+        mean_vs += c->epsilon_soft(data);
+      }
+    }
+  }
+  if (nc > 0) mean_vs /= nc;
+  return mean_vs;
+}
+
+template <typename T>
+T SapConstraintBundle<T>::CalcMeanPhi(
+    const SapConstraintBundleData& bundle_data) const {
+  DRAKE_DEMAND(ssize(bundle_data) == num_constraints());
+  T mean_phi = 0.0;
+  int nc = 0;
+  for (int i = 0; i < num_constraints(); ++i) {
+    // H&C constraints
+    {
+      const auto* c = dynamic_cast<const SapHuntCrossley<T>*>(constraints_[i]);
+      if (c != nullptr) {
+        const AbstractValue& data = *bundle_data[i];
+        const T phi = c->phi(data);
+        // Only negative (penetration) values.
+        if (phi < 0.0) {
+          nc++;
+          mean_phi += phi;
+        }
+      }
+    }
+    // SAP constraints
+    {
+      const auto* c =
+          dynamic_cast<const SapFrictionConeConstraint<T>*>(constraints_[i]);
+      if (c != nullptr) {
+        const AbstractValue& data = *bundle_data[i];
+        const T phi = c->phi(data);
+        // Only negative (penetration) values.
+        if (phi < 0.0) {
+          nc++;
+          mean_phi += phi;
+        }
+      }
+    }
+  }
+  if (nc > 0) mean_phi /= nc;
+  return mean_phi;
+}
+
+template <typename T>
+T SapConstraintBundle<T>::CalcMeanPhi0(
+    const SapConstraintBundleData& bundle_data) const {
+  DRAKE_DEMAND(ssize(bundle_data) == num_constraints());
+  T mean_phi = 0.0;
+  int nc = 0;
+  for (int i = 0; i < num_constraints(); ++i) {
+    // H&C constraints
+    {
+      const auto* c = dynamic_cast<const SapHuntCrossley<T>*>(constraints_[i]);
+      if (c != nullptr) {
+        const AbstractValue& data = *bundle_data[i];
+        const T phi = c->phi0(data);
+        // Only negative (penetration) values.
+        if (phi < 0.0) {
+          nc++;
+          mean_phi += phi;
+        }
+      }
+    }
+    // SAP constraints
+    {
+      const auto* c =
+          dynamic_cast<const SapFrictionConeConstraint<T>*>(constraints_[i]);
+      if (c != nullptr) {
+        const AbstractValue& data = *bundle_data[i];
+        const T phi = c->phi0(data);
+        // Only negative (penetration) values.
+        if (phi < 0.0) {
+          nc++;
+          mean_phi += phi;
+        }
+      }
+    }
+  }
+  if (nc > 0) mean_phi /= nc;
+  return mean_phi;
 }
 
 template <typename T>

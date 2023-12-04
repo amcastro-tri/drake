@@ -51,6 +51,11 @@ DiscreteContactSolver GetDiscreteContactSolverFromString(
 std::string GetStringFromDiscreteContactSolver(
     DiscreteContactSolver discrete_contact_solver);
 
+DiscreteContactModel GetDiscreteContactModelFromString(
+    std::string_view discrete_contact_model);
+std::string GetStringFromDiscreteContactModel(
+    DiscreteContactModel discrete_contact_model);
+
 // (Exposed for unit testing only.)
 // Parses a string name for a contact representation and returns the enumerated
 // value.  Valid string names are listed in MultibodyPlantConfig's class

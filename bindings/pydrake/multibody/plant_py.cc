@@ -24,6 +24,7 @@
 #include "drake/multibody/plant/propeller.h"
 #include "drake/multibody/plant/wing.h"
 #include "drake/multibody/tree/spatial_inertia.h"
+#include "drake/multibody/contact_solvers/sap/sap_solver.h"
 
 namespace drake {
 namespace pydrake {
@@ -996,6 +997,8 @@ void DoScalarDependentDefinitions(py::module m, T) {
             cls_doc.get_contact_model.doc)
         .def("set_discrete_contact_solver", &Class::set_discrete_contact_solver,
             py::arg("contact_solver"), cls_doc.set_discrete_contact_solver.doc)
+        .def("set_discrete_contact_model", &Class::set_discrete_contact_model,
+            py::arg("contact_model"), cls_doc.set_discrete_contact_model.doc)
         .def("get_discrete_contact_solver", &Class::get_discrete_contact_solver,
             cls_doc.get_discrete_contact_solver.doc)
         .def("set_sap_near_rigid_threshold",
@@ -1006,6 +1009,7 @@ void DoScalarDependentDefinitions(py::module m, T) {
         .def("get_sap_near_rigid_threshold",
             &Class::get_sap_near_rigid_threshold,
             cls_doc.get_sap_near_rigid_threshold.doc)
+        .def("set_sap_solver_parameters", &Class::set_sap_solver_parameters)
         .def_static("GetDefaultContactSurfaceRepresentation",
             &Class::GetDefaultContactSurfaceRepresentation,
             py::arg("time_step"),
@@ -1509,6 +1513,16 @@ PYBIND11_MODULE(plant, m) {
   }
 
   {
+    using Class = DiscreteContactModel;
+    constexpr auto& cls_doc = doc.DiscreteContactModel;
+    py::enum_<Class>(m, "DiscreteContactModel", cls_doc.doc)
+        .value("kTamsi", Class::kTamsi, cls_doc.kTamsi.doc)
+        .value("kSap", Class::kSap, cls_doc.kSap.doc)
+        .value("kConvex", Class::kConvex, cls_doc.kConvex.doc)
+        .value("kLagged", Class::kLagged, cls_doc.kLagged.doc);
+  }
+
+  {
     using Class = MultibodyPlantConfig;
     constexpr auto& cls_doc = doc.MultibodyPlantConfig;
     py::class_<Class> cls(m, "MultibodyPlantConfig", cls_doc.doc);
@@ -1517,6 +1531,37 @@ PYBIND11_MODULE(plant, m) {
     DefAttributesUsingSerialize(&cls, cls_doc);
     DefReprUsingSerialize(&cls);
     DefCopyAndDeepCopy(&cls);
+  }
+
+  {
+    using Class =
+        drake::multibody::contact_solvers::internal::SapSolverParameters;
+    py::class_<contact_solvers::internal::SapSolverParameters> cls(
+        m, "SapSolverParameters");
+    cls  // BR
+        .def(ParamInit<Class>());    
+    // LineSearchType enumeration
+    {
+      using NestedEnum = Class::LineSearchType;
+      py::enum_<NestedEnum>(m, "LineSearchType", py::arithmetic())
+          .value("kBackTracking", NestedEnum::kBackTracking)
+          .value("kExact", NestedEnum::kExact);
+    }
+    {
+      using Nested = Class::BackTrackingLineSearchParameters;
+      py::class_<Nested> nested(cls, "BackTrackingLineSearchParameters");
+      nested  // BR
+          .def_readwrite("max_iterations", &Nested::max_iterations)
+          .def_readwrite("armijos_parameter", &Nested::armijos_parameter)
+          .def_readwrite("rho", &Nested::rho)
+          .def_readwrite("alpha_max", &Nested::alpha_max);
+      m.attr("BackTrackingLineSearchParameters") = nested;
+    }
+    cls  // BR
+        .def_readwrite("abs_tolerance", &Class::abs_tolerance)
+        .def_readwrite("rel_tolerance", &Class::rel_tolerance)
+        .def_readwrite("cost_abs_tolerance", &Class::abs_tolerance)
+        .def_readwrite("cost_rel_tolerance", &Class::rel_tolerance);
   }
 
   // PhysicalModel

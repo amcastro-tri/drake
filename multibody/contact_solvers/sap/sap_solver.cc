@@ -8,6 +8,7 @@
 
 #include "drake/common/default_scalars.h"
 #include "drake/common/extract_double.h"
+#include "drake/common/profiler.h"
 #include "drake/math/linear_solve.h"
 #include "drake/multibody/contact_solvers/block_sparse_supernodal_solver.h"
 #include "drake/multibody/contact_solvers/conex_supernodal_solver.h"
@@ -106,6 +107,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
     SapSolverResults<double>* results) {
   using std::abs;
   using std::max;
+  INSTRUMENT_FUNCTION("SAP's main entry point.");
 
   if (problem.num_constraints() == 0) {
     // In the absence of constraints the solution is trivially v = v*.
@@ -167,7 +169,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
       // N.B. Notice the check for monotonic convergence is placed AFTER the
       // check for convergence. This is done puposedly to avoid round-off errors
       // in the cost near convergence when the gradient is almost zero.
-      const double ell_scale = 0.5 * (ell + ell_previous);
+      const double ell_scale = 0.5 * (std::abs(ell) + std::abs(ell_previous));
       const double ell_slop =
           parameters_.relative_slop * std::max(1.0, ell_scale);
       if (ell > ell_previous + ell_slop) {
@@ -221,11 +223,14 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
     ell_previous = ell;
     ell = model_->EvalCost(*context);
 
-    const double ell_scale = (ell + ell_previous) / 2.0;
+    const double ell_scale = (std::abs(ell) + std::abs(ell_previous)) / 2.0;
     // N.B. Even though theoretically we expect ell < ell_previous, round-off
     // errors might make the difference ell_previous - ell negative, within
     // machine epsilon. Therefore we take the absolute value here.
     const double ell_decrement = std::abs(ell_previous - ell);
+
+    stats_.ell_scale.push_back(ell_scale);
+    stats_.delta_ell.push_back(ell_decrement);
 
     // N.B. Here we want alpha≈1 and therefore we impose alpha > 0.5, an
     // arbitrarily "large" value. This is to avoid a false positive on the
@@ -236,6 +241,29 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
                             parameters_.cost_rel_tolerance * ell_scale &&
         alpha > 0.5;
   }
+
+  if (parameters_.estimate_cond_number) {
+    const bool use_dense_algebra =
+        parameters_.linear_solver_type ==
+        SapSolverParameters::LinearSolverType::kDense;
+    DRAKE_DEMAND(use_dense_algebra || k ==0 || (supernodal_solver != nullptr));
+    // Supernodal solver not even instantiated if k = 0
+    if (!use_dense_algebra && k > 0) {
+      // H is lost since it is factorized in place.
+      const std::vector<MatrixX<double>>& G =
+          model_->EvalConstraintsHessian(*context);
+      supernodal_solver->SetWeightMatrix(G);
+    }
+    // Update search direction dv.
+    const MatrixX<double> H = use_dense_algebra || k == 0
+                                  ? CalcDenseHessian(*context)
+                                  : supernodal_solver->MakeFullMatrix();
+    stats_.cond_number = 1.0 / H.ldlt().rcond();
+  }
+
+  stats_.mean_vs = model_->CalcMeanVs(*context);
+  stats_.mean_phi = model_->CalcMeanPhi(*context);
+  stats_.mean_phi0 = model_->CalcMeanPhi0(*context);
 
   if (!converged) return SapSolverStatus::kFailure;
 

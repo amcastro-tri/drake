@@ -35,6 +35,9 @@ struct ContactConfiguration {
   // Signed distance. Positive if bodies do not overlap and negative otherwise.
   T phi;
 
+  // Normal velocity, vn = dphi/dt.
+  T vn;
+
   // Orientation of contact frame C in the world frame W.
   // Rz_WC = R_WC.col(2) corresponds to the normal from object A into object B.
   math::RotationMatrix<T> R_WC;

@@ -23,6 +23,8 @@ DEFINE_double(amplitude, 5,
               "carried out by the gripper. [N].");
 DEFINE_double(duty_cycle, 0.5, "Duty cycle of the control signal.");
 DEFINE_double(period, 3, "Period of the control signal. [s].");
+DEFINE_double(controller_stop, 30.0,
+              "Controllers stops in squeeze after this time.");
 
 // MultibodyPlant settings.
 DEFINE_double(stiction_tolerance, 1e-4, "Default stiction tolerance. [m/s].");
@@ -37,8 +39,9 @@ DEFINE_string(contact_model, "hydroelastic",
 DEFINE_string(contact_surface_representation, "polygon",
               "Contact-surface representation for hydroelastics. "
               "Options are: 'triangle' or 'polygon'.");
-DEFINE_string(discrete_solver, "tamsi",
-              "Discrete contact solver. Options are: 'tamsi', 'sap'.");
+DEFINE_string(
+    discrete_model, "sap",
+    "Discrete contact model. Options are: 'tamsi', 'sap', 'convex', 'lagged'");
 
 // Simulator settings.
 DEFINE_double(realtime_rate, 1,
@@ -117,6 +120,8 @@ class Square final : public systems::LeafSystem<double> {
           (t - floor(t / period_[i]) * period_[i] < duty_cycle_[i] * period_[i]
                ? 1
                : 0);
+
+      if (time > FLAGS_controller_stop) output_block[i] = amplitude_[i];
     }
   }
 
@@ -134,7 +139,7 @@ int DoMain() {
   plant_config.time_step = FLAGS_mbp_discrete_update_period;
   plant_config.stiction_tolerance = FLAGS_stiction_tolerance;
   plant_config.contact_model = FLAGS_contact_model;
-  plant_config.discrete_contact_solver = FLAGS_discrete_solver;
+  plant_config.discrete_contact_model = FLAGS_discrete_model;
   plant_config.contact_surface_representation =
       FLAGS_contact_surface_representation;
 
@@ -181,6 +186,7 @@ int DoMain() {
   visualization::ApplyVisualizationConfig(
       visualization::VisualizationConfig{
           .default_proximity_color = geometry::Rgba{1, 0, 0, 0.25},
+          .publish_contacts = false,
           .enable_alpha_sliders = true,
       },
       &builder, nullptr, nullptr, nullptr, meshcat);

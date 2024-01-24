@@ -107,6 +107,7 @@ DEFINE_double(near_rigid_threshold, 1.0, "SAP near rigid threshold.");
 DEFINE_string(
     integrator_jacobian_scheme, "forward",
     "Jacobian computation scheme: 'forward', 'central', 'automatic'.");
+DEFINE_bool(use_full_newton, false, "Update Jacobian every iteration");
 
 using drake::geometry::CollisionFilterDeclaration;
 using drake::math::RigidTransform;
@@ -552,6 +553,7 @@ int do_main() {
     } else {
       throw std::logic_error("Invalid jacobian scheme");
     }
+    ie.set_use_full_newton(FLAGS_use_full_newton);
   }
 
   // Monitor to save stats into a file.

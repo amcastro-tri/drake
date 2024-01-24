@@ -1353,11 +1353,11 @@ std::pair<T, T> MultibodyPlant<T>::GetPointContactParameters(
   const geometry::ProximityProperties* prop =
       inspector.GetProximityProperties(id);
   DRAKE_DEMAND(prop != nullptr);
-  return std::pair(prop->template GetPropertyOrDefault<T>(
+  return std::pair(prop->template GetPropertyOrDefault<double>(
                        geometry::internal::kMaterialGroup,
                        geometry::internal::kPointStiffness,
                        penalty_method_contact_parameters_.geometry_stiffness),
-                   prop->template GetPropertyOrDefault<T>(
+                   prop->template GetPropertyOrDefault<double>(
                        geometry::internal::kMaterialGroup,
                        geometry::internal::kHcDissipation,
                        penalty_method_contact_parameters_.dissipation));

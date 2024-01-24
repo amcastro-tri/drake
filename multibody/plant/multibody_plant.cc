@@ -1938,6 +1938,8 @@ template <typename T>
 void MultibodyPlant<T>::AppendContactResultsContinuousPointPair(
     const systems::Context<T>& context,
     ContactResults<T>* contact_results) const {
+  using std::sqrt;
+      
   this->ValidateContext(context);
   DRAKE_DEMAND(contact_results != nullptr);
   DRAKE_DEMAND(contact_results->plant() == this);
@@ -2000,6 +2002,7 @@ void MultibodyPlant<T>::AppendContactResultsContinuousPointPair(
     const auto [kB, dB] = GetPointContactParameters(geometryB_id, inspector);
     const auto [k, d] = internal::CombinePointContactParameters(kA, kB, dA, dB);
     const T fn_AC = k * x * (1.0 + d * vn);
+    if (fn_AC <= 0.0) continue;
 
     // Acquire friction coefficients and combine them.
     const CoulombFriction<double>& geometryA_friction =
@@ -2010,42 +2013,33 @@ void MultibodyPlant<T>::AppendContactResultsContinuousPointPair(
         CalcContactFrictionFromSurfaceProperties(geometryA_friction,
                                                  geometryB_friction);
 
-    if (fn_AC > 0) {
-      // Normal force on body A, at C, expressed in W.
-      const Vector3<T> fn_AC_W = fn_AC * nhat_BA_W;
+    // Normal force on body A, at C, expressed in W.
+    const Vector3<T> fn_AC_W = fn_AC * nhat_BA_W;
 
-      // Compute tangential velocity, that is, v_AcBc projected onto the tangent
-      // plane with normal nhat_BA:
-      const Vector3<T> vt_AcBc_W = v_AcBc_W - vn * nhat_BA_W;
-      // Tangential speed (squared):
-      const T vt_squared = vt_AcBc_W.squaredNorm();
+    // Compute tangential velocity, that is, v_AcBc projected onto the tangent
+    // plane with normal nhat_BA:
+    const Vector3<T> vt_AcBc_W = v_AcBc_W - vn * nhat_BA_W;
 
-      // Consider a value indistinguishable from zero if it is smaller
-      // then 1e-14 and test against that value squared.
-      const T kNonZeroSqd = 1e-14 * 1e-14;
-      // Tangential friction force on A at C, expressed in W.
-      Vector3<T> ft_AC_W = Vector3<T>::Zero();
-      T slip_velocity = 0;
-      if (vt_squared > kNonZeroSqd) {
-        slip_velocity = sqrt(vt_squared);
-        // Stribeck friction coefficient.
-        const T mu_stribeck = friction_model_.ComputeFrictionCoefficient(
-            slip_velocity, combined_friction);
-        // Tangential direction.
-        const Vector3<T> that_W = vt_AcBc_W / slip_velocity;
+    // Compute "soft" tangent vector.
+    const double vs = stiction_tolerance();
+    const T vt_squared = vt_AcBc_W.squaredNorm();
+    // soft_denom = soft_norm + vs.
+    const T soft_denom = sqrt(vt_squared + vs * vs);
+    const Vector3<T> ts_W = vt_AcBc_W / soft_denom;
 
-        // Magnitude of the friction force on A at C.
-        const T ft_AC = mu_stribeck * fn_AC;
-        ft_AC_W = ft_AC * that_W;
-      }
+    // Magnitude of the friction force on A at C.
+    const double mu = combined_friction.dynamic_friction();
+    // Note: ts_W is defined from v_AcBc, and therefore the friction force "on
+    // A" is in the same direction as ts_W. Hence the positive sign here.
+    const Vector3<T> ft_AC_W = mu * fn_AC * ts_W;
 
-      // Spatial force on body A at C, expressed in the world frame W.
-      const SpatialForce<T> F_AC_W(Vector3<T>::Zero(), fn_AC_W + ft_AC_W);
+    // Spatial force on body A at C, expressed in the world frame W.
+    const SpatialForce<T> F_AC_W(Vector3<T>::Zero(), fn_AC_W + ft_AC_W);
 
-      const Vector3<T> f_Bc_W = -F_AC_W.translational();
-      contact_results->AddContactInfo(
-          {bodyA_index, bodyB_index, f_Bc_W, p_WC, vn, slip_velocity, pair});
-    }
+    const Vector3<T> f_Bc_W = -F_AC_W.translational();
+    const T slip_velocity = sqrt(vt_squared);
+    contact_results->AddContactInfo(
+        {bodyA_index, bodyB_index, f_Bc_W, p_WC, vn, slip_velocity, pair});
   }
 }
 

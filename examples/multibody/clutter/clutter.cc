@@ -379,7 +379,8 @@ std::vector<BodyIndex> AddObjects(double scale_factor,
   std::uniform_int_distribution<int> distribution(0, 1);
 
   auto roll_shape = [&]() {
-    return distribution(generator);
+    return 0; // All spheres.
+    //return distribution(generator);
   };
 
   const int num_objects = FLAGS_objects_per_pile;

@@ -28,6 +28,7 @@
 #include "drake/multibody/plant/contact_results_to_lcm.h"
 #include "drake/multibody/plant/multibody_plant_config_functions.h"
 #include "drake/systems/analysis/implicit_integrator.h"
+#include "drake/systems/analysis/implicit_euler_integrator.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
@@ -102,6 +103,11 @@ DEFINE_string(discrete_contact_approximation, "sap",
               "'similar'.");
 DEFINE_double(near_rigid_threshold, 1.0, "SAP near rigid threshold.");
 
+// Continuous integration parameters
+DEFINE_string(
+    integrator_jacobian_scheme, "forward",
+    "Jacobian computation scheme: 'forward', 'central', 'automatic'.");
+
 using drake::geometry::CollisionFilterDeclaration;
 using drake::math::RigidTransform;
 using drake::math::RigidTransformd;
@@ -109,6 +115,9 @@ using drake::math::RollPitchYawd;
 using drake::math::RotationMatrixd;
 using drake::multibody::ContactResults;
 using drake::multibody::MultibodyPlant;
+using drake::systems::ImplicitEulerIntegrator;
+using JacobianComputationScheme =
+    ImplicitEulerIntegrator<double>::JacobianComputationScheme;
 using Eigen::Translation3d;
 using Eigen::Vector3d;
 using clock = std::chrono::steady_clock;
@@ -526,6 +535,24 @@ int do_main() {
 
   auto simulator =
       MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
+
+  drake::systems::IntegratorBase<double>& integrator =
+      simulator->get_mutable_integrator();
+  if (FLAGS_simulator_integration_scheme == "implicit_euler") {
+    auto& ie = dynamic_cast<ImplicitEulerIntegrator<double>&>(integrator);
+    if (FLAGS_integrator_jacobian_scheme == "forward") {
+      ie.set_jacobian_computation_scheme(
+          JacobianComputationScheme::kForwardDifference);
+    } else if (FLAGS_integrator_jacobian_scheme == "central") {
+      ie.set_jacobian_computation_scheme(
+          JacobianComputationScheme::kCentralDifference);
+    } else if (FLAGS_integrator_jacobian_scheme == "automatic") {
+      ie.set_jacobian_computation_scheme(
+          JacobianComputationScheme::kAutomatic);
+    } else {
+      throw std::logic_error("Invalid jacobian scheme");
+    }
+  }
 
   // Monitor to save stats into a file.
   simulator->set_monitor([&simulator, &plant](

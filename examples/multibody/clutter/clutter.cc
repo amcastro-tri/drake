@@ -12,7 +12,7 @@
 #include "drake/common/nice_type_name.h"
 // N.B. Follow instructions at the top of profiler.h.
 // Enable profiling by running with --copt=-DENABLE_TIMERS.
-// #include "drake/common/profiler.h"
+#include "drake/common/profiler.h"
 #include "drake/common/temp_directory.h"
 #include "drake/geometry/collision_filter_declaration.h"
 #include "drake/geometry/drake_visualizer.h"
@@ -300,6 +300,8 @@ const RigidBody<double>& AddSphere(const std::string& name, const double radius,
                                    double mass, double friction,
                                    const Vector4<double>& color,
                                    MultibodyPlant<double>* plant) {
+  INSTRUMENT_FUNCTION("Adds spheres with axes visuals.");
+
   const UnitInertia<double> G_Bcm = UnitInertia<double>::SolidSphere(radius);
   const SpatialInertia<double> M_Bcm(mass, Vector3<double>::Zero(), G_Bcm);
 
@@ -626,6 +628,8 @@ int do_main() {
   meshcat->PublishRecording();
 
   PrintSimulatorStatistics(*simulator);
+
+  std::cout << TableOfAverages() << "\n";
 
   return 0;
 }

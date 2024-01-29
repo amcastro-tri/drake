@@ -10,6 +10,7 @@
 #include "drake/common/autodiff.h"
 #include "drake/common/default_scalars.h"
 #include "drake/common/drake_copyable.h"
+#include "drake/common/profiler.h"
 #include "drake/systems/analysis/integrator_base.h"
 
 namespace drake {
@@ -544,6 +545,7 @@ inline void ImplicitIntegrator<AutoDiffXd>::
 template <>
 inline void ImplicitIntegrator<AutoDiffXd>::IterationMatrix::
     SetAndFactorIterationMatrix(const MatrixX<AutoDiffXd>& iteration_matrix) {
+  INSTRUMENT_FUNCTION("Jacobian factorization (AutoDiffXd).");      
   QR_.compute(iteration_matrix);
   matrix_factored_ = true;
 }

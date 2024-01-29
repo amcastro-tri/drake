@@ -140,6 +140,7 @@ drake_cc_library(
         ":slicing_and_indexing",
         ":tamsi_solver",
         "//common:default_scalars",
+        "//common:profiler",
         "//common:essential",
         "//common:unused",
         "//geometry:geometry_ids",

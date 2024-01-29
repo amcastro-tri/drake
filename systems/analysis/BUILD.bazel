@@ -295,6 +295,7 @@ drake_cc_library(
     ],
     deps = [
         ":integrator_base",
+        "//common:profiler",
         "//math:gradient",
     ],
 )

@@ -207,6 +207,7 @@ void ImplicitIntegrator<T>::ComputeCentralDiffJacobian(
 template <class T>
 void ImplicitIntegrator<T>::IterationMatrix::SetAndFactorIterationMatrix(
     const MatrixX<T>& iteration_matrix) {
+  INSTRUMENT_FUNCTION("Jacobian factorization.");
   LU_.compute(iteration_matrix);
   matrix_factored_ = true;
 }
@@ -279,6 +280,7 @@ bool ImplicitIntegrator<T>::IsBadJacobian(const MatrixX<T>& J) const {
 template <class T>
 const MatrixX<T>& ImplicitIntegrator<T>::CalcJacobian(const T& t,
     const VectorX<T>& x) {
+  INSTRUMENT_FUNCTION("Jacobian compuation.");
   // We change the context but will change it back.
   Context<T>* context = this->get_mutable_context();
 

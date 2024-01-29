@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "drake/common/drake_throw.h"
+#include "drake/common/profiler.h"
 #include "drake/common/ssize.h"
 #include "drake/common/text_logging.h"
 #include "drake/geometry/geometry_frame.h"
@@ -1857,6 +1858,9 @@ template <typename T>
 void MultibodyPlant<T>::CalcPointPairPenetrations(
     const systems::Context<T>& context,
     std::vector<PenetrationAsPointPair<T>>* output) const {
+  INSTRUMENT_FUNCTION(
+    "<" + NiceTypeName::Get<T>() + ">. " +
+    "Geometry. Point pair penetrations. ");
   this->ValidateContext(context);
   if (num_collision_geometries() > 0) {
     const auto& query_object = EvalGeometryQueryInput(context, __func__);
@@ -2738,6 +2742,9 @@ void MultibodyPlant<T>::CalcNonContactForces(
 template <typename T>
 void MultibodyPlant<T>::AddInForcesContinuous(
     const systems::Context<T>& context, MultibodyForces<T>* forces) const {
+  INSTRUMENT_FUNCTION(
+      "<" + NiceTypeName::Get<T>() + ">. " +
+      "Computes all forces, inputs + force elements + contact. ");
   this->ValidateContext(context);
 
   // Guard against failure to acquire the geometry input deep in the call graph.

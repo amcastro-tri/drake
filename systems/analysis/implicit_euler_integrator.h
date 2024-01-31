@@ -339,26 +339,40 @@ class ImplicitEulerIntegrator final : public ImplicitIntegrator<T> {
     // small half-sized steps are propagated and the large step is the error
     // estimator, so we report error estimator stats by subtracting those of
     // the small half-sized steps from the total statistics.
-    return use_implicit_trapezoid_error_estimation_
-               ? itr_statistics_.num_function_evaluations
-               : (this->get_num_derivative_evaluations() -
-                  hie_statistics_.num_function_evaluations);
+    if (this->get_fixed_step_mode()) {
+      // this should be zero.
+      return use_implicit_trapezoid_error_estimation_
+                 ? itr_statistics_.num_function_evaluations
+                 : hie_statistics_.num_function_evaluations;
+    } else {
+      return use_implicit_trapezoid_error_estimation_
+                 ? itr_statistics_.num_function_evaluations
+                 : (this->get_num_derivative_evaluations() -
+                    hie_statistics_.num_function_evaluations);
+    }
   }
 
   int64_t do_get_num_error_estimator_derivative_evaluations_for_jacobian()
       const final {
     // See the above comments in
     // do_get_num_error_estimator_derivative_evaluations().
-    return use_implicit_trapezoid_error_estimation_
-               ? itr_statistics_.num_jacobian_function_evaluations
-               : (this->get_num_derivative_evaluations_for_jacobian() -
-                  hie_statistics_.num_jacobian_function_evaluations);
+    if (this->get_fixed_step_mode()) {
+      return use_implicit_trapezoid_error_estimation_
+                 ? itr_statistics_.num_jacobian_function_evaluations
+                 : hie_statistics_.num_jacobian_function_evaluations;
+    } else {
+      return use_implicit_trapezoid_error_estimation_
+                 ? itr_statistics_.num_jacobian_function_evaluations
+                 : (this->get_num_derivative_evaluations_for_jacobian() -
+                    hie_statistics_.num_jacobian_function_evaluations);
+    }
   }
 
   int64_t do_get_num_error_estimator_newton_raphson_iterations()
       const final {
     // See the above comments in
     // do_get_num_error_estimator_derivative_evaluations().
+    if (this->get_fixed_step_mode()) return 0;
     return use_implicit_trapezoid_error_estimation_
                ? itr_statistics_.num_nr_iterations
                : (this->get_num_newton_raphson_iterations() -
@@ -368,6 +382,7 @@ class ImplicitEulerIntegrator final : public ImplicitIntegrator<T> {
   int64_t do_get_num_error_estimator_jacobian_evaluations() const final {
     // See the above comments in
     // do_get_num_error_estimator_derivative_evaluations().
+    if (this->get_fixed_step_mode()) return 0;
     return use_implicit_trapezoid_error_estimation_
                ? itr_statistics_.num_jacobian_reforms
                : (this->get_num_jacobian_evaluations() -
@@ -378,6 +393,7 @@ class ImplicitEulerIntegrator final : public ImplicitIntegrator<T> {
       const final {
     // See the above comments in
     // do_get_num_error_estimator_derivative_evaluations().
+    if (this->get_fixed_step_mode()) return 0;
     return use_implicit_trapezoid_error_estimation_
                ? itr_statistics_.num_iter_factorizations
                : (this->get_num_iteration_matrix_factorizations() -

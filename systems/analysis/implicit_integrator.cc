@@ -9,6 +9,9 @@
 #include "drake/common/text_logging.h"
 #include "drake/math/autodiff_gradient.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+
 namespace drake {
 namespace systems {
 
@@ -220,9 +223,33 @@ VectorX<T> ImplicitIntegrator<T>::IterationMatrix::Solve(
 
 template <typename T>
 typename ImplicitIntegrator<T>::ConvergenceStatus
-ImplicitIntegrator<T>::CheckNewtonConvergence(
-    int iteration, const VectorX<T>& xtplus, const VectorX<T>& dx,
-    const T& dx_norm, const T& last_dx_norm) const {
+ImplicitIntegrator<T>::CheckNewtonConvergence(int iteration,
+                                              const VectorX<T>& xtplus,
+                                              const VectorX<T>& dx,
+                                              const T& dx_norm,
+                                              const T& last_dx_norm) const {
+  (void)iteration;
+  (void) dx_norm;
+  (void) last_dx_norm;
+  std::cout << "CheckNewtonConvergence()\n";
+  PRINT_VAR(iteration);
+  PRINT_VAR(dx.norm());
+  PRINT_VAR(xtplus.norm());
+
+#if 0  
+  // A guess. Ideally we'd expose this or probably better, ask the system for
+  // scales.
+  const double abs_tol = 1.0e-10;
+  // We ask for a tighter convegence on the NR than the accuracy of the
+  // integrator.
+  const double rel_tol = 0.1 * this->get_accuracy_in_use();
+  if (CheckConvergenceOnStateUpdate(xtplus, dx, abs_tol, rel_tol)) {
+    return ConvergenceStatus::kConverged;
+  } else {
+    return ConvergenceStatus::kNotConverged;
+  }
+#endif  
+
   // The check below looks for convergence by identifying cases where the
   // update to the state results in no change.
   // Note: Since we are performing this check at the end of the iteration,
@@ -231,6 +258,8 @@ ImplicitIntegrator<T>::CheckNewtonConvergence(
   // Future maintainers should make sure this check only occurs after a change
   // has been made to the state.
   if (this->IsUpdateZero(xtplus, dx)) {
+    std::cout << fmt::format(
+        "magnitude of state update indicates convergence\n");
     DRAKE_LOGGER_DEBUG("magnitude of state update indicates convergence");
     return ConvergenceStatus::kConverged;
   }
@@ -247,11 +276,14 @@ ImplicitIntegrator<T>::CheckNewtonConvergence(
     // theta to these alternative values for minimizing convergence failures.
     const T theta = dx_norm / last_dx_norm;
     const T eta = theta / (1 - theta);
-    DRAKE_LOGGER_DEBUG("Newton-Raphson loop {} theta: {}, eta: {}",
-                iteration, theta, eta);
+    std::cout << fmt::format("Newton-Raphson loop {} theta: {}, eta: {}\n",
+                             iteration, theta, eta);
+    DRAKE_LOGGER_DEBUG("Newton-Raphson loop {} theta: {}, eta: {}", iteration,
+                       theta, eta);
 
     // Look for divergence.
     if (theta > 1) {
+      std::cout << fmt::format("Newton-Raphson divergence detected\n");
       DRAKE_LOGGER_DEBUG("Newton-Raphson divergence detected");
       return ConvergenceStatus::kDiverged;
     }
@@ -263,6 +295,7 @@ ImplicitIntegrator<T>::CheckNewtonConvergence(
     const double kappa = 0.05;
     const double k_dot_tol = kappa * this->get_accuracy_in_use();
     if (eta * dx_norm < k_dot_tol) {
+      std::cout << fmt::format("Newton-Raphson converged; η = {}\n", eta);
       DRAKE_LOGGER_DEBUG("Newton-Raphson converged; η = {}", eta);
       return ConvergenceStatus::kConverged;
     }
@@ -270,7 +303,6 @@ ImplicitIntegrator<T>::CheckNewtonConvergence(
 
   return ConvergenceStatus::kNotConverged;
 }
-
 
 template <class T>
 bool ImplicitIntegrator<T>::IsBadJacobian(const MatrixX<T>& J) const {
@@ -357,10 +389,15 @@ bool ImplicitIntegrator<T>::MaybeFreshenMatrices(
         typename ImplicitIntegrator<T>::IterationMatrix*)>&
         compute_and_factor_iteration_matrix,
     typename ImplicitIntegrator<T>::IterationMatrix* iteration_matrix) {
+
+  std::cout << "Trial: " << trial << std::endl;
+  std::cout << " h = " << h << std::endl;
+
   // Compute the initial Jacobian and iteration matrices and factor them, if
   // necessary.
   MatrixX<T>& J = get_mutable_jacobian();
   if (!get_reuse() || J.rows() == 0 || IsBadJacobian(J)) {
+    std::cout << "Update J, A and factorization for the first time.\n";
     J = CalcJacobian(t, xt);
     ++num_iter_factorizations_;
     compute_and_factor_iteration_matrix(J, h, iteration_matrix);
@@ -380,6 +417,7 @@ bool ImplicitIntegrator<T>::MaybeFreshenMatrices(
   // implicit Trapezoid iteration matrix is not factorized, and so this block
   // of code will factorize it.
   if (!iteration_matrix->matrix_factored()) {
+    std::cout << "Refactor A, only.\n";
     ++num_iter_factorizations_;
     compute_and_factor_iteration_matrix(J, h, iteration_matrix);
     return true;  // Indicate success.
@@ -391,9 +429,16 @@ bool ImplicitIntegrator<T>::MaybeFreshenMatrices(
       // process to use the last computed (and already factored) iteration
       // matrix. This matrix may be from a previous time-step or a previously-
       // attempted step size.
+      std::cout << "Reuse previous J, A and factor.\n";
       return true;  // Indicate success.
 
     case 2: {
+      // TODO: Trial 2 does not seem to make sense in general for fixed step
+      // integrators. When the time step h does not change, recomputing A = Id -
+      // h * J and factorizing duplictes work.
+      // An alternative could be having a flag that tracks whther the step
+      // changed or not.
+
       // For the second trial, we know the first trial, which uses the last
       // computed iteration matrix, has already failed. The last computed
       // iteration matrix may be from many time steps ago, or it may be from a
@@ -415,6 +460,7 @@ bool ImplicitIntegrator<T>::MaybeFreshenMatrices(
       // which requires the same iteration matrix (so the matrix is correct
       // and does not actually need recomputation).
       // In both cases, the right thing to do would be to skip to trial 3.
+      std::cout << "Compute A = Id - h * J and factor.\n";      
       ++num_iter_factorizations_;
       compute_and_factor_iteration_matrix(J, h, iteration_matrix);
       return true;
@@ -428,11 +474,14 @@ bool ImplicitIntegrator<T>::MaybeFreshenMatrices(
       // The Jacobian matrix may already be "fresh", meaning that there is
       // nothing more that can be tried (Jacobian and iteration matrix are both
       // fresh), and we need to indicate failure.
-      if (jacobian_is_fresh_)
+      if (jacobian_is_fresh_) {
+        std::cout << "Jacobian was fresh. Failure.\n";
         return false;
+      }
 
       // Otherwise, we can reform the Jacobian matrix and refactor the
       // iteration matrix.
+      std::cout << "Compute J, A and factor.\n";
       J = CalcJacobian(t, xt);
       ++num_iter_factorizations_;
       compute_and_factor_iteration_matrix(J, h, iteration_matrix);
@@ -440,6 +489,7 @@ bool ImplicitIntegrator<T>::MaybeFreshenMatrices(
 
       case 4: {
         // Trial #4 indicates failure.
+        std::cout << "Failure.\n";
         return false;
       }
 

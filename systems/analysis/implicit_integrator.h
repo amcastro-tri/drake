@@ -340,6 +340,28 @@ class ImplicitIntegrator : public IntegratorBase<T> {
     return true;
   }
 
+  bool CheckConvergenceOnStateUpdate(const VectorX<T>& xc,
+                                     const VectorX<T>& dxc, double abs_tol,
+                                     double rel_tol) const {
+    using std::abs;
+    using std::max;
+
+    for (int i = 0; i < xc.size(); ++i) {
+      // We do not want the presence of a NaN to cause this function to
+      // spuriously return `true`, so indicate the update is not zero when a NaN
+      // is detected. This will make the Newton-Raphson process in the caller
+      // continue iterating until its inevitable failure.
+      using std::isnan;
+      if (isnan(dxc[i]) || isnan(xc[i])) return false;
+
+      const T tol = abs_tol + rel_tol * abs(xc[i]);
+      if (abs(dxc[i]) > tol)
+        return false;
+    }
+
+    return true;
+  }
+
   enum class ConvergenceStatus {
     kDiverged,
     kConverged,

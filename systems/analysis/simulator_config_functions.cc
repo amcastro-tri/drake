@@ -12,6 +12,7 @@
 #include "drake/common/unused.h"
 #include "drake/systems/analysis/bogacki_shampine3_integrator.h"
 #include "drake/systems/analysis/explicit_euler_integrator.h"
+#include "drake/systems/analysis/fixed_step_implicit_euler_integrator.h"
 #include "drake/systems/analysis/implicit_euler_integrator.h"
 #include "drake/systems/analysis/radau_integrator.h"
 #include "drake/systems/analysis/runge_kutta2_integrator.h"
@@ -132,6 +133,7 @@ const vector<NamedResetIntegratorFunc<T>>& GetAllNamedResetIntegratorFuncs() {
       // Keep this list sorted alphabetically.
       MakeResetter<T, BogackiShampine3Integrator>(),
       MakeResetter<T, ExplicitEulerIntegrator>(),
+      MakeResetter<T, FixedStepImplicitEulerIntegrator>(),
       MakeResetter<T, ImplicitEulerIntegrator>(),
       MakeResetter<T, Radau1Integrator>(),
       MakeResetter<T, Radau3Integrator>(),

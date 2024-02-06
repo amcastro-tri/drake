@@ -112,6 +112,7 @@ bool ImplicitEulerIntegrator<T>::StepAbstract(
     VectorX<T>* xtplus, int trial) {
   using std::max;
   using std::min;
+  using std::sqrt;
 
   // Verify the trial number is valid.
   DRAKE_ASSERT(trial >= 1 && trial <= 4);
@@ -159,7 +160,9 @@ bool ImplicitEulerIntegrator<T>::StepAbstract(
 
     // Evaluate the residual error using:
     // g(x(t0+h)) = x(t0+h) - x(t0) - h f(t0+h,x(t0+h)).
-    VectorX<T> goutput = g();
+    VectorX<T> g0 = g();
+    const T ell0 = 0.5 * g0.norm();
+    (void)ell0;
 
     // Update the number of Newton-Raphson iterations.
     num_nr_iterations_++;
@@ -167,15 +170,61 @@ bool ImplicitEulerIntegrator<T>::StepAbstract(
     // Compute the state update using the equation A*x = -g(), where A is the
     // iteration matrix.
     // TODO(edrumwri): Allow caller to provide their own solver.
-    VectorX<T> dx = iteration_matrix->Solve(-goutput);
+    VectorX<T> dx = iteration_matrix->Solve(-g0);
+
+    // Verify if a descent direction.
+    const double delta = sqrt(std::numeric_limits<double>::epsilon());
+    const VectorX<T> x_delta = *xtplus + delta * dx;
+    context->SetTimeAndContinuousState(tf, x_delta);
+    const VectorX<T> g_delta = g();
+    const T ell_delta = 0.5 * g_delta.norm();
+    const T dell_dalpha = (ell_delta - ell0) / delta;
+    std::cout << fmt::format("dell_dalpha = {}\n", dell_dalpha);
+
+    // For now if dx is not a descent direction, we abort and move on to the
+    // next trial, hopefully with a better Jacobian matrix.
+    // TODO: Alternative: Update the Jacobian right here. Might as well do the
+    // update here instead of trashing whatever progress this NR iterations
+    // made.
+    if (dell_dalpha > 0.0) break;
 
     // Get the infinity norm of the weighted update vector.
     dx_state_->get_mutable_vector().SetFromVector(dx);
     T dx_norm = this->CalcStateChangeNorm(*dx_state_);
 
+    // Peform the line search.
+    const double rho = 0.6;
+    double alpha = 1.0;
+    VectorX<T> x_alpha = *xtplus + alpha * dx;
+    context->SetTimeAndContinuousState(tf, x_alpha);
+    VectorX<T> g_alpha = g();
+    T ell_prev = 0.5 * g_alpha.norm();
+    std::cout << fmt::format("alpha, ell = {} {}\n", alpha, ell_prev);
+    int ils = 0;
+    for (ils = 0; ils < 30; ++ils) {
+      alpha *= rho;
+      x_alpha = *xtplus + alpha * dx;
+      context->SetTimeAndContinuousState(tf, x_alpha);
+      g_alpha = g();
+      T ell_alpha = 0.5 * g_alpha.norm();
+      std::cout << fmt::format("alpha, ell = {} {}\n", alpha, ell_alpha);
+      if (ell_alpha > ell_prev && ell_alpha < ell0) break;
+      ell_prev = ell_alpha;
+    }
+    alpha /= rho;  // ell_prev is better
+    std::cout << fmt::format("ils, alpha = {} {}\n", ils, alpha);
+    std::cout << fmt::format("alpha, ell, ell0 = {} {} {}\n", alpha, ell_prev, ell0);
+    
+    // The line search could not find a good descent step. Move onto next trial.
+    if (ell_prev > ell0) break;
+
     // Update the state vector.
-    *xtplus += dx;
+    *xtplus += alpha * dx;
     context->SetTimeAndContinuousState(tf, *xtplus);
+
+    // Quick exit for the case when the residual became zero, even if dx is
+    // non-zero.
+    if (ell_prev < 1.0e-10) return true;
 
     // Check for Newton-Raphson convergence.
     typename ImplicitIntegrator<T>::ConvergenceStatus status =

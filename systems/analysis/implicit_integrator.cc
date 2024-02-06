@@ -229,14 +229,15 @@ ImplicitIntegrator<T>::CheckNewtonConvergence(int iteration,
                                               const T& dx_norm,
                                               const T& last_dx_norm) const {
   (void)iteration;
-  (void) dx_norm;
-  (void) last_dx_norm;
+  (void)dx_norm;
+  (void)last_dx_norm;
   std::cout << "CheckNewtonConvergence()\n";
   PRINT_VAR(iteration);
+  PRINT_VAR(dx_norm);
+  PRINT_VAR(dx.norm());
   PRINT_VAR(dx.norm());
   PRINT_VAR(xtplus.norm());
 
-#if 0  
   // A guess. Ideally we'd expose this or probably better, ask the system for
   // scales.
   const double abs_tol = 1.0e-10;
@@ -248,7 +249,6 @@ ImplicitIntegrator<T>::CheckNewtonConvergence(int iteration,
   } else {
     return ConvergenceStatus::kNotConverged;
   }
-#endif  
 
   // The check below looks for convergence by identifying cases where the
   // update to the state results in no change.

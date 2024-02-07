@@ -46,6 +46,21 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
     kAutomatic
   };
 
+  enum class ConvergenceCheck {
+    /// Given the update Δxᵏ = xᵏ−xᵏ⁻¹ at the k-th iteration, estimates the
+    /// error to the converged solution x* as:
+    ///   ‖x* − xᵏ‖ ≤ θ/(1−θ)⋅‖Δxᵏ‖
+    /// See [Hairer, 1996] notes on page 121.
+    kHairerErrorEstimation,
+
+    /// Uses the norm ‖Δxᵏ‖ directly for convergence check.
+    kUseUpdateAsErrorEstimation,
+  };
+
+  void set_convergence_check(ConvergenceCheck type) {
+    convergence_check_ = type;
+  }
+
   /**
    * This integrator does not support error estimation.
    */
@@ -179,7 +194,10 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
   IterationMatrix iteration_matrix_;
 
   // Statistics for the Newton-Raphson solve.
-  Statistics statistics_;  
+  Statistics statistics_;
+
+  ConvergenceCheck convergence_check_{
+      ConvergenceCheck::kUseUpdateAsErrorEstimation};
 };
 
 }  // namespace systems

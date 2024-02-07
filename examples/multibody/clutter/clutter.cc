@@ -29,6 +29,7 @@
 #include "drake/multibody/plant/multibody_plant_config_functions.h"
 #include "drake/systems/analysis/implicit_integrator.h"
 #include "drake/systems/analysis/implicit_euler_integrator.h"
+#include "drake/systems/analysis/fixed_step_implicit_euler_integrator.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
@@ -108,6 +109,8 @@ DEFINE_string(
     integrator_jacobian_scheme, "forward",
     "Jacobian computation scheme: 'forward', 'central', 'automatic'.");
 DEFINE_bool(use_full_newton, false, "Update Jacobian every iteration");
+DEFINE_string(convergence_check, "direct",
+              "Convergence check type: 'hairer', 'direct'.");
 
 using drake::geometry::CollisionFilterDeclaration;
 using drake::math::RigidTransform;
@@ -116,7 +119,9 @@ using drake::math::RollPitchYawd;
 using drake::math::RotationMatrixd;
 using drake::multibody::ContactResults;
 using drake::multibody::MultibodyPlant;
+using drake::systems::IntegratorBase;
 using drake::systems::ImplicitEulerIntegrator;
+using drake::systems::FixedStepImplicitEulerIntegrator;
 using JacobianComputationScheme =
     ImplicitEulerIntegrator<double>::JacobianComputationScheme;
 using Eigen::Translation3d;
@@ -464,6 +469,22 @@ void SetObjectsIntoAPile(const MultibodyPlant<double>& plant,
   }
 }
 
+void SetIntegratorOptions(IntegratorBase<double>* base_integrator) {
+  auto* integrator =
+      dynamic_cast<FixedStepImplicitEulerIntegrator<double>*>(base_integrator);
+  if (integrator == nullptr) return;
+  using ConvergenceCheck =
+      FixedStepImplicitEulerIntegrator<double>::ConvergenceCheck;
+  if (FLAGS_convergence_check == "hairer") {
+    integrator->set_convergence_check(ConvergenceCheck::kHairerErrorEstimation);
+  } else if (FLAGS_convergence_check == "direct") {
+    integrator->set_convergence_check(
+        ConvergenceCheck::kUseUpdateAsErrorEstimation);
+  } else {
+    throw std::logic_error("Invalid convergence check option.");
+  }
+}
+
 int do_main() {
   // Build a generic multibody plant.
   systems::DiagramBuilder<double> builder;
@@ -538,6 +559,7 @@ int do_main() {
 
   auto simulator =
       MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
+  SetIntegratorOptions(&simulator->get_mutable_integrator());
 
   drake::systems::IntegratorBase<double>& integrator =
       simulator->get_mutable_integrator();

@@ -225,17 +225,25 @@ FixedStepImplicitEulerIntegrator<T>::CheckNewtonConvergence(
   }
 #endif
 
-  // A guess. Ideally we'd expose this or probably better, ask the system for
-  // scales.
-  const double abs_tol = 1.0e-10;
-  // We ask for a tighter convegence on the NR than the accuracy of the
-  // integrator.
-  const double rel_tol = 0.1 * this->get_accuracy_in_use();
-  if (CheckConvergenceOnStateUpdate(x, dx, abs_tol, rel_tol)) {
-    return ConvergenceStatus::kConverged;
-  } else {
-    return ConvergenceStatus::kNotConverged;
+  // Print progress regardless of the check type.
+  const T theta = dx_norm / last_dx_norm;
+  fmt::print("it {}, theta: {}\n", iteration, theta);
+
+  if (convergence_check_ == ConvergenceCheck::kUseUpdateAsErrorEstimation) {
+    // A guess. Ideally we'd expose this or probably better, ask the system for
+    // scales.
+    const double abs_tol = 1.0e-10;
+    // We ask for a tighter convegence on the NR than the accuracy of the
+    // integrator.
+    const double rel_tol = 0.1 * this->get_accuracy_in_use();
+    if (CheckConvergenceOnStateUpdate(x, dx, abs_tol, rel_tol)) {
+      return ConvergenceStatus::kConverged;
+    } else {
+      return ConvergenceStatus::kNotConverged;
+    }
   }
+  // Sanity check there are only two valid options.
+  DRAKE_DEMAND(convergence_check_ == ConvergenceCheck::kHairerErrorEstimation);
 
   // The check below looks for convergence by identifying cases where the
   // update to the state results in no change.
@@ -260,11 +268,10 @@ FixedStepImplicitEulerIntegrator<T>::CheckNewtonConvergence(
     // TODO(edrumwri) Hairer's RADAU5 implementation (allegedly) uses
     // theta = sqrt(dx[k] / dx[k-2]) while DASSL uses
     // theta = pow(dx[k] / dx[0], 1/k), so investigate setting
-    // theta to these alternative values for minimizing convergence failures.
-    const T theta = dx_norm / last_dx_norm;
+    // theta to these alternative values for minimizing convergence failures.    
     const T eta = theta / (1 - theta);
-    std::cout << fmt::format("Newton-Raphson loop {} theta: {}, eta: {}\n",
-                             iteration, theta, eta);
+    //std::cout << fmt::format("Newton-Raphson loop {} theta: {}, eta: {}\n",
+    //                         iteration, theta, eta);
     DRAKE_LOGGER_DEBUG("Newton-Raphson loop {} theta: {}, eta: {}", iteration,
                        theta, eta);
 
@@ -282,7 +289,7 @@ FixedStepImplicitEulerIntegrator<T>::CheckNewtonConvergence(
     const double kappa = 0.05;
     const double k_dot_tol = kappa * this->get_accuracy_in_use();
     if (eta * dx_norm < k_dot_tol) {
-      std::cout << fmt::format("Newton-Raphson converged; η = {}\n", eta);
+      //std::cout << fmt::format("Newton-Raphson converged; η = {}\n", eta);
       DRAKE_LOGGER_DEBUG("Newton-Raphson converged; η = {}", eta);
       return ConvergenceStatus::kConverged;
     }
@@ -301,12 +308,17 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
   statistics_.h_min = min(statistics_.h_min, h);
   statistics_.h_max = max(statistics_.h_max, h);
 
+  fmt::print("\n");
+  fmt::print("DoStep: {}\n", statistics_.num_do_steps);  
+
   const int max_newton_iterations = 10;
 
   // Copy state at t = t0 before we mutate the context.
   Context<T>* context = this->get_mutable_context();
   const T t0 = context->get_time();
   const VectorX<T> x0 = context->get_continuous_state().CopyToVector();
+
+  fmt::print(" t0: {}, h: {}\n", t0, h);
 
   // N.B. calc_residual mutates the base class context, trashing any cached
   // computations.
@@ -347,6 +359,7 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
     // N.B. Integrators use IntegratorBase::CalcStateChangeNorm(). Which
     // "scales" and uses the max norm instead.
     // Study whether that's an appropriate choice or not.
+    // TODO: try different norm options. Only used for convergence checks.
     const T dx_norm = dx.norm();
 
     x_plus += dx;

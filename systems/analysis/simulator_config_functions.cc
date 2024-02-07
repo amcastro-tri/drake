@@ -188,9 +188,9 @@ void ApplySimulatorConfig(
   if (integrator.supports_error_estimation()) {
     integrator.set_fixed_step_mode(!config.use_error_control);
   }
-  if (!integrator.get_fixed_step_mode()) {
-    integrator.set_target_accuracy(config.accuracy);
-  }
+  // TODO: Maybe allow fixed step integrators to use accuracy for implicit
+  // integration convergence checks.
+  integrator.set_target_accuracy(config.accuracy);
   simulator->set_target_realtime_rate(config.target_realtime_rate);
   // It is almost always the case we want these two next flags to be either both
   // true or both false. Otherwise we could miss the first publish at t = 0.

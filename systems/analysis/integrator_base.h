@@ -217,11 +217,9 @@ class IntegratorBase {
    */
   // TODO(edrumwri): complain if integrator with error estimation wants to drop
   //                 below the minimum step size
-  void set_target_accuracy(double accuracy) {
-    if (!supports_error_estimation())
-      throw std::logic_error(
-          "Integrator does not support accuracy estimation "
-          "and user has requested error control");
+  // TODO: Maybe allow fixed step integrators to use accuracy for implicit
+  // integration convergence checks.
+  void set_target_accuracy(double accuracy) {    
     target_accuracy_ = accuracy;
     accuracy_in_use_ = accuracy;
   }

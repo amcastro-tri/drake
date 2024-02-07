@@ -74,9 +74,10 @@ IntegratorBase<T>& ResetIntegratorFromGflags(Simulator<T>* simulator) {
   if (integrator.supports_error_estimation()) {
     integrator.set_fixed_step_mode(!FLAGS_simulator_use_error_control);
   }
-  if (!integrator.get_fixed_step_mode()) {
-    integrator.set_target_accuracy(FLAGS_simulator_accuracy);
-  } else {
+  // TODO: Maybe allow fixed step integrators to use accuracy for implicit
+  // integration convergence checks.
+  integrator.set_target_accuracy(FLAGS_simulator_accuracy);
+  if (integrator.get_fixed_step_mode()) {  
     // Integrator is running in fixed step mode, therefore we warn the user if
     // the accuracy flag was changed from the command line.
     if (FLAGS_simulator_accuracy != drake::systems::SimulatorConfig{}.accuracy)

@@ -460,7 +460,7 @@ void SetObjectsIntoAPile(const MultibodyPlant<double>& plant,
 
       const RotationMatrixd R_WB =
           math::UniformlyRandomRotationMatrix<double>(&generator);
-      const Vector3d p_WB = offset + Vector3d(0.0, 0.0, z);
+      const Vector3d p_WB = offset + Vector3d(1.0e-3*i, 0.0, z);
 
       plant.SetFreeBodyPose(plant_context, body, RigidTransformd(R_WB, p_WB));
       z += delta_z * scale;

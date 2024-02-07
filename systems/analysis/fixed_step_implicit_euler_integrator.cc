@@ -162,6 +162,7 @@ bool FixedStepImplicitEulerIntegrator<T>::CheckConvergenceOnStateUpdate(
     double rel_tol) const {
   using std::abs;
   using std::max;
+  //std::cout << fmt::format("abs_tol, rel_tol: {}, {}\n", abs_tol, rel_tol);
 
   for (int i = 0; i < xc.size(); ++i) {
     // We do not want the presence of a NaN to cause this function to
@@ -169,11 +170,21 @@ bool FixedStepImplicitEulerIntegrator<T>::CheckConvergenceOnStateUpdate(
     // is detected. This will make the Newton-Raphson process in the caller
     // continue iterating until its inevitable failure.
     using std::isnan;
-    if (isnan(dxc[i]) || isnan(xc[i])) return false;
+    if (isnan(dxc[i]) || isnan(xc[i])) {
+      //std::cout << "CheckNewtonConvergence(): NaN values. \n";
+      return false;
+    }
 
     const T tol = abs_tol + rel_tol * abs(xc[i]);
-    if (abs(dxc[i]) > tol) return false;
+    //std::cout << fmt::format("tol, dxi, xi: {}, {} , {}\n", tol, abs(dxc[i]),
+    //                         abs(xc[i]));
+    if (abs(dxc[i]) > tol) {
+      //std::cout << "CheckNewtonConvergence(): Did not converge. \n";
+      return false;
+    }
   }
+
+  //std::cout << "CheckNewtonConvergence(): Converged. \n";
 
   return true;
 }
@@ -183,13 +194,19 @@ typename FixedStepImplicitEulerIntegrator<T>::ConvergenceStatus
 FixedStepImplicitEulerIntegrator<T>::CheckNewtonConvergence(
     int iteration, const VectorX<T>& x, const VectorX<T>& dx, const T& dx_norm,
     const T& last_dx_norm) const {
-  (void)iteration;
-  (void)dx_norm;
-  (void)last_dx_norm;
-  std::cout << "CheckNewtonConvergence()\n";
-  PRINT_VAR(iteration);
-  PRINT_VAR(dx_norm);
-  PRINT_VAR(last_dx_norm);
+  //(void)iteration;
+  //(void)dx_norm;
+  //(void)last_dx_norm;
+  //std::cout << "CheckNewtonConvergence()\n";
+  //PRINT_VAR(iteration);
+  //PRINT_VAR(dx_norm);
+  //PRINT_VAR(last_dx_norm);
+
+  {
+    const T theta = dx_norm / last_dx_norm;
+    std::cout << fmt::format("iter, x, dx, theta: {}, {}, {}, {}\n", iteration,
+                             x.norm(), dx_norm, theta);
+  }
 
   // A guess. Ideally we'd expose this or probably better, ask the system for
   // scales.
@@ -259,6 +276,8 @@ FixedStepImplicitEulerIntegrator<T>::CheckNewtonConvergence(
 
 template <class T>
 bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
+  INSTRUMENT_FUNCTION("Integrator main entry point.");
+
   const int max_newton_iterations = 10;
 
   // Copy state at t = t0 before we mutate the context.

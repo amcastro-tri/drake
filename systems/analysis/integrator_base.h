@@ -916,21 +916,23 @@ class IntegratorBase {
 
     // TODO(edrumwri): Compute qbar_weight_, z_weight_ automatically.
     // Set error weighting vectors if not already done.
-    if (supports_error_estimation()) {
-      // Allocate space for the error estimate.
-      err_est_ = system_.AllocateTimeDerivatives();
 
-      const auto& xc = context_->get_state().get_continuous_state();
-      const int gv_size = xc.get_generalized_velocity().size();
-      const int misc_size = xc.get_misc_continuous_state().size();
-      if (qbar_weight_.size() != gv_size) qbar_weight_.setOnes(gv_size);
-      if (z_weight_.size() != misc_size) z_weight_.setOnes(misc_size);
+    // N.B. We allow fixed step integrator to also use weighted norms.
+    // if (supports_error_estimation()) {
+    // Allocate space for the error estimate.
+    err_est_ = system_.AllocateTimeDerivatives();
 
-      // Verify that minimum values of the weighting matrices are non-negative.
-      if ((qbar_weight_.size() && qbar_weight_.minCoeff() < 0) ||
-          (z_weight_.size() && z_weight_.minCoeff() < 0))
-        throw std::logic_error("Scaling coefficient is less than zero.");
-    }
+    const auto& xc = context_->get_state().get_continuous_state();
+    const int gv_size = xc.get_generalized_velocity().size();
+    const int misc_size = xc.get_misc_continuous_state().size();
+    if (qbar_weight_.size() != gv_size) qbar_weight_.setOnes(gv_size);
+    if (z_weight_.size() != misc_size) z_weight_.setOnes(misc_size);
+
+    // Verify that minimum values of the weighting matrices are non-negative.
+    if ((qbar_weight_.size() && qbar_weight_.minCoeff() < 0) ||
+        (z_weight_.size() && z_weight_.minCoeff() < 0))
+      throw std::logic_error("Scaling coefficient is less than zero.");
+    //}
 
     // Statistics no longer valid.
     ResetStatistics();

@@ -32,6 +32,11 @@ VectorX<T> FixedStepImplicitEulerIntegrator<T>::IterationMatrix::Solve(
 }
 
 template <class T>
+void FixedStepImplicitEulerIntegrator<T>::DoInitialize() {
+  dx_state_ = this->get_system().AllocateTimeDerivatives();
+}
+
+template <class T>
 void FixedStepImplicitEulerIntegrator<T>::DoResetStatistics() {
   statistics_ = {};
 }
@@ -100,7 +105,7 @@ void FixedStepImplicitEulerIntegrator<T>::ComputeForwardDiffJacobian(
   DRAKE_LOGGER_DEBUG(
       "  ImplicitIntegrator Compute Forwarddiff {}-Jacobian t={}", n, t);
   DRAKE_LOGGER_DEBUG(
-      "  computing from state {}", fmt_eigen(xt.transpose()));
+      "  computing from state {}", fmt_eigen(x.transpose()));
 
   // Initialize the Jacobian.
   J->resize(n, n);
@@ -360,7 +365,19 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
     // "scales" and uses the max norm instead.
     // Study whether that's an appropriate choice or not.
     // TODO: try different norm options. Only used for convergence checks.
-    const T dx_norm = dx.norm();
+    T dx_norm = NAN;
+    switch (error_norm_) {
+      case ErrorNorm::kRms:
+        dx_norm = dx.norm() / sqrt(dx.size());
+        break;
+      case ErrorNorm::kMax:
+        dx_norm = dx.template lpNorm<Eigen::Infinity>();
+        break;
+      case ErrorNorm::kWeighted:
+        dx_state_->get_mutable_vector().SetFromVector(dx);
+        dx_norm = this->CalcStateChangeNorm(*dx_state_);
+        break;
+    }
 
     x_plus += dx;
 
@@ -394,6 +411,6 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
 
 // N.B. The LU factorization in IterationMatrix does not compile when T =
 // AutoDiff for the integraor.
-//DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    //class drake::systems::FixedStepImplicitEulerIntegrator)
-template class drake::systems::FixedStepImplicitEulerIntegrator<double>;
+DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
+    class drake::systems::FixedStepImplicitEulerIntegrator)
+//template class drake::systems::FixedStepImplicitEulerIntegrator<double>;

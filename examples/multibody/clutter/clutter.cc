@@ -111,6 +111,8 @@ DEFINE_string(
 DEFINE_bool(use_full_newton, false, "Update Jacobian every iteration");
 DEFINE_string(convergence_check, "direct",
               "Convergence check type: 'hairer', 'direct'.");
+DEFINE_string(error_norm, "rms",
+              "Convergence check type: 'rms', 'max', 'weighted'.");              
 
 using drake::geometry::CollisionFilterDeclaration;
 using drake::math::RigidTransform;
@@ -482,6 +484,17 @@ void SetIntegratorOptions(IntegratorBase<double>* base_integrator) {
         ConvergenceCheck::kUseUpdateAsErrorEstimation);
   } else {
     throw std::logic_error("Invalid convergence check option.");
+  }
+
+  using ErrorNorm = FixedStepImplicitEulerIntegrator<double>::ErrorNorm;
+  if (FLAGS_error_norm == "rms") {
+    integrator->set_error_norm(ErrorNorm::kRms);
+  } else if (FLAGS_error_norm == "max") {
+    integrator->set_error_norm(ErrorNorm::kMax);
+  } else if (FLAGS_error_norm == "weighted") {
+    integrator->set_error_norm(ErrorNorm::kWeighted);
+  } else {
+    throw std::logic_error("Invalid error norm option.");
   }
 }
 

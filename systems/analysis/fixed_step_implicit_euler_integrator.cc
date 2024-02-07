@@ -37,6 +37,21 @@ void FixedStepImplicitEulerIntegrator<T>::DoResetStatistics() {
 }
 
 template <class T>
+void FixedStepImplicitEulerIntegrator<T>::DoPrintStatistics() const {
+  fmt::print("FixedStepImplicitEulerIntegrator stats:\n");
+  fmt::print("Num DoSteps  = {}\n", statistics_.num_do_steps);
+  fmt::print("       h_min = {}\n", statistics_.h_min);
+  fmt::print("       h_max = {}\n", statistics_.h_max);
+  fmt::print("Num NR iters = {}\n", statistics_.num_nr_iterations);
+  fmt::print("Num derivative evals (residual) = {}\n",
+             statistics_.num_function_evaluations);
+  fmt::print("Num derivative evals (Jacobian) = {}\n",
+             statistics_.num_jacobian_function_evaluations);             
+  fmt::print("Num Jacobian updates = {}\n", statistics_.num_jacobian_reforms);
+  fmt::print("Num factorizations = {}\n", statistics_.num_factorizations);  
+}
+
+template <class T>
 void FixedStepImplicitEulerIntegrator<T>::CalcJacobian(const T& t,
     const VectorX<T>& x, MatrixX<T>* J) {
   INSTRUMENT_FUNCTION("Jacobian compuation.");    
@@ -61,12 +76,12 @@ void FixedStepImplicitEulerIntegrator<T>::CalcJacobian(const T& t,
   }
 
   // Update statistics.
-  statistics_.num_jacobian_reforms++;
+  ++statistics_.num_jacobian_reforms;
 
   // Use the new number of ODE evaluations to determine the number of Jacobian
   // evaluations.
   statistics_.num_jacobian_function_evaluations +=
-      this->get_num_derivative_evaluations() - current_derivative_evals;
+      (this->get_num_derivative_evaluations() - current_derivative_evals);
 }
 
 template <class T>
@@ -202,11 +217,13 @@ FixedStepImplicitEulerIntegrator<T>::CheckNewtonConvergence(
   //PRINT_VAR(dx_norm);
   //PRINT_VAR(last_dx_norm);
 
+#if 0
   {
     const T theta = dx_norm / last_dx_norm;
     std::cout << fmt::format("iter, x, dx, theta: {}, {}, {}, {}\n", iteration,
                              x.norm(), dx_norm, theta);
   }
+#endif
 
   // A guess. Ideally we'd expose this or probably better, ask the system for
   // scales.
@@ -277,6 +294,12 @@ FixedStepImplicitEulerIntegrator<T>::CheckNewtonConvergence(
 template <class T>
 bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
   INSTRUMENT_FUNCTION("Integrator main entry point.");
+  using std::min;
+  using std::max;
+
+  ++statistics_.num_do_steps;
+  statistics_.h_min = min(statistics_.h_min, h);
+  statistics_.h_max = max(statistics_.h_max, h);
 
   const int max_newton_iterations = 10;
 
@@ -289,9 +312,13 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
   // computations.
   const T t = t0 + h;
   auto calc_residual = [t0, h, &x0, context, this](const VectorX<T>& x) {
+    const int previous_num_evals = this->get_num_derivative_evaluations();
     context->SetTimeAndContinuousState(t0 + h, x);
-    return (x - x0 - h * this->EvalTimeDerivatives(*context).CopyToVector())
-        .eval();
+    const VectorX<T> r =
+        x - x0 - h * this->EvalTimeDerivatives(*context).CopyToVector();
+    this->statistics_.num_function_evaluations +=
+        (this->get_num_derivative_evaluations() - previous_num_evals);
+    return r;
   };
 
   // Initial guess.
@@ -311,7 +338,6 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
       // TODO: Consider using the last computed r(x) if using forward
       // differences. The gain might be negligible.
       CalcJacobian(t, x_plus, &J_);
-      ++statistics_.num_jacobian_reforms;
       const int n = J_.rows();
       iteration_matrix_.SetAndFactor(J_ * -h + MatrixX<T>::Identity(n, n));
       ++statistics_.num_factorizations;      

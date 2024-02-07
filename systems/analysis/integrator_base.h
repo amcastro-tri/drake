@@ -1105,6 +1105,11 @@ class IntegratorBase {
     DoResetStatistics();
   }
 
+  void PrintStatistics() const {
+    // TODO: Print global stats here.
+    DoPrintStatistics();
+  }
+
   /**
    Gets the number of failed sub-steps (implying one or more step size
    reductions was required to permit solving the necessary nonlinear system
@@ -1303,6 +1308,8 @@ class IntegratorBase {
   }
 
  protected:
+  virtual void DoPrintStatistics() const {}
+  
   /**
    Resets any statistics particular to a specific integrator. The default
    implementation of this function does nothing. If your integrator

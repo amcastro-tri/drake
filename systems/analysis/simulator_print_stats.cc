@@ -159,6 +159,10 @@ void PrintSimulatorStatistics(const Simulator<T>& simulator) {
                  implicit_integrator->get_num_newton_raphson_iterations());
     }
   }
+  // Let each integrator print its own statistics.
+  // TODO: consider moving all the logic above for implicit integrators into
+  // this method, with an NVI for derived implicit integrators.
+  integrator.PrintStatistics();
 }
 
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(

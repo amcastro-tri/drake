@@ -614,7 +614,8 @@ int do_main() {
     getchar();
   }
 
-  const double recording_frames_per_second = 1.0 / FLAGS_mbp_time_step;
+  const double recording_frames_per_second =
+      FLAGS_mbp_time_step == 0 ? 32 : 1.0 / FLAGS_mbp_time_step;
   meshcat->StartRecording(recording_frames_per_second);
   clock::time_point sim_start_time = clock::now();
   CALLGRIND_START_INSTRUMENTATION;

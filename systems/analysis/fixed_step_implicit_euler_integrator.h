@@ -80,6 +80,23 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
   // These are statistics that the base class, ImplicitIntegrator, require
   // this child class to keep track of.
   struct Statistics {
+    int64_t num_do_steps{0};
+
+    // Min step size DoStep() was called with.
+    T h_min{std::numeric_limits<double>::max()};
+
+    // Max step size DoStep() was called with.
+    T h_max{0.0};  // Max step sized DoStep() was called with.
+
+    // See ImplicitIntegrator::get_num_newton_raphson_iterations()
+    // or ImplicitIntegrator::
+    // get_num_error_estimator_newton_raphson_iterations() for the definition
+    // of this statistic.
+    int64_t num_nr_iterations{0};
+
+    // Function evaluations for residual only.
+    int64_t num_function_evaluations{0};
+
     // See ImplicitIntegrator::get_num_jacobian_evaluations() or
     // ImplicitIntegrator::get_num_error_estimator_jacobian_evaluations()
     // for the definition of this statistic.
@@ -91,24 +108,11 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
     // definition of this statistic.
     int64_t num_factorizations{0};
 
-    // See IntegratorBase::get_num_derivative_evaluations() or
-    // ImplicitIntegrator::get_num_error_estimator_derivative_evaluations()
-    // for the definition of this statistic. Note that, as the definitions
-    // state, this count also includes all the function evaluations counted in
-    // the statistic, num_jacobian_function_evaluations.
-    int64_t num_function_evaluations{0};
-
     // See ImplicitIntegrator::get_num_derivative_evaluations_for_jacobian()
     // or ImplicitIntegrator::
     // get_num_error_estimator_derivative_evaluations_for_jacobian()
     // for the definition of this statistic.
-    int64_t num_jacobian_function_evaluations{0};
-
-    // See ImplicitIntegrator::get_num_newton_raphson_iterations()
-    // or ImplicitIntegrator::
-    // get_num_error_estimator_newton_raphson_iterations() for the definition
-    // of this statistic.
-    int64_t num_nr_iterations{0};
+    int64_t num_jacobian_function_evaluations{0};    
   };
 
   class IterationMatrix {
@@ -144,6 +148,7 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
   // IntegratorBase implementations.
   void DoResetStatistics() final;
   bool DoStep(const T& h) final;
+  void DoPrintStatistics() const final;
 
   // non-const because updates stats.
   void CalcJacobian(const T& t, const VectorX<T>& x, MatrixX<T>* J);

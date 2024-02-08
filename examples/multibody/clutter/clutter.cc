@@ -108,7 +108,7 @@ DEFINE_double(near_rigid_threshold, 1.0, "SAP near rigid threshold.");
 DEFINE_string(
     integrator_jacobian_scheme, "forward",
     "Jacobian computation scheme: 'forward', 'central', 'automatic'.");
-DEFINE_bool(use_full_newton, false, "Update Jacobian every iteration");
+DEFINE_bool(full_newton, true, "Update Jacobian every iteration");
 DEFINE_string(convergence_check, "direct",
               "Convergence check type: 'hairer', 'direct'.");
 DEFINE_string(error_norm, "rms",
@@ -473,6 +473,9 @@ void SetIntegratorOptions(IntegratorBase<double>* base_integrator) {
   auto* integrator =
       dynamic_cast<FixedStepImplicitEulerIntegrator<double>*>(base_integrator);
   if (integrator == nullptr) return;
+
+  integrator->set_full_newton(FLAGS_full_newton);
+
   using ConvergenceCheck =
       FixedStepImplicitEulerIntegrator<double>::ConvergenceCheck;
   if (FLAGS_convergence_check == "hairer") {
@@ -605,7 +608,7 @@ int do_main() {
     } else {
       throw std::logic_error("Invalid jacobian scheme");
     }
-    ie.set_use_full_newton(FLAGS_use_full_newton);
+    ie.set_use_full_newton(FLAGS_full_newton);
   }
 
 #if 0

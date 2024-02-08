@@ -107,6 +107,8 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
     error_norm_ = type;
   }
 
+  void set_full_newton(bool use_full_newton) { full_newton_ = use_full_newton; }
+
   /**
    * This integrator does not support error estimation.
    */
@@ -212,6 +214,8 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
 
   // The last computed iteration matrix and factorization.
   IterationMatrix iteration_matrix_;
+
+  bool full_newton_{true};
 
   // The continuous state update vector used during Newton-Raphson.
   // Only used when error_norm_ = ErrorNorm::kWeighted.

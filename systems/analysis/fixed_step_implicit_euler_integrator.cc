@@ -455,6 +455,13 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
   // Initial guess.
   VectorX<T> x_plus = x0;
 
+  if (!full_newton_) {
+    const int n = x0.size();
+    CalcJacobian(t0, x0, &J_);
+    iteration_matrix_.SetAndFactor(J_ * -h + MatrixX<T>::Identity(n, n));
+    ++statistics_.num_factorizations;
+  }
+
   // Initialize the "last" state update norm; this will be used to detect
   // convergence.
   T last_dx_norm = std::numeric_limits<double>::infinity();
@@ -464,14 +471,14 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
 
     const VectorX<T> r = calc_residual(x_plus);
 
-    // Calc Jacobian. For now, full Newton.
-    {
+    // Calc jacobian. Either only once on the first iteration, every iteration.
+    if (full_newton_) {
       // TODO: Consider using the last computed r(x) if using forward
       // differences. The gain might be negligible.
       CalcJacobian(t, x_plus, &J_);
       const int n = J_.rows();
       iteration_matrix_.SetAndFactor(J_ * -h + MatrixX<T>::Identity(n, n));
-      ++statistics_.num_factorizations;      
+      ++statistics_.num_factorizations;
     }
 
     VectorX<T> dx = iteration_matrix_.Solve(-r);

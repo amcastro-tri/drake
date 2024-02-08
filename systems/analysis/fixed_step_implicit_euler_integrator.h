@@ -188,6 +188,9 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
   // non-const because it uses the integrator's context as scratch.
   void ComputeForwardDiffJacobian(const T& t, const VectorX<T>& x,
                                   MatrixX<T>* J);
+  void ComputeCentralDiffJacobian(const T& t, const VectorX<T>& x,
+                                  MatrixX<T>* J);
+  void ComputeAutoDiffJacobian(const T& t, const VectorX<T>& x, MatrixX<T>* J);
 
   bool IsUpdateZero(const VectorX<T>& xc, const VectorX<T>& dxc,
                     double eps = -1.0) const;
@@ -222,6 +225,15 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
 
   ErrorNorm error_norm_{ErrorNorm::kRms};
 };
+
+template <>
+inline void
+FixedStepImplicitEulerIntegrator<AutoDiffXd>::ComputeAutoDiffJacobian(
+    const AutoDiffXd&, const VectorX<AutoDiffXd>&, MatrixX<AutoDiffXd>*) {
+  throw std::runtime_error(
+      "AutoDiff'd Jacobian not supported from "
+      "AutoDiff'd ImplicitIntegrator");
+}
 
 template <>
 inline void

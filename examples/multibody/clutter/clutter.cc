@@ -124,8 +124,6 @@ using drake::multibody::MultibodyPlant;
 using drake::systems::IntegratorBase;
 using drake::systems::ImplicitEulerIntegrator;
 using drake::systems::FixedStepImplicitEulerIntegrator;
-using JacobianComputationScheme =
-    ImplicitEulerIntegrator<double>::JacobianComputationScheme;
 using Eigen::Translation3d;
 using Eigen::Vector3d;
 using clock = std::chrono::steady_clock;
@@ -496,6 +494,21 @@ void SetIntegratorOptions(IntegratorBase<double>* base_integrator) {
   } else {
     throw std::logic_error("Invalid error norm option.");
   }
+
+  using JacobianComputationScheme =
+      FixedStepImplicitEulerIntegrator<double>::JacobianComputationScheme;
+  if (FLAGS_integrator_jacobian_scheme == "forward") {
+    integrator->set_jacobian_computation_scheme(
+        JacobianComputationScheme::kForwardDifference);
+  } else if (FLAGS_integrator_jacobian_scheme == "central") {
+    integrator->set_jacobian_computation_scheme(
+        JacobianComputationScheme::kCentralDifference);
+  } else if (FLAGS_integrator_jacobian_scheme == "automatic") {
+    integrator->set_jacobian_computation_scheme(
+        JacobianComputationScheme::kAutomatic);
+  } else {
+    throw std::logic_error("Invalid jacobian scheme");
+  }
 }
 
 int do_main() {
@@ -578,6 +591,8 @@ int do_main() {
       simulator->get_mutable_integrator();
   if (FLAGS_simulator_integration_scheme == "implicit_euler") {
     auto& ie = dynamic_cast<ImplicitEulerIntegrator<double>&>(integrator);
+    using JacobianComputationScheme =
+        ImplicitEulerIntegrator<double>::JacobianComputationScheme;
     if (FLAGS_integrator_jacobian_scheme == "forward") {
       ie.set_jacobian_computation_scheme(
           JacobianComputationScheme::kForwardDifference);

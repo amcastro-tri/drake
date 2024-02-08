@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include "drake/common/autodiff.h"
+#include "drake/math/autodiff_gradient.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/fmt_eigen.h"
 #include "drake/common/text_logging.h"
@@ -70,13 +72,11 @@ void FixedStepImplicitEulerIntegrator<T>::CalcJacobian(const T& t,
       break;
 
     case JacobianComputationScheme::kCentralDifference:
-      throw std::logic_error("not implemented");
-      // ComputeCentralDiffJacobian(system, t, x, &*context, &J);
+      ComputeCentralDiffJacobian(t, x, J);
       break;
 
     case JacobianComputationScheme::kAutomatic:
-      // ComputeAutoDiffJacobian(system, t, x, *context, &J);
-      throw std::logic_error("not implemented");
+      ComputeAutoDiffJacobian(t, x, J);
       break;
   }
 
@@ -148,6 +148,120 @@ void FixedStepImplicitEulerIntegrator<T>::ComputeForwardDiffJacobian(
 
     // Reset xt' to xt.
     x_eps(i) = x(i);
+  }
+}
+
+template <class T>
+void FixedStepImplicitEulerIntegrator<T>::ComputeCentralDiffJacobian(
+    const T& t, const VectorX<T>& x, MatrixX<T>* J) {
+  using std::abs;
+  using std::max;
+
+  // Cube root of machine precision (indicated by theory) seems a bit coarse.
+  // Pick power of eps halfway between 6/12 (i.e., 1/2) and 4/12 (i.e., 1/3).
+  const double eps = std::pow(std::numeric_limits<double>::epsilon(), 5.0 / 12);
+
+  // Get the number of continuous state variables.
+  const int n = x.size();
+
+  DRAKE_LOGGER_DEBUG(
+      "  FixedStepImplicitEulerIntegrator Compute Centraldiff {}-Jacobian t={}",
+      n, t);
+
+  // Initialize the Jacobian.
+  J->resize(n, n);
+
+  // scratch context to make system evaluations.
+  Context<T>* context = this->get_mutable_context();
+
+  // Set time.
+  context->SetTimeAndContinuousState(t, x);
+
+  // Compute the Jacobian.
+  VectorX<T> xt_prime = x;
+  for (int i = 0; i < n; ++i) {
+    // Compute a good increment to the dimension using approximately 1/eps
+    // digits of precision. Note that if |xt| is large, the increment will
+    // be large as well. If |xt| is small, the increment will be no smaller
+    // than eps.
+    const T abs_xi = abs(x(i));
+    T dxi = max(1.0, abs_xi) * eps;
+
+    // Update xt', minimizing the effect of roundoff error, by ensuring that
+    // x and dx differ by an exactly representable number. See p. 192 of
+    // Press, W., Teukolsky, S., Vetterling, W., and Flannery, P. Numerical
+    //   Recipes in C++, 2nd Ed., Cambridge University Press, 2002.
+    xt_prime(i) = x(i) + dxi;
+    const T dxi_plus = xt_prime(i) - x(i);
+
+    // TODO(sherm1) This is invalidating q, v, and z but we only changed one.
+    //              Switch to a method that invalides just the relevant
+    //              partition, and ideally modify only the one changed element.
+    // Compute f(x+dx).
+    context->SetContinuousState(xt_prime);
+    VectorX<T> fprime_plus = this->EvalTimeDerivatives(*context).CopyToVector();
+
+    // Update xt' again, minimizing the effect of roundoff error.
+    xt_prime(i) = x(i) - dxi;
+    const T dxi_minus = x(i) - xt_prime(i);
+
+    // Compute f(x-dx).
+    context->SetContinuousState(xt_prime);
+    VectorX<T> fprime_minus =
+        this->EvalTimeDerivatives(*context).CopyToVector();
+
+    // Set the Jacobian column.
+    J->col(i) = (fprime_plus - fprime_minus) / (dxi_plus + dxi_minus);
+
+    // Reset xt' to xt.
+    xt_prime(i) = x(i);
+  }
+}
+
+template <class T>
+void FixedStepImplicitEulerIntegrator<T>::ComputeAutoDiffJacobian(
+    const T& t, const VectorX<T>& x, MatrixX<T>* J) {
+  DRAKE_LOGGER_DEBUG("  ImplicitIntegrator Compute Autodiff Jacobian t={}", t);
+  // TODO(antequ): Investigate how to refactor this method to use
+  // math::jacobian(), if possible.
+
+  // Create AutoDiff versions of the state vector.
+  // Set the size of the derivatives and prepare for Jacobian calculation.
+  VectorX<AutoDiffXd> a_xt = math::InitializeAutoDiff(x);
+
+  const System<T>& system = this->get_system();
+  const Context<T>& context = this->get_context();
+
+  // Get the system and the context in AutoDiffable format. Inputs must also
+  // be copied to the context used by the AutoDiff'd system (which is
+  // accomplished using FixInputPortsFrom()).
+  // TODO(edrumwri): Investigate means for moving as many of the operations
+  //                 below offline (or with lower frequency than once-per-
+  //                 Jacobian calculation) as is possible. These operations
+  //                 are likely to be expensive.
+  const auto adiff_system = system.ToAutoDiffXd();
+  std::unique_ptr<Context<AutoDiffXd>> adiff_context =
+      adiff_system->AllocateContext();
+  adiff_context->SetTimeStateAndParametersFrom(context);
+  adiff_system->FixInputPortsFrom(system, context, adiff_context.get());
+  adiff_context->SetTime(t);
+
+  // Set the continuous state in the context.
+  adiff_context->SetContinuousState(a_xt);
+
+  // Evaluate the derivatives at that state.
+  const VectorX<AutoDiffXd> result =
+      this->EvalTimeDerivatives(*adiff_system, *adiff_context).CopyToVector();
+
+  *J = math::ExtractGradient(result);
+
+  // Sometimes the system's derivatives f(t, x) do not depend on its states, for
+  // example, when f(t, x) = constant or when f(t, x) depends only on t. In this
+  // case, make sure that the Jacobian isn't a n ✕ 0 matrix (this will cause a
+  // segfault when forming Newton iteration matrices); if it is, we set it equal
+  // to an n x n zero matrix.
+  if (J->cols() == 0) {
+    *J = MatrixX<T>::Zero(x.size(), x.size());
   }
 }
 

@@ -49,6 +49,7 @@ void FixedStepImplicitEulerIntegrator<T>::DoPrintStatistics() const {
   fmt::print("Num DoSteps  = {}\n", statistics_.num_do_steps);
   fmt::print("       h_min = {}\n", statistics_.h_min);
   fmt::print("       h_max = {}\n", statistics_.h_max);
+  fmt::print("  num srinks = {}\n", num_step_shrinkages_);  
   fmt::print("Num NR iters = {}\n", statistics_.num_nr_iterations);
   fmt::print("Num derivative evals (residual) = {}\n",
              statistics_.num_function_evaluations);
@@ -346,7 +347,7 @@ FixedStepImplicitEulerIntegrator<T>::CheckNewtonConvergence(
 
   // Print progress regardless of the check type.
   const T theta = dx_norm / last_dx_norm;
-  fmt::print("it {}, theta: {}\n", iteration, theta);
+  fmt::print("it {}, theta: {}, dx: {}\n", iteration, theta, dx_norm);
 
   if (convergence_check_ == ConvergenceCheck::kUseUpdateAsErrorEstimation) {
     // A guess. Ideally we'd expose this or probably better, ask the system for
@@ -418,26 +419,15 @@ FixedStepImplicitEulerIntegrator<T>::CheckNewtonConvergence(
 }
 
 template <class T>
-bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
-  INSTRUMENT_FUNCTION("Integrator main entry point.");
-  using std::min;
-  using std::max;
+bool FixedStepImplicitEulerIntegrator<T>::StepRecursive(int trial, const T& h) {
+  constexpr int max_newton_iterations = 10;
 
-  ++statistics_.num_do_steps;
-  statistics_.h_min = min(statistics_.h_min, h);
-  statistics_.h_max = max(statistics_.h_max, h);
-
-  fmt::print("\n");
-  fmt::print("DoStep: {}\n", statistics_.num_do_steps);  
-
-  const int max_newton_iterations = 10;
+  fmt::print("StepRecursive: {}, {}\n", trial, h);
 
   // Copy state at t = t0 before we mutate the context.
   Context<T>* context = this->get_mutable_context();
   const T t0 = context->get_time();
   const VectorX<T> x0 = context->get_continuous_state().CopyToVector();
-
-  fmt::print(" t0: {}, h: {}\n", t0, h);
 
   // N.B. calc_residual mutates the base class context, trashing any cached
   // computations.
@@ -455,9 +445,11 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
   // Initial guess.
   VectorX<T> x_plus = x0;
 
+  // Jacobian at {t0, x0}.
   if (!full_newton_) {
     const int n = x0.size();
-    CalcJacobian(t0, x0, &J_);
+    // Calc J0 only on the first trial. Reuse in other trials.
+    if (trial == 1) CalcJacobian(t0, x0, &J_);
     iteration_matrix_.SetAndFactor(J_ * -h + MatrixX<T>::Identity(n, n));
     ++statistics_.num_factorizations;
   }
@@ -507,6 +499,7 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
         CheckNewtonConvergence(i, x_plus, dx, dx_norm, last_dx_norm);
     // If it converged, we're done.
     if (status == ConvergenceStatus::kConverged) {
+      fmt::print("Converged. t: {}, h: {}\n", t, h);
       context->SetTimeAndContinuousState(t, x_plus);
       return true;
     }
@@ -519,8 +512,43 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
     last_dx_norm = dx_norm;
   }
 
-  DRAKE_LOGGER_DEBUG("DoStep() convergence failed");
+  DRAKE_LOGGER_DEBUG("StepRecursive() convergence failed");
 
+  // If it failed, retry a smaller time step until we succeed.
+  // Reset state to {t0, x0} for the next smaller step.
+  context->SetTimeAndContinuousState(t0, x0);
+  last_step_was_adjusted_ = true;
+  num_step_shrinkages_++;
+  return StepRecursive(trial + 1, h / 2.0);
+}
+
+template <class T>
+bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
+  INSTRUMENT_FUNCTION("Integrator main entry point.");
+  using std::min;
+  using std::max;
+
+  // Reset. We always try h first.
+  last_step_was_adjusted_ = false;
+
+  ++statistics_.num_do_steps;
+  statistics_.h_min = min(statistics_.h_min, h);
+  statistics_.h_max = max(statistics_.h_max, h);
+
+  fmt::print("\n");
+  fmt::print("DoStep: {}\n", statistics_.num_do_steps);    
+
+  Context<T>* context = this->get_mutable_context();
+  const T t0 = context->get_time();
+
+  fmt::print(" t0: {}, h: {}\n", t0, h);  
+
+  // This recursive search of a successfull step must always succeed.
+  bool success = StepRecursive(1, h);
+  DRAKE_DEMAND(success);
+  return success;
+
+#if 0
   // DoStep()'s contract is to return the state to {t0, x0} if it fails!
   // TODO: Make NVI Step() do this instead.
   context->SetTimeAndContinuousState(t0, x0);
@@ -528,6 +556,7 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
   // In full Newton mode, nothing else to do. Report failure so that the
   // simulator can decided whether to reattempt with a smaller time step.
   return false;
+#endif  
 }
 
 

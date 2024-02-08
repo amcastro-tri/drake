@@ -439,6 +439,8 @@ typename IntegratorBase<T>::StepResult
       ValidateSmallerStepSize(h, adjusted_h);
       full_step = false;
     }
+    // Hack to allow Step() to behave as if there was a StepAtMost().
+    full_step &= !last_step_was_adjusted();
   } else {
     full_step = StepOnceErrorControlledAtMost(h);
   }

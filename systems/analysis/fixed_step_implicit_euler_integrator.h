@@ -183,6 +183,11 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
   void DoResetStatistics() final;
   bool DoStep(const T& h) final;
   void DoPrintStatistics() const final;
+  bool last_step_was_adjusted() const final {
+    return last_step_was_adjusted_;
+  }
+
+  bool StepRecursive(int trial, const T& h);
 
   // non-const because updates stats.
   void CalcJacobian(const T& t, const VectorX<T>& x, MatrixX<T>* J);
@@ -216,6 +221,10 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
   IterationMatrix iteration_matrix_;
 
   bool full_newton_{true};
+
+  bool last_step_was_adjusted_{false};
+
+  int num_step_shrinkages_{0};
 
   // The continuous state update vector used during Newton-Raphson.
   // Only used when error_norm_ = ErrorNorm::kWeighted.

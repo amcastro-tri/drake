@@ -174,6 +174,10 @@ class IntegratorBase {
 
   virtual ~IntegratorBase() = default;
 
+  // Hack to allow DoStep() to adjust step size.
+  // Returns `true` if DoStep(h) adjusted the step to be smaller than h.
+  virtual bool last_step_was_adjusted() const { return false; }
+
   /**
    @anchor integrator-accuracy
    @name Methods for getting and setting integrator accuracy

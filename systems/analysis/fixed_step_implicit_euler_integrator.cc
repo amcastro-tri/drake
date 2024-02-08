@@ -514,6 +514,10 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
 
   DRAKE_LOGGER_DEBUG("DoStep() convergence failed");
 
+  // DoStep()'s contract is to return the state to {t0, x0} if it fails!
+  // TODO: Make NVI Step() do this instead.
+  context->SetTimeAndContinuousState(t0, x0);
+
   // In full Newton mode, nothing else to do. Report failure so that the
   // simulator can decided whether to reattempt with a smaller time step.
   return false;

@@ -611,7 +611,6 @@ int do_main() {
     ie.set_use_full_newton(FLAGS_full_newton);
   }
 
-#if 0
   // Monitor to save stats into a file.
   simulator->set_monitor([&simulator, &plant](
                              const systems::Context<double>& root_context) {
@@ -660,7 +659,6 @@ int do_main() {
 
     return systems::EventStatus::Succeeded();
   });
-#endif
 
   simulator->set_publish_every_time_step(true);
   simulator->Initialize();

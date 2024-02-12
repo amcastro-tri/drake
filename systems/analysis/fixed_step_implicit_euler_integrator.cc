@@ -421,8 +421,12 @@ FixedStepImplicitEulerIntegrator<T>::CheckNewtonConvergence(
 template <class T>
 bool FixedStepImplicitEulerIntegrator<T>::StepRecursive(int trial, const T& h) {
   constexpr int max_newton_iterations = 10;
+  using std::min;
+  using std::max;
 
   fmt::print("StepRecursive: {}, {}\n", trial, h);
+  statistics_.h_min = min(statistics_.h_min, h);
+  statistics_.h_max = max(statistics_.h_max, h);
 
   // Copy state at t = t0 before we mutate the context.
   Context<T>* context = this->get_mutable_context();
@@ -531,9 +535,7 @@ bool FixedStepImplicitEulerIntegrator<T>::DoStep(const T& h) {
   // Reset. We always try h first.
   last_step_was_adjusted_ = false;
 
-  ++statistics_.num_do_steps;
-  statistics_.h_min = min(statistics_.h_min, h);
-  statistics_.h_max = max(statistics_.h_max, h);
+  ++statistics_.num_do_steps;  
 
   fmt::print("\n");
   fmt::print("DoStep: {}\n", statistics_.num_do_steps);    

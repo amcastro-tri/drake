@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "drake/common/unused.h"
+#include "drake/common/profiler.h"
 #include "drake/multibody/contact_solvers/contact_configuration.h"
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
 #include "drake/multibody/contact_solvers/sap/sap_ball_constraint.h"
@@ -129,6 +130,7 @@ template <typename T>
 void SapDriver<T>::CalcLinearDynamicsMatrix(const systems::Context<T>& context,
                                             std::vector<MatrixX<T>>* A) const {
   DRAKE_DEMAND(A != nullptr);
+  INSTRUMENT_FUNCTION("Builds A.");
   A->resize(tree_topology().num_trees());
   const int nv = plant().num_velocities();
 
@@ -163,6 +165,7 @@ void SapDriver<T>::CalcLinearDynamicsMatrix(const systems::Context<T>& context,
 template <typename T>
 void SapDriver<T>::CalcFreeMotionVelocities(const systems::Context<T>& context,
                                             VectorX<T>* v_star) const {
+  INSTRUMENT_FUNCTION("Computes v*.");
   DRAKE_DEMAND(v_star != nullptr);
   // N.B. Forces are evaluated at the previous time step state. This is
   // consistent with the explicit Euler and symplectic Euler schemes.
@@ -198,6 +201,7 @@ template <typename T>
 std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
     const systems::Context<T>& context, SapContactProblem<T>* problem) const {
   DRAKE_DEMAND(problem != nullptr);
+  INSTRUMENT_FUNCTION("Adds contraints and makes J.");
   DRAKE_DEMAND(plant().get_discrete_contact_approximation() !=
                DiscreteContactApproximation::kTamsi);
 
@@ -800,6 +804,7 @@ void SapDriver<T>::AddFixedConstraints(
 template <typename T>
 void SapDriver<T>::CalcContactProblemCache(
     const systems::Context<T>& context, ContactProblemCache<T>* cache) const {
+  INSTRUMENT_FUNCTION("Builds ContactProblem.");
   std::vector<MatrixX<T>> A;
   CalcLinearDynamicsMatrix(context, &A);
   VectorX<T> v_star;
@@ -1013,6 +1018,7 @@ template <typename T>
 void SapDriver<T>::CalcContactSolverResults(
     const systems::Context<T>& context,
     contact_solvers::internal::ContactSolverResults<T>* results) const {
+  INSTRUMENT_FUNCTION("SapDriver main entry point.");
   const SapSolverResults<T>& sap_results = EvalSapSolverResults(context);
   const DiscreteContactData<DiscreteContactPair<T>>& discrete_pairs =
       manager().EvalDiscreteContactPairs(context);

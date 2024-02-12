@@ -313,9 +313,7 @@ template<typename T>
 void MultibodyTreeSystem<T>::DoCalcTimeDerivatives(
     const systems::Context<T>& context,
     systems::ContinuousState<T>* derivatives) const {
-  INSTRUMENT_FUNCTION(
-    "<" + NiceTypeName::Get<T>() + ">. " +
-    "xdot = f(x) main entry point. ");
+  INSTRUMENT_FUNCTION("xdot = f(x) main entry point. ");
   // No derivatives to compute if state is discrete.
   if (is_discrete()) return;
   // No derivatives to compute if state is empty. (Will segfault otherwise.)

@@ -1859,7 +1859,6 @@ void MultibodyPlant<T>::CalcPointPairPenetrations(
     const systems::Context<T>& context,
     std::vector<PenetrationAsPointPair<T>>* output) const {
   INSTRUMENT_FUNCTION(
-    "<" + NiceTypeName::Get<T>() + ">. " +
     "Geometry. Point pair penetrations. ");
   this->ValidateContext(context);
   if (num_collision_geometries() > 0) {
@@ -2743,7 +2742,6 @@ template <typename T>
 void MultibodyPlant<T>::AddInForcesContinuous(
     const systems::Context<T>& context, MultibodyForces<T>* forces) const {
   INSTRUMENT_FUNCTION(
-      "<" + NiceTypeName::Get<T>() + ">. " +
       "Computes all forces, inputs + force elements + contact. ");
   this->ValidateContext(context);
 

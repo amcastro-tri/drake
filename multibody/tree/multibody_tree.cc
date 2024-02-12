@@ -14,6 +14,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/common/text_logging.h"
 #include "drake/common/unused.h"
+#include "drake/common/profiler.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/tree/body_node_world.h"
@@ -3421,9 +3422,11 @@ void MultibodyTree<T>::CalcArticulatedBodyForceCache(
     const ArticulatedBodyInertiaCache<T>& abic,
     const std::vector<SpatialForce<T>>& Zb_Bo_W_cache,
     const MultibodyForces<T>& forces,
-    ArticulatedBodyForceCache<T>* aba_force_cache) const {
+    ArticulatedBodyForceCache<T>* aba_force_cache) const {      
   DRAKE_DEMAND(aba_force_cache != nullptr);
   DRAKE_DEMAND(forces.CheckHasRightSizeForModel(*this));
+
+  INSTRUMENT_FUNCTION("Tip-to-base recursion.");
 
   // Get position and velocity kinematics from cache.
   const PositionKinematicsCache<T>& pc = EvalPositionKinematics(context);
@@ -3489,6 +3492,7 @@ void MultibodyTree<T>::CalcArticulatedBodyAccelerations(
     const ArticulatedBodyForceCache<T>& aba_force_cache,
     AccelerationKinematicsCache<T>* ac) const {
   DRAKE_DEMAND(ac != nullptr);
+  INSTRUMENT_FUNCTION("Base-to-tip recursion.");
   const PositionKinematicsCache<T>& pc = EvalPositionKinematics(context);
   const std::vector<Vector6<T>>& H_PB_W_cache =
       EvalAcrossNodeJacobianWrtVExpressedInWorld(context);

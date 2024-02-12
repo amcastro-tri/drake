@@ -10,6 +10,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/common/scope_exit.h"
 #include "drake/common/unused.h"
+#include "drake/common/profiler.h"
 #include "drake/geometry/geometry_ids.h"
 #include "drake/geometry/proximity_properties.h"
 #include "drake/geometry/query_results/penetration_as_point_pair.h"
@@ -128,6 +129,8 @@ void CompliantContactManager<T>::CalcAccelerationsDueToNonConstraintForcesCache(
     const systems::Context<T>& context,
     AccelerationsDueNonConstraintForcesCache<T>* forward_dynamics_cache) const {
   DRAKE_DEMAND(forward_dynamics_cache != nullptr);
+  
+  INSTRUMENT_FUNCTION("Calls MbT forward dynamics functions.");
 
   // SAP models joint limits and actuation inputs (with effort limits) using
   // constraints. Therefore these terms are not included here since they are

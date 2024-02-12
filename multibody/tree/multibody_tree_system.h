@@ -342,6 +342,12 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
       const systems::Context<T>& context,
       systems::ContinuousState<T>* derivatives) const final;
 
+  // This is only meaningful in continuous mode.
+  void DoCalcApproximateTimeDerivatives(
+      const systems::Context<T>& context,
+      const systems::Context<T>& frozen_context,
+      systems::ContinuousState<T>* derivatives) const final;
+
   void DoMapQDotToVelocity(
       const systems::Context<T>& context,
       const Eigen::Ref<const VectorX<T>>& qdot,
@@ -453,6 +459,11 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
       const systems::Context<T>& context,
       ArticulatedBodyForceCache<T>* aba_force_cache) const;
 
+  void CalcArticulatedBodyForceCache(
+      const systems::Context<T>& context,
+      const systems::Context<T>& frozen_context,
+      ArticulatedBodyForceCache<T>* aba_force_cache) const;      
+
   // This is the method used to evaluate the AccelerationKinematicsCache when
   // it is out of date. The actual computation performed depends on whether
   // we are in continuous or discrete mode.
@@ -463,6 +474,11 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
     else
       CalcForwardDynamicsContinuous(context, ac);
   }
+
+  void CalcForwardDynamics(
+    const systems::Context<T>& context,
+    const systems::Context<T>& frozen_context,
+    AccelerationKinematicsCache<T>* ac) const;
 
   // When in continuous mode, this method is used to compute forward dynamics.
   // It collects forces from both MultibodyTree internal elements and

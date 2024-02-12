@@ -335,7 +335,39 @@ void MultibodyTreeSystem<T>::DoCalcTimeDerivatives(
   derivatives->SetFromVector(xdot);
 }
 
-template<typename T>
+template <typename T>
+void MultibodyTreeSystem<T>::DoCalcApproximateTimeDerivatives(
+    const systems::Context<T>& context,
+    const systems::Context<T>& frozen_context,
+    systems::ContinuousState<T>* derivatives) const {
+  INSTRUMENT_FUNCTION("Approximate xdot = f(x) main entry point. ");
+
+  // No derivatives to compute if state is discrete.
+  if (is_discrete()) return;
+  // No derivatives to compute if state is empty. (Will segfault otherwise.)
+  // TODO(amcastro-tri): When nv = 0 we should not declare state or cache
+  // entries at all and the system framework will never call this.
+  if (internal_tree().num_states() == 0) return;
+
+  const VectorX<T>& x = dynamic_cast<const systems::BasicVector<T>&>(
+                            context.get_continuous_state_vector())
+                            .value();
+  const auto v = x.bottomRows(internal_tree().num_velocities());
+
+  // TODO: het read of heap allocation. Scratch cache entry?
+  AccelerationKinematicsCache<T> ac(internal_tree().get_topology());
+  this->CalcForwardDynamics(context, frozen_context, &ac);
+  const VectorX<T>& vdot = ac.get_vdot();
+
+  // TODO(sherm1) Heap allocation here. Get rid of it.
+  VectorX<T> xdot(internal_tree().num_states());
+  VectorX<T> qdot(internal_tree().num_positions());
+  internal_tree().MapVelocityToQDot(context, v, &qdot);
+  xdot << qdot, vdot;
+  derivatives->SetFromVector(xdot);
+}
+
+template <typename T>
 void MultibodyTreeSystem<T>::DoMapQDotToVelocity(
     const systems::Context<T>& context,
     const Eigen::Ref<const VectorX<T>>& qdot,
@@ -441,6 +473,34 @@ void MultibodyTreeSystem<T>::CalcArticulatedBodyForceCache(
 }
 
 template <typename T>
+void MultibodyTreeSystem<T>::CalcArticulatedBodyForceCache(
+    const systems::Context<T>& context,
+    const systems::Context<T>& frozen_context,
+    ArticulatedBodyForceCache<T>* aba_force_cache) const {
+  DRAKE_DEMAND(aba_force_cache != nullptr);
+
+  // TODO(sherm1) Heap allocation here. Get rid of it.
+  MultibodyForces<T> forces(*this);
+
+  // Compute forces applied by force elements. Note that this resets forces
+  // to empty so must come first.
+  // N.B. Force elements might need to be considered fully implicit.
+  // Therefore we evaulate kinematics at context, rather than at frozen_context.
+  const PositionKinematicsCache<T>& pc = EvalPositionKinematics(context);
+  const VelocityKinematicsCache<T>& vc = EvalVelocityKinematics(context);
+  internal_tree().CalcForceElementsContribution(context, pc, vc, &forces);
+
+  // Compute forces applied by the derived class (likely MultibodyPlant).
+  // TODO: Consider freezing some terms here.
+  AddInForcesContinuous(context, &forces);
+
+  // Perform the tip-to-base pass to compute the force bias terms needed by ABA.
+  // N.B. ABIs and force bias Ab_WB are evaluated at frozen_context.
+  internal_tree().CalcArticulatedBodyForceCache(frozen_context, forces,
+                                                aba_force_cache);
+}
+
+template <typename T>
 void MultibodyTreeSystem<T>::CalcForwardDynamicsContinuous(
     const systems::Context<T>& context,
     AccelerationKinematicsCache<T>* ac) const {
@@ -453,6 +513,24 @@ void MultibodyTreeSystem<T>::CalcForwardDynamicsContinuous(
   // Perform the last base-to-tip pass to compute accelerations using the O(n)
   // ABA.
   internal_tree().CalcArticulatedBodyAccelerations(context,
+                                                   aba_force_cache, ac);
+}
+
+template <typename T>
+void MultibodyTreeSystem<T>::CalcForwardDynamics(
+    const systems::Context<T>& context,
+    const systems::Context<T>& frozen_context,
+    AccelerationKinematicsCache<T>* ac) const {
+  DRAKE_DEMAND(ac != nullptr);
+
+  // Collect forces from all sources and propagate tip-to-base.
+  // TODO: Place the aba in a scratch cache entry to avoid heap allocations.
+  ArticulatedBodyForceCache<T> aba_force_cache(internal_tree().get_topology());
+  CalcArticulatedBodyForceCache(context, frozen_context, &aba_force_cache);
+
+  // Perform the last base-to-tip pass to compute accelerations using the O(n)
+  // ABA.
+  internal_tree().CalcArticulatedBodyAccelerations(frozen_context,
                                                    aba_force_cache, ac);
 }
 

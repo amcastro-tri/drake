@@ -1327,6 +1327,8 @@ void MultibodyTree<T>::CalcArticulatedBodyForceBias(
   DRAKE_THROW_UNLESS(Zb_Bo_W_all != nullptr);
   DRAKE_THROW_UNLESS(static_cast<int>(Zb_Bo_W_all->size()) ==
       topology_.num_mobods());
+  INSTRUMENT_FUNCTION("Computes Zb.");
+      
   const std::vector<SpatialAcceleration<T>>& Ab_WB_cache =
       EvalSpatialAccelerationBiasCache(context);
 
@@ -3380,6 +3382,7 @@ template <typename T>
 void MultibodyTree<T>::CalcArticulatedBodyInertiaCache(
     const systems::Context<T>& context,
     ArticulatedBodyInertiaCache<T>* abic) const {
+  INSTRUMENT_FUNCTION("Computes ABIs.");
   const VectorX<T>& reflected_inertia = EvalReflectedInertiaCache(context);
   CalcArticulatedBodyInertiaCache(context, reflected_inertia, abic);
 }

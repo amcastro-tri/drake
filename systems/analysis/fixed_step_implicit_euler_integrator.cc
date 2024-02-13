@@ -67,7 +67,9 @@ void FixedStepImplicitEulerIntegrator<T>::CalcJacobian(const T& t,
   INSTRUMENT_FUNCTION("Jacobian compuation.");    
 
   // Get the current number of ODE evaluations.
-  int64_t current_derivative_evals = this->get_num_derivative_evaluations();
+  int64_t current_derivative_evals =
+      use_approximate_derivatives_ ? statistics_.num_function_evaluations
+                                   : this->get_num_derivative_evaluations();
 
   switch (jacobian_scheme_) {
     case JacobianComputationScheme::kForwardDifference:
@@ -88,8 +90,13 @@ void FixedStepImplicitEulerIntegrator<T>::CalcJacobian(const T& t,
 
   // Use the new number of ODE evaluations to determine the number of Jacobian
   // evaluations.
-  statistics_.num_jacobian_function_evaluations +=
-      (this->get_num_derivative_evaluations() - current_derivative_evals);
+  if (use_approximate_derivatives_) {
+    statistics_.num_jacobian_function_evaluations +=
+        (statistics_.num_function_evaluations - current_derivative_evals);
+  } else {
+    statistics_.num_jacobian_function_evaluations +=
+        (this->get_num_derivative_evaluations() - current_derivative_evals);
+  }
 }
 
 template <class T>
@@ -123,13 +130,19 @@ void FixedStepImplicitEulerIntegrator<T>::ComputeForwardDiffJacobian(
   // somewhere else, as in the NR residual. That'd save one function evaluation
   // per NR iteration.
   context->SetTimeAndContinuousState(t, x);
-  this->get_system().CalcApproximateTimeDerivatives(
+  VectorX<T> f(x.size());
+  if (use_approximate_derivatives_) {
+    statistics_.num_function_evaluations++;
+    this->get_system().CalcApproximateTimeDerivatives(
         *context, *frozen_context_, derivatives_.get());
-  const VectorX<T> f = derivatives_->CopyToVector();
-//  const VectorX<T> f = this->EvalTimeDerivatives(*context).CopyToVector();
+    f = derivatives_->CopyToVector();
+  } else {
+    f = this->EvalTimeDerivatives(*context).CopyToVector();
+  }
 
   // Compute the Jacobian.
   VectorX<T> x_eps = x;
+  VectorX<T> f_eps(x.size());
   for (int i = 0; i < n; ++i) {
     // Compute a good increment to the dimension using approximately 1/eps
     // digits of precision. Note that if |xt| is large, the increment will
@@ -150,11 +163,15 @@ void FixedStepImplicitEulerIntegrator<T>::ComputeForwardDiffJacobian(
     //              partition, and ideally modify only the one changed element.
     // Compute f' and set the relevant column of the Jacobian matrix.
     context->SetTimeAndContinuousState(t, x_eps);
-    this->get_system().CalcApproximateTimeDerivatives(
-        *context, *frozen_context_, derivatives_.get());
-    J->col(i) = (derivatives_->CopyToVector() - f) / dxi;
-    // J->col(i) = (this->EvalTimeDerivatives(*context).CopyToVector() - f) /
-    // dxi;
+    if (use_approximate_derivatives_) {
+      statistics_.num_function_evaluations++;
+      this->get_system().CalcApproximateTimeDerivatives(
+          *context, *frozen_context_, derivatives_.get());
+      f_eps = derivatives_->CopyToVector();
+    } else {
+      f_eps = this->EvalTimeDerivatives(*context).CopyToVector();
+    }
+    J->col(i) = (f_eps - f) / dxi;
 
     // Reset xt' to xt.
     x_eps(i) = x(i);
@@ -442,7 +459,7 @@ bool FixedStepImplicitEulerIntegrator<T>::StepRecursive(int trial, const T& h) {
   const T t0 = context->get_time();
   const VectorX<T> x0 = context->get_continuous_state().CopyToVector();
 
-  if (trial == 1) {
+  if (use_approximate_derivatives_ && trial == 1) {
     frozen_context_->SetTimeAndContinuousState(t0 + h, x0);
   }
 
@@ -452,13 +469,17 @@ bool FixedStepImplicitEulerIntegrator<T>::StepRecursive(int trial, const T& h) {
   auto calc_residual = [t0, h, &x0, context, this](const VectorX<T>& x) {
     const int previous_num_evals = this->get_num_derivative_evaluations();
     context->SetTimeAndContinuousState(t0 + h, x);
-    this->get_system().CalcApproximateTimeDerivatives(
-        *context, *this->frozen_context_, derivatives_.get());
-    const VectorX<T> r = x - x0 - h * derivatives_->CopyToVector();
-    // const VectorX<T> r =
-    //     x - x0 - h * this->EvalTimeDerivatives(*context).CopyToVector();
-    this->statistics_.num_function_evaluations +=
+    VectorX<T> r(x.size());
+    if (use_approximate_derivatives_) {
+      this->get_system().CalcApproximateTimeDerivatives(
+          *context, *this->frozen_context_, derivatives_.get());
+      r = x - x0 - h * derivatives_->CopyToVector();
+      this->statistics_.num_function_evaluations++;
+    } else {
+      r = x - x0 - h * this->EvalTimeDerivatives(*context).CopyToVector();
+      this->statistics_.num_function_evaluations +=
         (this->get_num_derivative_evaluations() - previous_num_evals);
+    }    
     return r;
   };
 

@@ -109,6 +109,7 @@ DEFINE_string(
     integrator_jacobian_scheme, "forward",
     "Jacobian computation scheme: 'forward', 'central', 'automatic'.");
 DEFINE_bool(full_newton, true, "Update Jacobian every iteration");
+DEFINE_bool(approximate_derivatives, false, "Use approximate dynamics");
 DEFINE_string(convergence_check, "direct",
               "Convergence check type: 'hairer', 'direct'.");
 DEFINE_string(error_norm, "rms",
@@ -475,6 +476,7 @@ void SetIntegratorOptions(IntegratorBase<double>* base_integrator) {
   if (integrator == nullptr) return;
 
   integrator->set_full_newton(FLAGS_full_newton);
+  integrator->use_approximate_derivatives(FLAGS_approximate_derivatives);
 
   using ConvergenceCheck =
       FixedStepImplicitEulerIntegrator<double>::ConvergenceCheck;

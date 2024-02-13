@@ -109,11 +109,15 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
 
   void set_full_newton(bool use_full_newton) { full_newton_ = use_full_newton; }
 
+  void use_approximate_derivatives(bool use_approximate) {
+    use_approximate_derivatives_ = use_approximate;
+  }
+
   /**
    * This integrator does not support error estimation.
    */
   bool supports_error_estimation() const final { return false; }
-  
+
   /** Integrator does not provide an error estimate. */
   int get_error_estimate_order() const final { return 0; }
 
@@ -223,6 +227,8 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
   bool full_newton_{true};
 
   bool last_step_was_adjusted_{false};
+
+  bool use_approximate_derivatives_{false};
 
   int num_step_shrinkages_{0};
 

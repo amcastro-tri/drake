@@ -35,6 +35,8 @@ VectorX<T> FixedStepImplicitEulerIntegrator<T>::IterationMatrix::Solve(
 
 template <class T>
 void FixedStepImplicitEulerIntegrator<T>::DoInitialize() {
+  frozen_context_ = this->get_system().CreateDefaultContext();
+  derivatives_ = this->get_system().AllocateTimeDerivatives();
   dx_state_ = this->get_system().AllocateTimeDerivatives();
 }
 
@@ -121,7 +123,10 @@ void FixedStepImplicitEulerIntegrator<T>::ComputeForwardDiffJacobian(
   // somewhere else, as in the NR residual. That'd save one function evaluation
   // per NR iteration.
   context->SetTimeAndContinuousState(t, x);
-  const VectorX<T> f = this->EvalTimeDerivatives(*context).CopyToVector();
+  this->get_system().CalcApproximateTimeDerivatives(
+        *context, *frozen_context_, derivatives_.get());
+  const VectorX<T> f = derivatives_->CopyToVector();
+//  const VectorX<T> f = this->EvalTimeDerivatives(*context).CopyToVector();
 
   // Compute the Jacobian.
   VectorX<T> x_eps = x;
@@ -145,7 +150,11 @@ void FixedStepImplicitEulerIntegrator<T>::ComputeForwardDiffJacobian(
     //              partition, and ideally modify only the one changed element.
     // Compute f' and set the relevant column of the Jacobian matrix.
     context->SetTimeAndContinuousState(t, x_eps);
-    J->col(i) = (this->EvalTimeDerivatives(*context).CopyToVector() - f) / dxi;
+    this->get_system().CalcApproximateTimeDerivatives(
+        *context, *frozen_context_, derivatives_.get());
+    J->col(i) = (derivatives_->CopyToVector() - f) / dxi;
+    // J->col(i) = (this->EvalTimeDerivatives(*context).CopyToVector() - f) /
+    // dxi;
 
     // Reset xt' to xt.
     x_eps(i) = x(i);
@@ -433,14 +442,21 @@ bool FixedStepImplicitEulerIntegrator<T>::StepRecursive(int trial, const T& h) {
   const T t0 = context->get_time();
   const VectorX<T> x0 = context->get_continuous_state().CopyToVector();
 
+  if (trial == 1) {
+    frozen_context_->SetTimeAndContinuousState(t0 + h, x0);
+  }
+
   // N.B. calc_residual mutates the base class context, trashing any cached
   // computations.
   const T t = t0 + h;
   auto calc_residual = [t0, h, &x0, context, this](const VectorX<T>& x) {
     const int previous_num_evals = this->get_num_derivative_evaluations();
     context->SetTimeAndContinuousState(t0 + h, x);
-    const VectorX<T> r =
-        x - x0 - h * this->EvalTimeDerivatives(*context).CopyToVector();
+    this->get_system().CalcApproximateTimeDerivatives(
+        *context, *this->frozen_context_, derivatives_.get());
+    const VectorX<T> r = x - x0 - h * derivatives_->CopyToVector();
+    // const VectorX<T> r =
+    //     x - x0 - h * this->EvalTimeDerivatives(*context).CopyToVector();
     this->statistics_.num_function_evaluations +=
         (this->get_num_derivative_evaluations() - previous_num_evals);
     return r;

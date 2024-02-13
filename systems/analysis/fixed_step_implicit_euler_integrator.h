@@ -226,6 +226,9 @@ class FixedStepImplicitEulerIntegrator final : public IntegratorBase<T> {
 
   int num_step_shrinkages_{0};
 
+  std::unique_ptr<Context<T>> frozen_context_;
+  std::unique_ptr<ContinuousState<T>> derivatives_;
+
   // The continuous state update vector used during Newton-Raphson.
   // Only used when error_norm_ = ErrorNorm::kWeighted.
   std::unique_ptr<ContinuousState<T>> dx_state_;

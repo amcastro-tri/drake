@@ -314,6 +314,34 @@ void Diagram<T>::DoCalcTimeDerivatives(const Context<T>& context,
 }
 
 template <typename T>
+void Diagram<T>::DoCalcApproximateTimeDerivatives(
+    const Context<T>& context, const Context<T>& frozen_context,
+    ContinuousState<T>* derivatives) const {
+  auto diagram_context = dynamic_cast<const DiagramContext<T>*>(&context);
+  auto frozen_diagram_context =
+      dynamic_cast<const DiagramContext<T>*>(&frozen_context);
+  DRAKE_DEMAND(diagram_context != nullptr);
+  DRAKE_DEMAND(frozen_diagram_context != nullptr);
+
+  auto diagram_derivatives =
+      dynamic_cast<DiagramContinuousState<T>*>(derivatives);
+  DRAKE_DEMAND(diagram_derivatives != nullptr);
+  const int n = diagram_derivatives->num_substates();
+  DRAKE_DEMAND(num_subsystems() == n);
+
+  // Evaluate the derivatives of each constituent system.
+  for (SubsystemIndex i(0); i < n; ++i) {
+    const Context<T>& subcontext = diagram_context->GetSubsystemContext(i);
+    const Context<T>& frozen_subcontext =
+        frozen_diagram_context->GetSubsystemContext(i);
+    ContinuousState<T>& subderivatives =
+        diagram_derivatives->get_mutable_substate(i);
+    registered_systems_[i]->CalcApproximateTimeDerivatives(
+        subcontext, frozen_subcontext, &subderivatives);
+  }
+}
+
+template <typename T>
 void Diagram<T>::DoCalcImplicitTimeDerivativesResidual(
     const Context<T>& context, const ContinuousState<T>& proposed_derivatives,
     EigenPtr<VectorX<T>> residual) const {

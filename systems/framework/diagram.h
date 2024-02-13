@@ -506,6 +506,10 @@ class Diagram : public System<T>, internal::SystemParentServiceInterface {
   void DoCalcTimeDerivatives(const Context<T>& context,
                              ContinuousState<T>* derivatives) const final;
 
+  void DoCalcApproximateTimeDerivatives(
+      const Context<T>& context, const Context<T>& frozen_context,
+      ContinuousState<T>* derivatives) const final;
+
   void DoCalcImplicitTimeDerivativesResidual(
       const Context<T>& context, const ContinuousState<T>& proposed_derivatives,
       EigenPtr<VectorX<T>> residual) const final;

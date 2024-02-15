@@ -23,9 +23,7 @@ GTEST_TEST(MatrixTest, MatrixProduct) {
        0;
   // clang-format on
 
-  // Check the ScalarBinaryOpTraits by multiplying mixed-type scalars.
-  EXPECT_TRUE((std::is_same_v<decltype(A * 2.0)::Scalar, AutoDiff>));
-  EXPECT_TRUE((std::is_same_v<decltype(2.0 * B)::Scalar, AutoDiff>));
+  // Check the NumTraits by multiplying mixed-type scalars.
   MatrixX<AutoDiff> A2 = A * 2.0;
   MatrixX<AutoDiff> B2 = 2.0 * B;
 

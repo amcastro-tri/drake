@@ -48,6 +48,20 @@ drake_cc_googlebench_binary(
     ],
 )
 
+drake_cc_googlebench_binary(
+    name = "autodiff_experiments",
+    srcs = ["autodiff_experiments.cc"],
+    add_test_rule = True,
+    deps = [
+        "//common:add_text_logging_gflags",
+        "//common:essential",
+        "//math:geometric_transform",
+        "//math:gradient",
+        "//tools/performance:fixture_common",
+        "//tools/performance:gflags_main",
+    ],
+)
+
 drake_py_experiment_binary(
     name = "cassie_experiment",
     googlebench_binary = ":cassie",

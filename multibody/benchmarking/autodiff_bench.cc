@@ -39,10 +39,25 @@ class nPendulum {
     }
   }
 
+  void CalcRotationKinematics(
+      const VectorX<T>& q, std::vector<RotationMatrix<T>>* kinematics) const {
+    DRAKE_DEMAND(q.size() == num_links_);
+    std::vector<RotationMatrix<T>>& R_WB = *kinematics;
+    R_WB[0] = CalcJointRotationMatrix(q[0]);
+    for (int i = 1; i < num_links_; ++i) {
+      const RotationMatrix<T> R_PB = CalcJointRotationMatrix(q[i]);
+      R_WB[i] = R_WB[i - 1] * R_PB;
+    }
+  }
+
  private:
   RigidTransform<T> CalcJointRigidTransform(const T& theta) const {
     return RigidTransform<T>(RotationMatrix<T>::MakeZRotation(theta),
                              Vector3<T>(T(link_length_), 0, 0));
+  }
+
+  RotationMatrix<T> CalcJointRotationMatrix(const T& theta) const {
+    return RotationMatrix<T>::MakeZRotation(theta);
   }
 
   int num_links_;
@@ -99,6 +114,15 @@ class nPendulumBench : public benchmark::Fixture {
     }
   }
 
+  // Runs rotations only benchmark.
+  // NOLINTNEXTLINE(runtime/references)
+  void DoRotationKinematics(benchmark::State& state) {    
+    for (auto _ : state) {
+      InvalidateState();
+      pendulum_.CalcRotationKinematics(q_, &rotation_kinematics_);
+    }
+  }
+
   // The plant itself.
   const int kNumLinks{20};
   const double kLinkLength{0.2};
@@ -109,6 +133,7 @@ class nPendulumBench : public benchmark::Fixture {
 
   // Data used in the forward kinematics.
   std::vector<RigidTransform<T>> kinematics_;
+  std::vector<RotationMatrix<T>> rotation_kinematics_;
 };
 
 using nPendulumBenchDouble = nPendulumBench<double>;
@@ -121,6 +146,8 @@ void nPendulumBench<T>::SetUpNonZeroState() {
   // Reset temporaries.
   kinematics_ =
       std::vector<RigidTransform<T>>(kNumLinks, RigidTransform<T>::Identity());
+  rotation_kinematics_ =
+      std::vector<RotationMatrix<T>>(kNumLinks, RotationMatrix<T>::Identity());
 }
 
 template <>  // NOLINTNEXTLINE(runtime/references)
@@ -159,20 +186,39 @@ void nPendulumBench<AutoDiffXd>::SetUpGradientsOrVariables(
 // For T=Expression, the range arg sets which variables to use, using a bitmask.
 
 // NOLINTNEXTLINE(runtime/references)
-BENCHMARK_DEFINE_F(nPendulumBenchDouble, ForwardDynamics)
+BENCHMARK_DEFINE_F(nPendulumBenchDouble, RotationKinematics)
 (benchmark::State& state) {
-  DoForwardKinematics(state);
+  DoRotationKinematics(state);
 }
-BENCHMARK_REGISTER_F(nPendulumBenchDouble, ForwardDynamics)
+BENCHMARK_REGISTER_F(nPendulumBenchDouble, RotationKinematics)
     ->Unit(benchmark::kMicrosecond)
     ->Arg(kWantNoGrad);
 
 // NOLINTNEXTLINE(runtime/references)
-BENCHMARK_DEFINE_F(nPendulumBenchAutoDiff, ForwardDynamics)
+BENCHMARK_DEFINE_F(nPendulumBenchAutoDiff, RotationKinematics)
+(benchmark::State& state) {
+  DoRotationKinematics(state);
+}
+BENCHMARK_REGISTER_F(nPendulumBenchAutoDiff, RotationKinematics)
+    ->Unit(benchmark::kMicrosecond)
+    ->Arg(kWantNoGrad)
+    ->Arg(kWantGradQ);        
+
+// NOLINTNEXTLINE(runtime/references)
+BENCHMARK_DEFINE_F(nPendulumBenchDouble, ForwardKinematics)
 (benchmark::State& state) {
   DoForwardKinematics(state);
 }
-BENCHMARK_REGISTER_F(nPendulumBenchAutoDiff, ForwardDynamics)
+BENCHMARK_REGISTER_F(nPendulumBenchDouble, ForwardKinematics)
+    ->Unit(benchmark::kMicrosecond)
+    ->Arg(kWantNoGrad);
+
+// NOLINTNEXTLINE(runtime/references)
+BENCHMARK_DEFINE_F(nPendulumBenchAutoDiff, ForwardKinematics)
+(benchmark::State& state) {
+  DoForwardKinematics(state);
+}
+BENCHMARK_REGISTER_F(nPendulumBenchAutoDiff, ForwardKinematics)
     ->Unit(benchmark::kMicrosecond)
     ->Arg(kWantNoGrad)
     ->Arg(kWantGradQ);    

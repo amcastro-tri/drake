@@ -65,7 +65,8 @@ Matrix3dWithDerivatives::Matrix3dWithDerivatives(const Matrix3<AutoDiffXd>& M) {
       } else {
         // TODO(russt): Should this be debug-only?
         DRAKE_THROW_UNLESS(num_derivatives ==
-                            M(row, col).derivatives().size());
+                               M(row, col).derivatives().size() ||
+                           M(row, col).derivatives().size() == 0);
       }
     }
   }
@@ -75,7 +76,9 @@ Matrix3dWithDerivatives::Matrix3dWithDerivatives(const Matrix3<AutoDiffXd>& M) {
     bool has_value = false;
     for (int row = 0; row < 3; ++row) {
       for (int col = 0; col < 3; ++col) {
-        double d = M(row, col).derivatives()[deriv];
+        double d = M(row, col).derivatives().size() == 0
+                       ? 0.0
+                       : M(row, col).derivatives()[deriv];
         if (d != 0.0) {
           if (!has_value) {
             derivatives_[deriv] = Eigen::Matrix3d::Zero();

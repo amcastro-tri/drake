@@ -253,24 +253,45 @@ RotationMatrix<T> RotationMatrix<T>::MakeYRotation(const T& theta) {
 
 template <typename T>
 RotationMatrix<T> RotationMatrix<T>::MakeZRotation(const T& theta) {
-  using std::isfinite;
-  DRAKE_THROW_UNLESS(isfinite(theta));
-  RotationMatrix<T> R(internal::DoNotInitializeMemberFields{});
+  //using std::isfinite;
+  //DRAKE_THROW_UNLESS(isfinite(theta));  
   using std::cos;
   using std::sin;
-  const T c = cos(theta), s = sin(theta);
-  Matrix3<T> R_AB;
+  
+#if 0  
   // clang-format off
   R_AB << c, -s,  0,
           s,  c,  0,
           0,  0,  1;
+#endif
   // clang-format on
   if constexpr (std::is_same_v<T, AutoDiffXd>) {
-    R.R_AB_ = internal::Matrix3dWithDerivatives(R_AB);
+    const double c = cos(theta.value()), s = sin(theta.value());
+    Eigen::Matrix3d R_AB = Eigen::Matrix3d::Zero();
+    R_AB(0, 0) = c, R_AB(0, 1) = -s;
+    R_AB(1, 0) = s, R_AB(1, 1) = c;
+
+    const int num_derivs = theta.derivatives().size();
+    std::vector<std::optional<Eigen::Matrix3d>> dRdv(num_derivs);
+    if (num_derivs > 0) {
+      const Eigen::Vector3d w = Eigen::Vector3d::UnitZ();
+      Eigen::Matrix3d wR = R_AB.colwise().cross(w);
+      for (int i = 0; i < num_derivs; ++i) {
+        if (theta.derivatives()[i] != 0.0) {
+          dRdv[i] = wR * theta.derivatives()[i];
+        }
+      }
+    }
+    return RotationMatrix<T>(
+        internal::Matrix3dWithDerivatives(std::move(R_AB), std::move(dRdv)),
+        true);
   } else {
-    R.R_AB_ = R_AB;
+    const T c = cos(theta), s = sin(theta);
+    Matrix3<T> R_AB = Matrix3<T>::Zero();
+    R_AB(0, 0) = c, R_AB(0, 1) = -s;
+    R_AB(1, 0) = s, R_AB(1, 1) = c;
+    return RotationMatrix<T>(std::move(R_AB), true);
   }
-  return RotationMatrix(R);
 }
 
 template <typename T>

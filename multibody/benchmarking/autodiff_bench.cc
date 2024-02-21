@@ -186,16 +186,6 @@ BENCHMARK_REGISTER_F(nPendulumBenchDouble, RotationKinematics)
     ->Arg(kWantNoGrad);
 
 // NOLINTNEXTLINE(runtime/references)
-BENCHMARK_DEFINE_F(nPendulumBenchAutoDiff, RotationKinematics)
-(benchmark::State& state) {
-  DoRotationKinematics(state);
-}
-BENCHMARK_REGISTER_F(nPendulumBenchAutoDiff, RotationKinematics)
-    ->Unit(benchmark::kMicrosecond)
-    ->Arg(kWantNoGrad)
-    ->Arg(kWantGradQ);        
-
-// NOLINTNEXTLINE(runtime/references)
 BENCHMARK_DEFINE_F(nPendulumBenchDouble, ForwardKinematics)
 (benchmark::State& state) {
   DoForwardKinematics(state);
@@ -205,6 +195,16 @@ BENCHMARK_REGISTER_F(nPendulumBenchDouble, ForwardKinematics)
     ->Arg(kWantNoGrad);
 
 // NOLINTNEXTLINE(runtime/references)
+BENCHMARK_DEFINE_F(nPendulumBenchAutoDiff, RotationKinematics)
+(benchmark::State& state) {
+  DoRotationKinematics(state);
+}
+BENCHMARK_REGISTER_F(nPendulumBenchAutoDiff, RotationKinematics)
+    ->Unit(benchmark::kMicrosecond)
+    ->Arg(kWantNoGrad)
+    ->Arg(kWantGradQ);
+
+// NOLINTNEXTLINE(runtime/references)
 BENCHMARK_DEFINE_F(nPendulumBenchAutoDiff, ForwardKinematics)
 (benchmark::State& state) {
   DoForwardKinematics(state);
@@ -212,7 +212,7 @@ BENCHMARK_DEFINE_F(nPendulumBenchAutoDiff, ForwardKinematics)
 BENCHMARK_REGISTER_F(nPendulumBenchAutoDiff, ForwardKinematics)
     ->Unit(benchmark::kMicrosecond)
     ->Arg(kWantNoGrad)
-    ->Arg(kWantGradQ);    
+    ->Arg(kWantGradQ);
 
 }  // namespace
 }  // namespace multibody

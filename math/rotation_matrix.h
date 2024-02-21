@@ -38,6 +38,11 @@ class Matrix3dWithDerivatives {
 
   explicit Matrix3dWithDerivatives(const Matrix3<AutoDiffXd>& M);
 
+  Matrix3dWithDerivatives(
+      Eigen::Matrix3d value,
+      std::vector<std::optional<Eigen::Matrix3d>> derivatives)
+      : value_(std::move(value)), derivatives_(std::move(derivatives)) {}
+
   Matrix3<AutoDiffXd> ToAutoDiffXd() const;
 
   Matrix3dWithDerivatives transpose() const;
@@ -832,9 +837,9 @@ class RotationMatrix {
   RotationMatrix(const Matrix3<T>& R, bool) : R_AB_(R) {}
 
   template <typename T1 = T>
-  RotationMatrix(const internal::Matrix3dWithDerivatives& R,
+  RotationMatrix(internal::Matrix3dWithDerivatives R,
                  std::enable_if_t<std::is_same_v<T1, AutoDiffXd>, bool>)
-      : R_AB_(R) {}
+      : R_AB_(std::move(R)) {}
 
   // Sets `this` %RotationMatrix from a Matrix3.  No check is performed to
   // test whether or not the parameter R is a valid rotation matrix.

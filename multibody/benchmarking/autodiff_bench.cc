@@ -159,19 +159,10 @@ void nPendulumBench<double>::SetUpGradientsOrVariables(
 template <>  // NOLINTNEXTLINE(runtime/references)
 void nPendulumBench<AutoDiffXd>::SetUpGradientsOrVariables(
     benchmark::State& state) {
-  // For the quantities destined for InitializeAutoDiff, read their default
-  // values (without any gradients). For the others, leave the matrix empty.
-  VectorX<double> q;
+  // Read values from q_ and complete with derivatives.
   if (want_grad_q(state)) {
-    q = math::DiscardGradient(q_);
-  }
-
-  // Initialize the desired gradients.
-  VectorX<AutoDiffXd> q_grad;
-  q_grad = math::InitializeAutoDiff(q);
-
-  // Write the gradients back to the plant.
-  if (want_grad_q(state)) {
+    const VectorX<double> q = math::DiscardGradient(q_);
+    const VectorX<AutoDiffXd> q_grad = math::InitializeAutoDiff(q);
     q_ = q_grad;
   }
 }

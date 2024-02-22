@@ -37,6 +37,7 @@ class RotationMatrixWithDerivatives;
 template <>
 struct Traits<RotationMatrixWithDerivatives> {
   using ValueType = Eigen::Matrix3d;
+  static constexpr bool sparse_derivatives{false};
   // TODO: change to SkewSymmetricMatrix
   using PartialsType = Eigen::Matrix3d;
 };

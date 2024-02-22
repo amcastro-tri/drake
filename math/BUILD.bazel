@@ -197,6 +197,29 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "object_with_derivatives",
+    srcs = ["object_with_derivatives.cc"],
+    hdrs = ["object_with_derivatives.h"],
+    deps = [
+        ":autodiff",
+        "//common:essential",
+        "//common/symbolic:expression",
+    ],
+)
+
+drake_cc_library(
+    name = "rotation_matrix_with_derivatives",
+    srcs = ["rotation_matrix_with_derivatives.cc"],
+    hdrs = ["rotation_matrix_with_derivatives.h"],
+    deps = [
+        ":autodiff",
+        ":object_with_derivatives",
+        "//common:essential",
+        "//common/symbolic:expression",
+    ],
+)
+
+drake_cc_library(
     name = "gradient",
     srcs = [
         "autodiff_gradient.cc",
@@ -555,6 +578,16 @@ drake_cc_googletest(
     name = "rotation_matrix_test",
     deps = [
         ":geometric_transform",
+        "//common/test_utilities",
+    ],
+)
+
+drake_cc_googletest(
+    name = "rotation_matrix_with_derivatives_test",
+    deps = [
+        ":autodiff",
+        ":gradient",
+        ":rotation_matrix_with_derivatives",
         "//common/test_utilities",
     ],
 )

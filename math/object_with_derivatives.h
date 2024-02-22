@@ -13,7 +13,9 @@ A matrix and its derivatives. */
 
 #include <Eigen/Dense>
 
-//#include "drake/common/autodiff.h"
+#include "drake/common/autodiff.h"
+#include "drake/common/drake_assert.h"
+#include "drake/common/drake_throw.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/unused.h"
@@ -42,6 +44,12 @@ class ObjectWithDerivatives {
 
   ObjectWithDerivatives(ValueType value, std::vector<PartialsType> derivatives)
       : value_(std::move(value)), derivatives_(std::move(derivatives)) {}
+
+  // Reset both value and derivatives.
+  void Reset(ValueType value, std::vector<PartialsType> derivatives) {
+    value_ = std::move(value);
+    derivatives_ = std::move(derivatives);
+  }
 
   int num_derivatives() const { return derivatives_.size(); }
 

@@ -13,7 +13,7 @@ Internal representation for a rotation matrix with derivatives. */
 
 #include <Eigen/Dense>
 
-// #include "drake/common/autodiff.h"
+#include "drake/common/autodiff.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/unused.h"
@@ -25,6 +25,10 @@ Internal representation for a rotation matrix with derivatives. */
 namespace drake {
 namespace math {
 namespace internal {
+
+// Options are:
+//   - Dense or sparse derivatives. True or False should suffice.
+//   - Full Matrix3d or SkewSymmetricMatrix (or Vector3) for the partials.
 
 // Forward declaration for the traits below.
 class RotationMatrixWithDerivatives;
@@ -47,7 +51,7 @@ class RotationMatrixWithDerivatives
   using Base = ObjectWithDerivatives<RotationMatrixWithDerivatives>;
 
   // Uninitialized rotation with no-derivatives.
-  RotationMatrixWithDerivatives() {}
+  RotationMatrixWithDerivatives() = default;
 
   // Constructs a constant value with no derivatives.
   RotationMatrixWithDerivatives(ValueType value) : Base(std::move(value)) {}
@@ -56,9 +60,32 @@ class RotationMatrixWithDerivatives
                                 std::vector<PartialsType> derivatives)
       : Base(std::move(value), std::move(derivatives)) {}
 
+  // WARNING: For efficiency reasons, avoid using this constructor at all costs.
+  // It is only provided for convenience.
+  explicit RotationMatrixWithDerivatives(const Matrix3<AutoDiffXd>& M);
+
   RotationMatrixWithDerivatives operator*(
       const RotationMatrixWithDerivatives& rhs) const {
     return RotationMatrixWithDerivatives(MultiplyOperator::Calc(*this, rhs));
+  }
+  
+  RotationMatrixWithDerivatives transpose() const;
+
+  bool IsExactlyIdentity() const;
+
+  static RotationMatrixWithDerivatives Identity() {
+    return RotationMatrixWithDerivatives(
+        ValueType(Eigen::Matrix3d::Identity()));
+  }
+
+  // WARNING: For efficiency reasons, avoid using this function at all costs.
+  // It is only provided for convenience.
+  Matrix3<AutoDiffXd> ToAutoDiffXd() const;
+
+  // WARNING: For efficiency reasons, avoid using this function at all costs.
+  // It is only provided for convenience.
+  void operator=(const MatrixX<AutoDiffXd>& M) {
+    *this = RotationMatrixWithDerivatives(Matrix3<AutoDiffXd>(M));
   }
 
  private:
@@ -93,6 +120,29 @@ class RotationMatrixWithDerivatives
   using MultiplyOperator =
       ObjectWithDerivativesBinaryOperation<MultiplyOperation>;
 };
+
+bool IsNearlyEqualTo(const RotationMatrixWithDerivatives& m1,
+                     const RotationMatrixWithDerivatives& m2,
+                     double tolerance) {
+  if (m1.derivatives().size() != m2.derivatives().size()) {
+    return false;
+  }
+  if ((m1.value() - m2.value()).template lpNorm<Eigen::Infinity>() > tolerance) {
+    return false;
+  }
+  for (int i = 0; i < m1.num_derivatives(); ++i) {    
+    if ((m1.derivatives()[i] - m2.derivatives()[i])
+            .template lpNorm<Eigen::Infinity>() > tolerance) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool operator==(const RotationMatrixWithDerivatives& m1,
+                const RotationMatrixWithDerivatives& m2) {
+  return IsNearlyEqualTo(m1, m2, 0.0);
+}
 
 }  // namespace internal
 }  // namespace math

@@ -19,6 +19,7 @@
 #include "drake/math/fast_pose_composition_functions.h"
 #include "drake/math/roll_pitch_yaw.h"
 #include "drake/math/unit_vector.h"
+#include "drake/math/rotation_matrix_with_derivatives.h"
 
 namespace drake {
 namespace math {
@@ -28,6 +29,9 @@ namespace internal {
 // RigidTransform.
 struct DoNotInitializeMemberFields {};
 
+using Matrix3dWithDerivatives = RotationMatrixWithDerivatives;
+
+#if 0
 // TODO(russt): Consider making this public, generalizing it, and moving it to
 // common.
 class Matrix3dWithDerivatives {
@@ -79,8 +83,9 @@ bool IsNearlyEqualTo(const Matrix3dWithDerivatives& m1,
                      double tolerance = 0.0);
 bool operator==(const Matrix3dWithDerivatives& m1,
                 const Matrix3dWithDerivatives& m2);
+#endif
 
-}
+}  // namespace internal
 
 /// This class represents a 3x3 rotation matrix between two arbitrary frames
 /// A and B and helps ensure users create valid rotation matrices.  This class
@@ -114,7 +119,7 @@ class RotationMatrix {
 
   /// Constructs a 3x3 identity %RotationMatrix -- which corresponds to
   /// aligning two frames (so that unit vectors Ax = Bx, Ay = By, Az = Bz).
-  RotationMatrix() : R_AB_(Matrix3<T>::Identity()) {}
+  RotationMatrix() : R_AB_(Matrix3<T>(Matrix3<T>::Identity())) {}
 
   /// Constructs a %RotationMatrix from a Matrix3.
   /// @param[in] R an allegedly valid rotation matrix.

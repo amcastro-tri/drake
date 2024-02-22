@@ -16,6 +16,7 @@ Internal representation for a rotation matrix with derivatives. */
 #include "drake/common/autodiff.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
+#include "drake/common/eigen_types.h"
 #include "drake/common/unused.h"
 #include "drake/math/object_with_derivatives.h"
 
@@ -54,11 +55,19 @@ class RotationMatrixWithDerivatives
   RotationMatrixWithDerivatives() = default;
 
   // Constructs a constant value with no derivatives.
-  RotationMatrixWithDerivatives(ValueType value) : Base(std::move(value)) {}
+  explicit RotationMatrixWithDerivatives(Eigen::Matrix3d value)
+      : Base(std::move(value)) {}
 
   RotationMatrixWithDerivatives(ValueType value,
                                 std::vector<PartialsType> derivatives)
       : Base(std::move(value), std::move(derivatives)) {}
+
+  static RotationMatrixWithDerivatives Identity() {
+    return RotationMatrixWithDerivatives(
+        ValueType(Eigen::Matrix3d::Identity()));
+  }
+
+  static RotationMatrixWithDerivatives MakeZRotation(const AutoDiffXd& theta);
 
   // WARNING: For efficiency reasons, avoid using this constructor at all costs.
   // It is only provided for convenience.
@@ -71,12 +80,12 @@ class RotationMatrixWithDerivatives
   
   RotationMatrixWithDerivatives transpose() const;
 
-  bool IsExactlyIdentity() const;
+  bool IsExactlyIdentity() const;  
 
-  static RotationMatrixWithDerivatives Identity() {
-    return RotationMatrixWithDerivatives(
-        ValueType(Eigen::Matrix3d::Identity()));
-  }
+  // WARNING: For efficiency reasons, avoid using this function at all costs.
+  // It is only provided for convenience.
+  // TODO: REMOVE THIS!!!
+  Vector3<AutoDiffXd> operator*(const Vector3<AutoDiffXd>& v_B) const;
 
   // WARNING: For efficiency reasons, avoid using this function at all costs.
   // It is only provided for convenience.
@@ -123,26 +132,10 @@ class RotationMatrixWithDerivatives
 
 bool IsNearlyEqualTo(const RotationMatrixWithDerivatives& m1,
                      const RotationMatrixWithDerivatives& m2,
-                     double tolerance) {
-  if (m1.derivatives().size() != m2.derivatives().size()) {
-    return false;
-  }
-  if ((m1.value() - m2.value()).template lpNorm<Eigen::Infinity>() > tolerance) {
-    return false;
-  }
-  for (int i = 0; i < m1.num_derivatives(); ++i) {    
-    if ((m1.derivatives()[i] - m2.derivatives()[i])
-            .template lpNorm<Eigen::Infinity>() > tolerance) {
-      return false;
-    }
-  }
-  return true;
-}
+                     double tolerance);
 
 bool operator==(const RotationMatrixWithDerivatives& m1,
-                const RotationMatrixWithDerivatives& m2) {
-  return IsNearlyEqualTo(m1, m2, 0.0);
-}
+                const RotationMatrixWithDerivatives& m2);
 
 }  // namespace internal
 }  // namespace math

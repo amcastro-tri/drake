@@ -53,6 +53,7 @@ void ThrowIfAnyElementInQuaternionIsInfinityOrNaN(
 }
 }  // namespace
 
+#if 0
 namespace internal {
 
 Matrix3dWithDerivatives::Matrix3dWithDerivatives(const Matrix3<AutoDiffXd>& M) {
@@ -206,6 +207,7 @@ bool operator==(const Matrix3dWithDerivatives& m1,
 }
 
 }  // namespace internal
+#endif
 
 template <typename T>
 RotationMatrix<T> RotationMatrix<T>::MakeXRotation(const T& theta) {
@@ -266,25 +268,8 @@ RotationMatrix<T> RotationMatrix<T>::MakeZRotation(const T& theta) {
 #endif
   // clang-format on
   if constexpr (std::is_same_v<T, AutoDiffXd>) {
-    const double c = cos(theta.value()), s = sin(theta.value());
-    Eigen::Matrix3d R_AB = Eigen::Matrix3d::Zero();
-    R_AB(0, 0) = c, R_AB(0, 1) = -s;
-    R_AB(1, 0) = s, R_AB(1, 1) = c;
-
-    const int num_derivs = theta.derivatives().size();
-    std::vector<std::optional<Eigen::Matrix3d>> dRdv(num_derivs);
-    if (num_derivs > 0) {
-      const Eigen::Vector3d w = Eigen::Vector3d::UnitZ();
-      Eigen::Matrix3d wR = R_AB.colwise().cross(w);
-      for (int i = 0; i < num_derivs; ++i) {
-        if (theta.derivatives()[i] != 0.0) {
-          dRdv[i] = wR * theta.derivatives()[i];
-        }
-      }
-    }
     return RotationMatrix<T>(
-        internal::Matrix3dWithDerivatives(std::move(R_AB), std::move(dRdv)),
-        true);
+        internal::Matrix3dWithDerivatives::MakeZRotation(theta), true);
   } else {
     const T c = cos(theta), s = sin(theta);
     Matrix3<T> R_AB = Matrix3<T>::Zero();

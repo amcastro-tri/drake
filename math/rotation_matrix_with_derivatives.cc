@@ -2,6 +2,10 @@
 
 #include "drake/math/autodiff.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a"\n" << a << std::endl;
+
 namespace drake {
 namespace math {
 namespace internal {
@@ -33,34 +37,48 @@ bool operator==(const RotationMatrixWithDerivatives& m1,
 
 RotationMatrixWithDerivatives::RotationMatrixWithDerivatives(
     const Matrix3<AutoDiffXd>& M) {
-  int num_derivatives = 0;
+  int num_variables = 0;
   Matrix3d value;
-  std::vector<Matrix3d> derivatives;
   for (int row = 0; row < 3; ++row) {
     for (int col = 0; col < 3; ++col) {
       value(row, col) = M(row, col).value();
-      if (num_derivatives == 0) {
-        num_derivatives = M(row, col).derivatives().size();
+      if (num_variables == 0) {
+        num_variables = M(row, col).derivatives().size();
       } else {
-        DRAKE_THROW_UNLESS(num_derivatives ==
+        DRAKE_THROW_UNLESS(num_variables ==
                                M(row, col).derivatives().size() ||
                            M(row, col).derivatives().size() == 0);
       }
     }
   }
 
-  derivatives.resize(num_derivatives);
-  for (int deriv = 0; deriv < num_derivatives; ++deriv) {
+  // Derivatives.
+  // TODO: Hide this in an object called "Partials"?
+  std::vector<Matrix3d> non_zero_derivatives;
+  std::vector<int> non_zeros;
+  non_zero_derivatives.reserve(num_variables);
+  non_zeros.reserve(num_variables);
+  for (int v = 0; v < num_variables; ++v) {    
+    bool zero_partial = true;
     for (int row = 0; row < 3; ++row) {
       for (int col = 0; col < 3; ++col) {
         double d = M(row, col).derivatives().size() == 0
                        ? 0.0
-                       : M(row, col).derivatives()[deriv];
-        derivatives[deriv](row, col) = d;
+                       : M(row, col).derivatives()[v];
+        if (d != 0) {
+          if (zero_partial) {
+            non_zeros.push_back(v);
+            non_zero_derivatives.push_back(Matrix3d::Zero());
+            zero_partial = false;
+          }
+          non_zero_derivatives.back()(row, col) = d;
+        }
       }
-    }
-  }
-  Reset(std::move(value), std::move(derivatives));
+    }            
+  }  
+
+  Reset(std::move(value), num_variables, std::move(non_zeros),
+        std::move(non_zero_derivatives));
 }
 
 Matrix3<AutoDiffXd> RotationMatrixWithDerivatives::ToAutoDiffXd() const {

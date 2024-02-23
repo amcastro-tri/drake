@@ -584,6 +584,16 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "rotation_matrix_autodiff_test",
+    deps = [
+        ":autodiff",
+        ":gradient",
+        ":geometric_transform",
+        "//common/test_utilities",
+    ],
+)
+
+drake_cc_googletest(
     name = "rotation_matrix_with_derivatives_test",
     deps = [
         ":autodiff",

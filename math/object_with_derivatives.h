@@ -74,9 +74,12 @@ class ObjectWithDerivatives {
 
   // Reset both value and derivatives.
   // TODO: add num_variables arg.
-  void Reset(ValueType value, DerivativesType derivatives) {
+  void Reset(ValueType value, int num_variables, std::vector<int> non_zeros,
+             std::vector<PartialsType> non_zero_derivatives) {
     value_ = std::move(value);
-    non_zero_derivatives_ = std::move(derivatives);
+    num_variables_ = num_variables;
+    non_zeros_ = std::move(non_zeros);
+    non_zero_derivatives_ = std::move(non_zero_derivatives);
   }
 
   void SetNextDerivative(int i, PartialsType ith_partial) {

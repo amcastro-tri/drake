@@ -422,6 +422,16 @@ class RotationMatrix {
     return R_AB_.ToAutoDiffXd();
   }
 
+  template <typename T1 = T>
+  std::enable_if_t<std::is_same_v<T1, AutoDiffXd>, int> num_variables() const {
+    return R_AB_.num_variables();
+  }
+
+  template <typename T1 = T>
+  std::enable_if_t<std::is_same_v<T1, AutoDiffXd>, int> num_non_zeros() const {
+    return R_AB_.num_non_zeros();
+  }
+
   /// Returns `this` rotation matrix's iᵗʰ row (i = 0, 1, 2).
   /// For `this` rotation matrix R_AB (which relates right-handed
   /// sets of orthogonal unit vectors Ax, Ay, Az to Bx, By, Bz),

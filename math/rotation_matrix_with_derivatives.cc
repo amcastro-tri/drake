@@ -67,12 +67,13 @@ Matrix3<AutoDiffXd> RotationMatrixWithDerivatives::ToAutoDiffXd() const {
   Matrix3<AutoDiffXd> M = value().cast<AutoDiffXd>();
   for (int row = 0; row < 3; ++row) {
     for (int col = 0; col < 3; ++col) {
-      for (int deriv = 0; deriv < num_derivatives(); ++deriv) {
+      for (int k = 0; k < num_non_zeros(); ++k) {
         if (M(row, col).derivatives().size() == 0) {
           M(row, col).derivatives() =
-              Eigen::VectorXd::Zero(num_derivatives());
+              Eigen::VectorXd::Zero(num_variables());
         }
-        M(row, col).derivatives()(deriv) = derivatives()[deriv](row, col);
+        const int i = non_zero(k);
+        M(row, col).derivatives()(i) = non_zero_derivative(k)(row, col);
       }
     }
   }
@@ -101,7 +102,11 @@ bool RotationMatrixWithDerivatives::IsExactlyIdentity() const {
 }
 
 Vector3<AutoDiffXd> RotationMatrixWithDerivatives::operator*(
-    const Vector3<AutoDiffXd>& v_B) const {
+    const Vector3<AutoDiffXd>& v) const {
+  return ToAutoDiffXd() * v;  
+
+  // No reason to optimize. Working with Vector3<AutoDiffXd> is the major cost.
+#if 0
   Vector3<AutoDiffXd> ret(value() * v_B);
   Eigen::Vector3d v_B_value{v_B[0].value(), v_B[1].value(), v_B[2].value()};
   for (int row = 0; row < 3; ++row) {
@@ -115,6 +120,7 @@ Vector3<AutoDiffXd> RotationMatrixWithDerivatives::operator*(
     }
   }
   return ret;
+#endif  
 }
 
 RotationMatrixWithDerivatives RotationMatrixWithDerivatives::MakeZRotation(
@@ -127,6 +133,21 @@ RotationMatrixWithDerivatives RotationMatrixWithDerivatives::MakeZRotation(
   R_AB(0, 0) = c, R_AB(0, 1) = -s;
   R_AB(1, 0) = s, R_AB(1, 1) = c;
 
+  const int num_variables = theta.derivatives().size();
+  RotationMatrixWithDerivatives R(std::move(R_AB), num_variables,
+                                  num_variables /* reserves */);  
+  if (num_variables > 0) {
+    const Eigen::Vector3d minus_w = -Eigen::Vector3d::UnitZ();
+    Eigen::Matrix3d wR = R.value().colwise().cross(minus_w);
+    for (int i = 0; i < num_variables; ++i) {
+      if (theta.derivatives()[i] != 0.0) {
+        R.SetNextDerivative(i, wR * theta.derivatives()[i]);
+      }
+    }
+  }
+  return R;
+
+#if 0
   const int num_derivs = theta.derivatives().size();
   std::vector<Eigen::Matrix3d> dRdv(num_derivs, Eigen::Matrix3d::Zero());
   if (num_derivs > 0) {
@@ -139,6 +160,7 @@ RotationMatrixWithDerivatives RotationMatrixWithDerivatives::MakeZRotation(
     }
   }
   return RotationMatrixWithDerivatives(std::move(R_AB), std::move(dRdv));
+#endif  
 }
 
 

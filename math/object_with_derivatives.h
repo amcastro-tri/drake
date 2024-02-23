@@ -5,6 +5,7 @@ A matrix and its derivatives. */
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 #include <optional>
 #include <ostream>
 #include <type_traits>
@@ -37,28 +38,78 @@ class ObjectWithDerivatives {
   using PartialsType = Traits<DerivedType>::PartialsType;
   static constexpr bool sparse_derivatives =
       Traits<DerivedType>::sparse_derivatives;
-  typedef typename std::conditional<
-      sparse_derivatives, std::vector<std::optional<PartialsType>>,
-      std::vector<PartialsType>>::type DerivativesType;
+  using DerivativesType = std::vector<PartialsType>;
 
   /** Constructs object with uninitialized value and no derivatives. */
   ObjectWithDerivatives() {}
 
   ObjectWithDerivatives(ValueType value) : value_(std::move(value)) {}
 
-  ObjectWithDerivatives(ValueType value, DerivativesType derivatives)
-      : value_(std::move(value)), derivatives_(std::move(derivatives)) {}
-
-  // Reset both value and derivatives.
-  void Reset(ValueType value, DerivativesType derivatives) {
-    value_ = std::move(value);
-    derivatives_ = std::move(derivatives);
+  ObjectWithDerivatives(ValueType value, int num_variables,
+                        int reserve_num_non_zeros)
+      : value_(std::move(value)), num_variables_(num_variables) {
+    non_zeros_.reserve(reserve_num_non_zeros);
+    non_zero_derivatives_.reserve(reserve_num_non_zeros);
   }
 
-  int num_derivatives() const { return derivatives_.size(); }
+  ObjectWithDerivatives(ValueType value, int num_variables,
+                        std::vector<int> non_zeros,
+                        std::vector<PartialsType> non_zero_derivatives)
+      : value_(std::move(value)),
+        num_variables_(num_variables),
+        non_zeros_(std::move(non_zeros)),
+        non_zero_derivatives_(std::move(non_zero_derivatives)) {}
+
+  // This constructor assumes "dense" derivatives. That is, the number of
+  // variables equal derivatives.size(). Therefore after this call,
+  // num_non_zeros() equals num_derivatives().
+  ObjectWithDerivatives(ValueType value, DerivativesType derivatives)
+      : 
+      value_(std::move(value)),
+        non_zero_derivatives_(std::move(derivatives)) {
+    num_variables_ =non_zero_derivatives_.size();
+    non_zeros_.resize(num_variables_);
+    std::iota(non_zeros_.begin(), non_zeros_.end(), 0);
+  }
+
+  // Reset both value and derivatives.
+  // TODO: add num_variables arg.
+  void Reset(ValueType value, DerivativesType derivatives) {
+    value_ = std::move(value);
+    non_zero_derivatives_ = std::move(derivatives);
+  }
+
+  void SetNextDerivative(int i, PartialsType ith_partial) {
+    DRAKE_ASSERT(0 <= i && i < num_variables());
+    DRAKE_DEMAND(non_zeros_.back() < i);
+    non_zeros_.push_back(i);
+    non_zero_derivatives_.push_back(std::move(ith_partial));
+  }
+
+  int num_variables() const { return num_variables_; }
+
+  // TODO: remove. Use num_variables() instead.
+  int num_derivatives() const { return num_variables(); }
 
   const ValueType& value() const { return value_; }
-  const DerivativesType& derivatives() const { return derivatives_; }
+
+  int num_non_zeros() const { return static_cast<int>(non_zeros_.size()); }
+
+  int non_zero(int k) const {
+    DRAKE_ASSERT(0 <= k && k < num_non_zeros());
+    return non_zeros_[k];
+  }
+
+  // TODO: consider "non_zero_partial()"
+  const PartialsType& non_zero_derivative(int k) const {
+    DRAKE_ASSERT(0 <= k && k < num_non_zeros());
+    return non_zero_derivatives_[k];
+  }
+
+  const std::vector<int>& non_zeros() const { return non_zeros_; }
+
+  // TODO: Rename to non_zero_derivatives().
+  const DerivativesType& derivatives() const { return non_zero_derivatives_; }
 
   const DerivedType& get_derived() const {
     // Static cast is safe since types are resolved at compile time by CRTP.
@@ -72,8 +123,10 @@ class ObjectWithDerivatives {
   }
 
   ValueType value_;
-  // TODO: Implement sparse version.
-  DerivativesType derivatives_;
+  int num_variables_{0};
+  // These two vectors are the same size.
+  std::vector<int> non_zeros_;  // Strictly increasing order.
+  DerivativesType non_zero_derivatives_;
 };
 
 template <class Operation>
@@ -93,46 +146,84 @@ class ObjectWithDerivativesBinaryOperation {
 
   // TODO: Implement sparse version.
   static ResultType Calc(const LhsType& lhs, const RhsType& rhs) {
-    if constexpr (sparse_derivatives) {
-      return CalcSparse(lhs, rhs);
-    }
-    else {
-      return CalcDense(lhs, rhs);
-    }
-  }
+    // The number of variables in both operands must match or be zero.
+    const int num_variables = [&]() {
+      if (lhs.num_variables() == 0) {
+        DRAKE_ASSERT(lhs.num_non_zeros() == 0);
+        return rhs.num_variables();
+      }
+      if (rhs.num_variables() == 0) {
+        DRAKE_ASSERT(rhs.num_non_zeros() == 0);
+        return lhs.num_variables();
+      }
+      DRAKE_DEMAND(lhs.num_variables() == rhs.num_variables());
+      return lhs.num_variables();
+    }();
 
- private:  
-  static ResultType CalcDense(const LhsType& lhs, const RhsType& rhs) {
+    // Note that this assumes the non_zero arrays are sorted and unique.
+    // We also behave as though lhs and rhs *values* are non-zero, so we get
+    // a "non-zero" derivative if either of the source derivatives is non-zero,
+    // even though the actual result might still be zero.
+    std::vector<int> non_zeros;
+    // We'll need at least this much storage but might need more.
+    non_zeros.reserve(std::max(lhs.num_non_zeros(), rhs.num_non_zeros()));
+    std::set_union(lhs.non_zeros().begin(), lhs.non_zeros().end(),
+                   rhs.non_zeros().begin(), rhs.non_zeros().end(),
+                   std::back_inserter(non_zeros));
+
+    const int num_non_zeros = non_zeros.size();
+    std::vector<typename ResultType::PartialsType> non_zero_derivatives(
+        num_non_zeros);
+
+    // Compute value.
     typename ResultType::ValueType value =
         Operation::CalcValue(lhs.value(), rhs.value());
-    DRAKE_DEMAND(lhs.num_derivatives() == rhs.num_derivatives());
-    std::vector<typename ResultType::PartialsType> derivatives(
-        lhs.num_derivatives());
-    for (int i = 0; i < lhs.num_derivatives(); ++i) {
-      const typename LhsType::PartialsType& lhs_partial = lhs.derivatives()[i];
-      const typename RhsType::PartialsType& rhs_partial = rhs.derivatives()[i];
-      derivatives[i] = Operation::CalcPartial(value, lhs.value(), lhs_partial,
-                                              rhs.value(), rhs_partial);
+
+    // Compute derivatives.
+    // ∂a⋅b       ∂ b     ∂ a
+    // ---- = a ⋅ ---  +  --- ⋅ b
+    //  ∂vₖ       ∂vₖ     ∂vₖ
+
+    int i = 0, j = 0, r = 0;  // non_zero indices for lhs, rhs, result
+    for (; i < lhs.num_non_zeros() && j < rhs.num_non_zeros(); ++r) {
+      const int nzi = lhs.non_zero(i);
+      const int nzj = rhs.non_zero(j);
+      if (nzi == nzj) {
+        // Both partials are non-zero.
+        const typename LhsType::PartialsType& lhs_partial =
+            lhs.non_zero_derivative(i++);
+        const typename RhsType::PartialsType& rhs_partial =
+            rhs.non_zero_derivative(j++);
+        non_zero_derivatives[r] = Operation::CalcPartial(
+            value, lhs.value(), &lhs_partial, rhs.value(), &rhs_partial);
+      } else if (nzi < nzj) {
+        // Rhs partial is zero.
+        const typename LhsType::PartialsType& lhs_partial =
+            lhs.non_zero_derivative(i++);
+        non_zero_derivatives[r] = Operation::CalcPartial(
+            value, lhs.value(), &lhs_partial, rhs.value(), nullptr);
+      } else {  // nzj < nzi
+        // Lhs partial is zero.
+        const typename LhsType::PartialsType& rhs_partial =
+            rhs.non_zero_derivative(j++);
+        non_zero_derivatives[r] = Operation::CalcPartial(
+            value, lhs.value(), nullptr, rhs.value(), &rhs_partial);
+      }
     }
-    return ResultType(std::move(value), std::move(derivatives));
-  }
-
-  static ResultType CalcSparse(const LhsType& lhs, const RhsType& rhs) {
-    typename ResultType::ValueType value =
-        Operation::CalcValue(lhs.value(), rhs.value());
-    DRAKE_DEMAND(lhs.num_derivatives() == rhs.num_derivatives());
-
-    
-
-    std::vector<typename ResultType::PartialsType> derivatives(
-        lhs.num_derivatives());
-    for (int i = 0; i < lhs.num_derivatives(); ++i) {
-      const typename LhsType::PartialsType& lhs_partial = lhs.derivatives()[i];
-      const typename RhsType::PartialsType& rhs_partial = rhs.derivatives()[i];
-      derivatives[i] = Operation::CalcPartial(value, lhs.value(), lhs_partial,
-                                              rhs.value(), rhs_partial);
+    // At most one of these two loops will execute.
+    for (; i < lhs.num_non_zeros(); ++i, ++r) {
+      non_zero_derivatives[r] = Operation::CalcPartial(
+          value, lhs.value(), &lhs.non_zero_derivative(i), rhs.value(),
+          nullptr);
     }
-    return ResultType(std::move(value), std::move(derivatives));
+    for (; j < rhs.num_non_zeros(); ++j, ++r) {
+      non_zero_derivatives[r] =
+          Operation::CalcPartial(value, lhs.value(), nullptr, rhs.value(),
+                                 &rhs.non_zero_derivative(j));
+    }
+
+    return ResultType(std::move(value), num_variables, std::move(non_zeros),
+                      std::move(non_zero_derivatives));
   }
 };
 

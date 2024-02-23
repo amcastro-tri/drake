@@ -59,9 +59,11 @@ class RotationMatrixWithDerivatives
   explicit RotationMatrixWithDerivatives(Eigen::Matrix3d value)
       : Base(std::move(value)) {}
 
-  RotationMatrixWithDerivatives(ValueType value,
-                                std::vector<PartialsType> derivatives)
-      : Base(std::move(value), std::move(derivatives)) {}
+  RotationMatrixWithDerivatives(ValueType value, int num_variables,
+                                std::vector<int> non_zeros,
+                                std::vector<PartialsType> non_zero_derivatives)
+      : Base(std::move(value), num_variables, std::move(non_zeros),
+             std::move(non_zero_derivatives)) {}
 
   static RotationMatrixWithDerivatives Identity() {
     return RotationMatrixWithDerivatives(
@@ -118,17 +120,37 @@ class RotationMatrixWithDerivatives
       return lhs * rhs;
     }
 
+    // lhs_partial and/or rhs_partial can be nullptr, indicating a zero partial.
+    // @pre At least one partial is non-zero.
     static ResultPartialType CalcPartial(const ResultValueType& result,
                                          const LhsValueType& lhs,
-                                         const LhsPartialType& lhs_partial,
+                                         const LhsPartialType* lhs_partial,
                                          const RhsValueType& rhs,
-                                         const RhsPartialType& rhs_partial) {
+                                         const RhsPartialType* rhs_partial) {
       unused(result);
-      return lhs_partial * rhs + lhs * rhs_partial;
+      DRAKE_DEMAND(lhs_partial || rhs_partial);
+      if (lhs_partial && rhs_partial) {
+        // Both non-zero.
+        return (*lhs_partial) * rhs + lhs * (*rhs_partial);
+      } else if (lhs_partial) {
+        // Zero rhs.
+        return (*lhs_partial) * rhs;
+      } else {
+        // Zero lhs.
+        return lhs * (*rhs_partial);
+      }
     }
   };
   using MultiplyOperator =
       ObjectWithDerivativesBinaryOperation<MultiplyOperation>;
+
+  RotationMatrixWithDerivatives(Eigen::Matrix3d value, int num_variables,
+                                int reserve_num_non_zeros)
+      : Base(std::move(value), num_variables, reserve_num_non_zeros) {}
+
+  RotationMatrixWithDerivatives(ValueType value,
+                                std::vector<PartialsType> derivatives)
+      : Base(std::move(value), std::move(derivatives)) {}      
 };
 
 bool IsNearlyEqualTo(const RotationMatrixWithDerivatives& m1,

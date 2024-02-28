@@ -12,24 +12,58 @@ drake_cc_package_library(
     name = "diffobj",
     visibility = ["//visibility:private"],
     deps = [
-        ":diff_obj_core",
+        ":derivatives",
+        ":diff_object",
+        ":diff_matrix3",
     ],
 )
 
 drake_cc_library(
-    name = "diff_obj_core",
-    srcs = [
-        "diff_matrix3.cc",
-    ],    
-    clang_copts = ["-Wno-unused-local-typedef"],
+    name = "derivatives",
+    srcs = [],    
     hdrs = [
         "dense_derivatives.h",
         "optional_derivatives.h",
         "derivatives_base.h",
+    ],
+    deps = [
+        "//common:essential",
+        "//common:unused",
+        "//math:autodiff",
+        "//math:gradient",
+    ],
+)
+
+drake_cc_library(
+    name = "diff_object",
+    srcs = [],
+    hdrs = [
         "diff_object.h",
+    ],
+    deps = [
+        ":derivatives",
+        "//common:essential",
+        "//common:unused",
+        "//math:autodiff",
+        "//math:gradient",
+    ],
+)
+
+drake_cc_library(
+    name = "diff_matrix3",
+    # The clang compiler complains about unused typedefs (using statements
+    # really) in MultiplyOperation. Reported bugs with ids 24883 and 33298 at
+    # https://bugs.llvm.org/
+    clang_copts = ["-Wno-unused-local-typedef"],
+    srcs = [
+        "diff_matrix3.cc",
+    ],
+    hdrs = [
         "diff_matrix3.h",
     ],
     deps = [
+        ":derivatives",
+        ":diff_object",
         "//common:essential",
         "//common:unused",
         "//math:autodiff",

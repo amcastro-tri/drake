@@ -5,8 +5,11 @@
 
 #include "drake/common/autodiff.h"
 #include "drake/common/eigen_types.h"
+#include "drake/common/nice_type_name.h"
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/math/autodiff_gradient.h"
+#include "drake/math/diffobj/dense_derivatives.h"
+#include "drake/math/diffobj/optional_derivatives.h"
 
 using Eigen::AutoDiffScalar;
 using Eigen::Matrix3d;
@@ -27,7 +30,26 @@ namespace diffobj {
 namespace internal {
 namespace {
 
-GTEST_TEST(DiffMatrix3, ConstructionFromAutoDiffAndBack) {
+template <typename T>
+struct get_template;
+
+template <template <class...> class Y, typename... Args>
+struct get_template<Y<Args...>> {
+  template <typename... Others>
+  using type = Y<Others...>;
+};
+
+template <class DerivativesType>
+class DiffMatrixTests : public ::testing::Test {};
+
+TYPED_TEST_SUITE_P(DiffMatrixTests);
+
+TYPED_TEST_P(DiffMatrixTests, ConstructionFromAutoDiffAndBack) {
+  using DiffMatrix3UnderTest = TypeParam;
+
+  // TODO: Work around how to show this in the test's name on the console.
+  fmt::print("Type = {}\n", drake::NiceTypeName::Get<DiffMatrix3UnderTest>());
+
   const int num_variables = 12;
   // clang-format off
   Matrix3d m1d = (Matrix3d() << 
@@ -45,8 +67,7 @@ GTEST_TEST(DiffMatrix3, ConstructionFromAutoDiffAndBack) {
   grad1.col(10) = -0.1 * grad_col;
   Matrix3<AutoDiffXd> m1ad;
   InitializeAutoDiff(m1d, grad1, &m1ad);
-  Matrix3WithDenseDerivatives dm1 =
-      Matrix3WithDenseDerivatives::MakeFromAutoDiffXd(m1ad);
+  DiffMatrix3UnderTest dm1 = DiffMatrix3UnderTest::MakeFromAutoDiffXd(m1ad);
 
   EXPECT_EQ(dm1.num_variables(), num_variables);
 
@@ -56,7 +77,12 @@ GTEST_TEST(DiffMatrix3, ConstructionFromAutoDiffAndBack) {
   EXPECT_EQ(dm1_derivatives, grad1);
 }
 
-GTEST_TEST(DiffMatrix3, Multiply) {
+TYPED_TEST_P(DiffMatrixTests, Multiply) {
+  using DiffMatrix3UnderTest = TypeParam;
+
+  // TODO: Work around how to show this in the test's name on the console.
+  fmt::print("Type = {}\n", drake::NiceTypeName::Get<DiffMatrix3UnderTest>());
+
   const int num_variables = 12;
   // Rotation 1.
   // clang-format off
@@ -75,8 +101,7 @@ GTEST_TEST(DiffMatrix3, Multiply) {
   grad1.col(10) = -0.1 * grad_col;
   Matrix3<AutoDiffXd> m1ad;
   InitializeAutoDiff(m1d, grad1, &m1ad);
-  Matrix3WithDenseDerivatives dm1 =
-      Matrix3WithDenseDerivatives::MakeFromAutoDiffXd(m1ad);
+  DiffMatrix3UnderTest dm1 = DiffMatrix3UnderTest::MakeFromAutoDiffXd(m1ad);
   EXPECT_EQ(dm1.num_variables(), num_variables);
 
   // Rotation 2.
@@ -97,13 +122,12 @@ GTEST_TEST(DiffMatrix3, Multiply) {
   grad2.col(10) = -0.1 * grad_col;
   Matrix3<AutoDiffXd> m2ad;
   InitializeAutoDiff(m2d, grad2, &m2ad);
-  Matrix3WithDenseDerivatives dm2 =
-      Matrix3WithDenseDerivatives::MakeFromAutoDiffXd(m2ad);
+  DiffMatrix3UnderTest dm2 = DiffMatrix3UnderTest::MakeFromAutoDiffXd(m2ad);
   EXPECT_EQ(dm2.num_variables(), num_variables);
 
   // Result.
   Matrix3<AutoDiffXd> mad = m1ad * m2ad;
-  Matrix3WithDenseDerivatives dm = dm1 * dm2;
+  DiffMatrix3UnderTest dm = dm1 * dm2;
   EXPECT_EQ(dm.num_variables(), num_variables);
 
   EXPECT_TRUE(CompareMatrices(ExtractValue(dm.ToAutoDiffXd()),
@@ -116,6 +140,13 @@ GTEST_TEST(DiffMatrix3, Multiply) {
   fmt::print("dm.gradient():\n{}\n",
              fmt_eigen(ExtractGradient(dm.ToAutoDiffXd())));
 }
+
+REGISTER_TYPED_TEST_SUITE_P(DiffMatrixTests, ConstructionFromAutoDiffAndBack,
+                            Multiply);
+typedef ::testing::Types<Matrix3WithDenseDerivatives,
+                         Matrix3WithOptionalDerivatives>
+    DerivativeTypes;
+INSTANTIATE_TYPED_TEST_SUITE_P(My, DiffMatrixTests, DerivativeTypes);
 
 }  // namespace
 }  // namespace internal

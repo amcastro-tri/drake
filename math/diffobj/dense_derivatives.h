@@ -49,9 +49,7 @@ class DenseDerivatives
   DenseDerivatives() = default;
 
   DenseDerivatives(std::vector<PartialsType> derivatives)
-      : derivatives_(std::move(derivatives)) {
-    PRINT_VAR(derivatives_.size());
-  }
+      : derivatives_(std::move(derivatives)) {}
 
   std::vector<PartialsType> MakeDenseStdVectorOfPartials() const {
     return derivatives_;

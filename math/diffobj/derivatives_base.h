@@ -45,6 +45,8 @@ class DerivativesBase {
   //using DerivativesType = Traits<Derived>::DerivativesType;
   //template <class PT>
   //using ContainerOfPartials = get_template<Derived>;
+  template <class P>
+  using ContainerOfPartials = DerivativesDerived<P>;
   using Derived = DerivativesDerived<PartialsType>;
 
   DerivativesBase() = default;

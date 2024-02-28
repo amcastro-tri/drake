@@ -47,9 +47,7 @@ struct Traits<DiffMatrix3<_DerivativesContainerType>> {
 // It returns true if the max norm of the difference is strictly smaller than
 // tolerance.
 bool IsNearlyEqualTo(const Eigen::Matrix3d& lhs, const Eigen::Matrix3d& rhs,
-                     double tolerance) {
-  return (rhs - lhs).lpNorm<Eigen::Infinity>() < tolerance;
-}
+                     double tolerance);
 
 template <template <class> class DerivativesContainerType>
 class DiffMatrix3 : public DiffObject<DiffMatrix3<DerivativesContainerType>> {
@@ -71,9 +69,7 @@ class DiffMatrix3 : public DiffObject<DiffMatrix3<DerivativesContainerType>> {
   DiffMatrix3() = default;
 
   DiffMatrix3(ValueType v, DerivativesType d)
-      : Base(std::move(v), std::move(d)) {
-    PRINT_VAR(derivatives().num_variables());
-  }
+      : Base(std::move(v), std::move(d)) {}
 
   DiffMatrix3 operator*(const DiffMatrix3& rhs) const {
     struct MultiplyOperation {
@@ -153,7 +149,6 @@ DiffMatrix3<DerivativesContainerType>::MakeFromAutoDiffXd(
   ValueType value(Mv);  // In this scope we know ValueType = Matrix3d.
 
   const int num_variables = Md.cols();
-  PRINT_VAR(num_variables);
   std::vector<PartialsType> partials(num_variables);  
   for (int i = 0; i < num_variables; ++i) {
     partials[i] = Md.col(i).reshaped(3, 3);

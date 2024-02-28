@@ -75,6 +75,16 @@ class OptionalDerivatives
 
   int num_variables() const { return ssize(derivatives_); }
 
+  bool IsExactlyZero() const {
+    if (num_variables() == 0) return true;
+    for (int i = 0; i < num_variables(); ++i) {
+      if (derivatives_[i].has_value()) {
+        if (!derivatives_[i]->isZero(0.0)) return false;
+      }
+    }
+    return true;
+  }
+
   // N.B. This method assumes the specialization of IsNearlyEqualTo(lhs, rhs)
   // where lhs and rhs are of type PartialsType.
   bool IsNearlyEqualTo(const OptionalDerivatives& other, double tolerance) {
@@ -84,10 +94,24 @@ class OptionalDerivatives
       if (derivatives_[i].has_value()) {
         if (!IsNearlyEqualTo(*derivatives_[i], *other.derivatives_[i],
                              tolerance))
-          false;
+          return false;
       }
     }
     return true;
+  }
+
+  template <class Operation>
+  OptionalDerivatives<typename Operation::ResultPartialsType>
+  ApplyUnaryOperation() const {
+    std::vector<std::optional<typename Operation::ResultPartialsType>> result(
+        num_variables());
+    for (int i = 0; i < num_variables(); ++i) {
+      if (derivatives_[i].has_value()) {
+        result[i] = Operation::Calc(derivatives_[i].value());
+      }
+    }
+    return OptionalDerivatives<typename Operation::ResultPartialsType>(
+        std::move(result));
   }
 
   template <class RhsDerivativesType, class ResultPartialsType>

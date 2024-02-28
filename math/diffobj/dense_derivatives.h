@@ -60,14 +60,33 @@ class DenseDerivatives
   // Returns partial derivative with respect to the i-th variable.
   const PartialsType& partial(int i) const { return derivatives_[i]; }
 
+  bool IsExactlyZero() const {
+    if (num_variables() == 0) return true;
+    for (int i = 0; i < num_variables(); ++i) {
+      if (!derivatives_[i].isZero(0.0)) return false;
+    }
+    return true;
+  }
+
   // N.B. This method assumes the specialization of IsNearlyEqualTo(lhs, rhs)
   // where lhs and rhs are of type PartialsType.
   bool IsNearlyEqualTo(const DenseDerivatives& other, double tolerance) {
     for (int i = 0; i < num_variables(); ++i) {
       if (!IsNearlyEqualTo(derivatives_[i], other.derivatives_[i], tolerance))
-        false;
+        return false;
     }
     return true;
+  }
+
+  template <class Operation>
+  DenseDerivatives<typename Operation::ResultPartialsType> ApplyUnaryOperation()
+      const {
+    std::vector<typename Operation::ResultPartialsType> result(num_variables());
+    for (int i = 0; i < num_variables(); ++i) {
+      result[i] = Operation::Calc(derivatives_[i]);
+    }
+    return DenseDerivatives<typename Operation::ResultPartialsType>(
+        std::move(result));
   }
 
   template <class RhsDerivativesType, class ResultPartialsType>

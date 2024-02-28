@@ -71,6 +71,28 @@ drake_cc_library(
     ],
 )
 
+drake_cc_library(
+    name = "diff_rotation_matrix",
+    # The clang compiler complains about unused typedefs (using statements
+    # really) in MultiplyOperation. Reported bugs with ids 24883 and 33298 at
+    # https://bugs.llvm.org/
+    clang_copts = ["-Wno-unused-local-typedef"],
+    srcs = [
+        "diff_rotation_matrix.cc",
+    ],
+    hdrs = [
+        "diff_rotation_matrix.h",
+    ],
+    deps = [
+        ":derivatives",
+        ":diff_object",
+        "//common:essential",
+        "//common:unused",
+        "//math:autodiff",
+        "//math:gradient",
+    ],
+)
+
 drake_cc_googletest(
     name = "diff_matrix3_test",
     # The clang compiler complains about unused typedefs (using statements

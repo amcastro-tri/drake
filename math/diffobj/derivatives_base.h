@@ -70,8 +70,18 @@ class DerivativesBase {
 
   int num_variables() const { return derived().num_variables(); }
 
+  bool IsExactlyZero() const {
+    return derived().IsExactlyZero();
+  }
+
   bool IsNearlyEqualTo(const Derived& other, double tolerance) {
     return derived().IsNearlyEqualTo(other, tolerance);
+  }
+
+  template <class Operation>
+  DerivativesDerived<typename Operation::ResultPartialsType>
+  ApplyUnaryOperation() const {
+    return derived().template ApplyUnaryOperation<Operation>();
   }
 
   template <class RhsDerivativesType, class ResultPartialsType>

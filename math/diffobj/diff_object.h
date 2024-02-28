@@ -37,6 +37,9 @@ class DiffObject {
 
   DiffObject() = default;
 
+  // Constructs a constant object, all derivatives are zero.
+  DiffObject(ValueType value) : value_(std::move(value)) {}
+
   DiffObject(ValueType value, DerivativesType derivatives)
       : value_(std::move(value)), derivatives_(std::move(derivatives)) {}
 

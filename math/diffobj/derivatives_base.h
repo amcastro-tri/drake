@@ -6,6 +6,8 @@
 #include <optional>
 #include <ostream>
 
+#include "drake/common/autodiff.h"
+#include "drake/common/eigen_types.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/drake_throw.h"
@@ -20,15 +22,46 @@ namespace internal {
 template <class TypeWithTraits>
 struct Traits {};
 
-template <class Derived>
+// Given the type Foo<Bar>, this method is used to retrieve the templated class
+// Foo like so:
+//   template <typename T>
+//   using Template = get_template<SomeType>::template type<T>;
+// So that Template<T> resolves to Foo<T>.
+template <typename T>
+struct get_template;
+
+template <template <class...> class Y, typename... Args>
+struct get_template<Y<Args...>> {
+  template <typename... Others>
+  using type = Y<Others...>;
+};
+
+template <template <class> class DerivativesDerived, class _PartialsType>
 class DerivativesBase {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(DerivativesBase);
 
-  using PartialsType = Traits<Derived>::PartialsType;
-  using DerivativesType = Traits<Derived>::DerivativesType;
+  using PartialsType = _PartialsType;
+  //using DerivativesType = Traits<Derived>::DerivativesType;
+  //template <class PT>
+  //using ContainerOfPartials = get_template<Derived>;
+  using Derived = DerivativesDerived<PartialsType>;
 
   DerivativesBase() = default;
+
+  // TODO: Such a constructor would require an additional class layer, where the
+  // next layer does already know the memory layout to construct and object.
+  // VectorOfPartialsBase is abstract, with not data members.
+  // The hierarchy would look VectorOfPartialsBase <- VectorOfPartials <-
+  // DenseVectorOfPartials (e.g.).
+  // Constructs a VectorOfPartials from a
+  // std::vector of non-zero partials. The newly constructed object will have
+  // partials.size() number of variables. That is, this constructor makes a
+  // "dense" vector of partials. explicit  
+  // DerivativesBase(std::vector<PartialsType> partials);
+  //
+  // TODO: ditto for this method.
+  // std::vector<Matrix3<double>> MakeDenseStdVectorOfPartials() const;
 
   const Derived& derived() const { return *static_cast<const Derived*>(this); }
   Derived& mutable_derived() { return *static_cast<Derived*>(this); }
@@ -40,12 +73,13 @@ class DerivativesBase {
   }
 
   template <class RhsDerivativesType, class ResultPartialsType>
-  Derived ApplyBinaryOperation(
+  DerivativesDerived<ResultPartialsType> ApplyBinaryOperation(
       const RhsDerivativesType& rhs,
-      std::function<ResultPartialsType(const DerivativesType&,
-                                       const RhsDerivativesType&)>
+      std::function<
+          ResultPartialsType(const PartialsType&,
+                             const typename RhsDerivativesType::PartialsType&)>
           op) const {
-    return derived().ApplyBinaryOperation(rhs.derived(), op);
+    return derived().ApplyBinaryOperation(rhs, op);
   }
 };
 

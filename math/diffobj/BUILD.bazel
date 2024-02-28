@@ -24,6 +24,7 @@ drake_cc_library(
     clang_copts = ["-Wno-unused-local-typedef"],
     hdrs = [
         "dense_derivatives.h",
+        "optional_derivatives.h",
         "derivatives_base.h",
         "diff_object.h",
         "diff_matrix3.h",

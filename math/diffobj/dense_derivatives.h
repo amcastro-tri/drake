@@ -43,10 +43,7 @@ class DenseDerivatives
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(DenseDerivatives);
 
-  // N.B. While not needed, uses Traits here so that types are define in a
-  // single place, the Traits for this class.
-  using PartialsType = _PartialsType;
-  
+  using PartialsType = _PartialsType;  
   using Base = DenseDerivatives<PartialsType>;
 
   DenseDerivatives() = default;

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "math/diffobj/dense_derivatives.h"
+#include "math/diffobj/optional_derivatives.h"
 #include "math/diffobj/diff_object.h"
 #include <Eigen/Dense>
 
@@ -181,6 +182,7 @@ Matrix3<AutoDiffXd> DiffMatrix3<DerivativesContainerType>::ToAutoDiffXd()
 }
 
 using Matrix3WithDenseDerivatives = DiffMatrix3<DenseDerivatives>;
+using Matrix3WithOptionalDerivatives = DiffMatrix3<OptionalDerivatives>;
 
 }  // namespace internal
 }  // namespace diffobj

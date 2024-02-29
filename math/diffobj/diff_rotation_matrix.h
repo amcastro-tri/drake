@@ -46,7 +46,7 @@ struct Traits<DiffRotationMatrix<_DerivativesContainerType>> {
 // Specialization to to compare both values and derivatives.
 // It returns true if the max norm of the difference is strictly smaller than
 // tolerance.
-bool IsNearlyEqualTo(const Eigen::Matrix3d& lhs, const Eigen::Matrix3d& rhs,
+bool AreNearlyEqual(const Eigen::Matrix3d& lhs, const Eigen::Matrix3d& rhs,
                      double tolerance);
 
 template <template <class> class DerivativesContainerType>
@@ -86,12 +86,7 @@ class DiffRotationMatrix : public DiffObject<DiffRotationMatrix<DerivativesConta
 
   bool IsExactlyIdentity() const;
 
-  bool IsNearlyEqualTo(const DiffRotationMatrix& other,
-                       double tolerance) const {
-    if (!IsNearlyEqualTo(value(), other.value(), tolerance)) return false;
-
-    return true;
-  }
+  bool IsNearlyEqualTo(const DiffRotationMatrix& other, double tolerance) const;
 
   DiffRotationMatrix operator*(const DiffRotationMatrix& rhs) const {
     struct MultiplyOperation {

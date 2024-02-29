@@ -5,10 +5,10 @@ using Eigen::Matrix3d;
 namespace drake {
 namespace math {
 namespace diffobj {
-namespace internal {    
+namespace internal {
 
-bool IsNearlyEqualTo(const Eigen::Matrix3d& lhs, const Eigen::Matrix3d& rhs,
-                     double tolerance) {
+bool AreNearlyEqual(const Eigen::Matrix3d& lhs, const Eigen::Matrix3d& rhs,
+                    double tolerance) {
   return (rhs - lhs).lpNorm<Eigen::Infinity>() < tolerance;
 }
 
@@ -32,10 +32,34 @@ DiffRotationMatrix<DerivativesContainerType>::transpose() const {
 
 template <template <class> class DerivativesContainerType>
 bool DiffRotationMatrix<DerivativesContainerType>::IsExactlyIdentity() const {
+  // Verify that value equals the identiy matrix.
   if (value() != Matrix3d::Identity()) {
     return false;
   }
-  if (!derivatives().IsExactlyZero()) return false;  
+  auto partial_is_zero = [](const Matrix3d& partial) {
+    return partial.isZero();
+  };
+
+  // Verify all partials are zero.
+  if (!derivatives().AllOf(partial_is_zero)) return false;
+
+  return true;
+}
+
+template <template <class> class DerivativesContainerType>
+bool DiffRotationMatrix<DerivativesContainerType>::IsNearlyEqualTo(
+    const DiffRotationMatrix<DerivativesContainerType>& other,
+    double tolerance) const {
+  if (!AreNearlyEqual(value(), other.value(), tolerance)) return false;
+
+  auto nearly_equal_partials = [tolerance](const Eigen::Matrix3d& lhs,
+                                           const Eigen::Matrix3d& rhs) {
+    return AreNearlyEqual(lhs, rhs, tolerance);
+  };
+
+  if (!derivatives().AllOf(other.derivatives(), nearly_equal_partials))
+    return false;
+
   return true;
 }
 

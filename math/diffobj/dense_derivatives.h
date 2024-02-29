@@ -68,6 +68,16 @@ class DenseDerivatives
     return true;
   }
 
+  bool AllOf(const DenseDerivatives& rhs,
+             std::function<bool(const PartialsType&, const PartialsType&)>
+                 binary_predicate) const {
+    DRAKE_DEMAND(num_variables() == rhs.num_variables());                  
+    for (int i = 0; i < num_variables(); ++i) {
+      if (!binary_predicate(derivatives_[i], rhs.derivatives_[i])) return false;
+    }
+    return true;
+  }
+
   bool IsExactlyZero() const {
     if (num_variables() == 0) return true;
     for (int i = 0; i < num_variables(); ++i) {

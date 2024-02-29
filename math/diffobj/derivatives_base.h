@@ -74,10 +74,24 @@ class DerivativesBase {
     return derived().IsExactlyZero();
   }
 
+  // Returns `true` iff unary_predicate is `true` for all the in-memory
+  // partials.
   bool AllOf(std::function<bool(const PartialsType&)> unary_predicate) const {
     return derived().AllOf(unary_predicate);
   }
 
+  // Returns `true` iff binary_predicate(lhs_i, rhs_i) is `true` for all pairs
+  // of partials w.r.t. the i-th variable.
+  // @pre sizes must match.
+  // Returns `true` for zero in-memory derivatives.
+  bool AllOf(const Derived& rhs,
+             std::function<bool(const PartialsType&, const PartialsType&)>
+                 binary_predicate) const {
+    return derived().AllOf(rhs, binary_predicate);
+  }
+
+  // TODO: Make this take a functor as ApplyBinaryOperation() does. There is no
+  // reason for an Opertaion class.
   template <class Operation>
   DerivativesDerived<typename Operation::ResultPartialsType>
   ApplyUnaryOperation() const {

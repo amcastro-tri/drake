@@ -9,6 +9,7 @@
 
 #include "math/diffobj/dense_derivatives.h"
 #include "math/diffobj/optional_derivatives.h"
+#include "math/diffobj/sparse_derivatives.h"
 #include "math/diffobj/diff_object.h"
 #include <Eigen/Dense>
 
@@ -156,6 +157,8 @@ Matrix3<AutoDiffXd> DiffRotationMatrix<DerivativesContainerType>::ToAutoDiffXd()
 using RotationMatrixWithDenseDerivatives = DiffRotationMatrix<DenseDerivatives>;
 using RotationMatrixWithOptionalDerivatives =
     DiffRotationMatrix<OptionalDerivatives>;
+using RotationMatrixWithSparseDerivatives =
+    DiffRotationMatrix<SparseDerivatives>;
 
 }  // namespace internal
 }  // namespace diffobj
@@ -166,4 +169,6 @@ extern template class ::drake::math::diffobj::internal::DiffRotationMatrix<
     ::drake::math::diffobj::internal::DenseDerivatives>;
 extern template class ::drake::math::diffobj::internal::DiffRotationMatrix<
     ::drake::math::diffobj::internal::OptionalDerivatives>;
+extern template class ::drake::math::diffobj::internal::DiffRotationMatrix<
+    ::drake::math::diffobj::internal::SparseDerivatives>;
 

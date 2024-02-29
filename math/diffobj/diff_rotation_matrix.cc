@@ -164,5 +164,6 @@ DiffRotationMatrix<DerivativesContainerType>::operator*(
 template class ::drake::math::diffobj::internal::DiffRotationMatrix<
     ::drake::math::diffobj::internal::DenseDerivatives>;
 template class ::drake::math::diffobj::internal::DiffRotationMatrix<
-    ::drake::math::diffobj::internal::OptionalDerivatives>;    
-
+    ::drake::math::diffobj::internal::OptionalDerivatives>;
+template class ::drake::math::diffobj::internal::DiffRotationMatrix<
+    ::drake::math::diffobj::internal::SparseDerivatives>;

@@ -25,6 +25,7 @@ drake_cc_library(
         "dense_derivatives.h",
         "optional_derivatives.h",
         "derivatives_base.h",
+        "sparse_derivatives.h",
     ],
     deps = [
         "//common:essential",

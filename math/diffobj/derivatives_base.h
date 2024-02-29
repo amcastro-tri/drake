@@ -80,10 +80,6 @@ class DerivativesBase {
     mutable_derived().SetPartial(i, std::move(partial));
   }
 
-  bool IsExactlyZero() const {
-    return derived().IsExactlyZero();
-  }
-
   // Returns `true` iff unary_predicate is `true` for all the in-memory
   // partials.
   bool AllOf(std::function<bool(const PartialsType&)> unary_predicate) const {

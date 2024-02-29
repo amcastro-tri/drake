@@ -32,60 +32,6 @@ struct DoNotInitializeMemberFields {};
 using Matrix3dWithDerivatives =
     diffobj::internal::RotationMatrixWithDenseDerivatives;
 
-#if 0
-// TODO(russt): Consider making this public, generalizing it, and moving it to
-// common.
-class Matrix3dWithDerivatives {
- public:
-  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Matrix3dWithDerivatives)
-
-  Matrix3dWithDerivatives() = default;
-
-  explicit Matrix3dWithDerivatives(const Matrix3<AutoDiffXd>& M);
-
-  Matrix3dWithDerivatives(
-      Eigen::Matrix3d value,
-      std::vector<std::optional<Eigen::Matrix3d>> derivatives)
-      : value_(std::move(value)), derivatives_(std::move(derivatives)) {}
-
-  Matrix3<AutoDiffXd> ToAutoDiffXd() const;
-
-  Matrix3dWithDerivatives transpose() const;
-
-  Matrix3dWithDerivatives operator*(
-      const Matrix3dWithDerivatives& other) const;
-
-  Vector3<AutoDiffXd> operator*(const Vector3<AutoDiffXd>& v_B) const;
-
-  bool IsExactlyIdentity() const;
-
-  static Matrix3dWithDerivatives Identity() {
-    Matrix3dWithDerivatives M;
-    M.value_ = Eigen::Matrix3d::Identity();
-    return M;
-  }
-
-  void operator=(const MatrixX<AutoDiffXd>& M) {
-    *this = Matrix3dWithDerivatives(M);
-  }
-
-  const Eigen::Matrix3d& value() const { return value_; }
-
- private:
-  friend bool IsNearlyEqualTo(const Matrix3dWithDerivatives& m1,
-                              const Matrix3dWithDerivatives& m2,
-                              double tolerance);
-  Eigen::Matrix3d value_;
-  std::vector<std::optional<Eigen::Matrix3d>> derivatives_;
-};
-
-bool IsNearlyEqualTo(const Matrix3dWithDerivatives& m1,
-                     const Matrix3dWithDerivatives& m2,
-                     double tolerance = 0.0);
-bool operator==(const Matrix3dWithDerivatives& m1,
-                const Matrix3dWithDerivatives& m2);
-#endif
-
 }  // namespace internal
 
 /// This class represents a 3x3 rotation matrix between two arbitrary frames

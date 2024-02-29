@@ -82,16 +82,6 @@ class OptionalDerivatives
     derivatives_[i] = std::move(partial);
   }
 
-  bool IsExactlyZero() const {
-    if (num_variables() == 0) return true;
-    for (int i = 0; i < num_variables(); ++i) {
-      if (derivatives_[i].has_value()) {
-        if (!derivatives_[i]->isZero(0.0)) return false;
-      }
-    }
-    return true;
-  }
-
   bool AllOf(std::function<bool(const PartialsType&)> unary_predicate) const {
     for (int i = 0; i < num_variables(); ++i) {
       if (derivatives_[i].has_value() &&

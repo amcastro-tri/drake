@@ -84,26 +84,6 @@ class DenseDerivatives
     return true;
   }
 
-  bool IsExactlyZero() const {
-    if (num_variables() == 0) return true;
-    for (int i = 0; i < num_variables(); ++i) {
-      if (!derivatives_[i].isZero(0.0)) return false;
-    }
-    return true;
-  }
-
-#if 0
-  // N.B. This method assumes the specialization of IsNearlyEqualTo(lhs, rhs)
-  // where lhs and rhs are of type PartialsType.
-  bool IsNearlyEqualTo(const DenseDerivatives& other, double tolerance) const {
-    for (int i = 0; i < num_variables(); ++i) {
-      if (!IsNearlyEqualTo(derivatives_[i], other.derivatives_[i], tolerance))
-        return false;
-    }
-    return true;
-  }
-#endif  
-
   template <class Operation>
   DenseDerivatives<typename Operation::ResultPartialsType> ApplyUnaryOperation()
       const {

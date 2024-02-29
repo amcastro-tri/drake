@@ -13,6 +13,12 @@ bool AreNearlyEqual(const Eigen::Matrix3d& lhs, const Eigen::Matrix3d& rhs,
 }
 
 template <template <class> class DerivativesContainerType>
+DiffRotationMatrix<DerivativesContainerType>::DiffRotationMatrix(
+    const Matrix3<AutoDiffXd>& M) {
+  *this = MakeFromAutoDiffXd(M);
+}
+
+template <template <class> class DerivativesContainerType>
 DiffRotationMatrix<DerivativesContainerType>
 DiffRotationMatrix<DerivativesContainerType>::transpose() const {
   struct TransposeOperation {
@@ -68,6 +74,61 @@ Vector3<AutoDiffXd> DiffRotationMatrix<DerivativesContainerType>::
     DiffRotationMatrix<DerivativesContainerType>::operator*(
         const Vector3<AutoDiffXd>& v) const {
   return ToAutoDiffXd() * v;
+}
+
+template <template <class> class DerivativesContainerType>
+DiffRotationMatrix<DerivativesContainerType>
+DiffRotationMatrix<DerivativesContainerType>::operator*(
+    const DiffRotationMatrix<DerivativesContainerType>& rhs) const {
+  struct MultiplyOperation {
+    using LhsType = DiffRotationMatrix;
+    using RhsType = DiffRotationMatrix;
+    using ResultType = DiffRotationMatrix;
+
+    using LhsValueType = typename LhsType::ValueType;
+    using LhsPartialsType = typename LhsType::PartialsType;
+    using RhsValueType = typename RhsType::ValueType;
+    using RhsPartialsType = typename RhsType::PartialsType;
+    using ResultPartialsType = typename ResultType::PartialsType;
+    using ResultValueType = typename ResultType::ValueType;
+
+    struct DataType {
+      const LhsValueType& lhs_value;
+      const RhsValueType& rhs_value;
+      ResultValueType value;
+    };
+
+    // In this case, we choose to store the value as data.
+    static DataType CalcData(const DiffRotationMatrix& lhs,
+                             const DiffRotationMatrix& rhs) {
+      return DataType{lhs.value(), rhs.value(), lhs.value() * rhs.value()};
+    }
+
+    static ResultValueType CalcValue(const DataType& data, const LhsValueType&,
+                                     const RhsValueType&) {
+      // Return the already computed value.
+      return data.value;
+    }
+
+    static ResultPartialsType CalcPartial(const DataType& data,
+                                          const LhsPartialsType* lhs_partial,
+                                          const RhsPartialsType* rhs_partial) {
+      DRAKE_ASSERT(lhs_partial || rhs_partial);
+      if (lhs_partial && rhs_partial) {
+        // Both partials are non-zero.
+        return (*lhs_partial) * data.rhs_value +
+               data.lhs_value * (*rhs_partial);
+      } else if (lhs_partial) {
+        // rhs partial is zero.
+        return (*lhs_partial) * data.rhs_value;
+      } else {
+        // lhs partial is zero.
+        return data.lhs_value * (*rhs_partial);
+      }
+    }
+  };
+
+  return this->template ApplyBinaryOperation<MultiplyOperation>(rhs);
 }
 
 }  // namespace internal

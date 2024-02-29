@@ -88,57 +88,7 @@ class DiffRotationMatrix : public DiffObject<DiffRotationMatrix<DerivativesConta
 
   bool IsNearlyEqualTo(const DiffRotationMatrix& other, double tolerance) const;
 
-  DiffRotationMatrix operator*(const DiffRotationMatrix& rhs) const {
-    struct MultiplyOperation {
-      using LhsType = DiffRotationMatrix;
-      using RhsType = DiffRotationMatrix;
-      using ResultType = DiffRotationMatrix;
-      
-      using LhsValueType = typename LhsType::ValueType;
-      using LhsPartialsType = typename LhsType::PartialsType;
-      using RhsValueType = typename RhsType::ValueType;
-      using RhsPartialsType = typename RhsType::PartialsType;
-      using ResultPartialsType = typename ResultType::PartialsType;
-      using ResultValueType = typename ResultType::ValueType;
-
-      struct DataType {
-        const LhsValueType& lhs_value;
-        const RhsValueType& rhs_value;
-        ResultValueType value;
-      };
-
-      // In this case, we choose to store the value as data.
-      static DataType CalcData(const DiffRotationMatrix& lhs, const DiffRotationMatrix& rhs) {
-        return DataType{lhs.value(), rhs.value(), lhs.value() * rhs.value()};
-      }
-
-      static ResultValueType CalcValue(const DataType& data,
-                                       const LhsValueType&,
-                                       const RhsValueType&) {
-        // Return the already computed value.
-        return data.value;
-      }
-
-      static ResultPartialsType CalcPartial(const DataType& data,
-                                           const LhsPartialsType* lhs_partial,
-                                           const RhsPartialsType* rhs_partial) {
-        DRAKE_ASSERT(lhs_partial || rhs_partial);
-        if (lhs_partial && rhs_partial) {
-          // Both partials are non-zero.
-          return (*lhs_partial) * data.rhs_value +
-                 data.lhs_value * (*rhs_partial);
-        } else if (lhs_partial) {
-          // rhs partial is zero.
-          return (*lhs_partial) * data.rhs_value;
-        } else {
-          // lhs partial is zero.
-          return data.lhs_value * (*rhs_partial);
-        }
-      }
-    };
-
-    return this->template ApplyBinaryOperation<MultiplyOperation>(rhs);
-  }
+  DiffRotationMatrix operator*(const DiffRotationMatrix& rhs) const;
 
   // This allows DiffRotationMatrix to interact with Vector3<AutoDiffXd>.
   // @warning Do NOT use this in production code.   
@@ -153,6 +103,16 @@ class DiffRotationMatrix : public DiffObject<DiffRotationMatrix<DerivativesConta
 
   // @warning This is an expensive function. Avoid using in production code.
   Matrix3<AutoDiffXd> ToAutoDiffXd() const;
+
+  // @warning For efficiency reasons, avoid using this function at all costs.
+  // It is only provided for convenience.
+  void operator=(const MatrixX<AutoDiffXd>& M) {
+    *this = MakeFromAutoDiffXd(M);
+  }
+
+  // @warning For efficiency reasons, avoid using this function at all costs.
+  // It is only provided for convenience.
+  explicit DiffRotationMatrix(const Matrix3<AutoDiffXd>& M);
 };
 
 template <template <class> class DerivativesContainerType>
@@ -197,8 +157,9 @@ Matrix3<AutoDiffXd> DiffRotationMatrix<DerivativesContainerType>::ToAutoDiffXd()
   return Mad;
 }
 
-using RotatioMatrixWithDenseDerivatives = DiffRotationMatrix<DenseDerivatives>;
-using RotatioMatrixWithOptionalDerivatives = DiffRotationMatrix<OptionalDerivatives>;
+using RotationMatrixWithDenseDerivatives = DiffRotationMatrix<DenseDerivatives>;
+using RotationMatrixWithOptionalDerivatives =
+    DiffRotationMatrix<OptionalDerivatives>;
 
 }  // namespace internal
 }  // namespace diffobj

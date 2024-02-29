@@ -224,7 +224,7 @@ RotationMatrix<T> RotationMatrix<T>::MakeXRotation(const T& theta) {
           0,  s,  c;
   // clang-format on
   if constexpr (std::is_same_v<T, AutoDiffXd>) {
-    R.R_AB_ = internal::Matrix3dWithDerivatives(R_AB);
+    R.R_AB_ = internal::Matrix3dWithDerivatives::MakeFromAutoDiffXd(R_AB);
   } else {
     R.R_AB_ = R_AB;
   }
@@ -246,7 +246,7 @@ RotationMatrix<T> RotationMatrix<T>::MakeYRotation(const T& theta) {
            -s,  0,  c;
   // clang-format on
   if constexpr (std::is_same_v<T, AutoDiffXd>) {
-    R.R_AB_ = internal::Matrix3dWithDerivatives(R_AB);
+    R.R_AB_ = internal::Matrix3dWithDerivatives::MakeFromAutoDiffXd(R_AB);
   } else {
     R.R_AB_ = R_AB;
   }

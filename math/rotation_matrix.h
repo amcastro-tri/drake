@@ -30,7 +30,7 @@ namespace internal {
 struct DoNotInitializeMemberFields {};
 
 using Matrix3dWithDerivatives =
-    diffobj::internal::RotatioMatrixWithDenseDerivatives;
+    diffobj::internal::RotationMatrixWithDenseDerivatives;
 
 #if 0
 // TODO(russt): Consider making this public, generalizing it, and moving it to
@@ -120,7 +120,7 @@ class RotationMatrix {
 
   /// Constructs a 3x3 identity %RotationMatrix -- which corresponds to
   /// aligning two frames (so that unit vectors Ax = Bx, Ay = By, Az = Bz).
-  RotationMatrix() : R_AB_(Matrix3<T>(Matrix3<T>::Identity())) {}
+  RotationMatrix() : R_AB_(MatrixType::Identity()) {}
 
   /// Constructs a %RotationMatrix from a Matrix3.
   /// @param[in] R an allegedly valid rotation matrix.
@@ -684,7 +684,7 @@ class RotationMatrix {
   /// corresponding element in `other`.
   /// @see IsNearlyEqualTo().
   boolean<T> IsExactlyEqualTo(const RotationMatrix<T>& other) const {
-    return R_AB_ == other.R_AB_;
+    return this->IsNearlyEqualTo(other, 0.0);
   }
 
   /// Computes the infinity norm of `this` - `other` (i.e., the maximum absolute

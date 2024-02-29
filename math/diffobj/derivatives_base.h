@@ -74,8 +74,8 @@ class DerivativesBase {
     return derived().IsExactlyZero();
   }
 
-  bool IsNearlyEqualTo(const Derived& other, double tolerance) {
-    return derived().IsNearlyEqualTo(other, tolerance);
+  bool AllOf(std::function<bool(const PartialsType&)> unary_predicate) const {
+    return derived().AllOf(unary_predicate);
   }
 
   template <class Operation>

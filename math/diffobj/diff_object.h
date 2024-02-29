@@ -50,9 +50,9 @@ class DiffObject {
 
   // N.B. This method assumes the existece of a specialization of
   // IsNearlyEqualTo(lhs, rhs) where lhs and rhs are of type ValueType.
-  bool IsNearlyEqualTo(const Derived& other, double tolerance) {
+  bool IsNearlyEqualTo(const Derived& other, double tolerance) const {
     if (!IsNearlyEqualTo(this->value(), other.value())) return false;
-    if (!IsNearlyEqualTo(this->derivatives(), other.derivatives()))
+    if (!this->derivatives().IsNearlyEqualTo(other.derivatives()))
       return false;
     return true;
   }

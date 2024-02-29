@@ -164,7 +164,7 @@ drake_cc_library(
         "//common:is_approx_equal_abstol",
         "//common:unused",
         "//math:gradient",
-        "//math:rotation_matrix_with_derivatives",
+        "//math/diffobj:diff_rotation_matrix",
     ],
 )
 

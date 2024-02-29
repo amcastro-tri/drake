@@ -19,7 +19,7 @@
 #include "drake/math/fast_pose_composition_functions.h"
 #include "drake/math/roll_pitch_yaw.h"
 #include "drake/math/unit_vector.h"
-#include "drake/math/rotation_matrix_with_derivatives.h"
+#include "drake/math/diffobj/diff_rotation_matrix.h"
 
 namespace drake {
 namespace math {
@@ -29,7 +29,8 @@ namespace internal {
 // RigidTransform.
 struct DoNotInitializeMemberFields {};
 
-using Matrix3dWithDerivatives = RotationMatrixWithDerivatives;
+using Matrix3dWithDerivatives =
+    diffobj::internal::RotatioMatrixWithDenseDerivatives;
 
 #if 0
 // TODO(russt): Consider making this public, generalizing it, and moving it to
@@ -653,8 +654,8 @@ class RotationMatrix {
   boolean<T> IsNearlyIdentity(
       double tolerance = get_internal_tolerance_for_orthonormality()) const {
     if constexpr (std::is_same_v<T, AutoDiffXd>) {
-      return internal::IsNearlyEqualTo(
-          R_AB_, internal::Matrix3dWithDerivatives::Identity(), tolerance);
+      return R_AB_.IsNearlyEqualTo(
+          internal::Matrix3dWithDerivatives::Identity(), tolerance);
     } else {
       return IsNearlyEqualTo(R_AB_, Matrix3<T>::Identity(), tolerance);
     }
@@ -670,7 +671,7 @@ class RotationMatrix {
   boolean<T> IsNearlyEqualTo(const RotationMatrix<T>& other,
                              double tolerance) const {
     if constexpr (std::is_same_v<T, AutoDiffXd>) {
-      return internal::IsNearlyEqualTo(R_AB_, other.R_AB_, tolerance);
+      return R_AB_.IsNearlyEqualTo(other.R_AB_, tolerance);
     } else {
       return IsNearlyEqualTo(R_AB_, other.R_AB_, tolerance);
     }

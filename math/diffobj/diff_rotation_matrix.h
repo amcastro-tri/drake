@@ -86,6 +86,13 @@ class DiffRotationMatrix : public DiffObject<DiffRotationMatrix<DerivativesConta
 
   bool IsExactlyIdentity() const;
 
+  bool IsNearlyEqualTo(const DiffRotationMatrix& other,
+                       double tolerance) const {
+    if (!IsNearlyEqualTo(value(), other.value(), tolerance)) return false;
+
+    return true;
+  }
+
   DiffRotationMatrix operator*(const DiffRotationMatrix& rhs) const {
     struct MultiplyOperation {
       using LhsType = DiffRotationMatrix;

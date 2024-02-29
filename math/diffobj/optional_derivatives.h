@@ -85,6 +85,16 @@ class OptionalDerivatives
     return true;
   }
 
+  bool AllOf(std::function<bool(const PartialsType&)> unary_predicate) const {
+    for (int i = 0; i < num_variables(); ++i) {
+      if (derivatives_[i].has_value() &&
+          !unary_predicate(derivatives_[i].value()))
+        return false;
+    }
+    return true;
+  }
+
+#if 0
   // N.B. This method assumes the specialization of IsNearlyEqualTo(lhs, rhs)
   // where lhs and rhs are of type PartialsType.
   bool IsNearlyEqualTo(const OptionalDerivatives& other, double tolerance) {
@@ -99,6 +109,7 @@ class OptionalDerivatives
     }
     return true;
   }
+#endif  
 
   template <class Operation>
   OptionalDerivatives<typename Operation::ResultPartialsType>

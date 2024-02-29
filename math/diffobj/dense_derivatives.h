@@ -35,7 +35,7 @@ class DenseDerivatives;  // Forward declaration for the Traits below.
 // Generic method to compare two partials. DenseDerivatives::IsNearlyEqualTo()
 // below relies on the existence of a specialization on PartialsType.
 template <class PartialsType>
-bool IsNearlyEqualTo(const PartialsType, const PartialsType);
+bool IsNearlyEqualTo(const PartialsType, const PartialsType, double tolerance);
 
 template <class _PartialsType>
 class DenseDerivatives
@@ -60,6 +60,14 @@ class DenseDerivatives
   // Returns partial derivative with respect to the i-th variable.
   const PartialsType& partial(int i) const { return derivatives_[i]; }
 
+  // Returns `true` if unary_predicate is true for all non-zero partials.
+  bool AllOf(std::function<bool(const PartialsType&)> unary_predicate) const {
+    for (int i = 0; i < num_variables(); ++i) {
+      if (!unary_predicate(derivatives_[i])) return false;
+    }
+    return true;
+  }
+
   bool IsExactlyZero() const {
     if (num_variables() == 0) return true;
     for (int i = 0; i < num_variables(); ++i) {
@@ -68,15 +76,17 @@ class DenseDerivatives
     return true;
   }
 
+#if 0
   // N.B. This method assumes the specialization of IsNearlyEqualTo(lhs, rhs)
   // where lhs and rhs are of type PartialsType.
-  bool IsNearlyEqualTo(const DenseDerivatives& other, double tolerance) {
+  bool IsNearlyEqualTo(const DenseDerivatives& other, double tolerance) const {
     for (int i = 0; i < num_variables(); ++i) {
       if (!IsNearlyEqualTo(derivatives_[i], other.derivatives_[i], tolerance))
         return false;
     }
     return true;
   }
+#endif  
 
   template <class Operation>
   DenseDerivatives<typename Operation::ResultPartialsType> ApplyUnaryOperation()

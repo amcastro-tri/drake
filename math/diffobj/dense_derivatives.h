@@ -15,10 +15,6 @@
 #include "drake/common/drake_throw.h"
 #include "drake/common/unused.h"
 
-#include <iostream>
-#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
-#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
-
 namespace drake {
 namespace math {
 namespace diffobj {
@@ -48,7 +44,12 @@ class DenseDerivatives
 
   DenseDerivatives() = default;
 
-  DenseDerivatives(std::vector<PartialsType> derivatives)
+  // Creates a DenseDerivatives of size with nv variables. Derivatives are left
+  // un-initialized.
+  explicit DenseDerivatives(int nv)
+      : derivatives_(nv) {}
+
+  explicit DenseDerivatives(std::vector<PartialsType> derivatives)
       : derivatives_(std::move(derivatives)) {}
 
   std::vector<PartialsType> MakeDenseStdVectorOfPartials() const {
@@ -59,6 +60,11 @@ class DenseDerivatives
 
   // Returns partial derivative with respect to the i-th variable.
   const PartialsType& partial(int i) const { return derivatives_[i]; }
+
+  void SetPartial(int i, PartialsType partial) {
+    DRAKE_ASSERT(0 <= i && i < num_variables());
+    derivatives_[i] = std::move(partial);
+  }
 
   // Returns `true` if unary_predicate is true for all non-zero partials.
   bool AllOf(std::function<bool(const PartialsType&)> unary_predicate) const {

@@ -18,10 +18,6 @@
 #include "drake/common/drake_throw.h"
 #include "drake/common/unused.h"
 
-#include <iostream>
-#define PRINT_VAR(a) std::cout << #a": " << a << std::endl;
-#define PRINT_VARn(a) std::cout << #a":\n" << a << std::endl;
-
 namespace drake {
 namespace math {
 namespace diffobj {
@@ -72,8 +68,8 @@ class DiffRotationMatrix : public DiffObject<DiffRotationMatrix<DerivativesConta
       : Base(std::move(v), std::move(d)) {}
 
   // Constructs a constant value with no derivatives.
-  explicit DiffRotationMatrix(Eigen::Matrix3d value)
-      : Base(std::move(value)) {}    
+  explicit DiffRotationMatrix(Eigen::Matrix3d v)
+      : Base(std::move(v)) {}    
 
   static DiffRotationMatrix Identity() {
     return DiffRotationMatrix(

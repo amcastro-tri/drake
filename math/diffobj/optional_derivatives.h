@@ -15,8 +15,6 @@
 #include "drake/common/drake_throw.h"
 #include "drake/common/eigen_types.h"
 #include "drake/common/unused.h"
-#define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
-#define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
 
 namespace drake {
 namespace math {
@@ -48,7 +46,11 @@ class OptionalDerivatives
 
   OptionalDerivatives() = default;
 
-  OptionalDerivatives(std::vector<std::optional<PartialsType>> derivatives)
+  // Creates a OptionalDerivatives of size with nv variables. Derivatives are
+  // left un-initialized.
+  explicit OptionalDerivatives(int nv) : derivatives_(nv) {}
+
+  explicit OptionalDerivatives(std::vector<std::optional<PartialsType>> derivatives)
       : derivatives_(derivatives) {}
 
   // Expensive constructor to make dense derivatives.
@@ -74,6 +76,11 @@ class OptionalDerivatives
   }
 
   int num_variables() const { return ssize(derivatives_); }
+
+  void SetPartial(int i, PartialsType partial) {
+    DRAKE_ASSERT(0 <= i && i < num_variables());
+    derivatives_[i] = std::move(partial);
+  }
 
   bool IsExactlyZero() const {
     if (num_variables() == 0) return true;
@@ -154,7 +161,7 @@ class OptionalDerivatives
         result[i] = op(&derivatives_[i].value(), &rhs.derivatives_[i].value());
       } else if (derivatives_[i].has_value()) {
         result[i] = op(&derivatives_[i].value(), nullptr);
-      } else {
+      } else if (rhs.derivatives_[i].has_value()) {
         result[i] = op(nullptr, &rhs.derivatives_[i].value());
       }
     }

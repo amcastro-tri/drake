@@ -20,6 +20,32 @@ DiffRotationMatrix<DerivativesContainerType>::DiffRotationMatrix(
 
 template <template <class> class DerivativesContainerType>
 DiffRotationMatrix<DerivativesContainerType>
+DiffRotationMatrix<DerivativesContainerType>::MakeZRotation(
+    const AutoDiffXd& theta) {
+  using std::cos;
+  using std::sin;
+
+  const double c = cos(theta.value()), s = sin(theta.value());
+  Eigen::Matrix3d R_AB = Eigen::Matrix3d::Zero();
+  R_AB(0, 0) = c, R_AB(0, 1) = -s;
+  R_AB(1, 0) = s, R_AB(1, 1) = c;
+
+  const int num_variables = theta.derivatives().size();
+  DerivativesType derivatives(num_variables);  
+  if (num_variables > 0) {
+    const Eigen::Vector3d minus_w = -Eigen::Vector3d::UnitZ();
+    Eigen::Matrix3d wR = R_AB.colwise().cross(minus_w);
+    for (int i = 0; i < num_variables; ++i) {
+      if (theta.derivatives()[i] != 0.0) {
+        derivatives.SetPartial(i, wR * theta.derivatives()[i]);
+      }
+    }
+  }
+  return DiffRotationMatrix(std::move(R_AB), std::move(derivatives));
+}
+
+template <template <class> class DerivativesContainerType>
+DiffRotationMatrix<DerivativesContainerType>
 DiffRotationMatrix<DerivativesContainerType>::transpose() const {
   struct TransposeOperation {
     using PartialsType = typename DiffRotationMatrix::PartialsType;
@@ -70,9 +96,8 @@ bool DiffRotationMatrix<DerivativesContainerType>::IsNearlyEqualTo(
 }
 
 template <template <class> class DerivativesContainerType>
-Vector3<AutoDiffXd> DiffRotationMatrix<DerivativesContainerType>::
-    DiffRotationMatrix<DerivativesContainerType>::operator*(
-        const Vector3<AutoDiffXd>& v) const {
+Vector3<AutoDiffXd> DiffRotationMatrix<DerivativesContainerType>::operator*(
+    const Vector3<AutoDiffXd>& v) const {
   return ToAutoDiffXd() * v;
 }
 

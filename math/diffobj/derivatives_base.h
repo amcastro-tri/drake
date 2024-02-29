@@ -13,6 +13,10 @@
 #include "drake/common/drake_throw.h"
 #include "drake/common/unused.h"
 
+#include <iostream>
+#define PRINT_VAR(a) std::cout << #a ": " << a << std::endl;
+#define PRINT_VARn(a) std::cout << #a ":\n" << a << std::endl;
+
 namespace drake {
 namespace math {
 namespace diffobj {
@@ -69,6 +73,12 @@ class DerivativesBase {
   Derived& mutable_derived() { return *static_cast<Derived*>(this); }
 
   int num_variables() const { return derived().num_variables(); }
+
+  // Sets the i-th partial derivative.
+  // Refer to derived classes for further semantics.
+  void SetPartial(int i, PartialsType partial) {
+    mutable_derived().SetPartial(i, std::move(partial));
+  }
 
   bool IsExactlyZero() const {
     return derived().IsExactlyZero();

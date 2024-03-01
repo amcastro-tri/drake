@@ -30,7 +30,7 @@ namespace internal {
 struct DoNotInitializeMemberFields {};
 
 using Matrix3dWithDerivatives =
-    diffobj::internal::RotationMatrixWithDenseDerivatives;
+    diffobj::internal::RotationMatrixWithSparseDerivatives;
 
 }  // namespace internal
 

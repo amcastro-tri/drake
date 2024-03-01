@@ -92,7 +92,7 @@ class SparseDerivatives
   // method was called with index j < i.
   void SetPartial(int i, PartialsType partial) {
     DRAKE_ASSERT(0 <= i && i < num_variables());
-    DRAKE_DEMAND(i > non_zeros_.back());
+    DRAKE_DEMAND((i == 0 && non_zeros_.size() == 0) || i > non_zeros_.back());
     non_zeros_.push_back(i);
     non_zero_partials_.push_back(std::move(partial));
   }

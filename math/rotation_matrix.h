@@ -61,11 +61,6 @@ using Matrix3dWithDerivatives =
 /// @tparam_default_scalar
 template <typename T>
 class RotationMatrix {
- private:
-  typedef typename std::conditional<std::is_same_v<T, AutoDiffXd>,
-                                    internal::Matrix3dWithDerivatives,
-                                    Matrix3<T>>::type MatrixType;
-
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(RotationMatrix)
 
@@ -581,7 +576,7 @@ class RotationMatrix {
   /// to within the threshold of get_internal_tolerance_for_orthonormality().
   /// @returns `true` if `this` is a valid rotation matrix.
   boolean<T> IsValid() const { 
-    if constexpr (std::is_same_v<MatrixType, internal::Matrix3dWithDerivatives>) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       return IsValid(R_AB_.value());
     } else {
       return IsValid(R_AB_);
@@ -591,7 +586,7 @@ class RotationMatrix {
   /// Returns `true` if `this` is exactly equal to the identity matrix.
   /// @see IsNearlyIdentity().
   boolean<T> IsExactlyIdentity() const {
-    if constexpr (std::is_same_v<MatrixType, internal::Matrix3dWithDerivatives>) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       return R_AB_.IsExactlyIdentity();
     } else {
       return R_AB_ == Matrix3<T>::Identity();
@@ -604,7 +599,7 @@ class RotationMatrix {
   /// @see IsExactlyIdentity().
   boolean<T> IsNearlyIdentity(
       double tolerance = get_internal_tolerance_for_orthonormality()) const {
-    if constexpr (std::is_same_v<MatrixType, internal::Matrix3dWithDerivatives>) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       return R_AB_.IsNearlyEqualTo(
           internal::Matrix3dWithDerivatives::Identity(), tolerance);
     } else {
@@ -621,7 +616,7 @@ class RotationMatrix {
   /// @see IsExactlyEqualTo().
   boolean<T> IsNearlyEqualTo(const RotationMatrix<T>& other,
                              double tolerance) const {
-    if constexpr (std::is_same_v<MatrixType, internal::Matrix3dWithDerivatives>) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       return R_AB_.IsNearlyEqualTo(other.R_AB_, tolerance);
     } else {
       return IsNearlyEqualTo(R_AB_, other.R_AB_, tolerance);
@@ -643,7 +638,7 @@ class RotationMatrix {
   /// @param[in] other %RotationMatrix to subtract from `this`.
   /// @returns `‖this - other‖∞`
   T GetMaximumAbsoluteDifference(const RotationMatrix<T>& other) const {
-    if constexpr (std::is_same_v<MatrixType, internal::Matrix3dWithDerivatives>) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       // TODO(russt): This can be MUCH more efficient.
       return GetMaximumAbsoluteDifference(R_AB_.ToAutoDiffXd(),
                                           other.R_AB_.ToAutoDiffXd());
@@ -715,7 +710,7 @@ class RotationMatrix {
   /// @note There is a constructor in the RollPitchYaw class that converts
   /// a rotation matrix to roll-pitch-yaw angles.
   Eigen::Quaternion<T> ToQuaternion() const { 
-    if constexpr (std::is_same_v<MatrixType, internal::Matrix3dWithDerivatives>) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       return ToQuaternion(R_AB_.ToAutoDiffXd());
     } else {
       return ToQuaternion(R_AB_);
@@ -755,7 +750,7 @@ class RotationMatrix {
   /// this method chooses to have `0 <= theta <= pi`.
   /// @returns an AngleAxis with `0 <= theta <= pi` and a unit vector `lambda`.
   Eigen::AngleAxis<T> ToAngleAxis() const {
-    if constexpr (std::is_same_v<MatrixType, internal::Matrix3dWithDerivatives>) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       const Eigen::AngleAxis<T> theta_lambda(this->R_AB_.ToAutoDiffXd());
       return theta_lambda;
     } else {
@@ -785,7 +780,11 @@ class RotationMatrix {
   // This is needed for the method RotationMatrix<T>::cast<U>() to be able to
   // use the necessary private constructor.
   template <typename U>
-  friend class RotationMatrix;  
+  friend class RotationMatrix;
+
+  typedef typename std::conditional<std::is_same_v<T, AutoDiffXd>,
+                                    internal::Matrix3dWithDerivatives,
+                                    Matrix3<T>>::type MatrixType;
 
   // Declares the allowable tolerance (small multiplier of double-precision
   // epsilon) used to check whether or not a rotation matrix is orthonormal.
@@ -827,7 +826,7 @@ class RotationMatrix {
   // columns of `R_AB` are `Bx`, `By`, `Bz`.
   void SetFromOrthonormalColumns(const Vector3<T>& Bx, const Vector3<T>& By,
                                  const Vector3<T>& Bz) {
-    if constexpr (std::is_same_v<MatrixType, internal::Matrix3dWithDerivatives>) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       Matrix3<AutoDiffXd> R_AB;
       R_AB.col(0) = Bx;
       R_AB.col(1) = By;
@@ -851,7 +850,7 @@ class RotationMatrix {
   // @see SetFromOrthonormalColumns() for additional notes.
   void SetFromOrthonormalRows(const Vector3<T>& Ax, const Vector3<T>& Ay,
                               const Vector3<T>& Az) {
-    if constexpr (std::is_same_v<MatrixType, internal::Matrix3dWithDerivatives>) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       Matrix3<AutoDiffXd> R_AB;
       R_AB.row(0) = Ax;
       R_AB.row(1) = Ay;

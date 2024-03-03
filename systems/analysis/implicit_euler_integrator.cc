@@ -417,7 +417,7 @@ bool ImplicitEulerIntegrator<T>::AttemptStepPaired(const T& t0, const T& h,
     DRAKE_LOGGER_DEBUG("Implicit Euler approach did not converge for "
         "step size {}", h);
     return false;
-  } else {
+  } else if (this->get_fixed_step_mode()) {
     // Single step succeeded, no need to compute error estimation.
     // We take our single step as the solution, unlike the error-controlled
     // version that uses the two half-steps as the solution.

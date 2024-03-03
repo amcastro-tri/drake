@@ -117,6 +117,7 @@ using drake::math::RotationMatrixd;
 using drake::multibody::ContactResults;
 using drake::multibody::MultibodyPlant;
 using drake::systems::ImplicitEulerIntegrator;
+using drake::systems::ImplicitIntegrator;
 using JacobianComputationScheme =
     ImplicitEulerIntegrator<double>::JacobianComputationScheme;
 using Eigen::Translation3d;
@@ -541,21 +542,23 @@ int do_main() {
 
   drake::systems::IntegratorBase<double>& integrator =
       simulator->get_mutable_integrator();
-  if (FLAGS_simulator_integration_scheme == "implicit_euler") {
-    auto& ie = dynamic_cast<ImplicitEulerIntegrator<double>&>(integrator);
+  auto* impl =
+      dynamic_cast<drake::systems::ImplicitIntegrator<double>*>(&integrator);
+  if (impl) {
+    //auto& ie = dynamic_cast<ImplicitEulerIntegrator<double>&>(integrator);
     if (FLAGS_integrator_jacobian_scheme == "forward") {
-      ie.set_jacobian_computation_scheme(
+      impl->set_jacobian_computation_scheme(
           JacobianComputationScheme::kForwardDifference);
     } else if (FLAGS_integrator_jacobian_scheme == "central") {
-      ie.set_jacobian_computation_scheme(
+      impl->set_jacobian_computation_scheme(
           JacobianComputationScheme::kCentralDifference);
     } else if (FLAGS_integrator_jacobian_scheme == "automatic") {
-      ie.set_jacobian_computation_scheme(
+      impl->set_jacobian_computation_scheme(
           JacobianComputationScheme::kAutomatic);
     } else {
       throw std::logic_error("Invalid jacobian scheme");
     }
-    ie.set_use_full_newton(FLAGS_use_full_newton);
+    impl->set_use_full_newton(FLAGS_use_full_newton);
   }
 
   // Monitor to save stats into a file.

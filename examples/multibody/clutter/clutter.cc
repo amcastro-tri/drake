@@ -108,11 +108,11 @@ DEFINE_double(near_rigid_threshold, 1.0, "SAP near rigid threshold.");
 DEFINE_string(
     integrator_jacobian_scheme, "forward",
     "Jacobian computation scheme: 'forward', 'central', 'automatic'.");
-DEFINE_bool(full_newton, true, "Update Jacobian every iteration");
+DEFINE_bool(full_newton, false, "Update Jacobian every iteration");
 DEFINE_bool(approximate_derivatives, false, "Use approximate dynamics");
-DEFINE_string(convergence_check, "direct",
+DEFINE_string(convergence_check, "hairer",
               "Convergence check type: 'hairer', 'direct'.");
-DEFINE_string(error_norm, "rms",
+DEFINE_string(error_norm, "weighted",
               "Convergence check type: 'rms', 'max', 'weighted'.");              
 
 using drake::geometry::CollisionFilterDeclaration;

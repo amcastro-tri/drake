@@ -122,8 +122,6 @@ bool ImplicitEulerIntegrator<T>::StepAbstract(
   DRAKE_LOGGER_DEBUG("StepAbstract() entered for t={}, h={}, trial={}",
       t0, h, trial);
 
-  std::cout << "StepAbstract()\n";      
-
   // Start from the guess.
   *xtplus = xtplus_guess;
   DRAKE_LOGGER_DEBUG("Starting state: {}", fmt_eigen(xtplus->transpose()));
@@ -214,8 +212,6 @@ bool ImplicitEulerIntegrator<T>::StepImplicitEuler(const T& t0, const T& h,
     const VectorX<T>& xt0, VectorX<T>* xtplus) {
   DRAKE_LOGGER_DEBUG("StepImplicitEuler(h={}) t={}", h, t0);
 
-  std::cout << "StepImplicitEuler()\n";
-
   // Use the current state as the candidate value for the next state.
   // [Hairer 1996] validates this choice (p. 120).
   const VectorX<T>& xtplus_guess = xt0;
@@ -230,8 +226,6 @@ bool ImplicitEulerIntegrator<T>::StepImplicitEulerWithGuess(
   using std::abs;
 
   DRAKE_LOGGER_DEBUG("StepImplicitEulerWithGuess(h={}) t={}", h, t0);
-
-  std::cout << "StepImplicitEulerWithGuess()\n";
 
   // Set g for the implicit Euler method.
   Context<T>* context = this->get_mutable_context();
@@ -254,9 +248,6 @@ bool ImplicitEulerIntegrator<T>::StepHalfSizedImplicitEulers(
   using std::abs;
 
   DRAKE_LOGGER_DEBUG("StepHalfSizedImplicitEulers(h={}) t={}", h, t0);
-
-  std::cout << "StepHalfSizedImplicitEulers()\n";
-
 
   // Store statistics before calling StepAbstract(). The difference between
   // the modified statistics and the stored statistics will be used to compute
@@ -403,8 +394,6 @@ bool ImplicitEulerIntegrator<T>::AttemptStepPaired(const T& t0, const T& h,
   DRAKE_ASSERT(xtplus_ie != nullptr);
   DRAKE_ASSERT(xtplus_hie != nullptr);
 
-  std::cout << "AttemptStepPaired()\n";
-
   // Compute the derivative at time and state (t0, x(t0)). NOTE: the derivative
   // is calculated at this point (early on in the integration process) in order
   // to reuse the derivative evaluation, via the cache, from the last
@@ -476,8 +465,6 @@ bool ImplicitEulerIntegrator<T>::DoImplicitIntegratorStep(const T& h) {
   Context<T>* context = this->get_mutable_context();
   const T t0 = context->get_time();
   DRAKE_LOGGER_DEBUG("IE DoStep(h={}) t={}", h, t0);
-
-  std::cout << "\nDoImplicitIntegratorStep()\n";
 
   xt0_ = context->get_continuous_state().CopyToVector();
   xtplus_ie_.resize(xt0_.size());

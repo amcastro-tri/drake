@@ -2,12 +2,14 @@
 
 #include <limits>
 #include <utility>
+#include <fstream>
 
 #include "drake/multibody/plant/contact_properties.h"
 #include "drake/multibody/plant/deformable_driver.h"
 #include "drake/multibody/plant/deformable_model.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/plant/multibody_plant_discrete_update_manager_attorney.h"
+#include "drake/geometry/proximity/mesh_to_vtk.h"
 
 namespace drake {
 namespace multibody {
@@ -821,6 +823,16 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
   const int num_surfaces = surfaces.size();
   for (int surface_index = 0; surface_index < num_surfaces; ++surface_index) {
     const auto& s = surfaces[surface_index];
+
+    if constexpr (std::is_same_v<T, double>) {
+      const int time_step =
+          std::round(context.get_time() / plant().time_step());
+      std::string name = fmt::format("surface_{}.vtk", time_step);
+      fmt::print("Writing surface to: '{}'\n", name);
+      std::ofstream file(name);
+      drake::geometry::internal::WriteVtkPolygonMesh("contact surface",file, s.poly_mesh_W());
+      file.close();
+    }
 
     const bool M_is_compliant = s.HasGradE_M();
     const bool N_is_compliant = s.HasGradE_N();

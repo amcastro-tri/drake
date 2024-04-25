@@ -293,6 +293,24 @@ struct IsBaseOf<TBase, TypeList<T, U, Ts...>> {
                                 IsBaseOf<TBase, TypeList<U, Ts...>>::value;
 };
 
+// True if T is in TList.
+template <typename T, typename TList>
+struct HasMember {
+  constexpr static bool value = false;
+};
+
+// Specialization for a list with a single type.
+template <typename T>
+struct HasMember<T, TypeList<T>> {
+  constexpr static bool value = true;
+};
+
+template <typename T, typename U, typename... Ts>
+struct HasMember<T, TypeList<U, Ts...>> {
+  constexpr static bool value =
+      std::is_same<T, U>::value || HasMember<T, TypeList<Ts...>>::value;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 /// File pool.h
@@ -335,8 +353,10 @@ class Pool {
   /// @pre U must inherit from TBase.
   template <typename U, class... Args>
   void emplace_back(Args&&... args) {
+    static_assert(HasMember<U, TList>::value, "Type U must belong to TList");
+    static_assert(std::is_base_of_v<TBase, U>,
+                  "Type U must inherit from TBase");
     DRAKE_DEMAND(size() < capacity());
-    static_assert(std::is_base_of_v<TBase, U>);
     // TODO: Some template code or SFINAE to bark if U is not one of the
     // supported types.
     pool_.push_back(Bucket{});  // un-initialized bucket, increases vector size.
@@ -385,6 +405,15 @@ int main() {
   std::cout << "The largest type is: "
             << drake::NiceTypeName::Get<LargestType<JointsList>::type>()
             << std::endl;
+  std::cout << "HasMember<std::string, JointsList>: "
+            << HasMember<std::string, JointsList>::value << std::endl;
+  std::cout << "HasMember<JointOne, JointsList>: "
+            << HasMember<JointOne, JointsList>::value << std::endl;
+  std::cout << "HasMember<JointTwo, JointsList>: "
+            << HasMember<JointTwo, JointsList>::value << std::endl;
+  std::cout << "HasMember<JointBase, JointsList>: "
+            << HasMember<JointBase, JointsList>::value << std::endl;
+  std::cout << std::endl;
 
   // Create a pool for three joints, push some joints, and print their names to
   // test the virtual dispatching is working properly.
@@ -413,4 +442,5 @@ int main() {
   for (int i = 0; i < pool.size(); ++i) {
     pool[i].PrintData(data[i]);
   }
+  std::cout << std::endl;
 }

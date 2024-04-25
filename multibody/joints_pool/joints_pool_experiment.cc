@@ -1,6 +1,7 @@
 #include <cassert>
 #include <iostream>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -15,23 +16,69 @@
 /// demonstration. The actual code won't have JointBase<T>, but MobodBase<T>,
 /// etc.
 
+/// NOTE: Since JointBase must know the type of the data variant to work with,
+/// all joint data types must be defined before JointBase can be defined.
+/// Therefore in practice we'll have a separate file for each joint data type
+/// (joint_xx_data.h), probably a single file that includes all the specific
+/// data header files (say joint_data.h includes all the joint_xx_data.h) and
+/// then joint base will include joint_data.h.
+/// For this example, all data types are declare in the order they appear.
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+/// File joint_one_data.h
+////////////////////////////////////////////////////////////////////////////////
+
+/// Data type used by JointOne's computations.
+struct JointOneData {
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(JointOneData)
+  JointOneData() = default;
+  double data{0.0};
+};
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+/// File joint_two_data.h
+////////////////////////////////////////////////////////////////////////////////
+
+/// Data type used by JointTwo's computations.
+struct JointTwoData {
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(JointTwoData)
+  JointTwoData() = default;
+  std::string data;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 /// File joint_base.h
 ////////////////////////////////////////////////////////////////////////////////
 
+/// JointBase works with a "generic" data variant. Specific types will be
+/// dispatched to work with their specific data type.
+using JointDataVariant = std::variant<JointOneData, JointTwoData>;
+
 /// Virtual interface for all joint types.
 class JointBase {
  public:
   virtual void PrintName() const = 0;
   virtual ~JointBase() = default;
+  virtual JointDataVariant MakeData() const = 0;
+  virtual void CalcData(JointDataVariant*) const = 0;
+  virtual void PrintData(const JointDataVariant&) const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 /// File joint_impl.h
 ////////////////////////////////////////////////////////////////////////////////
+
+/// Each joint type must declare compile time information in its traits.
+template <typename JointType>
+struct JointTraits {};
+
+#define DECLARE_JOINT_TRAITS(JointType)  \
+  using Traits = JointTraits<JointType>; \
+  using JointData = typename Traits::JointData;
 
 /// CRTP type that implements the JointBase interface. Code that is shared
 /// across joints will live here, optimized via CRTP and traits to specfic joint
@@ -45,6 +92,8 @@ template <class Derived>
 class JointImpl : public JointBase {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(JointImpl)
+
+  DECLARE_JOINT_TRAITS(Derived)
 
   JointImpl() = default;
 
@@ -61,6 +110,29 @@ class JointImpl : public JointBase {
     std::cout << std::endl;
   }
 
+  /// Makes data used by `Derived` to perform computations.
+  /// @pre JointTraits<Derived>::JointData is default constructible.
+  JointDataVariant MakeData() const override {
+    static_assert(std::is_default_constructible<JointData>::value,
+                  "Joint data must be default constructible");
+    return JointDataVariant{std::in_place_type<JointData>};
+  }
+
+  /// Computes data for this joint.
+  /// @pre Derived::DoCalcData() is defined.
+  void CalcData(JointDataVariant* data_variant) const override {
+    DRAKE_ASSERT(data_variant != nullptr);
+    auto& data = std::get<JointData>(*data_variant);
+    derived().DoCalcData(&data);
+  }
+
+  /// Prints joint type specific data.
+  /// @pre Derived::DoPrintData() must be defined.
+  void PrintData(const JointDataVariant& data_variant) const override {
+    const auto& data = std::get<JointData>(data_variant);
+    derived().DoPrintData(data);
+  }
+
  protected:
   const Derived& derived() const { return *static_cast<const Derived*>(this); }
 };
@@ -70,10 +142,19 @@ class JointImpl : public JointBase {
 /// File joint_one.h
 ////////////////////////////////////////////////////////////////////////////////
 
+class JointOne;  // Forward declaration needed to define traits.
+
+template <>
+struct JointTraits<JointOne> {
+  using JointData = JointOneData;
+};
+
 /// A specific joint type.
 class JointOne final : public JointImpl<JointOne> {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(JointOne)
+
+  DECLARE_JOINT_TRAITS(JointOne)
 
   JointOne() {}
 
@@ -82,9 +163,20 @@ class JointOne final : public JointImpl<JointOne> {
  private:
   // Give JointImpl access to private implementations.
   friend JointImpl<JointOne>;
+
+  // Implementation of JointImpl::PrintName().
   void DoPrintName() const {
     std::cout << "JointOne with data = " << data_ << "\n";
   }
+
+  // Implementation of JointImpl::CalcData().
+  void DoCalcData(JointData* joint_data) const { joint_data->data = 3.14; }
+
+  // Implementation of JointImpl::PrintData().
+  void DoPrintData(const JointData& joint_data) const {
+    std::cout << "JointOne data: " << joint_data.data << std::endl;
+  }
+
   int data_;  // dummy data.
 };
 
@@ -93,10 +185,19 @@ class JointOne final : public JointImpl<JointOne> {
 /// File joint_two.h
 ////////////////////////////////////////////////////////////////////////////////
 
+class JointTwo;  // Forward declaration needed to define traits.
+
+template <>
+struct JointTraits<JointTwo> {
+  using JointData = JointTwoData;
+};
+
 /// Another joint type, see notes in JointOne.
 class JointTwo : public JointImpl<JointTwo> {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(JointTwo)
+
+  DECLARE_JOINT_TRAITS(JointTwo)
 
   JointTwo() = default;
 
@@ -104,9 +205,22 @@ class JointTwo : public JointImpl<JointTwo> {
 
  private:
   friend JointImpl<JointTwo>;
+
+  // Implementation of JointImpl::PrintName().
   void DoPrintName() const {
     std::cout << "JointTwo with data = " << data_ << "\n";
   }
+
+  // Implementation of JointImpl::CalcData().
+  void DoCalcData(JointData* joint_data) const {
+    joint_data->data = "hello joints";
+  }
+
+  // Implementation of JointImpl::PrintData().
+  void DoPrintData(const JointData& joint_data) const {
+    std::cout << "JointTwo data: " << joint_data.data << std::endl;
+  }
+
   double data_;
   double data2_;
 };
@@ -239,10 +353,10 @@ class Pool {
 ////////////////////////////////////////////////////////////////////////////////
 
 int main() {
-  /// Compile-time list of the closed set of joints we'll work with.
+  // Compile-time list of the closed set of joints we'll work with.
   using JointsList = TypeList<JointOne, JointTwo>;
 
-  /// Some experiments with compile-time information.
+  // Some experiments with compile-time information.
   std::cout << "List size: " << Length<JointsList>::value << std::endl;
   std::cout << "sizeof(JointOne): " << sizeof(JointOne) << std::endl;
   std::cout << "sizeof(JointTwo): " << sizeof(JointTwo) << std::endl;
@@ -250,8 +364,8 @@ int main() {
             << drake::NiceTypeName::Get<LargestType<JointsList>::type>()
             << std::endl;
 
-  /// Create a pool for thre joints, push some joints, and print their names to
-  /// test the virtual dispatching is working properly.
+  // Create a pool for three joints, push some joints, and print their names to
+  // test the virtual dispatching is working properly.
   using JointPool = Pool<JointsList, JointBase>;
   JointPool pool(3);
   pool.emplace_back<JointTwo>();
@@ -259,5 +373,22 @@ int main() {
   pool.emplace_back<JointTwo>(3.14 /* data */);
   for (int i = 0; i < pool.size(); ++i) {
     pool[i].PrintName();
+  }
+
+  // Make data.
+  std::vector<JointDataVariant> data;
+  data.reserve(pool.size());
+  for (int i = 0; i < pool.size(); ++i) {
+    data.push_back(pool[i].MakeData());
+  }
+
+  // Work with data.
+  for (int i = 0; i < pool.size(); ++i) {
+    pool[i].CalcData(&data[i]);
+  }
+
+  // Print the results.
+  for (int i = 0; i < pool.size(); ++i) {
+    pool[i].PrintData(data[i]);
   }
 }

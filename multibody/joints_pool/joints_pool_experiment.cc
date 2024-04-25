@@ -276,6 +276,23 @@ struct LargestType<TypeList<T, U, Ts...>> {
                Ts...>>::type;
 };
 
+// Verifies that each T in TList inherits from TBase.
+template <typename TBase, typename TList>
+struct IsBaseOf;
+
+// Specialization for a list with a single type.
+template <typename TBase, typename T>
+struct IsBaseOf<TBase, TypeList<T>> {
+  constexpr static bool value = std::is_base_of<TBase, T>::value;
+};
+
+// Recursive specialization for lists with more than one type.
+template <typename TBase, typename T, typename U, typename... Ts>
+struct IsBaseOf<TBase, TypeList<T, U, Ts...>> {
+  constexpr static bool value = std::is_base_of<TBase, T>::value &&
+                                IsBaseOf<TBase, TypeList<U, Ts...>>::value;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 /// File pool.h
@@ -292,12 +309,16 @@ struct LargestType<TypeList<T, U, Ts...>> {
 /// Objects in TList are polymorphic, with base class TBase, even when stored
 /// contiguously in memory by value.
 ///
-/// @tparam TList a TypeList that specifies the list of types.
+/// @tparam TList a TypeList that specifies the list of types. Types T in TList
+/// must inherit from TBase.
 /// @tparam TBase the base class of polymorphic objects in TList.
 template <typename TList, typename TBase>
 class Pool {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Pool)
+
+  /// Assert that elements in TList inherit from TBase.
+  static_assert(IsBaseOf<TBase, TList>::value);
 
   /// Constructs a pool with a given `capacity`.
   /// After this call, we cannot place more than `capacity` objects in the pool.
@@ -355,6 +376,7 @@ class Pool {
 int main() {
   // Compile-time list of the closed set of joints we'll work with.
   using JointsList = TypeList<JointOne, JointTwo>;
+  static_assert(IsBaseOf<JointBase, JointsList>::value);
 
   // Some experiments with compile-time information.
   std::cout << "List size: " << Length<JointsList>::value << std::endl;

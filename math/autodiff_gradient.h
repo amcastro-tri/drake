@@ -18,6 +18,28 @@ gradient matrices. */
 namespace drake {
 namespace math {
 
+template <typename Derived>
+int CalcNumVariables(const Eigen::MatrixBase<Derived>& auto_diff_matrix) {
+  static_assert(std::is_same_v<typename Derived::Scalar, AutoDiffXd>);
+  // Entries in an AutoDiff matrix must all have the same number of derivatives,
+  // or 0-length derivatives in which case they are interpreted as all-zero.
+  int num_derivatives_from_matrix = 0;
+  for (int i = 0; i < auto_diff_matrix.size(); ++i) {
+    const int entry_num_derivs =
+        static_cast<int>(auto_diff_matrix(i).derivatives().size());
+    if (entry_num_derivs == 0) continue;  // Always OK.
+    if (num_derivatives_from_matrix != 0 &&
+        entry_num_derivs != num_derivatives_from_matrix) {
+      throw std::logic_error(fmt::format(
+          "CalcNumVariables(): Input matrix has elements with inconsistent,"
+          " non-zero numbers of derivatives ({} and {}).",
+          num_derivatives_from_matrix, entry_num_derivs));
+    }
+    num_derivatives_from_matrix = entry_num_derivs;
+  }
+  return num_derivatives_from_matrix;
+}
+
 /** Extracts the `derivatives()` portion from a matrix of AutoDiffScalar
 entries. (Each entry contains a value and derivatives.)
 

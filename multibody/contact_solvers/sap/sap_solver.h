@@ -62,6 +62,7 @@ struct SapSolverParameters {
     double alpha_max{1.5};
   };
 
+#if 0
   // The type of linear solver used for solving linear systems from the Newton
   // iterations.
   enum class LinearSolverType {
@@ -76,6 +77,7 @@ struct SapSolverParameters {
     // Dense algebra. Typically used for testing.
     kDense,
   };
+#endif
 
   // Stopping Criteria:
   //   SAP uses two stopping criteria, one on the optimality condition and a
@@ -116,7 +118,7 @@ struct SapSolverParameters {
   //  * For rel_tolerance ≲ 1.0e-7 the solver will most likely reach the cost
   //    condition first.
   //
-  // SolverStats::optimality_condition_reached indicates if this condition was
+  // SapSolverStats::optimality_condition_reached indicates if this condition was
   // reached.
   double abs_tolerance{1.e-14};  // Absolute tolerance εₐ, square root of Joule.
   double rel_tolerance{1.e-6};  // Relative tolerance εᵣ.
@@ -137,7 +139,7 @@ struct SapSolverParameters {
   //  2. Ill conditioning of the problem makes reaching the optimality condition
   //     difficult, specially when in the lower range of nominal values.
   //
-  // SolverStats::cost_condition_reached indicates if this condition was
+  // SapSolverStats::cost_condition_reached indicates if this condition was
   // reached.
   //
   // Nominal values:
@@ -178,7 +180,47 @@ struct SapSolverParameters {
   // documentation on `relative_slop`.
   bool nonmonotonic_convergence_is_error{false};
 
-  LinearSolverType linear_solver_type{LinearSolverType::kBlockSparseCholesky};
+  SapHessianFactorizationType linear_solver_type{
+      SapHessianFactorizationType::kBlockSparseCholesky};
+};
+
+// Struct used to store statistics for each solve by SolveWithGuess().
+struct SapSolverStats {
+  // Initializes counters and time statistics to zero.
+  void Reset() {
+    num_iters = 0;
+    num_line_search_iters = 0;
+    optimality_criterion_reached = false;
+    cost_criterion_reached = false;
+    momentum_residual.clear();
+    momentum_scale.clear();
+    cost.clear();
+    alpha.clear();
+  }
+  int num_iters{0};              // Number of Newton iterations.
+  int num_line_search_iters{0};  // Total number of line search iterations.
+
+  // Indicates if the optimality condition was reached.
+  bool optimality_criterion_reached{false};
+
+  // Indicates if the cost condition was reached.
+  bool cost_criterion_reached{false};
+
+  // Cost at each SAP Newton iteration. cost[0] stores cost at the initial
+  // guess.
+  std::vector<double> cost;
+
+  // Line search step size at each SAP Newton iteration. alpha[0] stores alpha
+  // = 1.
+  std::vector<double> alpha;
+
+  // Dimensionless momentum residual at each SAP Newton iteration. Of size
+  // num_iters + 1.
+  std::vector<double> momentum_residual;
+
+  // Dimensionless momentum scale at each SAP Newton iteration. Of size
+  // num_iters + 1.
+  std::vector<double> momentum_scale;
 };
 
 // This class implements the Semi-Analytic Primal (SAP) solver described in
@@ -210,46 +252,7 @@ struct SapSolverParameters {
 template <typename T>
 class SapSolver {
  public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(SapSolver);
-
-  // Struct used to store statistics for each solve by SolveWithGuess().
-  struct SolverStats {
-    // Initializes counters and time statistics to zero.
-    void Reset() {
-      num_iters = 0;
-      num_line_search_iters = 0;
-      optimality_criterion_reached = false;
-      cost_criterion_reached = false;
-      momentum_residual.clear();
-      momentum_scale.clear();
-      cost.clear();
-      alpha.clear();
-    }
-    int num_iters{0};              // Number of Newton iterations.
-    int num_line_search_iters{0};  // Total number of line search iterations.
-
-    // Indicates if the optimality condition was reached.
-    bool optimality_criterion_reached{false};
-
-    // Indicates if the cost condition was reached.
-    bool cost_criterion_reached{false};
-
-    // Cost at each SAP Newton iteration. cost[0] stores cost at the initial
-    // guess.
-    std::vector<double> cost;
-
-    // Line search step size at each SAP Newton iteration. alpha[0] stores alpha
-    // = 1.
-    std::vector<double> alpha;
-
-    // Dimensionless momentum residual at each SAP Newton iteration. Of size
-    // num_iters + 1.
-    std::vector<double> momentum_residual;
-
-    // Dimensionless momentum scale at each SAP Newton iteration. Of size
-    // num_iters + 1.
-    std::vector<double> momentum_scale;
-  };
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(SapSolver);  
 
   SapSolver() = default;
 
@@ -273,12 +276,22 @@ class SapSolver {
   void set_parameters(const SapSolverParameters& parameters);
 
   // Returns solver statistics from the last call to SolveWithGuess().
-  // Statistics are reset with SolverStats::Reset() on each new call to
+  // Statistics are reset with SapSolverStats::Reset() on each new call to
   // SolveWithGuess().
-  const SolverStats& get_statistics() const;
+  const SapSolverStats& get_statistics() const;
+
+//  SapHessianFactorization& mutable_factorization() { return factorization_; }
 
  private:
   friend class SapSolverTester;
+  template <typename U>
+  friend class SapSolver;
+
+  SapSolverStatus SolveWithGuess(const SapModel<T>& model,
+                                 const VectorX<T>& v_guess,
+                                 systems::Context<T>* context);
+
+  void SolveWithHessian(EigenPtr<MatrixX<T>> rhs) const;
 
   // Struct used to store the result of computing the search direction. We store
   // the search direction in the generalized velocities, dv, as well as
@@ -301,7 +314,8 @@ class SapSolver {
   // generalized velocities, vc is the vector of contact velocities and gamma is
   // the vector of generalized contact impulses.
   // @pre context was created by the underlying SapModel.
-  void PackSapSolverResults(const systems::Context<T>& context,
+  void PackSapSolverResults(const SapModel<T>& model,
+                            const systems::Context<T>& context,
                             SapSolverResults<T>* results) const;
 
   // We monitor the optimality condition (for SAP, balance of momentum), i.e.
@@ -312,7 +326,8 @@ class SapSolver {
   // This method computes momentum_residual = ‖∇ℓ‖ and momentum_scale =
   // max(‖p‖,‖j‖). See [Castro et al., 2021] for further details.
   // @pre context was created by the underlying SapModel.
-  void CalcStoppingCriteriaResidual(const systems::Context<T>& context,
+  void CalcStoppingCriteriaResidual(const SapModel<T>& model,
+                                    const systems::Context<T>& context,
                                     T* momentum_residual,
                                     T* momentum_scale) const;
 
@@ -335,7 +350,8 @@ class SapSolver {
   //   the value of the second derivative d²ℓ/dα².
   // @param d2ell_dalpha2_scratch A scratchpad needed when computing
   //   d2ell_dalpha2. Must not be nullptr if d2ell_dalpha2 != nullptr.
-  T CalcCostAlongLine(const systems::Context<T>& context,
+  T CalcCostAlongLine(const SapModel<T>& model,
+                      const systems::Context<T>& context,
                       const SearchDirectionData& search_direction_data,
                       const T& alpha, systems::Context<T>* scratch,
                       T* dell_dalpha = nullptr, T* d2ell_dalpha2 = nullptr,
@@ -363,7 +379,7 @@ class SapSolver {
   // @returns A pair (α, num_iterations) where α satisfies Armijo's criterion
   // and num_iterations is the number of backtracking iterations performed.
   std::pair<T, int> PerformBackTrackingLineSearch(
-      const systems::Context<T>& context,
+      const SapModel<T>& model, const systems::Context<T>& context,
       const SearchDirectionData& search_direction_data,
       systems::Context<T>* scratch_workspace) const;
 
@@ -379,36 +395,9 @@ class SapSolver {
   // @returns A pair (α, num_iterations) with α the optimal line search step
   // size and num_iterations is the number of iterations performed.
   std::pair<T, int> PerformExactLineSearch(
-      const systems::Context<T>& context,
+      const SapModel<T>& model, const systems::Context<T>& context,
       const SearchDirectionData& search_direction_data,
       systems::Context<T>* scratch_workspace) const;
-
-  // Computes a dense Hessian H(v) = A + Jᵀ⋅G(v)⋅J for the generalized
-  // velocities state stored in `context`.
-  MatrixX<T> CalcDenseHessian(const systems::Context<T>& context) const;
-
-  // Makes a new SuperNodalSolver compatible with the underlying SapModel.
-  std::unique_ptr<SuperNodalSolver> MakeSuperNodalSolver() const;
-
-  // Evaluates the constraint's Hessian G(v) and updates `supernodal_solver`'s
-  // weight matrix so that we can later on solve the Newton system with Hessian
-  // H(v) = A + Jᵀ⋅G(v)⋅J.
-  void UpdateSuperNodalSolver(const systems::Context<T>& context,
-                              SuperNodalSolver* supernodal_solver) const;
-
-  // Updates the supernodal solver with the constraint's Hessian G(v),
-  // factorizes it, and solves for the search direction `dv`.
-  // @pre supernodal_solver and dv are not nullptr.
-  // @pre supernodal_solver was created with a call to MakeSuperNodalSolver().
-  void CallSuperNodalSolver(const systems::Context<T>& context,
-                            SuperNodalSolver* supernodal_solver,
-                            VectorX<T>* dv) const;
-
-  // Solves for dv using dense algebra, for debugging.
-  // @pre context was created by the underlying SapModel.
-  // TODO(amcastro-tri): Add AutoDiffXd support.
-  void CallDenseSolver(const systems::Context<T>& context,
-                       VectorX<T>* dv) const;
 
   // This method performs one iteration of the SAP solver. It updates gradient
   // of the primal cost ∇ℓₚ, the cost's Hessian H and solves for the velocity
@@ -421,18 +410,17 @@ class SapSolver {
   // @pre supernodal_solver must be a valid supernodal solver created with
   // MakeSuperNodalSolver() when
   // parameters_.linear_solver_type != LinearSolverType::kDense.
-  void CalcSearchDirectionData(const systems::Context<T>& context,
-                               SuperNodalSolver* supernodal_solver,
-                               SearchDirectionData* data) const;
+  void CalcSearchDirectionData(const SapModel<T>& model,
+                               const systems::Context<T>& context,
+                               SearchDirectionData* data);
 
-  std::unique_ptr<SapModel<T>> model_;
   SapSolverParameters parameters_;
   // Stats are mutable so we can update them from within const methods (e.g.
   // Eval() methods). Nothing in stats is allowed to affect the computation; it
   // is purely a passive observer.
   // TODO(amcastro-tri): Consider moving stats into the solver's state stored as
   // part of the model's context.
-  mutable SolverStats stats_;
+  mutable SapSolverStats stats_;
 };
 
 // Forward-declare specializations, prior to DRAKE_DECLARE... below.
@@ -441,10 +429,23 @@ template <>
 SapSolverStatus SapSolver<double>::SolveWithGuess(
     const SapContactProblem<double>&, const VectorX<double>&,
     SapSolverResults<double>*);
+template <>    
+SapSolverStatus SapSolver<AutoDiffXd>::SolveWithGuess(
+    const SapContactProblem<AutoDiffXd>&, const VectorX<AutoDiffXd>&,
+    SapSolverResults<AutoDiffXd>*);
+template <>
+SapSolverStatus SapSolver<double>::SolveWithGuess(const SapModel<double>&,
+                                                  const VectorX<double>&,
+                                                  systems::Context<double>*);
 template <>
 std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
-    const systems::Context<double>&, const SearchDirectionData&,
-    systems::Context<double>*) const;
+    const SapModel<double>&, const systems::Context<double>&,
+    const SearchDirectionData&, systems::Context<double>*) const;
+
+template <>
+void SapSolver<double>::CalcSearchDirectionData(
+    const SapModel<double>&, const systems::Context<double>&,
+    SapSolver<double>::SearchDirectionData*);
 
 }  // namespace internal
 }  // namespace contact_solvers

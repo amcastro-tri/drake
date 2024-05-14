@@ -81,6 +81,20 @@ BlockSparseSuperNodalSolver::BlockSparseSuperNodalSolver(
 
 BlockSparseSuperNodalSolver::~BlockSparseSuperNodalSolver() = default;
 
+std::unique_ptr<SuperNodalSolver> BlockSparseSuperNodalSolver::DoClone() const {
+  // N.B. BlockSparseSuperNodalSolver's default constructor is private.
+  // Therefore we need to call operator new explicitly.
+  auto clone = std::unique_ptr<BlockSparseSuperNodalSolver>(
+      new BlockSparseSuperNodalSolver());
+  clone->H_ = std::make_unique<BlockSparseSymmetricMatrix>(*H_);
+  clone->row_to_triplet_index_ = row_to_triplet_index_;
+  clone->jacobian_blocks_ = jacobian_blocks_;
+  clone->mass_matrices_ = mass_matrices_;
+  // TODO(amcastro-tri): Avoid symbolic analysis here, copy from `this`.
+  clone->solver_.SetMatrix(*clone->H_);
+  return clone;
+}
+
 bool BlockSparseSuperNodalSolver::DoSetWeightMatrix(
     const std::vector<Eigen::MatrixXd>& weight_matrix) {
   H_->SetZero();

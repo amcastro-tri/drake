@@ -283,6 +283,24 @@ void SapHuntCrossleyConstraint<T>::DoAccumulateSpatialImpulses(
   }
 }
 
+template <typename T>
+std::unique_ptr<SapConstraint<double>>
+SapHuntCrossleyConstraint<T>::DoDiscardGradientAndClone() const {
+  SapConstraintJacobian<double> J = this->jacobian().DiscardGradientAndClone();
+  const auto& p = parameters();
+  SapHuntCrossleyConstraint<double>::Parameters parameters{
+      p.model,
+      ExtractDoubleOrThrow(p.friction),
+      ExtractDoubleOrThrow(p.stiffness),
+      ExtractDoubleOrThrow(p.dissipation),
+      p.stiction_tolerance,
+      p.sigma};
+  ContactConfiguration<double> configuration =
+      configuration_.DiscardGradientAndClone();
+  return std::make_unique<SapHuntCrossleyConstraint<double>>(
+      std::move(configuration), std::move(J), std::move(parameters));
+}
+
 }  // namespace internal
 }  // namespace contact_solvers
 }  // namespace multibody

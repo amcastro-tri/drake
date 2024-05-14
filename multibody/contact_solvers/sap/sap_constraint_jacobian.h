@@ -5,6 +5,7 @@
 
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
+#include "drake/math/autodiff_gradient.h"
 #include "drake/multibody/contact_solvers/matrix_block.h"
 
 namespace drake {
@@ -108,6 +109,17 @@ class SapConstraintJacobian {
    @pre blocks_are_dense() is true. */
   SapConstraintJacobian<T> LeftMultiplyByTranspose(
       const Eigen::Ref<const MatrixX<T>>& A) const;
+
+  // TODO: rename to CloneToDouble() (again), since for T = double this behaves
+  // as a clone method.
+  /* When T = double, this method returns a deep copy of `this` jacobian.
+     When T = AutoDiffXd this method returns a deep copy where gradients were
+     discarded.
+     @warning Only dense clique jacobians are supported. If any of the clique
+     jacobians is sparse or with some other structure other than dense, they are
+     converted to dense in the new cloned object.
+     */
+  SapConstraintJacobian<double> DiscardGradientAndClone() const;
 
  private:
   // Blocks for each block. Up to two entries only.

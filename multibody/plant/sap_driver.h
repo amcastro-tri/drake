@@ -115,6 +115,7 @@ class SapDriver {
 
  private:
   // Provide private access for unit testing only.
+  template <typename U>
   friend class SapDriverTest;
 
   const CompliantContactManager<T>& manager() const { return *manager_; }

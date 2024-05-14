@@ -211,6 +211,9 @@ class SapHuntCrossleyConstraint final : public SapConstraint<T> {
                                    const Eigen::Ref<const VectorX<T>>& gamma,
                                    SpatialForce<T>* F) const final;
 
+  std::unique_ptr<SapConstraint<double>> DoDiscardGradientAndClone()
+      const final;
+
   // Computes antiderivative N(vₙ; fₑ₀) such that n(vₙ; fe0) = N'(vₙ; fₑ₀).
   // @param dt The fixed time step size.
   // @param vn Normal component of the contact velocity.

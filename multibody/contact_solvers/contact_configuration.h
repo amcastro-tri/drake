@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drake/common/eigen_types.h"
+#include "drake/math/autodiff_gradient.h"
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/plant/discrete_contact_pair.h"
 
@@ -48,6 +49,19 @@ struct ContactConfiguration {
   // Orientation of contact frame C in the world frame W.
   // Rz_WC = R_WC.col(2) corresponds to the normal from object A into object B.
   math::RotationMatrix<T> R_WC;
+
+  ContactConfiguration<double> DiscardGradientAndClone() const {
+    return ContactConfiguration<double>{
+        .objectA = objectA,
+        .p_ApC_W = math::DiscardGradient(p_ApC_W),
+        .objectB = objectB,
+        .p_BqC_W = math::DiscardGradient(p_BqC_W),
+        .phi = ExtractDoubleOrThrow(phi),
+        .vn = ExtractDoubleOrThrow(vn),
+        .fe = ExtractDoubleOrThrow(fe),
+        .R_WC =
+            math::RotationMatrix<double>(math::DiscardGradient(R_WC.matrix()))};
+  }
 };
 
 // Extracts a ContactConfiguration from the given DiscreteContactPair.

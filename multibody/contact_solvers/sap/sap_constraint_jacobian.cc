@@ -64,6 +64,20 @@ SapConstraintJacobian<T> SapConstraintJacobian<T>::LeftMultiplyByTranspose(
                                   clique(1), std::move(ATJ_second_clique));
 }
 
+template <typename T>
+SapConstraintJacobian<double>
+SapConstraintJacobian<T>::DiscardGradientAndClone() const {
+  MatrixX<double> J_first_clique =
+      math::DiscardGradient(clique_jacobian(0).MakeDenseMatrix());
+  if (num_cliques() == 1) {
+    return SapConstraintJacobian<double>(clique(0), std::move(J_first_clique));
+  }
+  MatrixX<double> J_second_clique =
+      math::DiscardGradient(clique_jacobian(1).MakeDenseMatrix());
+  return SapConstraintJacobian<double>(clique(0), std::move(J_first_clique),
+                                       clique(1), std::move(J_second_clique));
+}
+
 }  // namespace internal
 }  // namespace contact_solvers
 }  // namespace multibody

@@ -78,6 +78,9 @@ class SuperNodalSolver {
   // Returns the size of the system being solved.
   int GetSize() const { return DoGetSize(); }
 
+  // Returns a deep-copy of this solver.  
+  std::unique_ptr<SuperNodalSolver> Clone() const { return DoClone(); }
+
  protected:
   SuperNodalSolver() = default;
 
@@ -102,6 +105,12 @@ class SuperNodalSolver {
 
   // @see GetSize()
   virtual int DoGetSize() const = 0;
+
+  virtual std::unique_ptr<SuperNodalSolver> DoClone() const {
+    // TODO: Implement for conex.
+    throw std::runtime_error("Implement!!");
+    DRAKE_UNREACHABLE();
+  }
 
   // @}
 

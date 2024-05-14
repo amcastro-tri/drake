@@ -44,6 +44,9 @@ class BlockSparseSuperNodalSolver final : public SuperNodalSolver {
   ~BlockSparseSuperNodalSolver() final;
 
  private:
+  // Solver for a zero-sized matrix, only allowed for clonning.
+  BlockSparseSuperNodalSolver() = default;
+
   /* NVI implementations. */
   bool DoSetWeightMatrix(
       const std::vector<Eigen::MatrixXd>& block_diagonal_G) final;
@@ -55,6 +58,8 @@ class BlockSparseSuperNodalSolver final : public SuperNodalSolver {
     DRAKE_DEMAND(H_ != nullptr);
     return H_->cols();
   }
+
+  std::unique_ptr<SuperNodalSolver> DoClone() const final;
 
   /* Matrix H in the sparse system H⋅x = b where H = M + Jᵀ⋅G⋅J. */
   std::unique_ptr<BlockSparseSymmetricMatrix> H_;

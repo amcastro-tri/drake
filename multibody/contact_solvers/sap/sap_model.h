@@ -7,6 +7,7 @@
 #include "drake/multibody/contact_solvers/sap/partial_permutation.h"
 #include "drake/multibody/contact_solvers/sap/sap_constraint_bundle.h"
 #include "drake/multibody/contact_solvers/sap/sap_contact_problem.h"
+#include "drake/multibody/contact_solvers/sap/sap_hessian_factorization.h"
 #include "drake/systems/framework/context.h"
 #include "drake/systems/framework/leaf_system.h"
 
@@ -137,7 +138,8 @@ class SapModel {
 
   /* Constructs a model of `problem` optimized to be used by the SAP solver.
    The input `problem` must outlive `this` model. */
-  explicit SapModel(const SapContactProblem<T>* problem);
+  explicit SapModel(const SapContactProblem<T>* problem,
+                    SapHessianFactorizationType hessian_type);
 
   /* Returns a reference to the contact problem being modeled by this class. */
   const SapContactProblem<T>& problem() const {
@@ -320,6 +322,14 @@ class SapModel {
         .G;
   }
 
+  // TODO: this should only be enabled for T = double.
+  const SapHessianFactorization& EvalHessianFactorization(
+      const systems::Context<T>& context) const {
+    return system_
+        ->get_cache_entry(system_->cache_indexes().hessian_factorization)
+        .template Eval<SapHessianFactorization>(context);
+  }
+
  private:
   // Facilitate testing.
   friend class SapModelTester;
@@ -335,6 +345,7 @@ class SapModel {
       systems::CacheIndex cost;
       systems::CacheIndex gradients;
       systems::CacheIndex hessian;
+      systems::CacheIndex hessian_factorization;
       systems::CacheIndex impulses;
       systems::CacheIndex momentum_gain;
     };
@@ -450,6 +461,8 @@ class SapModel {
                           GradientsCache<T>* cache) const;
   void CalcHessianCache(const systems::Context<T>& context,
                         HessianCache<T>* cache) const;
+  void CalcHessianFactorizationCache(const systems::Context<T>& context,
+                                     SapHessianFactorization* hessian) const;
 
   /* Evaluates the velocity gain defined as velocity_gain = v - v*. */
   const VectorX<T>& EvalVelocityGain(const systems::Context<T>& context) const {
@@ -471,6 +484,8 @@ class SapModel {
   }
 
   const SapContactProblem<T>* problem_{nullptr};
+  SapHessianFactorizationType hessian_type_{
+      SapHessianFactorizationType::kBlockSparseCholesky};
 
   // TODO(amcastro-tri): Data below is heap allocated once per time step.
   // Consider how to pre-allocate once to minimize heap allocation.
@@ -485,6 +500,13 @@ class SapModel {
   // System used to manage context resources.
   std::unique_ptr<SapModelSystem> system_;
 };
+
+// Forward-declare specializations, prior to DRAKE_DECLARE... below.
+// We use these to specialize functions that do not support AutoDiffXd.
+//template <>
+//void SapModel<double>::CalcHessianFactorizationCache(
+//    const systems::Context<double>& context,
+//    SapHessianFactorization* hessian) const;
 
 }  // namespace internal
 }  // namespace contact_solvers

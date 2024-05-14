@@ -16,8 +16,9 @@ namespace internal {
 using systems::Context;
 
 template <typename T>
-SapModel<T>::SapModel(const SapContactProblem<T>* problem_ptr)
-    : problem_(problem_ptr) {
+SapModel<T>::SapModel(const SapContactProblem<T>* problem_ptr,
+                      SapHessianFactorizationType hessian_type)
+    : problem_(problem_ptr), hessian_type_(hessian_type) {
   // Graph to the original contact problem, including all cliques
   // (participating and non-participating).
   const ContactProblemGraph& graph = problem().graph();
@@ -137,6 +138,14 @@ void SapModel<T>::DeclareCacheEntries() {
       {system_->cache_entry_ticket(
           system_->cache_indexes().constraint_velocities)});
   system_->mutable_cache_indexes().hessian = hessian_cache_entry.cache_index();
+
+  const auto& hessian_factorization_cache_entry = system_->DeclareCacheEntry(
+      "Hessian factorization cache.",
+      systems::ValueProducer(this, &SapModel<T>::CalcHessianFactorizationCache),
+      {system_->cache_entry_ticket(
+          system_->cache_indexes().constraint_velocities)});
+  system_->mutable_cache_indexes().hessian_factorization =
+      hessian_factorization_cache_entry.cache_index();
 }
 
 template <typename T>
@@ -254,6 +263,28 @@ void SapModel<T>::CalcHessianCache(const systems::Context<T>& context,
       EvalSapConstraintBundleData(context);
   constraints_bundle().CalcImpulsesAndConstraintsHessian(
       bundle_data, &cache->impulses.gamma, &cache->G);
+}
+
+template <typename T>
+void SapModel<T>::CalcHessianFactorizationCache(
+    const systems::Context<T>&,
+    SapHessianFactorization*) const {
+  throw std::runtime_error(
+      "Hessian computation is only allowed for T = double");
+}
+
+template <>
+void SapModel<double>::CalcHessianFactorizationCache(
+    const systems::Context<double>& context,
+    SapHessianFactorization* hessian) const {
+  // Make only for the very first time. This can be an expensive computation for
+  // sparse Hessians even when the factorization is not yet computed.
+  if (hessian->solver_type() == SapHessianFactorizationType::kNotSpecified) {
+    *hessian = SapHessianFactorization(hessian_type_, &dynamics_matrix(),
+                                       &constraints_bundle().J());
+  }
+  const std::vector<MatrixX<double>>& G = EvalConstraintsHessian(context);
+  hessian->Update(G);
 }
 
 template <typename T>

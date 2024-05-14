@@ -93,6 +93,7 @@ drake_cc_library(
     deps = [
         "//common:default_scalars",
         "//common:essential",
+        "//math:gradient",
         "//multibody/contact_solvers:matrix_block",
     ],
 )
@@ -161,6 +162,19 @@ drake_cc_library(
         ":sap_holonomic_constraint",
         "//common:default_scalars",
         "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "sap_hessian_factorization",
+    srcs = ["sap_hessian_factorization.cc"],
+    hdrs = ["sap_hessian_factorization.h"],
+    deps = [
+        "//common:essential",
+        "//multibody/contact_solvers:block_sparse_matrix",
+        "//multibody/contact_solvers:block_sparse_supernodal_solver",
+        "//multibody/contact_solvers:conex_supernodal_solver",
+        "//multibody/contact_solvers:supernodal_solver",
     ],
 )
 
@@ -248,6 +262,7 @@ drake_cc_library(
         ":partial_permutation",
         ":sap_constraint_bundle",
         ":sap_contact_problem",
+        ":sap_hessian_factorization",
         "//common:default_scalars",
         "//common:essential",
         "//math:linear_solve",
@@ -371,6 +386,20 @@ drake_cc_googletest(
         ":validate_constraint_gradients",
         "//common:pointer_cast",
         "//common/test_utilities:eigen_matrix_compare",
+    ],
+)
+
+drake_cc_googletest(
+    name = "sap_gradients_test",
+    data = ["@drake_models//:iiwa_description"],
+    deps = [                
+        "//common:find_resource",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:maybe_pause_for_user",
+        "//multibody/parsing",
+        "//multibody/plant",
+        "//multibody/plant:compliant_contact_manager_tester",        
+        "//visualization:visualization_config_functions",        
     ],
 )
 

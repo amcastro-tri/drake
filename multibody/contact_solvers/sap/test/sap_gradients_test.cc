@@ -24,6 +24,9 @@
 using drake::geometry::ProximityProperties;
 using drake::math::RigidTransformd;
 using drake::math::RotationMatrixd;
+using drake::multibody::internal::CompliantContactManager;
+using drake::multibody::internal::CompliantContactManagerTester;
+using drake::multibody::internal::SapDriver;
 using drake::multibody::contact_solvers::internal::SapContactProblem;
 using drake::multibody::contact_solvers::internal::SapSolver;
 using drake::multibody::contact_solvers::internal::SapSolverParameters;
@@ -39,6 +42,20 @@ using Eigen::VectorXd;
 
 namespace drake {
 namespace multibody {
+
+namespace internal {
+// Friend helper class to access SapDriver private internals for testing.
+template <typename T>
+class SapDriverTest {
+ public:
+  static const ContactProblemCache<T>& EvalContactProblemCache(
+      const SapDriver<T>& driver, const Context<T>& context) {
+    return driver.EvalContactProblemCache(context);
+  }
+};
+}  // namespace internal
+
+namespace contact_solvers {
 namespace internal {
 
 using namespace std::chrono;
@@ -75,16 +92,6 @@ std::ostream& operator<<(std::ostream& out,
   out << c.description;
   return out;
 }
-
-// Friend helper class to access SapDriver private internals for testing.
-template <typename T>
-class SapDriverTest {
- public:
-  static const ContactProblemCache<T>& EvalContactProblemCache(
-      const SapDriver<T>& driver, const Context<T>& context) {
-    return driver.EvalContactProblemCache(context);
-  }
-};
 
 template <typename T>
 class RobotModel {
@@ -210,7 +217,8 @@ class RobotModel {
   const SapContactProblem<T>& EvalContactProblem(const VectorX<T>& x0) {
     SetState(x0);
     const auto& problem_cache =
-        SapDriverTest<T>::EvalContactProblemCache(*driver_, *plant_context_);
+        drake::multibody::internal::SapDriverTest<T>::EvalContactProblemCache(
+            *driver_, *plant_context_);
     // There are no locked dofs. Sanity check.
     DRAKE_DEMAND(problem_cache.sap_problem_locked == nullptr);
     return *problem_cache.sap_problem;
@@ -400,5 +408,6 @@ TEST_P(SapDriverNumericalGradientsTest, CompareNumericalGradients) {
 }
 
 }  // namespace internal
+}  // namespace contact_solvers
 }  // namespace multibody
 }  // namespace drake

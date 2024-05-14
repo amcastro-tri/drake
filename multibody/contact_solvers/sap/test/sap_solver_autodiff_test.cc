@@ -121,7 +121,6 @@ class RobotModel {
         "iiwa_link_7_collision", proximity_properties);
 
     plant_->set_discrete_contact_approximation(contact_approximation);
-    plant_->set_sap_near_rigid_threshold(0.0);  // TODO: needed?
     plant_->Finalize();
 
     // Make and add a manager so that we have access to it and its driver.
@@ -245,8 +244,6 @@ GTEST_TEST(RobotModel, Visualize) {
   model.ForcedPublish();
   common::MaybePauseForUser();
 }
-
-using namespace std::chrono;
 
 constexpr double kEps = std::numeric_limits<double>::epsilon();
 
@@ -391,6 +388,10 @@ INSTANTIATE_TEST_SUITE_P(SapDriverGradientsTest,
                          testing::PrintToStringParamName());
 
 TEST_P(SapDriverNumericalGradientsTest, CompareNumericalGradients) {
+  using std::chrono::duration_cast;
+  using std::chrono::high_resolution_clock;
+  using std::chrono::microseconds;
+
   const SapDriverNumericalGradientsTestConfig& config = GetParam();
 
   const VectorX<double> x0 = config.x0;

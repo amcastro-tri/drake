@@ -502,7 +502,7 @@ template <>
 SapSolverStatus SapSolver<double>::SolveWithGuess(
     const SapContactProblem<double>&, const VectorX<double>&,
     SapSolverResults<double>*);
-template <>    
+template <>
 SapSolverStatus SapSolver<AutoDiffXd>::SolveWithGuess(
     const SapContactProblem<AutoDiffXd>&, const VectorX<AutoDiffXd>&,
     SapSolverResults<AutoDiffXd>*);

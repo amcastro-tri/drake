@@ -121,8 +121,7 @@ SapSolverStatus SapSolver<AutoDiffXd>::SolveWithGuess(
   }
 
   // Create a <double> version of the problem and its model.
-  std::unique_ptr<SapContactProblem<double>> problem =
-      problem_ad.ToDouble();
+  std::unique_ptr<SapContactProblem<double>> problem = problem_ad.ToDouble();
   auto model = std::make_unique<SapModel<double>>(
       problem.get(), parameters_.linear_solver_type);
   auto context = model->MakeContext();
@@ -168,7 +167,6 @@ SapSolverStatus SapSolver<AutoDiffXd>::SolveWithGuess(
   // We use the implicit function theorem in our balance of momentum written as
   //   m(v(θ), θ) = 0.
   // Which implicitly defines velocities v(θ) as a function of parameters θ.
-  // TODO: move Hessian into the model's context.
   const HessianFactorizationCache& hessian_factorization =
       model->EvalHessianFactorizationCache(*context);
   hessian_factorization.SolveInPlace(&minus_dm_dtheta);

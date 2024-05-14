@@ -836,7 +836,7 @@ class SapNewtonIterationTest
   // with the supernodal solver against our already tested dense algebra.
   void VerifySupernodalHessian(const SapSolver<double>& sap,
                                const VectorXd& v_guess) const {
-    // Verify Hessian obtained with sparse supernodal algebra.    
+    // Verify Hessian obtained with sparse supernodal algebra.
     auto v = model_->GetMutableVelocities(context_.get());
     model_->velocities_permutation().Apply(v_guess, &v);
 
@@ -894,8 +894,7 @@ class SapNewtonIterationTest
 
     // Perform computation with dense algebra.
     SapSolverParameters params_dense;  // Default set of parameters.
-    params_dense.linear_solver_type =
-        SapHessianFactorizationType::kDense;
+    params_dense.linear_solver_type = SapHessianFactorizationType::kDense;
     params_dense.abs_tolerance = 0;
     params_dense.rel_tolerance = relative_tolerance;
     params_dense.line_search_type = GetParam();

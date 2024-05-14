@@ -190,19 +190,6 @@ drake_cc_library(
 )
 
 drake_cc_library(
-    name = "sap_hessian_factorization",
-    srcs = ["sap_hessian_factorization.cc"],
-    hdrs = ["sap_hessian_factorization.h"],
-    deps = [
-        "//common:essential",
-        "//multibody/contact_solvers:block_sparse_matrix",
-        "//multibody/contact_solvers:block_sparse_supernodal_solver",
-        "//multibody/contact_solvers:conex_supernodal_solver",
-        "//multibody/contact_solvers:supernodal_solver",
-    ],
-)
-
-drake_cc_library(
     name = "sap_holonomic_constraint",
     srcs = ["sap_holonomic_constraint.cc"],
     hdrs = ["sap_holonomic_constraint.h"],
@@ -288,7 +275,6 @@ drake_cc_library(
         ":partial_permutation",
         ":sap_constraint_bundle",
         ":sap_contact_problem",
-        ":sap_hessian_factorization",
         "//common:default_scalars",
         "//common:essential",
         "//math:linear_solve",

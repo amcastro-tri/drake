@@ -85,15 +85,6 @@ void SapSolver<T>::CalcStoppingCriteriaResidual(const SapModel<T>& model,
   *momentum_scale = max(p_tilde.norm(), jc_tilde.norm());
 }
 
-template <typename T>
-SapSolverStatus SapSolver<T>::SolveWithGuess(const SapContactProblem<T>&,
-                                             const VectorX<T>&,
-                                             SapSolverResults<T>*) {
-  throw std::logic_error(
-      "SapSolver::SolveWithGuess(): Only T = double is supported when the set "
-      "of constraints is non-empty.");
-}
-
 template <>
 SapSolverStatus SapSolver<double>::SolveWithGuess(
     const SapContactProblem<double>& problem, const VectorX<double>& v_guess,

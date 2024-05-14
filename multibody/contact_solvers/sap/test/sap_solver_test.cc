@@ -840,21 +840,28 @@ class SapNewtonIterationTest
     auto v = model_->GetMutableVelocities(context_.get());
     model_->velocities_permutation().Apply(v_guess, &v);
 
+    // Sanity check the default is not dense, since we'll use a dense
+    // factorization to construct an expected value.
+    ASSERT_NE(model_->hessian_type(), SapHessianFactorizationType::kDense);
+
     // To reconstruct a dense Hessian from its factorization we do:
     //  1. Apply factorization to the identity matrix to get its inverse, Hinv.
     //  2. Explicitly compute the inverse of Hinv to get H.
-    const SapHessianFactorization& factorization =
-        model_->EvalHessianFactorization(*context_);
+    const HessianFactorizationCache& factorization =
+        model_->EvalHessianFactorizationCache(*context_);
     MatrixXd Hinv = MatrixXd::Identity(v.size(), v.size());
     factorization.SolveInPlace(&Hinv);
     const MatrixXd H = Hinv.inverse();
 
     // Compute Hessian using dense algebra.
-    SapHessianFactorization dense_factorization(
+    HessianFactorizationCache dense_factorization(
         SapHessianFactorizationType::kDense, &model_->dynamics_matrix(),
         &model_->constraints_bundle().J());
-    dense_factorization.Update(model_->EvalConstraintsHessian(*context_));
-    const MatrixXd H_expected = dense_factorization.MakeFullMatrix();
+    dense_factorization.UpdateWeightMatrixAndFactor(
+        model_->EvalConstraintsHessian(*context_));
+    MatrixXd Hinv_expected = MatrixXd::Identity(v.size(), v.size());
+    dense_factorization.SolveInPlace(&Hinv_expected);
+    const MatrixXd H_expected = Hinv.inverse();
 
     // Verify dense and sparse hessians match.
     EXPECT_TRUE(CompareMatrices(H, H_expected, 3.0 * kEps,

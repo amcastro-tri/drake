@@ -253,12 +253,11 @@ class SapConstraint {
   /* Polymorphic deep-copy into a new instance. */
   std::unique_ptr<SapConstraint<T>> Clone() const { return DoClone(); }
 
-  /* For problems on scalar type T = AutoDiffXd, this function makes a deep-copy
-  into a problem with scalar T = double, discarding all gradient information.
-  This method is only supported for T = AutoDiffXd. */
-  std::unique_ptr<SapConstraint<double>> DiscardGradientAndClone() const {
-    //static_assert(std::is_same_v<T, AutoDiffXd>);
-    return DoDiscardGradientAndClone();
+  /* When T = double, this method is equivalent to Clone() and returns a
+   deep-copy of `this` jacobian. When T = AutoDiffXd this method returns a copy
+   where gradients were discarded. */
+  std::unique_ptr<SapConstraint<double>> ToDouble() const {
+    return DoToDouble();
   }
 
   /* Creates a "reduced" clone of this constraint by removing known DoFs from
@@ -341,13 +340,9 @@ class SapConstraint {
    polymorphic deep-copy into a new instance. */
   virtual std::unique_ptr<SapConstraint<T>> DoClone() const = 0;
 
-  /* DiscardGradientAndClone() implementation. Derived classes must override to provide
-   polymorphic scalar conversion to double. */
-  virtual std::unique_ptr<SapConstraint<double>> DoDiscardGradientAndClone()
-      const {
-    throw std::runtime_error("Implement me!!!");
-    return nullptr;
-  }
+  /* ToDouble() implementation. Derived classes must override to provide
+   polymorphic scalar conversion. */
+  virtual std::unique_ptr<SapConstraint<double>> DoToDouble() const = 0;
   // @}
 
  private:

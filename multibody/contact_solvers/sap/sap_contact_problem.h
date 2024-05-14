@@ -97,9 +97,7 @@ class SapContactProblem {
   /* When T = double, this method returns the result of Clone().
      When T = AutoDiffXd this method returns a deep copy where gradients were
      discarded. */
-  // TODO: rename to CloneToDouble() (again), since for T = double this behaves
-  // as a clone method.     
-  std::unique_ptr<SapContactProblem<double>> DiscardGradientAndClone() const;
+  std::unique_ptr<SapContactProblem<double>> ToDouble() const;
 
   /* Makes a "reduced" contact problem given the DOFs specified in
     `known_free_motion_dofs` are known to equal the free-motion velocities.

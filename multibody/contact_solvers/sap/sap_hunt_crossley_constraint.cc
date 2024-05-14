@@ -285,8 +285,8 @@ void SapHuntCrossleyConstraint<T>::DoAccumulateSpatialImpulses(
 
 template <typename T>
 std::unique_ptr<SapConstraint<double>>
-SapHuntCrossleyConstraint<T>::DoDiscardGradientAndClone() const {
-  SapConstraintJacobian<double> J = this->jacobian().DiscardGradientAndClone();
+SapHuntCrossleyConstraint<T>::DoToDouble() const {
+  SapConstraintJacobian<double> J = this->jacobian().ToDouble();
   const auto& p = parameters();
   SapHuntCrossleyConstraint<double>::Parameters parameters{
       p.model,
@@ -295,8 +295,7 @@ SapHuntCrossleyConstraint<T>::DoDiscardGradientAndClone() const {
       ExtractDoubleOrThrow(p.dissipation),
       p.stiction_tolerance,
       p.sigma};
-  ContactConfiguration<double> configuration =
-      configuration_.DiscardGradientAndClone();
+  ContactConfiguration<double> configuration = configuration_.ToDouble();
   return std::make_unique<SapHuntCrossleyConstraint<double>>(
       std::move(configuration), std::move(J), std::move(parameters));
 }

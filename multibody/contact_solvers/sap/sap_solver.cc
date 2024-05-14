@@ -27,7 +27,7 @@ void SapSolver<T>::set_parameters(const SapSolverParameters& parameters) {
 }
 
 template <typename T>
-const SapSolverStats& SapSolver<T>::get_statistics() const {
+const SapStatistics& SapSolver<T>::get_statistics() const {
   return stats_;
 }
 
@@ -89,8 +89,9 @@ template <typename T>
 SapSolverStatus SapSolver<T>::SolveWithGuess(const SapContactProblem<T>&,
                                              const VectorX<T>&,
                                              SapSolverResults<T>*) {
-  throw std::logic_error("SapSolver::SolveWithGuess(): Scalar T = '" +
-                         NiceTypeName::Get<T>() + "' is not supported.");
+  throw std::logic_error(
+      "SapSolver::SolveWithGuess(): Only T = double is supported when the set "
+      "of constraints is non-empty.");
 }
 
 template <>
@@ -185,7 +186,6 @@ SapSolverStatus SapSolver<AutoDiffXd>::SolveWithGuess(
   // that better describes the result of the computation.
   const MatrixX<double>& dv_dtheta = minus_dm_dtheta;
 
-
   // Pack solver results.
   const VectorX<AutoDiffXd> v_ad =
       drake::math::InitializeAutoDiff(results.v, dv_dtheta);
@@ -219,11 +219,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
   // Allocate the necessary memory to work with.
   auto scratch = model.MakeContext();
   SearchDirectionData search_direction_data(nv, nk);
-  stats_ = SapSolverStats();
-  // The Hessian is expensive to instantiate and therefore we only instantiate
-  // when needed. Here we only set the proper variant size before we start
-  // working with it.
-  //factorization_ = SapHessianFactorization(parameters_.linear_solver_type);
+  stats_ = SapStatistics();
 
   {
     // We limit the lifetime of this reference, v, to within this scope where we
@@ -276,16 +272,6 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
               "SapSolver: Non-monotonic convergence detected.");
         }
       }
-#if 0      
-      if (parameters_.linear_solver_type !=
-          SapSolverParameters::LinearSolverType::kDense) {        
-          // Instantiate supernodal solver on the first iteration when needed.
-          // If the stopping criteria is satisfied at k = 0 (good guess), then
-          // we skip the expensive instantiation of the solver.
-          factorization_ =
-            SapHessianFactorization(parameters_.linear_solver_type, model);
-      }
-#endif      
     }
 
     // Exit if the maximum number of iterations is reached, but only after
@@ -671,9 +657,9 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
 }
 
 template <typename T>
-void SapSolver<T>::CalcSearchDirectionData(
-    const SapModel<T>&, const systems::Context<T>&,
-    SapSolver<T>::SearchDirectionData*) {
+void SapSolver<T>::CalcSearchDirectionData(const SapModel<T>&,
+                                           const systems::Context<T>&,
+                                           SapSolver<T>::SearchDirectionData*) {
   throw std::runtime_error(
       "Hessian factorization can only be computed for T = double.");
 }
@@ -686,28 +672,12 @@ void SapSolver<double>::CalcSearchDirectionData(
   data->dv = -model.EvalCostGradient(context);
   const SapHessianFactorization& hessian_factorization =
       model.EvalHessianFactorization(context);
-  hessian_factorization.SolveInPlace(&data->dv);  
-
-#if 0
-  const bool use_dense_algebra = parameters_.linear_solver_type ==
-                                 SapSolverParameters::LinearSolverType::kDense;
-  // Update search direction dv.
-  if (!use_dense_algebra) {
-    auto& supernodal_solver =
-        std::get<std::unique_ptr<SuperNodalSolver>>(hessian_);
-    DRAKE_DEMAND(supernodal_solver != nullptr);
-    CallSuperNodalSolver(model, context, supernodal_solver.get(), &data->dv);
-  } else {
-    auto& dense_hessian = std::get<MatrixX<T>>(hessian_);
-    CallDenseSolver(model, context, &dense_hessian, &data->dv);
-  }
-#endif  
+  hessian_factorization.SolveInPlace(&data->dv);
 
   // Update Δp, Δvc and d²ellA/dα².
   model.constraints_bundle().J().Multiply(data->dv, &data->dvc);
   model.MultiplyByDynamicsMatrix(data->dv, &data->dp);
   data->d2ellA_dalpha2 = data->dv.dot(data->dp);
-
 }
 
 }  // namespace internal

@@ -260,7 +260,7 @@ class PizzaSaverTest
       q += problem.time_step() * v;
 
       // Verify the number of times cache entries were updated.
-      const SapSolverStats& stats = sap.get_statistics();
+      const SapStatistics& stats = sap.get_statistics();
 
       if (cost_criterion_reached) {
         EXPECT_TRUE(stats.cost_criterion_reached);
@@ -415,7 +415,7 @@ TEST_P(PizzaSaverTest, ConvergenceWithExactGuess) {
   EXPECT_EQ(status, SapSolverStatus::kSuccess);
 
   // Verify no iterations were performed.
-  const SapSolverStats& stats = sap.get_statistics();
+  const SapStatistics& stats = sap.get_statistics();
   EXPECT_EQ(stats.num_iters, 0);
 
   // The guess was not even touched but directly copied into the results.
@@ -641,7 +641,7 @@ TEST_P(PizzaSaverTest, NoConstraints) {
   EXPECT_EQ(status, SapSolverStatus::kSuccess);
 
   // Verify no iterations were performed.
-  const SapSolverStats& stats = sap.get_statistics();
+  const SapStatistics& stats = sap.get_statistics();
   EXPECT_EQ(stats.num_iters, 0);
 
   // The solution is trivial since constraint impulses are zero and v = v*.
@@ -761,6 +761,9 @@ class LimitConstraint final : public SapConstraint<T> {
   }
   std::unique_ptr<SapConstraint<T>> DoClone() const final {
     return std::unique_ptr<LimitConstraint<T>>(new LimitConstraint<T>(*this));
+  }
+  std::unique_ptr<SapConstraint<double>> DoToDouble() const final {
+    throw std::runtime_error("DoToDouble() not used in these unit tests.");
   }
 
   VectorX<T> R_;     // Regularization.
@@ -920,7 +923,7 @@ TEST_P(SapNewtonIterationTest, GuessIsTheSolution) {
   EXPECT_EQ(status, SapSolverStatus::kSuccess);
 
   // Verify optimality is satisfied but no iterations were performed.
-  const SapSolverStats& stats = sap.get_statistics();
+  const SapStatistics& stats = sap.get_statistics();
   EXPECT_EQ(stats.num_iters, 0);
   EXPECT_TRUE(stats.optimality_criterion_reached);
 
@@ -967,7 +970,7 @@ TEST_P(SapNewtonIterationTest, GuessWithinLimits) {
   // Since we provide the guess to be within the limits, and we know the
   // solution is v = v*, we expect the solver achieve convergence in a single
   // Newton iteration.
-  const SapSolverStats& stats = sap.get_statistics();
+  const SapStatistics& stats = sap.get_statistics();
   EXPECT_EQ(stats.num_iters, 1);
   // We expect two backtracking line search iterations given alpha_max != 1.
   // Since the problem is quadratic, we expect the exact line search to
@@ -1028,7 +1031,7 @@ TEST_P(SapNewtonIterationTest, GuessOutsideLimits) {
   // Since the initial guess is outside the constraint's bounds, and we know the
   // solution is v = v* inside the bounds, we expect several Newton iterations
   // to achieve convergence.
-  const SapSolverStats& stats = sap.get_statistics();
+  const SapStatistics& stats = sap.get_statistics();
   EXPECT_GT(stats.num_iters, 1);
   EXPECT_GT(stats.num_line_search_iters, 1);
   // This problem is very well conditioned, we expect convergence on the
@@ -1098,6 +1101,9 @@ class ConstantForceConstraint final : public SapConstraint<double> {
     return std::unique_ptr<ConstantForceConstraint>(
         new ConstantForceConstraint(*this));
   }
+  std::unique_ptr<SapConstraint<double>> DoToDouble() const final {
+    throw std::runtime_error("DoToDouble() not used in these unit tests.");
+  }
 
   const VectorXd g_;  // Constant impulse.
 };
@@ -1135,7 +1141,7 @@ GTEST_TEST(SapSolver, ConstraintWithNegativeCost) {
   // Since the cost is a combination of a quadratic term (from A) and a linear
   // term (from the constant impulse constraint), we expect the solver to
   // achieve convergence in a single Newton iteration.
-  const SapSolverStats& stats = solver.get_statistics();
+  const SapStatistics& stats = solver.get_statistics();
   EXPECT_EQ(stats.num_iters, 1);
 
   // The whole purpose of this test is to verify the behavior of SAP when the

@@ -54,32 +54,6 @@ std::unique_ptr<SapContactProblem<T>> SapContactProblem<T>::Clone() const {
   return clone;
 }
 
-template <>
-std::unique_ptr<SapContactProblem<double>>
-SapContactProblem<double>::DiscardGradientAndClone() const {
-  return Clone();
-}
-
-template <>
-std::unique_ptr<SapContactProblem<double>>
-SapContactProblem<AutoDiffXd>::DiscardGradientAndClone() const {
-  const double time_step = ExtractDoubleOrThrow(time_step_);
-  std::vector<MatrixX<double>> A;
-  A.reserve(A_.size());
-  for (int i = 0; i < ssize(A_); ++i) {
-    A.push_back(math::DiscardGradient(A_[i]));
-  }
-  VectorX<double> v_star = math::DiscardGradient(v_star_);
-  auto clone = std::make_unique<SapContactProblem<double>>(
-      time_step, std::move(A), std::move(v_star));
-  clone->set_num_objects(num_objects());
-  for (int i = 0; i < num_constraints(); ++i) {
-    const SapConstraint<AutoDiffXd>& c = get_constraint(i);
-    clone->AddConstraint(c.DiscardGradientAndClone());
-  }
-  return clone;
-}
-
 template <typename T>
 std::unique_ptr<SapContactProblem<double>> SapContactProblem<T>::ToDouble()
     const {

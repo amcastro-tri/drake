@@ -131,7 +131,7 @@ SapSolverStatus SapSolver<AutoDiffXd>::SolveWithGuess(
 
   // Create a <double> version of the problem and its model.
   std::unique_ptr<SapContactProblem<double>> problem =
-      problem_ad.DiscardGradientAndClone();
+      problem_ad.ToDouble();
   auto model = std::make_unique<SapModel<double>>(
       problem.get(), parameters_.linear_solver_type);
   auto context = model->MakeContext();
@@ -178,8 +178,8 @@ SapSolverStatus SapSolver<AutoDiffXd>::SolveWithGuess(
   //   m(v(θ), θ) = 0.
   // Which implicitly defines velocities v(θ) as a function of parameters θ.
   // TODO: move Hessian into the model's context.
-  const SapHessianFactorization& hessian_factorization =
-      model->EvalHessianFactorization(*context);
+  const HessianFactorizationCache& hessian_factorization =
+      model->EvalHessianFactorizationCache(*context);
   hessian_factorization.SolveInPlace(&minus_dm_dtheta);
 
   // N.B. SolveWithHessian() solves in place, and therefore we define an alias
@@ -670,8 +670,8 @@ void SapSolver<double>::CalcSearchDirectionData(
     SapSolver<double>::SearchDirectionData* data) {
   // We compute the rhs on data->dv to allow in-place solution.
   data->dv = -model.EvalCostGradient(context);
-  const SapHessianFactorization& hessian_factorization =
-      model.EvalHessianFactorization(context);
+  const HessianFactorizationCache& hessian_factorization =
+      model.EvalHessianFactorizationCache(context);
   hessian_factorization.SolveInPlace(&data->dv);
 
   // Update Δp, Δvc and d²ellA/dα².

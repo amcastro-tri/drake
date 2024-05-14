@@ -124,7 +124,6 @@ class CompliantContactManager final : public DiscreteUpdateManager<T> {
   friend class CompliantContactManager;
 
   // Provide private access for unit testing only.
-  template <typename U>
   friend class CompliantContactManagerTester;
 
   std::unique_ptr<DiscreteUpdateManager<double>> CloneToDouble() const final;

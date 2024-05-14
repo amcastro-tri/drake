@@ -13,19 +13,21 @@ namespace internal {
 // Helper class for the testing of CompliantContactManager. It provides access
 // to a selection of private functions in CompliantContactManager and a number
 // of helper methods.
-template <typename T>
 class CompliantContactManagerTester {
  public:
+  template <typename T>
   static const internal::MultibodyTreeTopology& topology(
       const CompliantContactManager<T>& manager) {
     return manager.tree_topology();
   }
 
+  template <typename T>
   static BodyIndex FindBodyByGeometryId(
       const CompliantContactManager<T>& manager, geometry::GeometryId id) {
     return manager.FindBodyByGeometryId(id);
   }
 
+  template <typename T>
   static const std::vector<geometry::ContactSurface<T>>& EvalContactSurfaces(
       const CompliantContactManager<T>& manager,
       const drake::systems::Context<T>& context) {
@@ -33,6 +35,7 @@ class CompliantContactManagerTester {
   }
 
   // N.B. Actuation input is always included, regardless of solver choice.
+  template <typename T>
   static void CalcNonContactForces(const CompliantContactManager<T>& manager,
                                    const drake::systems::Context<T>& context,
                                    bool include_joint_limit_penalty_forces,
@@ -42,12 +45,14 @@ class CompliantContactManagerTester {
                                  include_pd_controlled_input, forces);
   }
 
+  template <typename T>
   static const SapDriver<T>& sap_driver(
       const CompliantContactManager<T>& manager) {
     DRAKE_DEMAND(manager.sap_driver_ != nullptr);
     return *manager.sap_driver_;
   }
 
+  template <typename T>
   static const TamsiDriver<T>& tamsi_driver(
       const CompliantContactManager<T>& manager) {
     DRAKE_DEMAND(manager.tamsi_driver_ != nullptr);
@@ -57,6 +62,7 @@ class CompliantContactManagerTester {
   // Returns the Jacobian J_AcBc_C. This method takes the Jacobian blocks
   // evaluated with EvalContactJacobianCache() and assembles them into a dense
   // Jacobian matrix.
+  template <typename T>
   static Eigen::MatrixX<T> CalcDenseJacobianMatrixInContactFrame(
       const CompliantContactManager<T>& manager,
       const DiscreteContactData<DiscreteContactPair<T>>& contact_pairs) {

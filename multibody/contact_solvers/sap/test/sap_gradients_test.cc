@@ -45,9 +45,9 @@ namespace multibody {
 
 namespace internal {
 // Friend helper class to access SapDriver private internals for testing.
-template <typename T>
 class SapDriverTest {
  public:
+  template <typename T>
   static const ContactProblemCache<T>& EvalContactProblemCache(
       const SapDriver<T>& driver, const Context<T>& context) {
     return driver.EvalContactProblemCache(context);
@@ -144,7 +144,7 @@ class RobotModel {
         std::make_unique<CompliantContactManager<double>>();
     manager_ = owned_contact_manager.get();
     plant_->SetDiscreteUpdateManager(std::move(owned_contact_manager));
-    driver_ = &CompliantContactManagerTester<double>::sap_driver(*manager_);
+    driver_ = &CompliantContactManagerTester::sap_driver(*manager_);
 
     // We add visualizer for visual inspection of the model in this test.
     if (add_visualization) {
@@ -188,7 +188,7 @@ class RobotModel {
     model_ad->manager_ = owned_contact_manager_ad.get();
     model_ad->plant_->SetDiscreteUpdateManager(
         std::move(owned_contact_manager_ad));
-    model_ad->driver_ = &CompliantContactManagerTester<AutoDiffXd>::sap_driver(
+    model_ad->driver_ = &CompliantContactManagerTester::sap_driver(
         *model_ad->manager_);
 
     // Create context.
@@ -217,7 +217,7 @@ class RobotModel {
   const SapContactProblem<T>& EvalContactProblem(const VectorX<T>& x0) {
     SetState(x0);
     const auto& problem_cache =
-        drake::multibody::internal::SapDriverTest<T>::EvalContactProblemCache(
+        drake::multibody::internal::SapDriverTest::EvalContactProblemCache(
             *driver_, *plant_context_);
     // There are no locked dofs. Sanity check.
     DRAKE_DEMAND(problem_cache.sap_problem_locked == nullptr);

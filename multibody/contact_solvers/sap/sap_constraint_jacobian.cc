@@ -68,19 +68,29 @@ SapConstraintJacobian<T> SapConstraintJacobian<T>::LeftMultiplyByTranspose(
 
 template <typename T>
 SapConstraintJacobian<double> SapConstraintJacobian<T>::ToDouble() const {
-  const MatrixBlock<T>& first_block = clique_jacobian(0);
-  DRAKE_THROW_UNLESS(first_block.is_dense());
-  MatrixX<double> J_first_clique =
-      math::DiscardGradient(first_block.MakeDenseMatrix());
-  if (num_cliques() == 1) {
-    return SapConstraintJacobian<double>(clique(0), std::move(J_first_clique));
+  if constexpr (std::is_same_v<T, symbolic::Expression>) {
+    // TODO: we should probably never instantiate a
+    // SapConstraintJacobian<Expression>, even we don't call this method.
+    // That's why the SFINAE was not working?
+    throw std::runtime_error(
+        "SapConstraintJacobian<T>::ToDouble(): not supported for T = "
+        "symbolic::Expression.");
+  } else {
+    const MatrixBlock<T>& first_block = clique_jacobian(0);
+    DRAKE_THROW_UNLESS(first_block.is_dense());
+    MatrixX<double> J_first_clique =
+        math::DiscardGradient(first_block.MakeDenseMatrix());
+    if (num_cliques() == 1) {
+      return SapConstraintJacobian<double>(clique(0),
+                                           std::move(J_first_clique));
+    }
+    const MatrixBlock<T>& second_block = clique_jacobian(1);
+    DRAKE_THROW_UNLESS(second_block.is_dense());
+    MatrixX<double> J_second_clique =
+        math::DiscardGradient(second_block.MakeDenseMatrix());
+    return SapConstraintJacobian<double>(clique(0), std::move(J_first_clique),
+                                         clique(1), std::move(J_second_clique));
   }
-  const MatrixBlock<T>& second_block = clique_jacobian(1);
-  DRAKE_THROW_UNLESS(second_block.is_dense());
-  MatrixX<double> J_second_clique =
-      math::DiscardGradient(second_block.MakeDenseMatrix());
-  return SapConstraintJacobian<double>(clique(0), std::move(J_first_clique),
-                                       clique(1), std::move(J_second_clique));
 }
 
 }  // namespace internal
@@ -88,5 +98,5 @@ SapConstraintJacobian<double> SapConstraintJacobian<T>::ToDouble() const {
 }  // namespace multibody
 }  // namespace drake
 
-DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
+DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
     class ::drake::multibody::contact_solvers::internal::SapConstraintJacobian)

@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <set>
+#include <type_traits>
 #include <vector>
 
 #include "drake/common/default_scalars.h"
@@ -97,7 +98,8 @@ class SapContactProblem {
   /* When T = double, this method returns the result of Clone().
      When T = AutoDiffXd this method returns a deep copy where gradients were
      discarded. */
-  std::unique_ptr<SapContactProblem<double>> ToDouble() const;
+  std::unique_ptr<SapContactProblem<double>> ToDouble() const
+    requires (!std::is_same_v<T, symbolic::Expression>);
 
   /* Makes a "reduced" contact problem given the DOFs specified in
     `known_free_motion_dofs` are known to equal the free-motion velocities.

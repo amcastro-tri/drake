@@ -1,5 +1,6 @@
 #include "drake/multibody/contact_solvers/sap/sap_contact_problem.h"
 
+#include <type_traits>
 #include <utility>
 
 #include "drake/common/default_scalars.h"
@@ -56,7 +57,9 @@ std::unique_ptr<SapContactProblem<T>> SapContactProblem<T>::Clone() const {
 
 template <typename T>
 std::unique_ptr<SapContactProblem<double>> SapContactProblem<T>::ToDouble()
-    const {
+    const
+  requires (!std::is_same_v<T, symbolic::Expression>)
+{  // NOLINT(whitespace/braces)
   const double time_step = ExtractDoubleOrThrow(time_step_);
   std::vector<MatrixX<double>> A;
   A.reserve(A_.size());
@@ -349,5 +352,5 @@ void SapContactProblem<T>::CalcConstraintMultibodyForces(
 }  // namespace multibody
 }  // namespace drake
 
-DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
+DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
     class ::drake::multibody::contact_solvers::internal::SapContactProblem)

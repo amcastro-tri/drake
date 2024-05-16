@@ -69,7 +69,7 @@ struct ContactProblemCache {
 // agnostic to the solver type, such as geometry queries and/or kinematics.
 // Mutable access to the manager is provided during DeclareCacheEntries() to
 // allow the declaration of system-level cache entries.
-// @tparam_nonsymbolic_scalar
+// @tparam_default_scalar
 template <typename T>
 class SapDriver {
  public:

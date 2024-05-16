@@ -144,5 +144,5 @@ std::unique_ptr<SapConstraint<T>> SapConstraint<T>::MakeReduced(
 }  // namespace multibody
 }  // namespace drake
 
-DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
+DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
     class ::drake::multibody::contact_solvers::internal::SapConstraint)

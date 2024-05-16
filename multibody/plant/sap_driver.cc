@@ -206,6 +206,12 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
   // Quick no-op exit.
   if (num_contacts == 0) return std::vector<RotationMatrix<T>>();
 
+  if constexpr (std::is_same_v<T, symbolic::Expression>) {
+    throw std::runtime_error(
+        "Discrete updates with T = symbolic::Expression are not supported when "
+        "the number of contacts is non-zero");
+  } else {
+
   std::vector<RotationMatrix<T>> R_WC;
   R_WC.reserve(num_contacts);
   for (int icontact = 0; icontact < num_contacts; ++icontact) {
@@ -280,6 +286,7 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
     }
   }
   return R_WC;
+  }
 }
 
 template <typename T>
@@ -358,10 +365,17 @@ void SapDriver<T>::AddLimitConstraints(const systems::Context<T>& context,
       // Constraint is added only when one of ql and qu is finite.
       if (!std::isinf(ql) || !std::isinf(qu)) {
         // Create constraint for the current configuration q0.
-        typename SapLimitConstraint<T>::Parameters parameters{
-            ql, qu, stiffness, dissipation_time_scale, kBeta};
-        problem->AddConstraint(std::make_unique<SapLimitConstraint<T>>(
-            tree_index, tree_dof, tree_nv, q0, std::move(parameters)));
+        if constexpr (!std::is_same_v<T, symbolic::Expression>) {
+          typename SapLimitConstraint<T>::Parameters parameters{
+              ql, qu, stiffness, dissipation_time_scale, kBeta};
+          problem->AddConstraint(std::make_unique<SapLimitConstraint<T>>(
+              tree_index, tree_dof, tree_nv, q0, std::move(parameters)));
+        } else {
+          throw std::runtime_error(
+              "Discrete updates with T = symbolic::Expression are not "
+              "supported when "
+              "the number of limit constraints is non-zero");
+        }
       }
     } else {
       // TODO(amcastro-tri): Thus far in Drake we don't have multi-dof joints
@@ -381,6 +395,17 @@ void SapDriver<T>::AddLimitConstraints(const systems::Context<T>& context,
             "https://github.com/RobotLocomotion/drake.");
       }
     }
+  }
+}
+
+template <>
+void SapDriver<symbolic::Expression>::AddCouplerConstraints(
+    const systems::Context<symbolic::Expression>&,
+    SapContactProblem<symbolic::Expression>*) const {
+  if (manager().coupler_constraints_specs().size() > 0) {
+    throw std::runtime_error(
+        "Discrete updates with T = symbolic::Expression are not supported when "
+        "the number of coupler constraints is non-zero");
   }
 }
 
@@ -421,6 +446,18 @@ void SapDriver<T>::AddCouplerConstraints(const systems::Context<T>& context,
 
     problem->AddConstraint(
         std::make_unique<SapCouplerConstraint<T>>(std::move(kinematics)));
+  }
+}
+
+template <>
+void SapDriver<symbolic::Expression>::AddDistanceConstraints(
+    const systems::Context<symbolic::Expression>&,
+    SapContactProblem<symbolic::Expression>*) const {
+  if (manager().distance_constraints_specs().size() > 0) {
+    throw std::runtime_error(
+        "Discrete updates with T = symbolic::Expression are not "
+        "supported when "
+        "the number of distance constraints is non-zero");
   }
 }
 
@@ -510,6 +547,18 @@ void SapDriver<T>::AddDistanceConstraints(const systems::Context<T>& context,
 
     problem->AddConstraint(std::make_unique<SapDistanceConstraint<T>>(
         std::move(kinematics), std::move(parameters)));
+  }
+}
+
+template <>
+void SapDriver<symbolic::Expression>::AddBallConstraints(
+    const systems::Context<symbolic::Expression>&,
+    SapContactProblem<symbolic::Expression>*) const {
+  if (manager().ball_constraints_specs().size() > 0) {
+    throw std::runtime_error(
+        "Discrete updates with T = symbolic::Expression are not "
+        "supported when "
+        "the number of ball constraints is non-zero");
   }
 }
 
@@ -605,6 +654,18 @@ void SapDriver<T>::AddBallConstraints(
 
     problem->AddConstraint(
         std::make_unique<SapBallConstraint<T>>(std::move(kinematics)));
+  }
+}
+
+template <>
+void SapDriver<symbolic::Expression>::AddWeldConstraints(
+    const systems::Context<symbolic::Expression>&,
+    SapContactProblem<symbolic::Expression>*) const {
+  if (manager().weld_constraints_specs().size() > 0) {
+    throw std::runtime_error(
+        "Discrete updates with T = symbolic::Expression are not "
+        "supported when "
+        "the number of weld constraints is non-zero");
   }
 }
 
@@ -714,7 +775,7 @@ void SapDriver<T>::AddPdControllerConstraints(
     const systems::Context<T>& context, SapContactProblem<T>* problem) const {
   DRAKE_DEMAND(problem != nullptr);
 
-  // Do nothing if not PD controllers were specified.
+  // Do nothing if no PD controllers were specified.
   if (plant().num_actuators() == 0) return;
 
   // Desired positions & velocities.
@@ -730,6 +791,12 @@ void SapDriver<T>::AddPdControllerConstraints(
     const JointActuator<T>& actuator =
         plant().get_joint_actuator(actuator_index);
     if (actuator.has_controller()) {
+      if constexpr (std::is_same_v<T, symbolic::Expression>) {
+        throw std::runtime_error(
+              "Discrete updates with T = symbolic::Expression are not "
+              "supported when "
+              "the number of PD controllers is non-zero");
+      } else {
       const Joint<T>& joint = actuator.joint();
       // There is no point in modeling PD controllers if the joint is locked.
       // Therefore we do not add these constraints and actuation due to PD
@@ -759,6 +826,7 @@ void SapDriver<T>::AddPdControllerConstraints(
 
         problem->AddConstraint(std::make_unique<SapPdControllerConstraint<T>>(
             std::move(configuration), std::move(parameters)));
+      }
       }
     }
   }
@@ -956,6 +1024,18 @@ void SapDriver<T>::CalcSapSolverResults(
     }
   }
 
+  if constexpr (std::is_same_v<T, symbolic::Expression>) {
+    if (sap_problem.num_constraints() > 0) {
+      throw std::runtime_error(
+          "Discrete updates with T = symbolic::Expression are not "
+          "supported when "
+          "the number of PD controllers is non-zero");
+    }
+    sap_results->Resize(sap_problem.num_velocities(),
+                        0 /* num constraint equations */);
+    sap_results->v = sap_problem.v_star();
+  } else {
+
   // Solve the reduced DOF locked problem.
   SapSolver<T> sap;
   sap.set_parameters(sap_parameters_);
@@ -995,6 +1075,7 @@ void SapDriver<T>::CalcSapSolverResults(
         "     tag) to request some assistance.",
         context.get_time());
     throw std::runtime_error(msg);
+  }
   }
 }
 
@@ -1129,5 +1210,5 @@ void SapDriver<T>::CalcActuation(const systems::Context<T>& context,
 }  // namespace multibody
 }  // namespace drake
 
-DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
+DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
     class ::drake::multibody::internal::SapDriver);

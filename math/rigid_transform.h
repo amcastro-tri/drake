@@ -17,6 +17,26 @@
 namespace drake {
 namespace math {
 
+template <typename T>
+class RigidTransform;
+
+template <typename T>
+class RigidTransformTranspose {
+ public:
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(RigidTransformTranspose)
+
+  RigidTransformTranspose(const RigidTransform<T>* pose) : pose_{pose} {}
+
+  // Returns a reference to the original "un-transposed" rigid transform.
+  const RigidTransform<T>& pose() const { return *pose_; }
+
+  //const RotationMatrix<T>& rotation() const { return pose_->rotation(); }
+  //const Vector3<T>& translation() const { return pose_->translation(); }
+
+ private:
+  const RigidTransform<T>* pose_{nullptr};
+};
+
 /// This class represents a proper rigid transform between two frames which can
 /// be regarded in two ways.  A rigid transform describes the "pose" between two
 /// frames A and B (i.e., the relative orientation and position of A to B).
@@ -269,6 +289,10 @@ class RigidTransform {
         RotationMatrix<T>::MakeUnchecked(pose.template block<3, 3>(0, 0));
     result.p_AoBo_A_ = pose.template block<3, 1>(0, 3);
     return result;
+  }
+
+  RigidTransformTranspose<T> transpose() const {
+    return RigidTransformTranspose<T>(this);
   }
 
   /// Sets `this` %RigidTransform from a RotationMatrix and a position vector.

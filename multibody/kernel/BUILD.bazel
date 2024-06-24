@@ -1,0 +1,350 @@
+#- * - python - * -
+load("//tools/lint:lint.bzl", "add_lint_tests")
+load(
+    "//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
+    "drake_cc_googletest",
+    "drake_cc_library",
+    "drake_cc_package_library",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+drake_cc_package_library(
+    name = "kernel",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":mobod_impl",
+        ":multibody_kernel",
+        ":multibody_kernel_parameters",
+        ":position_kinematics_data",
+        ":revolute_mobod",
+        ":velocity_kinematics_data",
+    ],
+)
+
+drake_cc_library(
+    name = "acceleration_kinematics_data",
+    srcs = [
+        "acceleration_kinematics_data.cc",
+    ],
+    hdrs = [
+        "acceleration_kinematics_data.h",
+    ],
+    deps = [
+        ":mobod_data_variant",
+        "//common:default_scalars",
+        "//common:essential",
+        "//common:value",
+        "//multibody/math:spatial_algebra",
+    ],
+)
+
+drake_cc_library(
+    name = "make_multibody_kernel",
+    srcs = [
+        "make_multibody_kernel.cc",
+    ],
+    hdrs = [
+        "make_multibody_kernel.h",
+    ],
+    deps = [
+        ":kernel",
+        "//common:essential",
+        "//common:value",
+        "//math:geometric_transform",
+        "//multibody/plant",
+        "//multibody/topology:multibody_topology",
+    ],
+)
+
+drake_cc_library(
+    name = "mobod_base",
+    srcs = [
+        "mobod_base.cc",
+    ],
+    hdrs = [
+        "mobod_base.h",
+    ],
+    deps = [
+        ":acceleration_kinematics_data",
+        ":multibody_kernel_parameters",
+        ":position_kinematics_data",
+        ":velocity_kinematics_data",
+        "//common:essential",
+        "//common:value",
+        "//math:geometric_transform",
+        "//multibody/tree:multibody_tree_indexes",
+    ],
+)
+
+drake_cc_library(
+    name = "mobod_impl",
+    srcs = [
+        "mobod_impl.cc",
+    ],
+    hdrs = [
+        "mobod_impl.h",
+    ],
+    deps = [
+        ":acceleration_kinematics_data",
+        ":mobod_base",
+        ":multibody_kernel_parameters",
+        ":position_kinematics_data",
+        ":velocity_kinematics_data",
+        "//common:essential",
+        "//common:value",
+        "//math:geometric_transform",
+    ],
+)
+
+drake_cc_library(
+    name = "mobod_variant",
+    srcs = [
+        "mobod_variant.cc",
+    ],
+    hdrs = [
+        "mobod_variant.h",
+    ],
+    deps = [
+        ":quaternion_floating_mobod",
+        ":revolute_mobod",
+        ":weld_mobod",
+        ":world_mobod",
+        "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "mobod_data_variant",
+    srcs = [
+        "mobod_data_variant.cc",
+    ],
+    hdrs = [
+        "mobod_data_variant.h",
+    ],
+    deps = [
+        ":quaternion_floating_mobod_data",
+        ":revolute_mobod_data",
+        ":weld_mobod_data",
+        ":world_mobod_data",
+        "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "multibody_kernel",
+    srcs = [
+        "multibody_kernel.cc",
+    ],
+    hdrs = [
+        "multibody_kernel.h",
+    ],
+    deps = [
+        ":acceleration_kinematics_data",
+        ":mobod_variant",
+        ":multibody_kernel_parameters",
+        ":position_kinematics_data",
+        ":velocity_kinematics_data",
+        "//common:default_scalars",
+        "//common:essential",
+        "//common:value",
+        "//math:geometric_transform",
+    ],
+)
+
+drake_cc_library(
+    name = "multibody_kernel_parameters",
+    srcs = [
+        "multibody_kernel_parameters.cc",
+    ],
+    hdrs = [
+        "multibody_kernel_parameters.h",
+    ],
+    deps = [
+        "//common:default_scalars",
+        "//common:essential",
+        "//common:value",
+        "//math:geometric_transform",
+        "//multibody/tree:spatial_inertia",
+    ],
+)
+
+drake_cc_library(
+    name = "position_kinematics_data",
+    srcs = [
+        "position_kinematics_data.cc",
+    ],
+    hdrs = [
+        "position_kinematics_data.h",
+    ],
+    deps = [
+        ":mobod_data_variant",
+        "//common:default_scalars",
+        "//common:essential",
+        "//common:value",
+        "//math:geometric_transform",
+    ],
+)
+
+drake_cc_library(
+    name = "quaternion_floating_mobod",
+    srcs = [
+        "quaternion_floating_mobod.cc",
+    ],
+    hdrs = [
+        "quaternion_floating_mobod.h",
+    ],
+    deps = [
+        ":mobod_impl",
+        ":quaternion_floating_mobod_data",
+        "//common:default_scalars",
+        "//common:essential",
+        "//common:value",
+    ],
+)
+
+drake_cc_library(
+    name = "quaternion_floating_mobod_data",
+    hdrs = [
+        "quaternion_floating_mobod_data.h",
+    ],
+    deps = [
+        "//common:default_scalars",
+        "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "revolute_mobod",
+    srcs = [
+        "revolute_mobod.cc",
+    ],
+    hdrs = [
+        "revolute_mobod.h",
+    ],
+    deps = [
+        ":mobod_impl",
+        ":revolute_mobod_data",
+        "//common:default_scalars",
+        "//common:essential",
+        "//common:value",
+    ],
+)
+
+drake_cc_library(
+    name = "revolute_mobod_data",
+    hdrs = [
+        "revolute_mobod_data.h",
+    ],
+    deps = [
+        "//common:default_scalars",
+        "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "velocity_kinematics_data",
+    srcs = [
+        "velocity_kinematics_data.cc",
+    ],
+    hdrs = [
+        "velocity_kinematics_data.h",
+    ],
+    deps = [
+        ":mobod_data_variant",
+        "//common:default_scalars",
+        "//common:essential",
+        "//common:value",
+        "//multibody/math:spatial_algebra",
+    ],
+)
+
+drake_cc_library(
+    name = "weld_mobod",
+    srcs = [
+        "weld_mobod.cc",
+    ],
+    hdrs = [
+        "weld_mobod.h",
+    ],
+    deps = [
+        ":mobod_impl",
+        ":weld_mobod_data",
+        "//common:default_scalars",
+        "//common:essential",
+        "//common:value",
+    ],
+)
+
+drake_cc_library(
+    name = "weld_mobod_data",
+    hdrs = [
+        "weld_mobod_data.h",
+    ],
+    deps = [
+        ":zero_spatial_velocity",
+        "//common:default_scalars",
+        "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "world_mobod",
+    srcs = [
+        "world_mobod.cc",
+    ],
+    hdrs = [
+        "world_mobod.h",
+    ],
+    deps = [
+        ":mobod_impl",
+        ":world_mobod_data",
+        "//common:default_scalars",
+        "//common:essential",
+        "//common:value",
+    ],
+)
+
+drake_cc_library(
+    name = "world_mobod_data",
+    hdrs = [
+        "world_mobod_data.h",
+    ],
+    deps = [
+        ":zero_spatial_velocity",
+        "//common:default_scalars",
+        "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "zero_spatial_velocity",
+    srcs = [],
+    hdrs = [
+        "zero_spatial_velocity.h",
+    ],
+    deps = [
+        "//common:default_scalars",
+        "//common:essential",
+        "//multibody/math:spatial_algebra",
+    ],
+)
+
+drake_cc_googletest(
+    name = "multibody_kernel_test",
+    data = ["test/cassie_v2.urdf"],
+    deps = [
+        ":make_multibody_kernel",
+        ":multibody_kernel",
+        "//common:essential",
+        "//common:find_resource",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//multibody/parsing:parser",
+        "//multibody/topology:multibody_topology",
+    ],
+)
+
+add_lint_tests()

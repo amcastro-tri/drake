@@ -411,6 +411,49 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "inflate_mesh",
+    srcs = ["inflate_mesh.cc"],
+    hdrs = ["inflate_mesh.h"],
+#    internal = True,
+#    visibility = ["//geometry:__subpackages__"],
+    deps = [
+        ":volume_mesh",
+    ],
+    implementation_deps = [
+        ":volume_to_surface_mesh",        
+        "//common:essential",
+        "//solvers:mathematical_program",
+        "//solvers:mathematical_program_result",
+        "//solvers:solve",
+        "//solvers:choose_best_solver",
+        "//solvers:ipopt_solver",
+        "//solvers:nlopt_solver",
+        "//solvers:gurobi_solver",
+        "//solvers:mosek_solver",
+        "//solvers:clarabel_solver",
+    ],
+)
+
+drake_cc_googletest(
+    name = "inflate_mesh_test",
+    data = [
+        "//geometry:test_gltf_files",
+        "//geometry:test_obj_files",
+        "//geometry:test_vtk_files",
+        "//geometry/render:test_models",
+    ],
+    deps = [
+        ":inflate_mesh",
+        ":make_mesh_from_vtk",
+        ":mesh_to_vtk",
+        "//common:find_resource",
+        "//common:temp_directory",
+        "//common/test_utilities:expect_throws_message",
+        "@nlohmann_internal//:nlohmann",
+    ],
+)
+
+drake_cc_library(
     name = "make_box_field",
     srcs = ["make_box_field.cc"],
     hdrs = ["make_box_field.h"],

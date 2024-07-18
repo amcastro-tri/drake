@@ -59,6 +59,11 @@ void WriteVolumeMeshFieldLinearToVtk(
     const VolumeMeshFieldLinear<double, double>& field,
     const std::string& title);
 
+void WriteCellCenteredScalarFieldToVtk(
+    const std::string& file_name, const std::string& field_name,
+    const VolumeMesh<double>& mesh, const std::vector<double>& cell_values,
+    const std::string& title);
+
 /*
  Writes TriangleSurfaceMeshFieldLinear to VTK file.
  @param file_name  A file name with absolute path or relative path.

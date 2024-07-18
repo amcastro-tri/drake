@@ -99,6 +99,20 @@ void WriteVtkScalarField(std::ofstream& out, std::string name,
   out << std::endl;
 }
 
+void WriteVtkCellCenteredScalarField(std::ofstream& out, std::string name,
+                                     const std::vector<double>& cell_values) {
+  out << fmt::format("CELL_DATA {}\n", cell_values.size());
+  // VTK doesn't like space ' ' in the name of the scalar field.
+  // Replace space ' ' with underscore '_'.
+  std::replace(name.begin(), name.end(), ' ', '_');
+  out << fmt::format("SCALARS {} double 1\n", name);
+  out << "LOOKUP_TABLE default\n";
+  for (auto value : cell_values) {
+    out << fmt::format("{}\n", value);
+  }
+  out << std::endl;
+}
+
 /*
  @tparam Field VolumeMeshFieldLinear<double, double> or
                TriangleSurfaceMeshFieldLinear<double, double>
@@ -143,6 +157,21 @@ void WriteTriangleSurfaceMeshFieldLinearToVtk(
     const TriangleSurfaceMeshFieldLinear<double, double>& field,
     const std::string& title) {
   WriteMeshFieldLinearToVtk(file_name, field_name, field, title);
+}
+
+void WriteCellCenteredScalarFieldToVtk(const std::string& file_name,
+                                       const std::string& field_name,
+                                       const VolumeMesh<double>& mesh,
+                                       const std::vector<double>& cell_values,
+                                       const std::string& title) {
+  std::ofstream file(file_name);
+  if (file.fail()) {
+    throw std::runtime_error(fmt::format("Cannot create file: {}.", file_name));
+  }
+  WriteVtkHeader(file, title);
+  WriteVtkUnstructuredGrid(file, mesh);
+  WriteVtkCellCenteredScalarField(file, field_name, cell_values);
+  file.close();
 }
 
 }  // namespace internal

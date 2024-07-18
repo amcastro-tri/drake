@@ -776,6 +776,8 @@ filegroup(
         "test/some_volume.vtk",
         "test/two_tetrahedra_with_field_variable.vtk",
         "test/unstructured.vtk",
+        "test/sweet_home_dish_drying_rack_wireframe_low.vtk",
+        "test/green_anjou_pear_low.vtk",
     ],
 )
 

@@ -17,6 +17,7 @@
 #include "drake/geometry/proximity/make_mesh_from_vtk.h"
 #include "drake/geometry/proximity/mesh_to_vtk.h"
 #include "drake/geometry/shape_specification.h"
+#include "drake/geometry/proximity/make_mesh_field.h"
 
 #include <iostream>
 
@@ -25,7 +26,7 @@ namespace geometry {
 namespace internal {
 namespace {
 
-//using Eigen::Vector3d;
+using Eigen::Vector3d;
 
 std::vector<double> CalcCellVolumes(const VolumeMesh<double>& mesh) {
   std::vector<double> tet_volumes(mesh.num_elements());
@@ -35,12 +36,29 @@ std::vector<double> CalcCellVolumes(const VolumeMesh<double>& mesh) {
   return tet_volumes;
 }
 
+VolumeMesh<double> RemoveNegativeVolumes(const VolumeMesh<double>& mesh) {  
+  std::vector<VolumeElement> tets;
+  for (int e = 0; e < mesh.num_elements(); ++e) {
+    const double vol = mesh.CalcTetrahedronVolume(e);
+    if (vol > 0) {
+      tets.push_back(mesh.element(e));
+    }
+  }
+  std::vector<Vector3d> verts = mesh.vertices();
+
+  std::cout << fmt::format("All tets: {}\n", mesh.num_elements());
+  std::cout << fmt::format("Positive tets: {}\n", tets.size());
+
+  return VolumeMesh<double>(std::move(tets), std::move(verts));
+}
+
 GTEST_TEST(MakeConvexHullMeshTest, CubeWithHole) {
   using std::chrono::duration_cast;
   using std::chrono::high_resolution_clock;
   using std::chrono::microseconds;
 
-  const double kMargin = 2e-3;
+  const double kHydroelasticModulus = 1.0;  
+  const double kMargin = 1e-2;
   //const VolumeMesh<double> mesh = MakeVolumeMeshFromVtk<double>(
   //    Mesh(FindResourceOrThrow("drake/geometry/test/non_convex_mesh.vtk")));
 
@@ -82,6 +100,31 @@ GTEST_TEST(MakeConvexHullMeshTest, CubeWithHole) {
                                     volumes, "Inflated mesh");
   WriteCellCenteredScalarFieldToVtk("inflated_mesh_volumes.vtk", "cell volume",
                                     mesh, inflated_volumes, "Inflated mesh");
+
+  // Make field on the original mesh.
+  const VolumeMeshFieldLinear<double, double> field =
+      MakeVolumeMeshPressureField(&mesh, kHydroelasticModulus, kMargin);
+
+  // Make field on the inflated mesh.
+  std::vector<double> values = field.values();
+  VolumeMeshFieldLinear<double, double> inflated_field(
+      std::move(values), &inflated_mesh,
+      MeshGradientMode::
+          kOkOrThrow /* what MakeVolumeMeshPressureField() uses. */);
+
+  WriteVolumeMeshFieldLinearToVtk("pressure_on_original_mesh.vtk", "pressure",
+                                  field, "Pressure on original mesh");
+  WriteVolumeMeshFieldLinearToVtk("pressure_on_inflated_mesh.vtk", "pressure",
+                                  inflated_field, "Pressure on inflated mesh");
+
+  const VolumeMesh<double> positive_mesh = RemoveNegativeVolumes(inflated_mesh);
+  std::vector<double> values2 = field.values();
+  VolumeMeshFieldLinear<double, double> positive_field(
+      std::move(values2), &positive_mesh,
+      MeshGradientMode::
+          kOkOrThrow /* what MakeVolumeMeshPressureField() uses. */);
+  WriteVolumeMeshFieldLinearToVtk("pressure_on_positive_mesh.vtk", "pressure",
+                                  positive_field, "Pressure on positive mesh");
 }
 }
 }

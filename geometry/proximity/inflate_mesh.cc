@@ -1,78 +1,71 @@
 #include "drake/geometry/proximity/inflate_mesh.h"
 
-#include "drake/geometry/proximity/volume_to_surface_mesh.h"
-#include "drake/solvers/mathematical_program.h"
-#include "drake/solvers/solve.h"
-#include "drake/solvers/choose_best_solver.h"
-#include "drake/solvers/ipopt_solver.h"
-#include "drake/solvers/nlopt_solver.h"
-#include "drake/solvers/gurobi_solver.h"
-#include "drake/solvers/mosek_solver.h"
-#include "drake/solvers/clarabel_solver.h"
+#include <limits>
+#include <memory>
+#include <utility>
+#include <vector>
 
-#include <iostream>
+#include "drake/geometry/proximity/volume_to_surface_mesh.h"
+#include "drake/solvers/clarabel_solver.h"
+#include "drake/solvers/mathematical_program.h"
 
 namespace drake {
 namespace geometry {
 namespace internal {
 namespace {
 
-using Eigen::VectorXd;
-using Eigen::Vector3d;
 using Eigen::MatrixXd;
+using Eigen::Vector3d;
+using Eigen::VectorXd;
 
+/* Implements the QP program to inflate a mesh by a given margin amount.
+ This can be written as:
+   min 1/2‖u‖|²
+   s.t. uᵢ⋅n̂ₐ ≥ δ
+ where for each i-th surface we add a linear constraint involving
+ all adjacent faces to vertex i with normal n̂ₐ. */
 class InflateProgram {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(InflateProgram);
 
-  // Crate an optimization program to inflate `mesh` and amount `margin.`
-  explicit InflateProgram(VolumeMesh<double> mesh, double margin);
+  // Create an optimization program to inflate `mesh` and amount `margin.`
+  // @note `mesh` is aliased and must remain valid for the lifetime of this
+  // class.
+  // @pre mesh is not nullptr.
+  InflateProgram(const VolumeMesh<double>* mesh, double margin);
 
   VolumeMesh<double> Solve() const;
 
  private:
-#if 0
-  class VolumeConstraint : public Constraint {
-   public:
-    // Volume constraint for the i-th vertex.
-    VolumeConstraint(int i);
+  // Makes a dimensionless version of program described in the class's
+  // documentation to minimize round-off errors. We use the margin δ to define a
+  // dimensionless displacement ũ = u/δ, and write the dimensionless program as:
+  //   min 1/2‖ũ‖|²
+  //   s.t. ũᵢ⋅n̂ₐ ≥ 1
+  //
+  // N.B. The program is "separable", i.e. we could solve the displacement for
+  // each surface vertex separately, independently of all other vertices. That
+  // strategy could be considered for instance for thread parallelization.
+  void MakeProgram();
 
-   private:
-    template <typename T>
-    void DoEvalGeneric(const Eigen::Ref<const VectorX<T>>& x,
-                       VectorX<T>* y) const {
-      using std::exp;
-      y->resize(2);
-      (*y)(0) = x(1) - exp(x(0));
-      (*y)(1) = x(2) - exp(x(1));
-    }
-
-    void DoEval(const Eigen::Ref<const Eigen::VectorXd>& x,
-                Eigen::VectorXd* y) const override {
-      DoEvalGeneric(x, y);
-    }
-
-    void DoEval(const Eigen::Ref<const AutoDiffVecXd>& x,
-                AutoDiffVecXd* y) const override {
-      DoEvalGeneric(x, y);
-    }
-
-    void DoEval(const Eigen::Ref<const VectorX<symbolic::Variable>>& x,
-                VectorX<symbolic::Expression>* y) const override {
-      DoEvalGeneric<symbolic::Expression>(x.cast<symbolic::Expression>(), y);
-    }
-  };
-#endif
-
-  VolumeMesh<double> mesh_;
+  const VolumeMesh<double>& mesh_;
   double margin_{0.0};
   std::unique_ptr<solvers::MathematicalProgram> prog_;
   VectorX<symbolic::Variable> u_;  // displacements
+  // Map from surface indexes (i.e. indexes into u) to vertices in the original
+  // volume mesh, i.e. mesh_.
   std::vector<int> surface_to_volume_vertices_;
 };
 
-InflateProgram::InflateProgram(VolumeMesh<double> mesh, double margin)
-    : mesh_{std::move(mesh)}, margin_(margin), prog_{new solvers::MathematicalProgram()} {
+InflateProgram::InflateProgram(const VolumeMesh<double>* mesh, double margin)
+    : mesh_{*mesh}, margin_(margin) {
+  DRAKE_DEMAND(margin >= 0);
+  DRAKE_DEMAND(mesh != nullptr);
+  if (margin > 0) MakeProgram();
+}
+
+void InflateProgram::MakeProgram() {
+  prog_ = std::make_unique<solvers::MathematicalProgram>();
   const TriangleSurfaceMesh<double> mesh_surface =
       ConvertVolumeToSurfaceMeshWithBoundaryVertices(
           mesh_, &surface_to_volume_vertices_);
@@ -97,55 +90,47 @@ InflateProgram::InflateProgram(VolumeMesh<double> mesh, double margin)
     }
   }
 
-  if (margin > 0) {
-    // For each surface vertex we add as many linear constraints as adjacent
-    // faces to that vertex. These constraints enforce that the mesh actually
-    // inflates (avoiding deflation regions).
-    for (int v = 0; v < num_surface_vertices; ++v) {
-      const std::vector<int>& faces = adjacent_faces[v];
+  // For each surface vertex we add as many linear constraints as adjacent
+  // faces to that vertex. These constraints enforce that the mesh actually
+  // inflates (avoiding deflation regions).
+  for (int v = 0; v < num_surface_vertices; ++v) {
+    const std::vector<int>& faces = adjacent_faces[v];
 
-      // One linear constraint per face.
-      const int num_faces = faces.size();
-      const VectorXd lb = VectorXd::Ones(num_faces);
-      const VectorXd ub = VectorXd::Constant(
-          num_faces, std::numeric_limits<double>::infinity());
-      MatrixXd A(num_faces, 3);
-      for (int f = 0; f < num_faces; ++f) {
-        const Vector3d& normal = mesh_surface.face_normal(faces[f]);
-        A.row(f) = normal.transpose();
-      }
-      prog_->AddLinearConstraint(A, lb, ub, u_.segment<3>(3 * v));
+    // One linear constraint per face.
+    const int num_faces = faces.size();
+    const VectorXd lb = VectorXd::Ones(num_faces);
+    const VectorXd ub =
+        VectorXd::Constant(num_faces, std::numeric_limits<double>::infinity());
+    MatrixXd A(num_faces, 3);
+    for (int f = 0; f < num_faces; ++f) {
+      const Vector3d& normal = mesh_surface.face_normal(faces[f]);
+      A.row(f) = normal.transpose();
     }
+    prog_->AddLinearConstraint(A, lb, ub, u_.segment<3>(3 * v));
   }
-
-  // auto constraint =
-  // std::make_shared<EckhardtConstraint>(set_sparsity_pattern);
-  // prog_->AddConstraint(constraint, x_);
 }
 
 VolumeMesh<double> InflateProgram::Solve() const {
-  const solvers::SolverId id = ChooseBestSolver(*prog_);      
-  std::cout << fmt::format("Best solver: {}\n", id.name());  
-
-  solvers::GurobiSolver solver;  
-  //solvers::MosekSolver solver;  
-  //solvers::ClarabelSolver solver;  
-  //solvers::IpoptSolver solver;
-  //solvers::NloptSolver solver;
-  const solvers::MathematicalProgramResult result =  solver.Solve(*prog_);
-  //const solvers::MathematicalProgramResult result = solvers::Solve(*prog_);
-  if (!result.is_success()) {
-    throw std::runtime_error("Failure to inflate mesh.");
-  }
-
   if (margin_ == 0) return mesh_;
 
-  // The solution corresponds to the displacements u for each vertex of the
-  // input volume mesh.
-  // N.B. The solution is computed in dimensionless units to reduce round-off
-  // errors.
-  const VectorXd u = margin_ * result.get_x_val();
+  // N.B. By experimentation with meshes of different complexity, we determined
+  // that Clarabel performed best in terms of both accuracy and computational
+  // performance using solver default parameters.
+  solvers::ClarabelSolver solver;
+  const solvers::MathematicalProgramResult result = solver.Solve(*prog_);
 
+  if (!result.is_success()) {
+    throw std::runtime_error(
+        "Failure to inflate mesh. Unless there is a bug, the procedure to "
+        "apply margins to non-convex meshes is guaranteed to succeed. You "
+        "might also want to check your volume mesh is not somehow degenerate. "
+        "Otherwise, please open a Drake issue.");
+  }
+
+  // The solution corresponds to the dimensionless displacements ũ for each
+  // vertex of the input volume mesh. Scaling by the margin, gives us the
+  // displacements u.
+  const VectorXd u = margin_ * result.get_x_val();
 
   // First copy all vertices.
   std::vector<Vector3d> vertices = mesh_.vertices();
@@ -153,7 +138,7 @@ VolumeMesh<double> InflateProgram::Solve() const {
   // Apply displacement to each surface vertex.
   for (int s = 0; s < ssize(surface_to_volume_vertices_); ++s) {
     const int v = surface_to_volume_vertices_[s];
-    vertices[v] += u.segment<3>(3 * v);
+    vertices[v] += u.segment<3>(3 * s);
   }
 
   std::vector<VolumeElement> tetrahedra = mesh_.tetrahedra();
@@ -164,7 +149,8 @@ VolumeMesh<double> InflateProgram::Solve() const {
 
 VolumeMesh<double> MakeInflatedMesh(const VolumeMesh<double>& mesh,
                                     double margin) {
-  InflateProgram program(mesh, margin);
+  DRAKE_THROW_UNLESS(margin >= 0);
+  InflateProgram program(&mesh, margin);
   return program.Solve();
 }
 

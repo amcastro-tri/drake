@@ -55,31 +55,28 @@ GTEST_TEST(MakeConvexHullMeshTest, CubeWithHole) {
   const VolumeMesh<double> inflated_mesh = MakeInflatedMesh(mesh, kMargin);
   auto duration =
       duration_cast<microseconds>(high_resolution_clock::now() - start);
-  std::cout << fmt::format("MakeInflatedMesh: {} s", duration.count() / 1e6);
+  std::cout << fmt::format("MakeInflatedMesh: {} s\n", duration.count() / 1e6);
 
   WriteVolumeMeshToVtk("mesh.vtk", mesh, "mesh");  
   WriteVolumeMeshToVtk("inflated_mesh.vtk", inflated_mesh, "inflated_mesh");
 
   std::vector<double> volumes = CalcCellVolumes(mesh);
 
-   std::cout << "non-inflated:\n" ;
+  double min_vol = std::numeric_limits<double>::max();
   for (int e = 0; e < mesh.num_elements(); ++e) {
     const double V = volumes[e];
-    if (V < 0) {
-        std::cout << fmt::format("V: {}\n", V);
-    }
+    min_vol = std::min(min_vol, V);
   }
-
+  std::cout << fmt::format("non-inflated: {}\n", min_vol);
 
   std::vector<double> inflated_volumes = CalcCellVolumes(inflated_mesh);
 
-  std::cout << "inflated:\n" ;  
-  double min_vol = std::numeric_limits<double>::max();
+  min_vol = std::numeric_limits<double>::max();
   for (int e = 0; e < mesh.num_elements(); ++e) {
     const double V = inflated_volumes[e];
     min_vol = std::min(min_vol, V);
   }
-  std::cout << fmt::format("Min vol: {}\n", min_vol);
+  std::cout << fmt::format("inflated: {}\n", min_vol);
 
   WriteCellCenteredScalarFieldToVtk("mesh_volumes.vtk", "cell volume", mesh,
                                     volumes, "Inflated mesh");

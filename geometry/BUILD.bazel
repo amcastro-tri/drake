@@ -778,6 +778,7 @@ filegroup(
         "test/unstructured.vtk",
         "test/sweet_home_dish_drying_rack_wireframe_low.vtk",
         "test/green_anjou_pear_low.vtk",
+        "test/vivo_custom_single_shelf_low.vtk",
     ],
 )
 

@@ -52,18 +52,19 @@ VolumeMesh<double> RemoveNegativeVolumes(const VolumeMesh<double>& mesh) {
   return VolumeMesh<double>(std::move(tets), std::move(verts));
 }
 
-GTEST_TEST(MakeConvexHullMeshTest, CubeWithHole) {
+GTEST_TEST(MakeInflatedMesh, NonConvex) {
   using std::chrono::duration_cast;
   using std::chrono::high_resolution_clock;
   using std::chrono::microseconds;
 
   const double kHydroelasticModulus = 1.0;  
-  const double kMargin = 1e-2;
+  const double kMargin = 1e-3;
   //const VolumeMesh<double> mesh = MakeVolumeMeshFromVtk<double>(
   //    Mesh(FindResourceOrThrow("drake/geometry/test/non_convex_mesh.vtk")));
 
   //const std::string model = "drake/geometry/test/non_convex_mesh.vtk";
-  const std::string model = "drake/geometry/test/sweet_home_dish_drying_rack_wireframe_low.vtk";
+  //const std::string model = "drake/geometry/test/sweet_home_dish_drying_rack_wireframe_low.vtk";
+  const std::string model = "drake/geometry/test/vivo_custom_single_shelf_low.vtk";
   //const std::string model = "drake/geometry/test/green_anjou_pear_low.vtk";
 
   const VolumeMesh<double> mesh =

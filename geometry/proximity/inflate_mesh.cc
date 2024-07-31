@@ -5,6 +5,9 @@
 #include <utility>
 #include <vector>
 
+#include <iostream>
+
+#include "drake/common/fmt_eigen.h"
 #include "drake/geometry/proximity/volume_to_surface_mesh.h"
 #include "drake/solvers/clarabel_solver.h"
 #include "drake/solvers/mathematical_program.h"
@@ -50,8 +53,8 @@ class InflateProgram {
 
   const VolumeMesh<double>& mesh_;
   double margin_{0.0};
-  std::unique_ptr<solvers::MathematicalProgram> prog_;
-  VectorX<symbolic::Variable> u_;  // displacements
+  std::vector<std::unique_ptr<solvers::MathematicalProgram>> prog_;
+  std::vector<VectorX<symbolic::Variable>> u_;  // displacements
   // Map from surface indexes (i.e. indexes into u) to vertices in the original
   // volume mesh, i.e. mesh_.
   std::vector<int> surface_to_volume_vertices_;
@@ -64,20 +67,23 @@ InflateProgram::InflateProgram(const VolumeMesh<double>* mesh, double margin)
   if (margin > 0) MakeProgram();
 }
 
-void InflateProgram::MakeProgram() {
-  prog_ = std::make_unique<solvers::MathematicalProgram>();
+void InflateProgram::MakeProgram() {  
   const TriangleSurfaceMesh<double> mesh_surface =
       ConvertVolumeToSurfaceMeshWithBoundaryVertices(
           mesh_, &surface_to_volume_vertices_);
   const int num_surface_vertices = mesh_surface.num_vertices();
   DRAKE_DEMAND(ssize(surface_to_volume_vertices_) == num_surface_vertices);
 
-  const int num_vars = 3 * num_surface_vertices;
-  u_ = prog_->NewContinuousVariables(num_vars, "u");
-
-  prog_->AddQuadraticCost(MatrixXd::Identity(num_vars, num_vars),
-                          VectorXd::Zero(num_vars), u_,
-                          true /* it is convex */);
+  const int num_vars = 3;
+  prog_.resize(num_surface_vertices);
+  u_.resize(num_surface_vertices);
+  for (int v = 0; v < num_surface_vertices; ++v) {
+    auto& p = prog_[v];
+    p = std::make_unique<solvers::MathematicalProgram>();
+    u_[v] = p->NewContinuousVariables(num_vars);
+    p->AddQuadraticCost(MatrixXd::Identity(num_vars, num_vars),
+                        VectorXd::Zero(num_vars), u_[v], true /* it is convex */);
+  }
 
   // Determine adjacent faces to each vertex on the surface.
   std::vector<std::vector<int>> adjacent_faces(
@@ -106,31 +112,46 @@ void InflateProgram::MakeProgram() {
       const Vector3d& normal = mesh_surface.face_normal(faces[f]);
       A.row(f) = normal.transpose();
     }
-    prog_->AddLinearConstraint(A, lb, ub, u_.segment<3>(3 * v));
+    auto& p = prog_[v];
+    if (v==0 || v==68) {
+      std::cout << fmt::format("v: {}. p: {}. A:\n {}\n", v, fmt_eigen(mesh_surface.vertex(v).transpose()), fmt_eigen(A));
+    }
+    p->AddLinearConstraint(A, lb, ub, u_[v]);
   }
 }
 
 VolumeMesh<double> InflateProgram::Solve() const {
   if (margin_ == 0) return mesh_;
 
+  const int num_surf_vertices =  ssize(surface_to_volume_vertices_);
+  VectorXd u = VectorXd::Zero(3 * num_surf_vertices);
+
   // N.B. By experimentation with meshes of different complexity, we determined
   // that Clarabel performed best in terms of both accuracy and computational
   // performance using solver default parameters.
   solvers::ClarabelSolver solver;
-  const solvers::MathematicalProgramResult result = solver.Solve(*prog_);
-
-  if (!result.is_success()) {
-    throw std::runtime_error(
-        "Failure to inflate mesh. Unless there is a bug, the procedure to "
-        "apply margins to non-convex meshes is guaranteed to succeed. You "
-        "might also want to check your volume mesh is not somehow degenerate. "
-        "Otherwise, please open a Drake issue.");
+  bool failure = false;
+  for (int v = 0; v < num_surf_vertices; ++v) {
+    auto& p = prog_[v];
+    const solvers::MathematicalProgramResult result = solver.Solve(*p);    
+    if (!result.is_success()) {
+      const solvers::ClarabelSolver::Details& details = result.get_solver_details<solvers::ClarabelSolver>();
+      std::cout << fmt::format("Program fails for v: {}. Stat: {}\n", v, details.status);
+      failure = true;      
+    }
+    // The solution corresponds to the dimensionless displacements ũ for each
+    // vertex of the input volume mesh. Scaling by the margin, gives us the
+    // displacements u.
+    u.segment<3>(3 * v) = margin_ * result.get_x_val();
   }
-
-  // The solution corresponds to the dimensionless displacements ũ for each
-  // vertex of the input volume mesh. Scaling by the margin, gives us the
-  // displacements u.
-  const VectorXd u = margin_ * result.get_x_val();
+  if (failure) {
+    throw std::runtime_error(
+          "Failure to inflate mesh. Unless there is a bug, the procedure to "
+          "apply margins to non-convex meshes is guaranteed to succeed. You "
+          "might also want to check your volume mesh is not somehow "
+          "degenerate. "
+          "Otherwise, please open a Drake issue.");
+  }
 
   // First copy all vertices.
   std::vector<Vector3d> vertices = mesh_.vertices();

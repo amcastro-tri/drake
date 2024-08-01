@@ -58,20 +58,22 @@ GTEST_TEST(MakeInflatedMesh, NonConvex) {
   using std::chrono::microseconds;
 
   const double kHydroelasticModulus = 1.0;  
-  const double kMargin = 5e-3;
+  const double kMargin = 1e-3;
   //const VolumeMesh<double> mesh = MakeVolumeMeshFromVtk<double>(
   //    Mesh(FindResourceOrThrow("drake/geometry/test/non_convex_mesh.vtk")));
 
   //const std::string model = "drake/geometry/test/non_convex_mesh.vtk";
   //const std::string model = "drake/geometry/test/sweet_home_dish_drying_rack_wireframe_low.vtk";
-  // const std::string model = "drake/geometry/test/vivo_custom_single_shelf_low.vtk";
-  const std::string model = "drake/geometry/test/green_anjou_pear_low.vtk";
+  const std::string model = "drake/geometry/test/vivo_custom_single_shelf_low.vtk";
+  //const std::string model = "drake/geometry/test/green_anjou_pear_low.vtk";
 
   const VolumeMesh<double> mesh =
       MakeVolumeMeshFromVtk<double>(Mesh(FindResourceOrThrow(model)));
 
-  auto start = high_resolution_clock::now();      
-  const VolumeMesh<double> inflated_mesh = MakeInflatedMesh(mesh, kMargin);
+  std::vector<int> new_vertices;
+  auto start = high_resolution_clock::now();
+  const VolumeMesh<double> inflated_mesh =
+      MakeInflatedMesh(mesh, kMargin, &new_vertices);
   auto duration =
       duration_cast<microseconds>(high_resolution_clock::now() - start);
   std::cout << fmt::format("MakeInflatedMesh: {} s\n", duration.count() / 1e6);
@@ -97,10 +99,17 @@ GTEST_TEST(MakeInflatedMesh, NonConvex) {
   }
   std::cout << fmt::format("inflated: {}\n", min_vol);
 
+  const VolumeMesh<double> positive_mesh = RemoveNegativeVolumes(inflated_mesh);
+  WriteVolumeMeshToVtk("positive_mesh.vtk", positive_mesh, "positive_mesh");
+
+  (void)kHydroelasticModulus;
+
+#if 0
   WriteCellCenteredScalarFieldToVtk("mesh_volumes.vtk", "cell volume", mesh,
                                     volumes, "Inflated mesh");
   WriteCellCenteredScalarFieldToVtk("inflated_mesh_volumes.vtk", "cell volume",
                                     mesh, inflated_volumes, "Inflated mesh");
+#endif                                    
 
   // Make field on the original mesh.
   const VolumeMeshFieldLinear<double, double> field =
@@ -108,6 +117,12 @@ GTEST_TEST(MakeInflatedMesh, NonConvex) {
 
   // Make field on the inflated mesh.
   std::vector<double> values = field.values();
+  for (int v : new_vertices) {
+    values.push_back(values[v]);
+  }
+  ASSERT_EQ(values.size(), inflated_mesh.num_vertices());
+  std::vector<double> values_copy = values;
+
   VolumeMeshFieldLinear<double, double> inflated_field(
       std::move(values), &inflated_mesh,
       MeshGradientMode::
@@ -118,10 +133,8 @@ GTEST_TEST(MakeInflatedMesh, NonConvex) {
   WriteVolumeMeshFieldLinearToVtk("pressure_on_inflated_mesh.vtk", "pressure",
                                   inflated_field, "Pressure on inflated mesh");
 
-  const VolumeMesh<double> positive_mesh = RemoveNegativeVolumes(inflated_mesh);
-  std::vector<double> values2 = field.values();
   VolumeMeshFieldLinear<double, double> positive_field(
-      std::move(values2), &positive_mesh,
+      std::move(values_copy), &positive_mesh,
       MeshGradientMode::
           kOkOrThrow /* what MakeVolumeMeshPressureField() uses. */);
   WriteVolumeMeshFieldLinearToVtk("pressure_on_positive_mesh.vtk", "pressure",

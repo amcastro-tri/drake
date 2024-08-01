@@ -11,6 +11,7 @@
 #include "drake/geometry/proximity/volume_to_surface_mesh.h"
 #include "drake/solvers/clarabel_solver.h"
 #include "drake/solvers/mathematical_program.h"
+#include "drake/geometry/proximity/sorted_triplet.h"
 
 namespace drake {
 namespace geometry {
@@ -196,15 +197,17 @@ std::unique_ptr<solvers::MathematicalProgram> MakeVertexProgram(
   return prog;
 }
 
-VolumeMesh<double> MakeInflatedMesh(const VolumeMesh<double>& mesh,
-                                    double margin) {
+VolumeMesh<double> MakeInflatedMesh(
+    const VolumeMesh<double>& mesh, double margin,
+    std::vector<int>* new_vertices) {
   DRAKE_THROW_UNLESS(margin >= 0);
 
   // Surface mesh and map to volume vertices.
   std::vector<int> surface_to_volume_vertices;
+  std::vector<int> tri_to_tet;
   const TriangleSurfaceMesh<double> mesh_surface =
-      ConvertVolumeToSurfaceMeshWithBoundaryVertices(
-          mesh, &surface_to_volume_vertices);
+      ConvertVolumeToSurfaceMeshWithBoundaryVerticesAndElementMap(
+          mesh, &surface_to_volume_vertices, &tri_to_tet);
   const int num_surface_vertices = mesh_surface.num_vertices();
   DRAKE_DEMAND(ssize(surface_to_volume_vertices) == num_surface_vertices);
 
@@ -218,12 +221,47 @@ VolumeMesh<double> MakeInflatedMesh(const VolumeMesh<double>& mesh,
       adjacent_faces[surface_vertex].push_back(e);
     }
   }
+  //std::vector<SurfaceTriangle> tris = mesh_surface.triangles();
 
-  std::vector<Vector3d> u(num_surface_vertices);
+  // Debug. Is face f in element e?
+  auto is_face_in_element = [&](int face_index, int element_index) -> bool {
+    const SurfaceTriangle& face = mesh_surface.element(face_index);
+    const SortedTriplet<int> canonical_face(face.vertex(0), face.vertex(1),
+                                            face.vertex(2));
+
+    // Vector of element faces in canonical form, for searching.
+    const VolumeElement& element = mesh.element(element_index);
+    std::vector<SortedTriplet<int>> element_faces;
+    for (int i = 0; i < 4; ++i) {
+      const int j = (i + 1) % 4;
+      const int k = (i + 2) % 4;
+      const int m = (i + 3) % 4;
+      element_faces.push_back(SortedTriplet<int>(
+          element.vertex(j), element.vertex(k), element.vertex(m)));
+    }
+    auto it =
+        std::find(element_faces.begin(), element_faces.end(), canonical_face);
+    return it != element_faces.end();
+  };
+
+  std::vector<Vector3d> vertices = mesh.vertices();  
+  std::vector<VolumeElement> tetrahedra = mesh.tetrahedra();
+  const int num_vertices = vertices.size();
+  std::vector<Vector3d> u(num_surface_vertices, Vector3d::Zero());
+
+  // If we duplicate vertices, each original surface vertex will map to several
+  // volume vertices.
+  std::vector<std::vector<int>> surface_to_all_volume_vertices(
+      num_surface_vertices);
+
+  //std::unordered_map<int, std::vector<int>> new_vertices;
 
   // Attempt to solve QP for each surface vertex.
   bool failure = false;
   for (int s = 0; s < num_surface_vertices; ++s) {
+    const int v = surface_to_volume_vertices[s];
+    surface_to_all_volume_vertices[s].push_back(v);   // the original vertex.
+
     const std::vector<int>& faces = adjacent_faces[s];
     std::unique_ptr<solvers::MathematicalProgram> prog =
         MakeVertexProgram(mesh_surface, faces);
@@ -236,13 +274,85 @@ VolumeMesh<double> MakeInflatedMesh(const VolumeMesh<double>& mesh,
           result.get_solver_details<solvers::ClarabelSolver>();
       std::cout << fmt::format("Program fails for v: {}. Stat: {}\n", s,
                                details.status);
+      
+      int new_v = v;
+      const Vector3d p = vertices[v];
+
+      // Right now only for debugging.
+      std::map<int, std::vector<int>> element_to_boundary_faces;
+
+      // Repeat vertex for each incident face, except firt one.
+      for (int i = 0; i< ssize(faces); ++i) {
+        const int f = faces[i];  // surface triangle.
+        const int e = tri_to_tet[f];  // volume tetrahedron.
+        const Vector3d& normal = mesh_surface.face_normal(f);        
+
+        if (i > 0) {  // skip the first one
+          new_v = ssize(vertices);
+          new_vertices->push_back(v);
+          vertices.push_back(p);
+          surface_to_volume_vertices.push_back(new_v);
+          surface_to_all_volume_vertices[s].push_back(new_v);
+          // Assumption (tested below), there is a single boundary face per
+          // element. Thus the QP solution is trivial.
+          u.push_back(margin * normal);
+        } else {
+          u[s] = margin * normal;
+        }
+
+        //u[s] += margin * normal;
+
+        element_to_boundary_faces[e].push_back(f);
+
+        // Debug. Is f in e?
+        if (!is_face_in_element(f, e)) {
+          throw std::logic_error(
+              fmt::format("Face {} is not in element {}.", f, e));
+        }
+
+        // find v's local index in e.
+        auto find_tet_local_index = [&](int element_index, int vertex_index) {
+          const VolumeElement& tet = mesh.element(element_index);
+          std::cout << fmt::format("tet: {}, {}, {}, {}\n", tet.vertex(0),
+                                   tet.vertex(1), tet.vertex(2), tet.vertex(3));
+          for (int k = 0; k < 4; ++k) {
+            if (vertex_index == tet.vertex(k)) return k;
+          }
+          // Something went wrong if v is not in e.
+          throw std::logic_error("Vertex not found in element.");
+        };
+        int k = find_tet_local_index(e, v);
+
+        std::cout << fmt::format("i:{}, f: {}. e: {}, k:{}.\n",i, f, e, k);
+
+        // Modify k-th index of element e to point to new_v.
+        tetrahedra[e].set_vertex(k, new_v);                
+      }
+
+      // Print number of incident boundary faces per element.
+      for (const auto& [e, boundary_faces] : element_to_boundary_faces) {
+        std::cout << fmt::format("e: {}. num_faces: {}.\n", e,
+                                 boundary_faces.size());
+      }
+
+    } else {
+      // The solution corresponds to the dimensionless displacements ũ for each
+      // vertex of the input volume mesh. Scaling by the margin, gives us the
+      // displacements u.
+      u[s] = margin * result.get_x_val();
     }
-    // The solution corresponds to the dimensionless displacements ũ for each
-    // vertex of the input volume mesh. Scaling by the margin, gives us the
-    // displacements u.
-    u[s] = margin * result.get_x_val();
   }
 
+  //DRAKE_DEMAND(vertices.size() == u.size());
+  DRAKE_DEMAND(surface_to_volume_vertices.size() == u.size());
+
+  const int new_num_vertices = vertices.size();
+  //const int new_num_surface_vertices = surface_to_volume_vertices.size();
+
+  std::cout << fmt::format("nv: {}. nv(new): {}\n", num_vertices,
+                           new_num_vertices);
+
+#if 0
   if (failure) {
     throw std::runtime_error(
           "Failure to inflate mesh. Unless there is a bug, the procedure to "
@@ -250,16 +360,25 @@ VolumeMesh<double> MakeInflatedMesh(const VolumeMesh<double>& mesh,
           "might also want to check your volume mesh is not somehow "
           "degenerate. "
           "Otherwise, please open a Drake issue.");
-  }  
+  }
+#endif
+  (void)failure;
 
   // Apply displacement to each surface vertex.
-  std::vector<Vector3d> vertices = mesh.vertices();
-  for (int s = 0; s < num_surface_vertices; ++s) {
-    const int v = surface_to_volume_vertices[s];
+  for (int s = 0; s < ssize(u); ++s) {
+    int v = surface_to_volume_vertices[s];
     vertices[v] += u[s];
   }
 
-  std::vector<VolumeElement> tetrahedra = mesh.tetrahedra();
+#if 0  
+  for (int s = 0; s < num_surface_vertices; ++s) {
+    // Apply same displacement to all vertices spawned from s.
+    for (int v : surface_to_all_volume_vertices[s]) {
+      vertices[v] += u[s];  
+    }
+  }
+#endif
+
   return VolumeMesh<double>(std::move(tetrahedra), std::move(vertices));
 }
 

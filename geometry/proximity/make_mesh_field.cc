@@ -24,7 +24,7 @@ template <typename T>
 TriangleSurfaceMesh<double> ConvertVolumeToSurfaceMeshDouble(
     const VolumeMesh<T>& volume_mesh, std::vector<int>* boundary_vertices) {
   TriangleSurfaceMesh<T> surface =
-      ConvertVolumeToSurfaceMeshWithBoundaryVertices(volume_mesh,
+      ConvertVolumeToSurfaceMeshWithBoundaryVerticesAndElementMap(volume_mesh,
                                                      boundary_vertices);
   if constexpr (std::is_same_v<T, double>) {
     return surface;

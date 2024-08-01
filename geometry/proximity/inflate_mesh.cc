@@ -15,11 +15,12 @@
 namespace drake {
 namespace geometry {
 namespace internal {
-namespace {
-
 using Eigen::MatrixXd;
 using Eigen::Vector3d;
 using Eigen::VectorXd;
+
+#if 0
+namespace {
 
 /* Implements the QP program to inflate a mesh by a given margin amount.
  This can be written as:
@@ -167,12 +168,99 @@ VolumeMesh<double> InflateProgram::Solve() const {
 }
 
 }  // namespace
+#endif
+
+std::unique_ptr<solvers::MathematicalProgram> MakeVertexProgram(
+    const TriangleSurfaceMesh<double>& surface,
+    const std::vector<int>& incident_faces) {
+  auto prog = std::make_unique<solvers::MathematicalProgram>();
+  const int nv = 3;
+  auto u = prog->NewContinuousVariables(nv);
+  prog->AddQuadraticCost(MatrixXd::Identity(nv, nv), VectorXd::Zero(nv), u,
+                        true /* it is convex */);
+  // For each surface vertex we add as many linear constraints as incident
+  // faces to that vertex. These constraints enforce that the mesh actually
+  // inflates (avoiding deflation regions).
+  // One linear constraint per face.
+  const int num_faces = incident_faces.size();
+  const VectorXd lb = VectorXd::Ones(num_faces);
+  const VectorXd ub =
+      VectorXd::Constant(num_faces, std::numeric_limits<double>::infinity());
+  MatrixXd A(num_faces, 3);
+  for (int f = 0; f < num_faces; ++f) {
+    const Vector3d& normal = surface.face_normal(incident_faces[f]);
+    A.row(f) = normal.transpose();
+  }
+  prog->AddLinearConstraint(A, lb, ub, u);
+
+  return prog;
+}
 
 VolumeMesh<double> MakeInflatedMesh(const VolumeMesh<double>& mesh,
                                     double margin) {
   DRAKE_THROW_UNLESS(margin >= 0);
-  InflateProgram program(&mesh, margin);
-  return program.Solve();
+
+  // Surface mesh and map to volume vertices.
+  std::vector<int> surface_to_volume_vertices;
+  const TriangleSurfaceMesh<double> mesh_surface =
+      ConvertVolumeToSurfaceMeshWithBoundaryVertices(
+          mesh, &surface_to_volume_vertices);
+  const int num_surface_vertices = mesh_surface.num_vertices();
+  DRAKE_DEMAND(ssize(surface_to_volume_vertices) == num_surface_vertices);
+
+  // Determine adjacent faces to each vertex on the surface.
+  std::vector<std::vector<int>> adjacent_faces(
+      num_surface_vertices);  // indexed by surface vertex.
+  for (int e = 0; e < mesh_surface.num_elements(); ++e) {
+    const SurfaceTriangle& triangle = mesh_surface.element(e);
+    for (int i = 0; i < 3; ++i) {
+      const int surface_vertex = triangle.vertex(i);
+      adjacent_faces[surface_vertex].push_back(e);
+    }
+  }
+
+  std::vector<Vector3d> u(num_surface_vertices);
+
+  // Attempt to solve QP for each surface vertex.
+  bool failure = false;
+  for (int s = 0; s < num_surface_vertices; ++s) {
+    const std::vector<int>& faces = adjacent_faces[s];
+    std::unique_ptr<solvers::MathematicalProgram> prog =
+        MakeVertexProgram(mesh_surface, faces);
+
+    solvers::ClarabelSolver solver;
+    const solvers::MathematicalProgramResult result = solver.Solve(*prog);
+    if (!result.is_success()) {
+      failure = true;
+      const solvers::ClarabelSolver::Details& details =
+          result.get_solver_details<solvers::ClarabelSolver>();
+      std::cout << fmt::format("Program fails for v: {}. Stat: {}\n", s,
+                               details.status);
+    }
+    // The solution corresponds to the dimensionless displacements ũ for each
+    // vertex of the input volume mesh. Scaling by the margin, gives us the
+    // displacements u.
+    u[s] = margin * result.get_x_val();
+  }
+
+  if (failure) {
+    throw std::runtime_error(
+          "Failure to inflate mesh. Unless there is a bug, the procedure to "
+          "apply margins to non-convex meshes is guaranteed to succeed. You "
+          "might also want to check your volume mesh is not somehow "
+          "degenerate. "
+          "Otherwise, please open a Drake issue.");
+  }  
+
+  // Apply displacement to each surface vertex.
+  std::vector<Vector3d> vertices = mesh.vertices();
+  for (int s = 0; s < num_surface_vertices; ++s) {
+    const int v = surface_to_volume_vertices[s];
+    vertices[v] += u[s];
+  }
+
+  std::vector<VolumeElement> tetrahedra = mesh.tetrahedra();
+  return VolumeMesh<double>(std::move(tetrahedra), std::move(vertices));
 }
 
 }  // namespace internal

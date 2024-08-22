@@ -1,4 +1,7 @@
+#include <fstream>
+#include <iostream>
 #include <memory>
+#include <string>
 
 #include <gflags/gflags.h>
 
@@ -41,10 +44,12 @@ using drake::math::RollPitchYawd;
 using drake::math::RotationMatrixd;
 using drake::multibody::AddMultibodyPlant;
 using drake::multibody::Body;
+using drake::multibody::ContactResults;
 using drake::multibody::CoulombFriction;
 using drake::multibody::DeformableBodyId;
 using drake::multibody::DeformableModel;
 using drake::multibody::ModelInstanceIndex;
+using drake::multibody::MultibodyPlant;
 using drake::multibody::MultibodyPlantConfig;
 using drake::multibody::PackageMap;
 using drake::multibody::Parser;
@@ -224,8 +229,8 @@ int do_main() {
   teddy_illustration_props.AddProperty("phong", "diffuse",
                                        Rgba(0.82, 0.71, 0.55, 1.0));
   teddy_instance->set_illustration_properties(teddy_illustration_props);
-  deformable_model.RegisterDeformableBody(std::move(teddy_instance),
-                                          teddy_config, 1.0);
+  const DeformableBodyId teddy_id = deformable_model.RegisterDeformableBody(
+      std::move(teddy_instance), teddy_config, 1.0);
 
   /* All rigid and deformable models have been added. Finalize the plant. */
   plant.Finalize();
@@ -242,6 +247,7 @@ int do_main() {
 
   /* Add a visualizer that emits LCM messages for visualization. */
   geometry::DrakeVisualizerParams params;
+  params.publish_period = std::min(1.0 / 30.0, FLAGS_discrete_time_step);
   params.role = geometry::Role::kIllustration;
   geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph, nullptr,
                                            params);
@@ -288,9 +294,68 @@ int do_main() {
   left_joint.set_translation(&plant_context, -open_width / 2.0);
   right_joint.set_translation(&plant_context, open_width / 2.0);
 
+  /* Define a monitor to log state and forces. */
+  std::fstream forces_file{"forces.dat", forces_file.out};
+  const MultibodyPlant<double>* plant_ptr = &plant;
+  const geometry::GeometryId right_bubble_geometry_id =
+      deformable_model.GetGeometryId(right_bubble_id);
+  const geometry::GeometryId left_bubble_geometry_id =
+      deformable_model.GetGeometryId(left_bubble_id);
+  simulator.set_monitor([&](const systems::Context<double>& root_context) {
+    const systems::DiscreteStateIndex teddy_state_index =
+        deformable_model.GetDiscreteStateIndex(teddy_id);
+    const geometry::GeometryId teddy_geometry_id =
+        deformable_model.GetGeometryId(teddy_id);
+
+    (void)teddy_state_index;
+
+    const auto& contact_results =
+        plant_ptr->get_contact_results_output_port()
+            .Eval<ContactResults<double>>(plant_context);
+
+    // Accumulate the total contact force on the teddy bear.
+    Vector3d f_Teddy_W = Vector3d::Zero();
+    Vector3d f_left =  Vector3d::Zero();
+    Vector3d f_right =  Vector3d::Zero();
+    for (int i = 0; i < contact_results.num_deformable_contacts(); ++i) {
+      const auto& info = contact_results.deformable_contact_info(i);
+      const geometry::GeometryId id_A = info.id_A();
+      const geometry::GeometryId id_B = info.id_B();
+
+      if (id_A == teddy_geometry_id) {
+        f_Teddy_W += info.F_Ac_W().translational();
+      }
+
+      if (id_B == teddy_geometry_id) {
+        f_Teddy_W -= info.F_Ac_W().translational();
+      }
+
+      if (id_A == left_bubble_geometry_id) {
+        f_left = info.F_Ac_W().translational();
+      }
+      if (id_B == left_bubble_geometry_id) {
+        f_left = -info.F_Ac_W().translational();
+      }
+
+      if (id_A == right_bubble_geometry_id) {
+        f_right = info.F_Ac_W().translational();
+      }
+      if (id_B == right_bubble_geometry_id) {
+        f_right = -info.F_Ac_W().translational();
+      }
+    }
+
+    forces_file << fmt::format(
+        "{} {} {} {}\n", root_context.get_time(), fmt_eigen(f_left.transpose()),
+        fmt_eigen(f_right.transpose()), fmt_eigen(f_Teddy_W.transpose()));
+
+    return systems::EventStatus::Succeeded();
+  });
+
   simulator.Initialize();
   simulator.set_target_realtime_rate(FLAGS_realtime_rate);
   simulator.AdvanceTo(FLAGS_simulation_time);
+  forces_file.close();
 
   return 0;
 }

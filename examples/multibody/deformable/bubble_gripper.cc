@@ -1,3 +1,4 @@
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -22,12 +23,15 @@
 #include "drake/systems/sensors/camera_config.h"
 #include "drake/systems/sensors/camera_config_functions.h"
 
-DEFINE_double(simulation_time, 15.0, "Desired duration of the simulation [s].");
+DEFINE_double(simulation_time, 4.0, "Desired duration of the simulation [s].");
 DEFINE_double(realtime_rate, 0.0, "Desired real time rate.");
 DEFINE_double(discrete_time_step, 2.5e-2,
               "Discrete time step for the system [s].");
 DEFINE_bool(render_bubble, true,
             "Renders the dot pattern inside the bubble gripper if true.");
+
+DEFINE_bool(visualize, true, "Publishes for visualization.");
+DEFINE_bool(log_data, true, "Logs forces and teddy state.");
 
 using drake::examples::deformable::ParallelGripperController;
 using drake::geometry::AddContactMaterial;
@@ -246,11 +250,14 @@ int do_main() {
                   plant.get_desired_state_input_port(gripper_instance));
 
   /* Add a visualizer that emits LCM messages for visualization. */
-  geometry::DrakeVisualizerParams params;
-  params.publish_period = std::min(1.0 / 30.0, FLAGS_discrete_time_step);
-  params.role = geometry::Role::kIllustration;
-  geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph, nullptr,
-                                           params);
+  if (FLAGS_visualize) {
+    geometry::DrakeVisualizerParams params;
+    params.publish_period = std::min(1.0 / 30.0, FLAGS_discrete_time_step);
+    params.role = geometry::Role::kIllustration;
+    geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph, nullptr,
+                                             params);
+  }
+
   /* We want to look in the -Py direction so we line up Bz with -Py.*/
   const Vector3d Bz_P = -Vector3d::UnitY();
   const Vector3d Bx_P = Vector3d::UnitZ();
@@ -296,66 +303,101 @@ int do_main() {
 
   /* Define a monitor to log state and forces. */
   std::fstream forces_file{"forces.dat", forces_file.out};
-  const MultibodyPlant<double>* plant_ptr = &plant;
-  const geometry::GeometryId right_bubble_geometry_id =
-      deformable_model.GetGeometryId(right_bubble_id);
-  const geometry::GeometryId left_bubble_geometry_id =
-      deformable_model.GetGeometryId(left_bubble_id);
-  simulator.set_monitor([&](const systems::Context<double>& root_context) {
-    const systems::DiscreteStateIndex teddy_state_index =
-        deformable_model.GetDiscreteStateIndex(teddy_id);
-    const geometry::GeometryId teddy_geometry_id =
-        deformable_model.GetGeometryId(teddy_id);
+  std::fstream teddy_file{"teddy_state.dat", forces_file.out};
+  if (FLAGS_log_data) {
+    const MultibodyPlant<double>* plant_ptr = &plant;
+    const geometry::GeometryId right_bubble_geometry_id =
+        deformable_model.GetGeometryId(right_bubble_id);
+    const geometry::GeometryId left_bubble_geometry_id =
+        deformable_model.GetGeometryId(left_bubble_id);
+    simulator.set_monitor([&](const systems::Context<double>& root_context) {
+      const systems::DiscreteStateIndex teddy_state_index =
+          deformable_model.GetDiscreteStateIndex(teddy_id);
+      const geometry::GeometryId teddy_geometry_id =
+          deformable_model.GetGeometryId(teddy_id);
 
-    (void)teddy_state_index;
+      (void)teddy_state_index;
 
-    const auto& contact_results =
-        plant_ptr->get_contact_results_output_port()
-            .Eval<ContactResults<double>>(plant_context);
+      const auto& contact_results =
+          plant_ptr->get_contact_results_output_port()
+              .Eval<ContactResults<double>>(plant_context);
 
-    // Accumulate the total contact force on the teddy bear.
-    Vector3d f_Teddy_W = Vector3d::Zero();
-    Vector3d f_left =  Vector3d::Zero();
-    Vector3d f_right =  Vector3d::Zero();
-    for (int i = 0; i < contact_results.num_deformable_contacts(); ++i) {
-      const auto& info = contact_results.deformable_contact_info(i);
-      const geometry::GeometryId id_A = info.id_A();
-      const geometry::GeometryId id_B = info.id_B();
+      // Accumulate the total contact force on the teddy bear.
+      Vector3d f_Teddy_W = Vector3d::Zero();
+      Vector3d f_left = Vector3d::Zero();
+      Vector3d f_right = Vector3d::Zero();
+      int num_contacts = 0;
+      for (int i = 0; i < contact_results.num_deformable_contacts(); ++i) {
+        const auto& info = contact_results.deformable_contact_info(i);
+        const geometry::GeometryId id_A = info.id_A();
+        const geometry::GeometryId id_B = info.id_B();
 
-      if (id_A == teddy_geometry_id) {
-        f_Teddy_W += info.F_Ac_W().translational();
+        num_contacts += info.contact_mesh().num_elements();
+
+        if (id_A == teddy_geometry_id) {
+          f_Teddy_W += info.F_Ac_W().translational();
+        }
+
+        if (id_B == teddy_geometry_id) {
+          f_Teddy_W -= info.F_Ac_W().translational();
+        }
+
+        if (id_A == left_bubble_geometry_id) {
+          f_left = info.F_Ac_W().translational();
+        }
+        if (id_B == left_bubble_geometry_id) {
+          f_left = -info.F_Ac_W().translational();
+        }
+
+        if (id_A == right_bubble_geometry_id) {
+          f_right = info.F_Ac_W().translational();
+        }
+        if (id_B == right_bubble_geometry_id) {
+          f_right = -info.F_Ac_W().translational();
+        }
       }
 
-      if (id_B == teddy_geometry_id) {
-        f_Teddy_W -= info.F_Ac_W().translational();
-      }
+      forces_file << fmt::format(
+          "{} {} {} {} {}\n", root_context.get_time(),
+          fmt_eigen(f_left.transpose()), fmt_eigen(f_right.transpose()),
+          fmt_eigen(f_Teddy_W.transpose()), num_contacts);
 
-      if (id_A == left_bubble_geometry_id) {
-        f_left = info.F_Ac_W().translational();
-      }
-      if (id_B == left_bubble_geometry_id) {
-        f_left = -info.F_Ac_W().translational();
-      }
+      // Log the teddy bear state.
+      const VectorX<double>& teddy_state =
+          plant_context.get_discrete_state(teddy_state_index).value();
+      teddy_file << fmt::format("{} {}\n", root_context.get_time(),
+                                fmt_eigen(teddy_state.transpose()));
 
-      if (id_A == right_bubble_geometry_id) {
-        f_right = info.F_Ac_W().translational();
-      }
-      if (id_B == right_bubble_geometry_id) {
-        f_right = -info.F_Ac_W().translational();
-      }
-    }
+      return systems::EventStatus::Succeeded();
+    });
+  }
 
-    forces_file << fmt::format(
-        "{} {} {} {}\n", root_context.get_time(), fmt_eigen(f_left.transpose()),
-        fmt_eigen(f_right.transpose()), fmt_eigen(f_Teddy_W.transpose()));
+  using clock = std::chrono::steady_clock;
 
-    return systems::EventStatus::Succeeded();
-  });
+  // Compute something to trigger reification etc so that we don't measure it as
+  // part of AdvanceTo().
+  clock::time_point start = clock::now();
+  const auto& contact_results =
+      plant.get_contact_results_output_port().Eval<ContactResults<double>>(
+          plant_context);
+  clock::time_point end = clock::now();
+  fmt::print("Num deformable contacts at t = 0: {}. {} secs.\n",
+             contact_results.num_deformable_contacts(),
+             std::chrono::duration<double>(end - start).count());
 
   simulator.Initialize();
   simulator.set_target_realtime_rate(FLAGS_realtime_rate);
+
+  start = clock::now();
   simulator.AdvanceTo(FLAGS_simulation_time);
+  end = clock::now();
+  const double wall_clock_time =
+      std::chrono::duration<double>(end - start).count();
+  fmt::print("Simulator::AdvanceTo() wall clock time: {} seconds.\n",
+             wall_clock_time);
+
   forces_file.close();
+  teddy_file.close();
 
   return 0;
 }

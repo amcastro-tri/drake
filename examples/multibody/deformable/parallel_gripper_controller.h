@@ -49,6 +49,7 @@ class ParallelGripperController : public systems::LeafSystem<double> {
   Eigen::Vector2d closed_configuration_;
   Eigen::Vector2d lifted_configuration_;
   Eigen::Vector2d open_configuration_;
+  double close_speed_;
 };
 
 }  // namespace deformable

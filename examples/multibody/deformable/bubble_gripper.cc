@@ -18,6 +18,7 @@
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/plant/multibody_plant_config_functions.h"
 #include "drake/multibody/tree/prismatic_joint.h"
+#include "drake/multibody/tree/multibody_tree_indexes.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/sensors/camera_config.h"
@@ -47,12 +48,14 @@ using drake::math::RigidTransformd;
 using drake::math::RollPitchYawd;
 using drake::math::RotationMatrixd;
 using drake::multibody::AddMultibodyPlant;
+using drake::multibody::PdControllerGains;
 using drake::multibody::Body;
 using drake::multibody::ContactResults;
 using drake::multibody::CoulombFriction;
 using drake::multibody::DeformableBodyId;
 using drake::multibody::DeformableModel;
 using drake::multibody::ModelInstanceIndex;
+using drake::multibody::JointActuatorIndex;
 using drake::multibody::MultibodyPlant;
 using drake::multibody::MultibodyPlantConfig;
 using drake::multibody::PackageMap;
@@ -239,6 +242,15 @@ int do_main() {
   /* All rigid and deformable models have been added. Finalize the plant. */
   plant.Finalize();
 
+  DRAKE_DEMAND(plant.num_actuators() == 2);  // height and (left) finger
+  const double Kp = 1e10;
+  const double Kd = std::sqrt(Kp);
+  PdControllerGains gains{Kp, Kd};
+  plant.get_mutable_joint_actuator(JointActuatorIndex(0))
+      .set_controller_gains(gains);
+  plant.get_mutable_joint_actuator(JointActuatorIndex(1))
+      .set_controller_gains(gains);
+
   /* Set the width between the fingers for open and closed states as well as the
    height to which the gripper lifts the manipuland. */
   const double open_width = 0.12;
@@ -304,6 +316,7 @@ int do_main() {
   /* Define a monitor to log state and forces. */
   std::fstream forces_file{"forces.dat", forces_file.out};
   std::fstream teddy_file{"teddy_state.dat", forces_file.out};
+  std::fstream gripper_file{"gripper_state.dat", gripper_file.out};
   if (FLAGS_log_data) {
     const MultibodyPlant<double>* plant_ptr = &plant;
     const geometry::GeometryId right_bubble_geometry_id =
@@ -317,6 +330,12 @@ int do_main() {
           deformable_model.GetGeometryId(teddy_id);
 
       (void)teddy_state_index;
+
+      const double qleft = left_joint.get_translation(plant_context);
+      const double qright = right_joint.get_translation(plant_context);
+
+      gripper_file << fmt::format("{} {} {}\n", root_context.get_time(), qleft,
+                                  qright);
 
       const auto& contact_results =
           plant_ptr->get_contact_results_output_port()
@@ -398,6 +417,7 @@ int do_main() {
 
   forces_file.close();
   teddy_file.close();
+  gripper_file.close();
 
   return 0;
 }

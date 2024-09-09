@@ -88,7 +88,7 @@ int do_main() {
   DRAKE_DEMAND(FLAGS_discrete_time_step > 0.0);
   plant_config.time_step = FLAGS_discrete_time_step;
   /* Deformable simulation only works with SAP solver. */
-  plant_config.discrete_contact_approximation = "sap";
+  plant_config.discrete_contact_approximation = "similar";
 
   auto [plant, scene_graph] = AddMultibodyPlant(plant_config, &builder);
 

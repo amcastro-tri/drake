@@ -223,50 +223,6 @@ static RigidTransform<T> ChangeScalarType(const RigidTransform<U>& other) {
   }
 }
 
-// Helper for ApplyProximityDefaults(). Adds any proximity properties that are
-// (a) missing in `properties`, and (b) not nullopt in `defaults`.
-//
-// @returns true if any properties were modified.
-bool BackfillDefaults(ProximityProperties* properties,
-                      const DefaultProximityProperties& defaults) {
-  auto backfill = [&](const std::string& group_name, const std::string& name,
-                      const auto& default_value) -> bool {
-    if (properties->HasProperty(group_name, name)) {
-      return false;
-    }
-    if (!default_value.has_value()) {
-      return false;
-    }
-    properties->AddProperty(group_name, name, *default_value);
-    return true;
-  };
-
-  bool result = false;
-  std::optional<HydroelasticType> wrapped_compliance(
-      internal::GetHydroelasticTypeFromString(defaults.compliance_type));
-  result |= backfill(kHydroGroup, kComplianceType, wrapped_compliance);
-
-  result |= backfill(kHydroGroup, kElastic, defaults.hydroelastic_modulus);
-  result |= backfill(kHydroGroup, kRezHint, defaults.resolution_hint);
-  result |= backfill(kHydroGroup, kSlabThickness, defaults.slab_thickness);
-
-  result |= backfill(kMaterialGroup, kHcDissipation,
-                     defaults.hunt_crossley_dissipation);
-  result |= backfill(kMaterialGroup, kRelaxationTime, defaults.relaxation_time);
-  result |= backfill(kMaterialGroup, kPointStiffness, defaults.point_stiffness);
-  result |= backfill(kHydroGroup, kMargin, defaults.margin);
-  if (defaults.static_friction.has_value()) {
-    // DefaultProximityProperties::ValidateOrThrow() enforces invariants on
-    // friction quantities.
-    DRAKE_DEMAND(defaults.dynamic_friction.has_value());
-    const auto wrapped_friction =
-        std::make_optional<multibody::CoulombFriction<double>>(
-            *defaults.static_friction, *defaults.dynamic_friction);
-    result |= backfill(kMaterialGroup, kFriction, wrapped_friction);
-  }
-  return result;
-}
-
 }  // namespace
 
 // It is _vitally_ important that all members are _explicitly_ accounted for
@@ -1595,7 +1551,7 @@ void GeometryState<T>::ApplyProximityDefaults(
   ProximityProperties props(*found_props);
 
   // Update properties with defaults. Return early if nothing changed.
-  bool changed = BackfillDefaults(&props, defaults);
+  bool changed = internal::BackfillDefaults(&props, defaults);
   if (!changed) {
     return;
   }

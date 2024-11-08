@@ -1008,15 +1008,20 @@ geometry::GeometryId MultibodyPlant<T>::RegisterCollisionGeometry(
   DRAKE_THROW_UNLESS(properties.HasProperty(geometry::internal::kMaterialGroup,
                                             geometry::internal::kFriction));
 
+  geometry::ProximityProperties new_props(properties);
+  geometry::internal::BackfillDefaults(
+      &new_props, scene_graph_->get_config().default_proximity_properties);
+
+  auto geo_instance = std::make_unique<geometry::GeometryInstance>(
+          X_BG, shape, GetScopedName(*this, body.model_instance(), name));
+  geo_instance->set_proximity_properties(std::move(new_props));
+
   // TODO(amcastro-tri): Consider doing this after finalize so that we can
   // register geometry that has a fixed path to world to the world body (i.e.,
   // as anchored geometry).
-  GeometryId id = RegisterGeometry(
-      body,
-      std::make_unique<geometry::GeometryInstance>(
-          X_BG, shape, GetScopedName(*this, body.model_instance(), name)));
+  GeometryId id = RegisterGeometry(body, std::move(geo_instance));
 
-  scene_graph_->AssignRole(*source_id_, id, std::move(properties));
+  //scene_graph_->AssignRole(*source_id_, id, std::move(properties));
   DRAKE_ASSERT(ssize(collision_geometries_) == num_bodies());
   collision_geometries_[body.index()].push_back(id);
   ++num_collision_geometries_;

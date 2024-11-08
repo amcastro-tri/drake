@@ -402,6 +402,9 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
   const double hydroelastic_modulus =
       positive_validator.Extract(props, kHydroGroup, kElastic);
 
+  fmt::print("MakeSoftRepresentation(sphere). margin: {}, rez: {}, E: {}\n",
+             margin, edge_length, hydroelastic_modulus);
+
   auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
       MakeSpherePressureField(inflated_sphere, inflated_mesh.get(),
                               hydroelastic_modulus, margin));

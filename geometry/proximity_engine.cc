@@ -477,6 +477,7 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
   void ProcessHydroelastic(const Shape& shape, void* user_data) {
     const ReifyData& data = *static_cast<ReifyData*>(user_data);
     hydroelastic_geometries_.MaybeAddGeometry(shape, data.id, data.properties);
+    fmt::print("ProcessHydroelastic(): {}\n", data.margin);
     if (data.margin > 0 && hydroelastic_geometries_.hydroelastic_type(
                                data.id) == HydroelasticType::kCompliant) {
       InflateLocalAabbForHydroelasticTypesOnly(shape, data);
@@ -551,6 +552,8 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
   }
 
   void ImplementGeometry(const Sphere& sphere, void* user_data) override {
+    const ReifyData& data = *static_cast<ReifyData*>(user_data);
+    fmt::print("ImplementGeometry(Sphere): {}\n", data.margin);
     // Note: Using `shared_ptr` because of FCL API requirements.
     auto fcl_sphere = make_shared<fcl::Sphered>(sphere.radius());
     TakeShapeOwnership(fcl_sphere, user_data);
@@ -911,6 +914,8 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     DRAKE_DEMAND(hydroelastic_geometries_.hydroelastic_type(data.id) ==
                  HydroelasticType::kCompliant);
 
+    fmt::print("InflateLocalAabbForHydroelasticTypesOnly(): {}\n", data.margin);
+
     // To edit the assigned collision geometry, we have to cheat and temporarily
     // ignore the const-ness. Note: this assumes that the collision object
     // hasn't been added to a BVH yet; as long as this is part of the
@@ -950,6 +955,7 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     // DefaultProximityProperties::margin for the default value.
     const double margin =
         props.GetPropertyOrDefault<double>(kHydroGroup, kMargin, 0.0);
+    fmt::print("ProximityEngine::Impl::AddGeometry(). margin: {}\n", margin);
     ReifyData data{nullptr, id, props, X_WG, margin};
     shape.Reify(this, &data);
 

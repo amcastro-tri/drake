@@ -4,6 +4,7 @@
 #include <string>
 
 #include "drake/common/name_value.h"
+#include "drake/geometry/proximity_properties.h"
 
 namespace drake {
 namespace geometry {
@@ -153,5 +154,14 @@ struct SceneGraphConfig {
   void ValidateOrThrow() const;
 };
 
+namespace internal {
+  // Helper for ApplyProximityDefaults(). Adds any proximity properties that are
+// (a) missing in `properties`, and (b) not nullopt in `defaults`.
+//
+// @returns true if any properties were modified.
+bool BackfillDefaults(ProximityProperties* properties,
+                      const DefaultProximityProperties& defaults);
+
+}  // namespace internal
 }  // namespace geometry
 }  // namespace drake

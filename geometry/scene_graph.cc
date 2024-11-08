@@ -468,8 +468,10 @@ template <typename T>
 void SceneGraph<T>::AssignRole(SourceId source_id, GeometryId geometry_id,
                                ProximityProperties properties,
                                RoleAssign assign) {
-  hub_.mutable_model().AssignRole(
-      source_id, geometry_id, std::move(properties), assign);
+  internal::BackfillDefaults(&properties,
+                             get_config().default_proximity_properties);
+  hub_.mutable_model().AssignRole(source_id, geometry_id, std::move(properties),
+                                  assign);
 }
 
 template <typename T>

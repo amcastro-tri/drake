@@ -99,5 +99,51 @@ void SceneGraphConfig::ValidateOrThrow() const {
   default_proximity_properties.ValidateOrThrow();
 }
 
+namespace internal {
+  // Helper for ApplyProximityDefaults(). Adds any proximity properties that are
+// (a) missing in `properties`, and (b) not nullopt in `defaults`.
+//
+// @returns true if any properties were modified.
+bool BackfillDefaults(ProximityProperties* properties,
+                      const DefaultProximityProperties& defaults) {
+  auto backfill = [&](const std::string& group_name, const std::string& name,
+                      const auto& default_value) -> bool {
+    if (properties->HasProperty(group_name, name)) {
+      return false;
+    }
+    if (!default_value.has_value()) {
+      return false;
+    }
+    properties->AddProperty(group_name, name, *default_value);
+    return true;
+  };
+
+  bool result = false;
+  std::optional<HydroelasticType> wrapped_compliance(
+      internal::GetHydroelasticTypeFromString(defaults.compliance_type));
+  result |= backfill(kHydroGroup, kComplianceType, wrapped_compliance);
+
+  result |= backfill(kHydroGroup, kElastic, defaults.hydroelastic_modulus);
+  result |= backfill(kHydroGroup, kRezHint, defaults.resolution_hint);
+  result |= backfill(kHydroGroup, kSlabThickness, defaults.slab_thickness);
+
+  result |= backfill(kMaterialGroup, kHcDissipation,
+                     defaults.hunt_crossley_dissipation);
+  result |= backfill(kMaterialGroup, kRelaxationTime, defaults.relaxation_time);
+  result |= backfill(kMaterialGroup, kPointStiffness, defaults.point_stiffness);
+  result |= backfill(kHydroGroup, kMargin, defaults.margin);
+  if (defaults.static_friction.has_value()) {
+    // DefaultProximityProperties::ValidateOrThrow() enforces invariants on
+    // friction quantities.
+    DRAKE_DEMAND(defaults.dynamic_friction.has_value());
+    const auto wrapped_friction =
+        std::make_optional<multibody::CoulombFriction<double>>(
+            *defaults.static_friction, *defaults.dynamic_friction);
+    result |= backfill(kMaterialGroup, kFriction, wrapped_friction);
+  }
+  return result;
+}
+
+}
 }  // namespace geometry
 }  // namespace drake

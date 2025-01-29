@@ -781,6 +781,12 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
 {  // NOLINT(whitespace/braces)
   const std::vector<geometry::ContactSurface<T>>& surfaces =
       EvalGeometryContactData(context).get().surfaces;
+
+  fmt::print("\n\nAppendDiscreteContactPairsForHydroelasticContact()\n");
+  fmt::print("Time: {}\n", context.get_time());
+
+  fmt::print("#surfaces: {}\n", ssize(surfaces));
+
   // N.B. For discrete hydro we use a first order quadrature rule. As such,
   // the per-face quadrature point is the face's centroid and the weight is 1.
   // This is compatible with a mesh that is triangle or polygon. If we attempted
@@ -795,6 +801,8 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
     return;
   }
 
+  fmt::print("#contacts: {}\n", num_hydro_contacts);
+
   contact_pairs->Reserve(0, num_hydro_contacts, 0);
   const geometry::SceneGraphInspector<T>& inspector =
       plant().EvalSceneGraphInspector(context);
@@ -807,6 +815,8 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
   Matrix3X<T> Jv_WAc_W(3, nv);
   Matrix3X<T> Jv_WBc_W(3, nv);
   Matrix3X<T> Jv_AcBc_W(3, nv);
+
+  int new_contacts = 0;
 
   const int num_surfaces = surfaces.size();
   for (int surface_index = 0; surface_index < num_surfaces; ++surface_index) {
@@ -871,6 +881,11 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
         // associated with M, and B is associated with N.
         const Vector3<T>& nhat_BA_W = s.face_normal(face);
 
+        const Vector3<T> gradM = s.EvaluateGradE_M_W(face);
+        const Vector3<T> gradN = s.EvaluateGradE_N_W(face);
+        const T cosM = gradM.dot(nhat_BA_W) / gradM.norm();
+        const T cosN = gradN.dot(nhat_BA_W) / gradN.norm();
+
         // One dimensional pressure gradient (in Pa/m). Unlike [Masterjohn
         // 2022], for convenience we define both pressure gradients
         // to be positive in the direction "into" the bodies. Therefore,
@@ -883,6 +898,11 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
         const T gN = N_is_compliant
                          ? -s.EvaluateGradE_N_W(face).dot(nhat_BA_W)
                          : T(std::numeric_limits<double>::infinity());
+
+        fmt::print("  Face: {}, A: {}\n", face, Ae);
+        fmt::print("  nhat: {}\n", fmt_eigen(nhat_BA_W.transpose()));
+        fmt::print("  gM: {}, gN: {}\n", gM, gN);
+        fmt::print("  cosM: {}, cosN: {}\n", cosM, cosN);
 
         constexpr double kGradientEpsilon = 1.0e-14;
         if (gM < kGradientEpsilon || gN < kGradientEpsilon) {
@@ -993,8 +1013,9 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
         const RigidTransform<T>& X_WB =
             plant().EvalBodyPoseInWorld(context, body_B);
         const Vector3<T>& p_WB = X_WB.translation();
-        const Vector3<T> p_BC_W = p_WC - p_WB;
+        const Vector3<T> p_BC_W = p_WC - p_WB;        
 
+        ++new_contacts;
         DiscreteContactPair<T> contact_pair{
             .jacobian = std::move(jacobian_blocks),
             .id_A = s.id_M(),
@@ -1020,6 +1041,7 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
       }
     }
   }
+  fmt::print("#new_contacts: {}\n", new_contacts);
 }
 
 template <typename T>

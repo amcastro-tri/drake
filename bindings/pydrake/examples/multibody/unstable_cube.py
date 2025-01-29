@@ -157,6 +157,7 @@ def create_scene(
     parser.AddModelsFromString(xml, "xml")
     #plant.set_discrete_contact_approximation(
     #        DiscreteContactApproximation.kLagged)
+    #plant.set_contact_surface_representation(HydroelasticContactRepresentation.kTriangle)
     plant.Finalize()
 
     if hydroelastic:

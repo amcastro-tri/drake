@@ -87,6 +87,7 @@ void PolygonSurfaceMesh<T>::ComputePositionDependentQuantities() {
   total_area_ = 0;
   areas_.clear();
   face_normals_.clear();
+  face_inertias_.clear();
   poly_indices_.clear();
   p_MSc_.setZero();
   element_centroid_M_.clear();
@@ -115,6 +116,8 @@ void PolygonSurfaceMesh<T>::CalcAreaNormalAndCentroid(const int poly_index) {
   Vector3<T> cross;
   T cross_magnitude{};
   T double_poly_area(0);
+  // Inertia tensor about the first vertex A, expressed in the mesh's frame M
+  Matrix3<T> I_A_M = Matrix3<T>::Zero();
 
   // TODO(SeanCurtis-TRI): We could reduce square roots by computing the normal
   //  from the first triangle and use that to facilitate area calculations for
@@ -136,10 +139,17 @@ void PolygonSurfaceMesh<T>::CalcAreaNormalAndCentroid(const int poly_index) {
   for (int v = 1; v < v_count - 1; ++v) {
     const Vector3<T>& r_MB = vertices_M_[face_data_[v_index_offset + v]];
     const Vector3<T>& r_MC = vertices_M_[face_data_[v_index_offset + v + 1]];
-    const auto r_UV_M = r_MB - r_MA;
-    const auto r_UW_M = r_MC - r_MA;
+    const auto udir = r_MB - r_MA;
+    const auto vdir = r_MC - r_MA;
 
-    cross = r_UV_M.cross(r_UW_M);
+    const Matrix3<T> UU = udir * udir.transpose();
+    const Matrix3<T> VV = vdir * vdir.transpose();
+    const Matrix3<T> UV = udir * vdir.transpose();
+    const Matrix3<T> UVsym = 0.5 * (UV + UV.transpose());
+
+    I_A_M += (UU + VV + UVsym);
+
+    cross = udir.cross(vdir);
     normal_M += cross;
     /* The cross product magnitude is equal to twice the triangle area. */
     cross_magnitude = cross.norm();
@@ -193,6 +203,15 @@ void PolygonSurfaceMesh<T>::CalcAreaNormalAndCentroid(const int poly_index) {
     // It may or may not be in the "middle" of the zero-area polygon.
     element_centroid_M_.emplace_back(CalcAveragePosition(poly_index));
   }
+
+  I_A_M /= 6.0;  // Common scaling factor in all triangles.
+
+  // Parallel axis theorem to shit to centroid.
+  const Vector3<T>& p_MCentroid = element_centroid_M_.back();
+  const Vector3<T> p = p_MCentroid - r_MA;
+  Matrix3<T> I_C_M = I_A_M - poly_area * p * p.transpose();
+  face_inertias_.push_back(I_C_M);
+
   const T old_area = total_area_;
   total_area_ += poly_area;
   if (total_area_ != 0.0) {

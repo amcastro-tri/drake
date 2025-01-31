@@ -216,6 +216,13 @@ class PolygonSurfaceMesh {
     return face_normals_[f];
   }
 
+  /** Returns the inertia tensor I_C_M for the f-the polygon, computed about its
+   * centroid C and expressed in the mesh's frame. */
+  const Matrix3<T>& face_inertia(int f) const {
+    DRAKE_DEMAND(0 <= f && f < num_faces());
+    return face_inertias_[f];
+  }
+
   /** Returns the geometric centroid of the element indicated be index `e`,
    measured and expressed in the mesh's frame M.
    @pre f ∈ {0, 1, 2, ..., num_faces()-1}. */
@@ -356,6 +363,10 @@ class PolygonSurfaceMesh {
   /* Per-polygon normals. face_normals_.size() == poly_indices_.size() is always
    true. */
   std::vector<Vector3<T>> face_normals_;
+
+  /* Per-polygon inertia tensor I_C_M, about the polygon's centroid C, expressed
+  in the mesh's frame M. */
+  std::vector<Matrix3<T>> face_inertias_;
 
   /* Per-polygon centroids. */
   std::vector<Vector3<T>> element_centroid_M_;

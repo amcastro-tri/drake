@@ -781,6 +781,8 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
     DiscreteContactData<DiscreteContactPair<T>>* contact_pairs) const
   requires scalar_predicate<T>::is_bool
 {  // NOLINT(whitespace/braces)
+  using std::sqrt;
+
   const std::vector<geometry::ContactSurface<T>>& surfaces =
       EvalGeometryContactData(context).get().surfaces;
 
@@ -934,7 +936,52 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
 
         // Position of quadrature point C in the world frame (since mesh_W
         // is measured and expressed in W).
-        const Vector3<T>& p_WC = s.centroid(face);
+        const Vector3<T>& p_WCentroid = s.centroid(face);
+
+        // For a triangle, its centroid has the fixed barycentric
+        // coordinates independent of the shape of the triangle. Using
+        // barycentric coordinates to evaluate field value could be
+        // faster than using Cartesian coordinates, especially if the
+        // TriangleSurfaceMeshFieldLinear<> does not store gradients and
+        // has to solve linear equations to convert Cartesian to
+        // barycentric coordinates.
+        const Vector3<T> tri_centroid_barycentric(1 / 3., 1 / 3., 1 / 3.);
+        // Pressure at the quadrature point.
+        const T p0 = s.is_triangle()
+                         ? s.tri_e_MN().Evaluate(face, tri_centroid_barycentric)
+                         : s.poly_e_MN().EvaluateCartesian(face, p_WCentroid);
+
+        // Force contribution by this quadrature point.
+        const T fn0 = Ae * p0;
+
+        Vector3<T> p_WC = p_WCentroid;  // The centroid for triangular meshes.
+        if (!s.is_triangle()) {
+          // Compute center of pressure position.
+          const Matrix3<T>& I_Centroid_W = s.poly_mesh_W().face_inertia(face);
+
+          // The result should be the same using either gradient (M or N).
+          // Given the sign convention for nhat (out of N into M), this is the
+          // torque on M.
+          const Vector3<T> t_MCentroid_W =
+              Ae * ((I_Centroid_W * gradM).cross(nhat_BA_W));
+
+          // The face is planar. The force is perpendicular to the face and the
+          // torque lies on that plane (since is the result of a cross product
+          // with the normal above). We use this observation to compute the
+          // position of the center of pressure Cp.
+          const Vector3<T> p_CCp_W = (nhat_BA_W.cross(t_MCentroid_W)) / fn0;
+
+          // C is the center of pressure.
+          p_WC = p_WCentroid + p_CCp_W;
+
+          if constexpr (std::is_same_v<T, double>) {
+            fmt::print("  sqrt(A): {}, p_CCp_W: {}\n", sqrt(Ae),
+                       fmt_eigen(p_CCp_W.transpose()));
+          }
+        }
+
+        // Uncomment this line to remove effectively undo CP correction.
+        // p_WC = p_WCentroid;
 
         // Since v_AcBc_W = v_WBc - v_WAc the relative velocity Jacobian
         // will be:
@@ -990,22 +1037,6 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
           jacobian_blocks.emplace_back(tree_B_index,
                                        MatrixBlock<T>(std::move(J)));
         }
-
-        // For a triangle, its centroid has the fixed barycentric
-        // coordinates independent of the shape of the triangle. Using
-        // barycentric coordinates to evaluate field value could be
-        // faster than using Cartesian coordinates, especially if the
-        // TriangleSurfaceMeshFieldLinear<> does not store gradients and
-        // has to solve linear equations to convert Cartesian to
-        // barycentric coordinates.
-        const Vector3<T> tri_centroid_barycentric(1 / 3., 1 / 3., 1 / 3.);
-        // Pressure at the quadrature point.
-        const T p0 = s.is_triangle()
-                         ? s.tri_e_MN().Evaluate(face, tri_centroid_barycentric)
-                         : s.poly_e_MN().EvaluateCartesian(face, p_WC);
-
-        // Force contribution by this quadrature point.
-        const T fn0 = Ae * p0;
 
         // Effective compliance in the normal direction for the given
         // discrete patch, refer to [Masterjohn 2022] for details.

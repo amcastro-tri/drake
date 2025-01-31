@@ -31,7 +31,7 @@ def ball_on_table():
     """
     use_hydroelastic = True
     initial_state = np.array([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
-    sim_time = 0.2
+    sim_time = 2
     return SimulationExample(name, xml, use_hydroelastic, initial_state, sim_time)
 
 #time_step = 0.01

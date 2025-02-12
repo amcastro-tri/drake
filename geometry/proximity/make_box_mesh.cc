@@ -323,11 +323,43 @@ VolumeMesh<T> MakeBoxVolumeMeshWithMa(const Box& box) {
 
   std::vector<VolumeElement> mesh_elements;
   mesh_elements.reserve(24);
-  auto append =
-      [&mesh_elements](const std::vector<VolumeElement>& new_elements) {
-        mesh_elements.insert(mesh_elements.end(), new_elements.begin(),
-                             new_elements.end());
-      };
+
+  auto get_positive_elements = [&mesh_vertices](const std::vector<VolumeElement>& elements) {
+    std::vector<VolumeElement> positive_elements;
+    for (const auto& e : elements) {
+      const auto& p0 = mesh_vertices[e.vertex(0)];
+      const auto& p1 = mesh_vertices[e.vertex(1)];
+      const auto& p2 = mesh_vertices[e.vertex(2)];
+      const auto& p3 = mesh_vertices[e.vertex(3)];
+      const Vector3<T> normal = (p1 - p0).cross(p2 - p0);
+      const T volume = (p3 - p0).dot(normal);
+      const bool is_positive = volume > 0;
+      fmt::print(" vol: {}\n", volume);
+      using std::abs;
+      if (abs(volume) < 1e-14) {
+        fmt::print("  p0: {}\n", fmt_eigen(p0.transpose()));
+        fmt::print("  p1: {}\n", fmt_eigen(p1.transpose()));
+        fmt::print("  p2: {}\n", fmt_eigen(p2.transpose()));
+        fmt::print("  p3: {}\n", fmt_eigen(p3.transpose()));
+      }
+      if (is_positive) {
+        positive_elements.push_back(e);
+      } else {
+        if (abs(volume) > 1e-14) {
+          positive_elements.push_back(VolumeElement(e.vertex(0), e.vertex(2), e.vertex(1), e.vertex(3)));
+        }
+      }      
+    }
+    return positive_elements;
+  };
+
+  auto append = [&mesh_elements, &mesh_vertices, &get_positive_elements](
+                    const std::vector<VolumeElement>& new_elements) {
+    const std::vector<VolumeElement> positive_elements =
+        get_positive_elements(new_elements);
+    mesh_elements.insert(mesh_elements.end(), positive_elements.begin(),
+                         positive_elements.end());
+  };
 
   // We design the ordering of the 8 vertices of each virtual frustum, so
   // that all SplitToTetrahedra() of all virtual frusta are conforming.

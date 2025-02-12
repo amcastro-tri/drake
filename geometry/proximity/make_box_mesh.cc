@@ -244,6 +244,14 @@ VolumeMesh<T> MakeBoxVolumeMeshWithMa(const Box& box) {
       (half_central_Ma_before_tolerancing.array() >
        DistanceToPointRelativeTolerance(min_half_box))
           .select(half_central_Ma_before_tolerancing, 0.);
+
+  // Medial center point only added when MA is a point or a rectangle.
+  const bool is_rectangle =
+      ((half_central_Ma.x() == 0) + (half_central_Ma.y() == 0) +
+       (half_central_Ma.z() == 0)) == 1;  // only one direction is zero.
+  //const bool is_point = half_central_Ma.x() == 0 && half_central_Ma.y() == 0 &&
+  //                      half_central_Ma.z() == 0;
+
   for (const int i : {0, 1}) {
     const double x = i == 0 ? -half_central_Ma.x() : half_central_Ma.x();
     for (const int j : {0, 1}) {
@@ -272,6 +280,46 @@ VolumeMesh<T> MakeBoxVolumeMeshWithMa(const Box& box) {
   }
   // 8 box vertices + at most 4 MA's vertices.
   DRAKE_DEMAND(mesh_vertices.size() <= 12);
+
+  // Face centers (only X for now)
+  std::vector<int> vc(6);
+  std::iota(vc.begin(), vc.end(), mesh_vertices.size());
+  mesh_vertices.emplace_back(-half_box.x(), 0, 0);
+  mesh_vertices.emplace_back(half_box.x(), 0, 0);
+  mesh_vertices.emplace_back(0, -half_box.y(), 0);
+  mesh_vertices.emplace_back(0, half_box.y(), 0);
+  mesh_vertices.emplace_back(0, 0, -half_box.z());
+  mesh_vertices.emplace_back(0, 0, half_box.z());
+  // For retangular MA, add center vertex.
+  const int m_center = mesh_vertices.size();
+  if (is_rectangle) {
+    mesh_vertices.emplace_back(0.0, 0.0, 0.0);
+  }
+
+  std::vector<int> mc(6);
+  if (is_rectangle && half_central_Ma.x() == 0) {
+    mc[0] = m_center;
+    mc[1] = m_center;
+  } else {
+    mc[0] = m[0][0][0];
+    mc[1] = m[1][0][0];
+  }
+
+  if (is_rectangle && half_central_Ma.y() == 0) {
+    mc[2] = m_center;
+    mc[3] = m_center;
+  } else {
+    mc[2] = m[0][0][0];
+    mc[3] = m[0][1][0];
+  }
+
+  if (is_rectangle && half_central_Ma.z() == 0) {
+    mc[4] = m_center;
+    mc[5] = m_center;
+  } else {
+    mc[4] = m[0][0][0];
+    mc[5] = m[0][0][1];
+  }
 
   std::vector<VolumeElement> mesh_elements;
   mesh_elements.reserve(24);
@@ -306,23 +354,41 @@ VolumeMesh<T> MakeBoxVolumeMeshWithMa(const Box& box) {
   //
 
   // front face (+X)
-  append(SplitToTetrahedra(m[1][0][0], m[1][1][0], m[1][1][1], m[1][0][1],
-                           v[1][0][0], v[1][1][0], v[1][1][1], v[1][0][1]));
+  append(SplitToTetrahedra(mc[1], m[1][1][0], m[1][1][1], m[1][0][1],
+                           vc[1], v[1][1][0], v[1][1][1], v[1][0][1]));
+  append(SplitToTetrahedra(v[1][0][0], v[1][1][0], vc[1], v[1][0][1], 
+                           m[1][0][0], m[1][1][0], mc[1], m[1][0][1]));
+
   // back face (-X)
-  append(SplitToTetrahedra(m[0][0][0], m[0][0][1], m[0][1][1], m[0][1][0],
-                           v[0][0][0], v[0][0][1], v[0][1][1], v[0][1][0]));
+  append(SplitToTetrahedra(mc[0], m[0][0][1], m[0][1][1], m[0][1][0],
+                           vc[0], v[0][0][1], v[0][1][1], v[0][1][0]));
+  append(SplitToTetrahedra(v[0][0][0], v[0][0][1], vc[0], v[0][1][0],
+                           m[0][0][0], m[0][0][1], mc[0], m[0][1][0]));
+
   // right face (+Y)
-  append(SplitToTetrahedra(m[0][1][0], m[0][1][1], m[1][1][1], m[1][1][0],
-                           v[0][1][0], v[0][1][1], v[1][1][1], v[1][1][0]));
+  append(SplitToTetrahedra(mc[3], m[0][1][1], m[1][1][1], m[1][1][0],
+                           vc[3], v[0][1][1], v[1][1][1], v[1][1][0]));
+  append(SplitToTetrahedra(v[0][1][0], v[0][1][1], vc[3], v[1][1][0],
+                           m[0][1][0], m[0][1][1], mc[3], m[1][1][0]));
+
   // left face (-Y)
-  append(SplitToTetrahedra(m[0][0][0], m[1][0][0], m[1][0][1], m[0][0][1],
-                           v[0][0][0], v[1][0][0], v[1][0][1], v[0][0][1]));
+  append(SplitToTetrahedra(mc[2], m[1][0][0], m[1][0][1], m[0][0][1],
+                           vc[2], v[1][0][0], v[1][0][1], v[0][0][1]));
+  append(SplitToTetrahedra(v[0][0][0], v[1][0][0], vc[2], v[0][0][1],
+                           m[0][0][0], m[1][0][0], mc[2], m[0][0][1]));
+
   // top face (+Z)
-  append(SplitToTetrahedra(m[0][0][1], m[1][0][1], m[1][1][1], m[0][1][1],
-                           v[0][0][1], v[1][0][1], v[1][1][1], v[0][1][1]));
+  append(SplitToTetrahedra(mc[5], m[1][0][1], m[1][1][1], m[0][1][1],
+                           vc[5], v[1][0][1], v[1][1][1], v[0][1][1]));
+  append(SplitToTetrahedra(v[0][0][1], v[1][0][1], vc[5], v[0][1][1],
+                           m[0][0][1], m[1][0][1], mc[5], m[0][1][1]));
+
   // bottom face (-Z)
-  append(SplitToTetrahedra(m[0][0][0], m[0][1][0], m[1][1][0], m[1][0][0],
-                           v[0][0][0], v[0][1][0], v[1][1][0], v[1][0][0]));
+  append(SplitToTetrahedra(mc[4], m[0][1][0], m[1][1][0], m[1][0][0],
+                           vc[4], v[0][1][0], v[1][1][0], v[1][0][0]));
+  append(SplitToTetrahedra(v[0][0][0], v[0][1][0], vc[4], v[1][0][0],
+                           m[0][0][0], m[0][1][0], mc[4], m[1][0][0]));                           
+
   return {std::move(mesh_elements), std::move(mesh_vertices)};
 }
 

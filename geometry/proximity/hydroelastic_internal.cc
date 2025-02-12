@@ -31,6 +31,8 @@
 #include "drake/geometry/proximity/tessellation_strategy.h"
 #include "drake/geometry/proximity/volume_to_surface_mesh.h"
 
+#include "drake/geometry/proximity/mesh_to_vtk.h"
+
 namespace drake {
 namespace geometry {
 namespace internal {
@@ -460,12 +462,19 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
   auto inflated_mesh = make_unique<VolumeMesh<double>>(
       MakeBoxVolumeMeshWithMa<double>(inflated_box));
 
+  drake::geometry::internal::WriteVolumeMeshToVtk("BoxWithMa.vtk",
+                                                  *inflated_mesh, "box");
+
+
   const double hydroelastic_modulus =
       PositiveDouble("Box", "soft").Extract(props, kHydroGroup, kElastic);
 
   auto pressure =
       make_unique<VolumeMeshFieldLinear<double, double>>(MakeBoxPressureField(
           inflated_box, inflated_mesh.get(), hydroelastic_modulus, margin));
+
+  drake::geometry::internal::WriteVolumeMeshFieldLinearToVtk(
+      "BoxWithMa_field.vtk", "pressure", *pressure, "test");
 
   return SoftGeometry(SoftMesh(std::move(inflated_mesh), std::move(pressure)));
 }

@@ -24,14 +24,14 @@ def ball_on_table():
         <geom name="table_top" type="box" pos="0.0 0.0 -0.1" size="0.25 0.25 0.1" rgba="0.9 0.8 0.7 1"/>
         <body>
             <joint type="free"/>
-            <geom name="cube" type="box" pos="0.0 0.0 0.05" size="0.05 0.1 0.15" rgba="0.0 1.0 0.0 1"/>
+            <geom name="cube" type="box" pos="0.0 0.0 0.05" size="0.05 0.05 0.05" rgba="0.0 1.0 0.0 1"/>
         </body>
     </worldbody>
     </mujoco>
     """
     use_hydroelastic = True
     initial_state = np.array([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
-    sim_time = 2
+    sim_time = 0.2
     return SimulationExample(name, xml, use_hydroelastic, initial_state, sim_time)
 
 #time_step = 0.01

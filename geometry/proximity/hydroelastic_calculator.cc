@@ -71,6 +71,7 @@ ContactCalculator<T>::MaybeMakeContactSurface(GeometryId id_A,
   // One or two objects have vanished. We can report that we're done
   // calculating the contact (no contact).
   if (geometries_.is_vanished(id_A) || geometries_.is_vanished(id_B)) {
+    fmt::print("MaybeMakeContactSurface(): reason 1\n");
     return {ContactSurfaceResult::kCalculated, nullptr};
   }
 
@@ -80,6 +81,7 @@ ContactCalculator<T>::MaybeMakeContactSurface(GeometryId id_A,
   // One or two objects have no hydroelastic type.
   if (type_A == HydroelasticType::kUndefined ||
       type_B == HydroelasticType::kUndefined) {
+        fmt::print("MaybeMakeContactSurface(): reason 2\n");
     return {ContactSurfaceResult::kUnsupported, nullptr};
   }
 
@@ -87,11 +89,14 @@ ContactCalculator<T>::MaybeMakeContactSurface(GeometryId id_A,
   // Callers might optionally fall back to point contact model.
   if (type_A == HydroelasticType::kRigid &&
       type_B == HydroelasticType::kRigid) {
+        fmt::print("MaybeMakeContactSurface(): reason 3\n");
     return {ContactSurfaceResult::kRigidRigid, nullptr};
   }
 
   // Compliant-compliant contact.
   if (type_A == HydroelasticType::kSoft && type_B == HydroelasticType::kSoft) {
+    fmt::print("MaybeMakeContactSurface(): compliant/compliant calc starts...\n");
+
     // Enforce consistent ordering for reproducibility/repeatability of
     // simulation since the same pair of geometries (A,B) may be called
     // either as (A,B) or (B,A).
@@ -103,11 +108,13 @@ ContactCalculator<T>::MaybeMakeContactSurface(GeometryId id_A,
 
     // Halfspace vs. halfspace is not supported.
     if (soft_A.is_half_space() && soft_B.is_half_space()) {
+      fmt::print("MaybeMakeContactSurface(): reason 4\n");
       return {ContactSurfaceResult::kHalfSpaceHalfSpace, nullptr};
     }
 
     // Compliant-halfspace vs. compliant-mesh is not supported.
     if (soft_A.is_half_space() || soft_B.is_half_space()) {
+      fmt::print("MaybeMakeContactSurface(): reason 5\n");
       return {ContactSurfaceResult::kCompliantHalfSpaceCompliantMesh, nullptr};
     }
 

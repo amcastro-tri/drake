@@ -804,6 +804,8 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
 
     std::vector<SortedPair<GeometryId>> candidates = FindCollisionCandidates();
 
+    fmt::print("#candidates: {}\n", ssize(candidates));
+
     // All these quantities are aliased.
     hydroelastic::ContactCalculator<T> calculator{
         &X_WGs, &hydroelastic_geometries_, representation};
@@ -819,6 +821,7 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     for (int k = 0; k < ssize(candidates); ++k) {
       const auto& [id0, id1] = candidates[k];
       auto [result, surface] = calculator.MaybeMakeContactSurface(id0, id1);
+      fmt::print(" ContactSurfaceFailed: {}\n", ContactSurfaceFailed(result));
       if (ContactSurfaceFailed(result)) {
         auto penetration = penetration_as_point_pair::MaybeMakePointPair(
             GetFclPtr(id0), GetFclPtr(id1), point_data);
@@ -826,6 +829,7 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
           point_pair_maybes[k] = penetration;
         }
       } else if (surface != nullptr) {
+        fmt::print(" s->num_faces: {}\n", surface->num_faces());
         surface_ptrs[k] = std::move(surface);
       }
     }

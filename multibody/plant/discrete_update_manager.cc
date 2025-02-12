@@ -783,10 +783,10 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
 {  // NOLINT(whitespace/braces)
   using std::sqrt;
 
+  fmt::print("\n\nAppendDiscreteContactPairsForHydroelasticContact()\n");
   const std::vector<geometry::ContactSurface<T>>& surfaces =
       EvalGeometryContactData(context).get().surfaces;
-
-  fmt::print("\n\nAppendDiscreteContactPairsForHydroelasticContact()\n");
+  
   fmt::print("Time: {}\n", context.get_time());
 
   fmt::print("#surfaces: {}\n", ssize(surfaces));
@@ -981,7 +981,7 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
         }
 
         // Uncomment this line to remove effectively undo CP correction.
-        // p_WC = p_WCentroid;
+        p_WC = p_WCentroid;
 
         // Since v_AcBc_W = v_WBc - v_WAc the relative velocity Jacobian
         // will be:

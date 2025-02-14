@@ -156,6 +156,9 @@ namespace internal {
 template <typename T>
 VolumeMesh<T> MakeBoxVolumeMeshWithMa(const Box& box);
 
+template <typename T>
+VolumeMesh<T> MakeRefinedBoxVolumeMeshWithMa(const Box& box);
+
 /*
  Generates a tetrahedral volume mesh of a given box by subdividing the box
  into _rectangular cells_ (volume bounded by six axis-aligned faces) and

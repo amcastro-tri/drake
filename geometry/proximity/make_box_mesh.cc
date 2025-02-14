@@ -65,6 +65,65 @@ std::vector<VolumeElement> SplitToTetrahedra(int v0, int v1, int v2, int v3,
 }  // namespace
 
 template <typename T>
+VolumeMesh<T> MakeRefinedBoxVolumeMeshWithMa(const Box& box) {
+  // Connectivities for the tesselation of a cube, for which the MA is a single
+  // point at its center.
+  // Vertices are indexed as follows:
+  //  - Vertices 0..7 are the corners of the cube in lexicographical order.
+  //  - Vertex 8 is the center (0, 0, 0)
+  //  - Vertices 9..14 are the faces's center in the order, -x, x, -y, y, -z, z.
+  // For a box of length L, these are:
+  // 
+  // -L -L -L
+  // -L -L  L
+  // -L  L -L
+  // -L  L  L
+  //  L -L -L
+  //  L -L  L
+  //  L  L -L
+  //  L  L  L
+  //  0  0  0
+  // -L  0  0
+  //  L  0  0
+  //  0 -L  0
+  //  0  L  0
+  //  0  0 -L
+  //  0  0  L
+  const std::vector<Vector4<int>> box_with_point_ma = {
+      {8, 0, 4, 11}, {3, 8, 1, 9},  {0, 8, 4, 13}, {8, 7, 3, 14}, {8, 5, 4, 10},
+      {8, 0, 1, 9},  {5, 8, 1, 14}, {0, 8, 2, 9},  {2, 8, 3, 9},  {8, 4, 6, 10},
+      {7, 8, 6, 10}, {8, 5, 1, 11}, {4, 8, 6, 13}, {8, 5, 7, 14}, {8, 7, 6, 12},
+      {8, 6, 2, 12}, {5, 8, 7, 10}, {5, 8, 4, 11}, {8, 3, 1, 14}, {8, 2, 3, 12},
+      {7, 8, 3, 12}, {8, 0, 2, 13}, {6, 8, 2, 13}, {0, 8, 1, 11}};
+
+  const Vector3d half_box = box.size() / 2.;
+  const double min_half_box = half_box.minCoeff();
+
+  const Vector3d half_central_Ma_before_tolerancing =
+      half_box - Vector3d::Constant(min_half_box);
+  const Vector3d half_central_Ma =
+      (half_central_Ma_before_tolerancing.array() >
+       DistanceToPointRelativeTolerance(min_half_box))
+          .select(half_central_Ma_before_tolerancing, 0.);
+
+  // MA is zero in all directions, collapsing to a single point.
+  const bool ma_is_point = half_central_Ma.x() == 0 &&
+                           half_central_Ma.y() == 0 && half_central_Ma.z() == 0;
+
+  // MA is zero in two directions, collapsing into a line.
+  const bool ma_is_rectangle =
+      ((half_central_Ma.x() == 0) + (half_central_Ma.y() == 0) +
+       (half_central_Ma.z() == 0)) == 2;
+
+  // MA is zero in one direction only, collapsing into a rectangle.
+  const bool ma_is_rectangle =
+      ((half_central_Ma.x() == 0) + (half_central_Ma.y() == 0) +
+       (half_central_Ma.z() == 0)) == 1;
+
+
+}
+
+template <typename T>
 VolumeMesh<T> MakeBoxVolumeMeshWithMa(const Box& box) {
   const bool split_faces = true;
 

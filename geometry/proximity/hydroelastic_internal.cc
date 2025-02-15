@@ -460,7 +460,7 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
 
   // First, create an inflated mesh.
   auto inflated_mesh = make_unique<VolumeMesh<double>>(
-      MakeBoxVolumeMeshWithMa<double>(inflated_box));
+      MakeRefinedBoxVolumeMeshWithMa<double>(inflated_box));
 
   drake::geometry::internal::WriteVolumeMeshToVtk("BoxWithMa.vtk",
                                                   *inflated_mesh, "box");

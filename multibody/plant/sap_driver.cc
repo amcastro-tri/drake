@@ -61,6 +61,78 @@ namespace drake {
 namespace multibody {
 namespace internal {
 
+/* Add a proxy constraint for a single clique with one equation.
+ Cost, gradient and Hessian are zero. */
+template <typename T>
+class SapDummyConstraint final : public SapConstraint<T> {
+ public:
+  /* We do not allow copy, move, or assignment generally to avoid slicing.
+  Protected copy construction is enabled for sub-classes to use in their
+  implementation of DoClone(). */
+  //@{
+  SapDummyConstraint& operator=(const SapDummyConstraint&) = delete;
+  SapDummyConstraint(SapDummyConstraint&&) = delete;
+  SapDummyConstraint& operator=(SapDummyConstraint&&) = delete;
+  //@}
+
+  SapDummyConstraint(int clique, int nv)
+      : SapConstraint<T>(MakeZeroJacobian(clique, nv), {}) {}
+
+ private:
+  /* Private copy construction is enabled to use in the implementation of
+    DoClone(). */
+  SapDummyConstraint(const SapDummyConstraint&) = default;
+
+  static SapConstraintJacobian<T> MakeZeroJacobian(int clique, int nv) {
+    MatrixX<T> J = MatrixX<T>::Zero(1, nv);
+    return SapConstraintJacobian<T>(clique, std::move(J));
+  }
+
+  std::unique_ptr<AbstractValue> DoMakeData(
+      const T&, const Eigen::Ref<const VectorX<T>>&) const override {
+    int data = 0;
+    return SapConstraint<T>::MoveAndMakeAbstractValue(std::move(data));
+  }
+  void DoCalcData(const Eigen::Ref<const VectorX<T>>&,
+                  AbstractValue*) const override {}
+  T DoCalcCost(const AbstractValue&) const override { return 0.0; }
+  void DoCalcImpulse(const AbstractValue&,
+                     EigenPtr<VectorX<T>> gamma) const override {
+    *gamma = Vector1<T>::Zero();
+  }
+  void DoCalcCostHessian(const AbstractValue&, MatrixX<T>* G) const override {
+    G->setZero();
+  }
+
+  // no-ops.
+  void DoAccumulateGeneralizedImpulses(int, const Eigen::Ref<const VectorX<T>>&,
+                                       EigenPtr<VectorX<T>>) const final {}
+  void DoAccumulateSpatialImpulses(int, const Eigen::Ref<const VectorX<T>>&,
+                                   SpatialForce<T>*) const final {};
+
+  std::unique_ptr<SapConstraint<T>> DoClone() const final {
+    return std::unique_ptr<SapDummyConstraint<T>>(
+        new SapDummyConstraint<T>(*this));
+  }
+  std::unique_ptr<SapConstraint<double>> DoToDouble() const final {
+    return std::unique_ptr<SapDummyConstraint<double>>(
+        new SapDummyConstraint<double>(this->clique(0),
+                                       this->num_velocities(0)));
+  }
+};
+
+template <typename T>
+void AddDummyConstraints(
+    const systems::Context<T>&,
+    contact_solvers::internal::SapContactProblem<T>* problem) {
+  for (int c = 0; c < problem->num_cliques(); ++c) {
+    const int nv = problem->num_velocities(c);
+    if (nv > 0) {
+      problem->AddConstraint(std::make_unique<SapDummyConstraint<T>>(c, nv));
+    }
+  }
+}
+
 template <typename T>
 SapDriver<T>::SapDriver(const CompliantContactManager<T>* manager,
                         double near_rigid_threshold)
@@ -828,6 +900,7 @@ void SapDriver<T>::CalcContactProblemCache(
   AddBallConstraints(context, &problem);
   AddWeldConstraints(context, &problem);
   AddFixedConstraints(context, &problem);
+  AddDummyConstraints(context, &problem);
 
   // Make a reduced version of the original contact problem using joint locking
   // data.

@@ -30,7 +30,12 @@ void ExpectEqual(const SapHuntCrossleyConstraint<double>& c1,
   ExpectBaseIsEqual(c1, c2);
 
   // SapHuntCrossleyConstraint specific.
-  EXPECT_EQ(c1.parameters(), c2.parameters());
+  EXPECT_EQ(c1.is_speculative(), c2.is_speculative());
+  if (c1.is_speculative()) {
+    EXPECT_EQ(c1.speculative_parameters(), c2.speculative_parameters());
+  } else {
+    EXPECT_EQ(c1.parameters(), c2.parameters());
+  }
   EXPECT_EQ(c1.configuration(), c2.configuration());
 }
 
@@ -216,10 +221,18 @@ class SapHuntCrossleyConstraintTest
     const SapHuntCrossleyApproximation approximation =
         this->GetParam().approximation;
 
+    std::optional<SapHuntCrossleyConstraint<AutoDiffXd>::SpeculativeParameters>
+        s_ad;
+    if (p.speculative) {
+      const auto& s = *p.speculative;
+      s_ad = SapHuntCrossleyConstraint<AutoDiffXd>::SpeculativeParameters{
+          s.kappa, s.volume_factor, s.cos_theta, s.distance0, s.toc};
+    }
+
     // Instantiate constraint on AutoDiffXd for automatic differentiation.
     SapHuntCrossleyConstraint<AutoDiffXd>::Parameters p_ad{
         approximation, p.friction,           p.stiffness,
-        p.dissipation, p.stiction_tolerance, p.sigma};
+        p.dissipation, p.stiction_tolerance, p.sigma, s_ad};
 
     // The Jacobian is irrelevant for this tests. Therefore we set it to
     // garbage.
@@ -302,6 +315,18 @@ TEST_P(SapHuntCrossleyConstraintTest, ValidateGradientsWhenInStiction) {
 
   const auto vn = MakeArbitraryInContactVelocities();
   const auto vt = MakeArbitraryStictionVelocities(p.stiction_tolerance);
+  CombineAndValidateGradients(p, vt, vn);
+
+  // Speculative.
+  fmt::print("\n\n{}\n", std::string(80, '*'));
+  fmt::print("Speculative:");
+  SapHuntCrossleyConstraint<double>::SpeculativeParameters s{
+      .kappa = 1.0e7,
+      .volume_factor = 1.5,
+      .cos_theta = 0.9,
+      .distance0 = 0.0001,
+      .toc = 0.015};
+  p.speculative = s;
   CombineAndValidateGradients(p, vt, vn);
 }
 

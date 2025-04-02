@@ -197,12 +197,8 @@ T SapHuntCrossleyConstraint<T>::CalcSpeculativeHuntCrossleyAntiderivative(
   const T v_vol = b / (a + 1.0e-20);    // Volume goes to zero.
   const T v_hat = min(v_dis, v_vol);
 
-  fmt::print("v_dis: {}, v_vol: {}\n", v_dis, v_vol);
-
   // Clamp vn to v̂.
   const T vn_clamped = min(vn, v_hat);
-
-  fmt::print("v: {}, vhat: {}\n", vn, v_hat);
 
   auto N_plus = [&a, &b, &c, &d](const T& v) {
     const T z = b - a * v;
@@ -241,27 +237,14 @@ T SapHuntCrossleyConstraint<T>::CalcSpeculativeHuntCrossleyImpulse(
     const InvariantData<T>& data, const T& vn) const {
   DRAKE_DEMAND(is_speculative());
 
-  fmt::print("Params:\n");
-  fmt::print("  a: {}\n", data.a);
-  fmt::print("  b: {}\n", data.b);
-  fmt::print("  c: {}\n", data.c);
-  fmt::print("  d: {}\n", data.d);
-
-  fmt::print("State quantities:\n");
-  fmt::print("  vn: {}\n", vn);  
-
   const T z = data.b - data.a * vn;
-  fmt::print("  z: {}\n", z);  
   if (z <= 0.0) return 0.0;
 
   const T damping = 1.0 - data.d * vn;
-  fmt::print("  damping: {}\n", damping);  
   if (damping <= 0.0) return 0.0;
 
   const T volume = z * z * z;
-  const T gamma = data.c * volume * damping;    
-
-  fmt::print("\ngn: {}\n", gamma);
+  const T gamma = data.c * volume * damping;
 
   return gamma;
 }
@@ -379,7 +362,6 @@ void SapHuntCrossleyConstraint<T>::DoCalcImpulse(
       parameters().model == SapHuntCrossleyApproximation::kSimilar ? n : n0;
   const Vector2<T> gt = -mu * n_friction * t_soft;
   *gamma << gt, n;
-  fmt::print("gamma: {}\n", fmt_eigen(gamma->transpose()));
 }
 
 template <typename T>

@@ -318,8 +318,6 @@ TEST_P(SapHuntCrossleyConstraintTest, ValidateGradientsWhenInStiction) {
   CombineAndValidateGradients(p, vt, vn);
 
   // Speculative.
-  fmt::print("\n\n{}\n", std::string(80, '*'));
-  fmt::print("Speculative:");
   SapHuntCrossleyConstraint<double>::SpeculativeParameters s{
       .kappa = 1.0e7,
       .volume_factor = 1.5,
@@ -342,6 +340,16 @@ TEST_P(SapHuntCrossleyConstraintTest, ValidateGradientsWhenSliding) {
   const auto vn = MakeArbitraryInContactVelocities();
   const auto vt = MakeArbitrarySlidingVelocities(p.stiction_tolerance);
   CombineAndValidateGradients(p, vt, vn);
+
+  // Speculative.
+  SapHuntCrossleyConstraint<double>::SpeculativeParameters s{
+      .kappa = 1.0e7,
+      .volume_factor = 1.5,
+      .cos_theta = 0.9,
+      .distance0 = 0.0001,
+      .toc = 0.015};
+  p.speculative = s;
+  CombineAndValidateGradients(p, vt, vn);
 }
 
 // Validate gradients for breaking contact.
@@ -361,6 +369,19 @@ TEST_P(SapHuntCrossleyConstraintTest, ValidateGradientsForBreakingContact) {
   // Sliding.
   const auto vt_sliding = MakeArbitrarySlidingVelocities(p.stiction_tolerance);
   CombineAndValidateGradients(p, vt_sliding, vn);
+
+  // Speculative.
+  SapHuntCrossleyConstraint<double>::SpeculativeParameters s{
+      .kappa = 1.0e7,
+      .volume_factor = 1.5,
+      .cos_theta = 0.9,
+      .distance0 = 0.0001,
+      .toc = 0.015};
+  p.speculative = s;
+  // In stiction.
+  CombineAndValidateGradients(p, vt_stiction, vn);
+  // Sliding.
+  CombineAndValidateGradients(p, vt_sliding, vn);
 }
 
 // When stiffness and dissipation are zero, the impulse is constant and the
@@ -377,6 +398,18 @@ TEST_P(SapHuntCrossleyConstraintTest,
   const auto vn = MakeArbitraryInContactVelocities();
   const auto vt = MakeArbitraryStictionVelocities(p.stiction_tolerance);
   CombineAndValidateGradients(p, vt, vn);
+
+  // Speculative.
+  // N.B. Only for completeness. The impulses are trivially zero for a
+  // speculative constraint with zero stiffness.
+  SapHuntCrossleyConstraint<double>::SpeculativeParameters s{
+      .kappa = 0.0,
+      .volume_factor = 1.5,
+      .cos_theta = 0.9,
+      .distance0 = 0.0001,
+      .toc = 0.015};
+  p.speculative = s;
+  CombineAndValidateGradients(p, vt, vn);
 }
 
 // When stiffness and dissipation are zero, the impulse is constant and the
@@ -392,6 +425,18 @@ TEST_P(SapHuntCrossleyConstraintTest,
 
   const auto vn = MakeArbitraryInContactVelocities();
   const auto vt = MakeArbitrarySlidingVelocities(p.stiction_tolerance);
+  CombineAndValidateGradients(p, vt, vn);
+
+  // Speculative.
+  // N.B. Only for completeness. The impulses are trivially zero for a
+  // speculative constraint with zero stiffness.
+  SapHuntCrossleyConstraint<double>::SpeculativeParameters s{
+      .kappa = 0.0,
+      .volume_factor = 1.5,
+      .cos_theta = 0.9,
+      .distance0 = 0.0001,
+      .toc = 0.015};
+  p.speculative = s;
   CombineAndValidateGradients(p, vt, vn);
 }
 

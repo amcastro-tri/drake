@@ -6,6 +6,7 @@
 
 #include "drake/common/default_scalars.h"
 #include "drake/common/eigen_types.h"
+#include "drake/common/unused.h"
 
 namespace drake {
 namespace multibody {
@@ -85,6 +86,7 @@ SapHuntCrossleyConstraint<T>::MakeSpeculativeConstraintData(
     const Eigen::Ref<const VectorX<T>>& delassus_estimation) const {
   DRAKE_DEMAND(is_speculative());
   using std::abs;
+  unused(delassus_estimation);
 
   const Parameters& params = parameters();
   const SpeculativeParameters& s = *params.speculative;

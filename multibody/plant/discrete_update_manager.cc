@@ -616,6 +616,8 @@ void DiscreteUpdateManager<T>::CalcDiscreteContactPairs(
     throw std::logic_error("This method doesn't support T = Expression.");
   } else {
     AppendDiscreteContactPairsForHydroelasticContact(context, result);
+    AppendDiscreteContactPairsForSpeculativeHydroelasticContact(context,
+                                                                result);
   }
   if constexpr (std::is_same_v<T, double>) {
     if (deformable_driver_ != nullptr) {
@@ -779,6 +781,37 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForPointContact(
                                         .point_pair_index = point_pair_index};
     contact_pairs->AppendPointData(std::move(contact_pair));
   }
+}
+
+template <typename T>
+void DiscreteUpdateManager<T>::
+    AppendDiscreteContactPairsForSpeculativeHydroelasticContact(
+        const systems::Context<T>& context,
+        DiscreteContactData<DiscreteContactPair<T>>* result) const
+  requires scalar_predicate<T>::is_bool
+{
+  (void)context;
+  (void)result;
+
+  // TODO: Something akin of:
+#if 0 
+  std::map<GeometryId, SpatialVelocity<T>> spatial_velocities_map;
+
+  // N.B. We might be able to call ComputeSoeculativeContactSurfaces() from within MbP::CalcGeometryContactData().
+  // For that to work in the general case v* should be available to the plant as a cache entry (assuming we want to use v* and not v0).
+  const geometry::QueryObject<T>& query_object = plant().get_geometry_query_input_port()
+      .template Eval<geometry::QueryObject<T>>(context);
+
+  const std::vector<geometry::ContactSurface<T>>& surfaces =
+      EvalGeometryContactData(context).get().surfaces; 
+  // N.B. This method computes "filtered" speculative surfaces that do not include
+  // pairs already present in "surfaces".
+  const std::vector<geometry::SpeculativeContactSurface<T>>& speculative_surfaces =
+      query_object.ComputeSoeculativeContactSurfaces(context, surfaces, spatial_velocities_map);      
+#endif      
+
+  // From here onwards I should be able to pretty much copy/paste from
+  // AppendDiscreteContactPairsForHydroelasticContact() below.
 }
 
 template <typename T>

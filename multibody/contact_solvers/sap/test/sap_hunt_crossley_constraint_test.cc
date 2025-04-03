@@ -231,8 +231,8 @@ class SapHuntCrossleyConstraintTest
 
     // Instantiate constraint on AutoDiffXd for automatic differentiation.
     SapHuntCrossleyConstraint<AutoDiffXd>::Parameters p_ad{
-        approximation, p.friction,           p.stiffness,
-        p.dissipation, p.stiction_tolerance, p.sigma, s_ad};
+        approximation,        p.friction, p.stiffness, p.dissipation,
+        p.stiction_tolerance, p.sigma,    s_ad};
 
     // The Jacobian is irrelevant for this tests. Therefore we set it to
     // garbage.

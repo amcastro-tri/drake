@@ -90,11 +90,11 @@ SapHuntCrossleyConstraint<T>::MakeSpeculativeConstraintData(
 
   const Parameters& params = parameters();
   const SpeculativeParameters& s = *params.speculative;
-  const T& dt = time_step;          // Time step, seconds.
+  const T& dt = time_step;                    // Time step, seconds.
   const T& abs_cos_theta = abs(s.cos_theta);  // = |n̂⋅ẑ|.
-  const T& z0 = -s.distance0; // Penetration along ẑ, meters.
-  const T& toc = s.toc;       // Time of contact, seconds.
-  const T& kappa = s.kappa;   // Pressure gradient, in N/m³.
+  const T& z0 = -s.distance0;                 // Penetration along ẑ, meters.
+  const T& toc = s.toc;                       // Time of contact, seconds.
+  const T& kappa = s.kappa;                   // Pressure gradient, in N/m³.
 
   SapHuntCrossleyConstraintData<T> data;
   typename SapHuntCrossleyConstraintData<T>::InvariantData& p =
@@ -214,10 +214,10 @@ T SapHuntCrossleyConstraint<T>::CalcSpeculativeHuntCrossleyAntiderivative(
 }
 
 template <typename T>
-T SapHuntCrossleyConstraint<T>::CalcHuntCrossleyImpulse(
-    const T& dt, const T& vn) const {
+T SapHuntCrossleyConstraint<T>::CalcHuntCrossleyImpulse(const T& dt,
+                                                        const T& vn) const {
   DRAKE_DEMAND(!is_speculative());
-      
+
   // Parameters:
   const T& k = parameters().stiffness;
   const T& d = parameters().dissipation;
@@ -452,14 +452,14 @@ SapHuntCrossleyConstraint<T>::DoToDouble() const {
         ExtractDoubleOrThrow(s.toc)};
   }
 
-
   SapHuntCrossleyConstraint<double>::Parameters parameters{
       p.model,
       ExtractDoubleOrThrow(p.friction),
       ExtractDoubleOrThrow(p.stiffness),
       ExtractDoubleOrThrow(p.dissipation),
       p.stiction_tolerance,
-      p.sigma, s_double};
+      p.sigma,
+      s_double};
   ContactConfiguration<double> configuration = configuration_.ToDouble();
   return std::make_unique<SapHuntCrossleyConstraint<double>>(
       std::move(configuration), std::move(J), std::move(parameters));

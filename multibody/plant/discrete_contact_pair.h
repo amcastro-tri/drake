@@ -24,7 +24,6 @@ namespace internal {
  @tparam T The underlying scalar type. Must be a valid Eigen scalar. */
 template <typename T>
 struct DiscreteContactPair {
-
   // TODO(amcastro-tri): consider consolidating with constraints and geometry
   // code, since there are similar lil structs.
   struct SpeculativeParameters {

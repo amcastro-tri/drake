@@ -178,7 +178,7 @@ class SapHuntCrossleyConstraint final : public SapConstraint<T> {
     double sigma{1.0e-3};
 
     std::optional<SpeculativeParameters> speculative{};
-  };  
+  };
 
   /* Constructor for a H&C contact constraint between two objects A and B. The
    contact occurs at a point C, with normal n̂ (defined to point out of A into
@@ -198,13 +198,9 @@ class SapHuntCrossleyConstraint final : public SapConstraint<T> {
                             SapConstraintJacobian<T> J, Parameters parameters);
 
   /* Returns true if it is a speculative H&C constraint. */
-  bool is_speculative() const {
-    return parameters_.speculative.has_value();
-  }
+  bool is_speculative() const { return parameters_.speculative.has_value(); }
 
-  const Parameters& parameters() const {
-    return parameters_;
-  }
+  const Parameters& parameters() const { return parameters_; }
 
   const SpeculativeParameters& speculative_parameters() const {
     DRAKE_THROW_UNLESS(is_speculative());
@@ -234,7 +230,7 @@ class SapHuntCrossleyConstraint final : public SapConstraint<T> {
       const Eigen::Ref<const VectorX<T>>& delassus_estimation) const;
   std::unique_ptr<AbstractValue> MakeSpeculativeConstraintData(
       const T& time_step,
-      const Eigen::Ref<const VectorX<T>>& delassus_estimation) const;      
+      const Eigen::Ref<const VectorX<T>>& delassus_estimation) const;
 
   // Implementations of SapConstraint NVIs.
   std::unique_ptr<AbstractValue> DoMakeData(

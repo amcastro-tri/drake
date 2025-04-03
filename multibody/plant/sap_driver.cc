@@ -219,7 +219,7 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
   // v*, both, etc.) N.B. Moved to DUM for now. In principle the statement above
   // is not true. We can always Eval v* if needed from anywhere in the plant
   // code (MbP, DUM, or driver)
-  //AppendSpeculativeDiscreteContactPairs(context, &contact_pairs);
+  // AppendSpeculativeDiscreteContactPairs(context, &contact_pairs);
 
   // Quick no-op exit.
   if (num_contacts == 0) return std::vector<RotationMatrix<T>>();

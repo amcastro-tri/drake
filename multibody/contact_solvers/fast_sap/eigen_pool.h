@@ -40,11 +40,24 @@ class EigenPool {
                   "Only for column vectors.");
   }
 
+  /* Constructor for a poll of Eigen::MatrixX with the specified number of rows
+   and columns. */
+  EigenPool(const std::vector<int>& rows, const std::vector<int>& cols)
+      : storage_(rows, cols) {}
+
   /* Constructor for a pool of matrices with the provided `shapes`.
    @pre For fixed size matrices, "shapes" must match the compile-time sizes. */
   explicit EigenPool(const std::vector<std::pair<int, int>>& shapes) {
     DRAKE_ASSERT_VOID(ValidShapes(shapes));
     storage_ = Storage(shapes);
+  }
+
+  void Resize(const std::vector<int>& sizes) {
+    storage_.Resize(sizes);
+  }
+
+  void Resize(const std::vector<int>& rows, const std::vector<int>& cols) {
+    storage_.Resize(rows, cols);
   }
 
   /* Returns the number of elements in the pool. */
@@ -57,7 +70,7 @@ class EigenPool {
   }
 
   /* Non-const access to the i-th element. */
-  const ElementView& operator[](int i) {
+  ElementView& operator[](int i) {
     DRAKE_ASSERT(0 <= i && i < size());
     return storage_.at(i);
   }  
@@ -83,7 +96,7 @@ class EigenPool {
 
     Storage() = default;
 
-    explicit Storage(const std::vector<int>& sizes) {
+    void Resize(const std::vector<int>& sizes) {
       static_assert(EigenType::ColsAtCompileTime == 1,
                     "Only for column vectors.");
       int total = 0;
@@ -96,6 +109,33 @@ class EigenPool {
         maps_.emplace_back(ptr, s, 1);  // Always one column.
         ptr += s;
       }
+    }
+
+    void Resize(const std::vector<int>& rows, const std::vector<int>& cols) {
+      DRAKE_ASSERT(rows.size() == cols.size());
+      const int num_elements = ssize(rows);
+      int total = 0;
+      for (int i = 0; i < num_elements; ++i) {
+        total += rows[i] * cols[i];
+      }
+      data_.resize(total);
+
+      maps_.reserve(num_elements);
+      Scalar* ptr = data_.data();
+      for (int i = 0; i < num_elements; ++i) {
+        maps_.emplace_back(ptr, rows[i], cols[i]);
+        ptr += rows[i] * cols[i];
+      }
+    }
+
+    explicit Storage(const std::vector<int>& sizes) {
+      static_assert(EigenType::ColsAtCompileTime == 1,
+                    "Only for column vectors.");
+      Resize(sizes);
+    }
+
+    Storage(const std::vector<int>& rows, const std::vector<int>& cols) {
+      Resize(rows, cols);
     }
 
     /* Constructor for a pool of matrices with the provided `shapes`.
@@ -116,7 +156,7 @@ class EigenPool {
 
     int size() const { return maps_.size(); }
     const ConstElementView& at(int i) const { return maps_[i]; }
-    const ElementView& at(int i) { return maps_[i]; }
+    ElementView& at(int i) { return maps_[i]; }
   };
 
   static void ValidShapes(const std::vector<std::pair<int, int>>& shapes) {

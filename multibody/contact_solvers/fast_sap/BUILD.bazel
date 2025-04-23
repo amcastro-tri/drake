@@ -15,6 +15,7 @@ drake_cc_package_library(
     visibility = ["//visibility:public"],
     deps = [
         ":eigen_pool",
+        ":constraint_data",
     ],
 )
 
@@ -35,6 +36,14 @@ drake_cc_library(
     ],
 )
 
+drake_cc_library(
+    name = "model_size",
+    hdrs = ["model_size.h"],
+    deps = [
+        "//common:essential",
+    ],
+)
+
 drake_cc_googletest(
     name = "eigen_pool_test",
     deps = [
@@ -48,6 +57,13 @@ drake_cc_googletest(
     deps = [
         ":constraint_data",
         "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "model_size_test",
+    deps = [
+        ":model_size",
     ],
 )
 

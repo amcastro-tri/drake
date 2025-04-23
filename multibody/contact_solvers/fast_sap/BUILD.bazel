@@ -44,6 +44,15 @@ drake_cc_library(
     ],
 )
 
+drake_cc_library(
+    name = "patch_constraint_data",
+    hdrs = ["patch_constraint_data.h"],
+    deps = [
+        "//common:essential",
+        ":eigen_pool",
+    ],
+)
+
 drake_cc_googletest(
     name = "eigen_pool_test",
     deps = [
@@ -56,6 +65,14 @@ drake_cc_googletest(
     name = "constraint_data_test",
     deps = [
         ":constraint_data",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "patch_constraint_data_test",
+    deps = [
+        ":patch_constraint_data",
         "//common/test_utilities:expect_throws_message",
     ],
 )

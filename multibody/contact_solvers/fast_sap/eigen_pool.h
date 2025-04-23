@@ -2,7 +2,7 @@
 
 #include <vector>
 
-//#include "drake/common/default_scalars.h"
+// #include "drake/common/default_scalars.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
@@ -33,7 +33,7 @@ class EigenPool {
   EigenPool() = default;
 
   /* Constructor for a pool of column vectors with the provided `sizes`.
-   @pre EigenType::ColsAtCompileTime equals 1. 
+   @pre EigenType::ColsAtCompileTime equals 1.
    @pre For fixed size vectors, "sizes" must match the compile-time size. */
   explicit EigenPool(const std::vector<int>& sizes) : storage_(sizes) {
     static_assert(EigenType::ColsAtCompileTime == 1,
@@ -52,9 +52,11 @@ class EigenPool {
     storage_ = Storage(shapes);
   }
 
-  void Resize(const std::vector<int>& sizes) {
-    storage_.Resize(sizes);
-  }
+  // Constructor for a pool of `size` fixed-size Eigen types.
+  // @pre EigenType is a fixed size Eigen type.
+  void Resize(int size) { storage_.Resize(size); }
+
+  void Resize(const std::vector<int>& sizes) { storage_.Resize(sizes); }
 
   void Resize(const std::vector<int>& rows, const std::vector<int>& cols) {
     storage_.Resize(rows, cols);
@@ -73,7 +75,7 @@ class EigenPool {
   ElementView& operator[](int i) {
     DRAKE_ASSERT(0 <= i && i < size());
     return storage_.at(i);
-  }  
+  }
 
  private:
   // TODO(amcastro-tri): Specialize Storage to fixed-size Eigen elements, so
@@ -95,6 +97,19 @@ class EigenPool {
     std::vector<ElementView> maps_;
 
     Storage() = default;
+
+    void Resize(int num_elements) {
+      static_assert(EigenType::SizeAtCompileTime != Eigen::Dynamic,
+                    "Only for fixed-size Eigen types.");
+      const int total = EigenType::SizeAtCompileTime * num_elements;
+      data_.resize(total);
+      maps_.reserve(num_elements);
+      Scalar* ptr = data_.data();
+      for (int i = 0; i < num_elements; ++i) {
+        maps_.emplace_back(ptr);  // Fixed-size map.
+        ptr += EigenType::SizeAtCompileTime;
+      }
+    }
 
     void Resize(const std::vector<int>& sizes) {
       static_assert(EigenType::ColsAtCompileTime == 1,
@@ -141,7 +156,7 @@ class EigenPool {
     /* Constructor for a pool of matrices with the provided `shapes`.
      @pre For fixed size matrices, "shapes" must match the compile-time sizes.
    */
-    explicit Storage(const std::vector<std::pair<int, int>>& shapes) {    
+    explicit Storage(const std::vector<std::pair<int, int>>& shapes) {
       int total = 0;
       for (const auto& [rows, cols] : shapes) total += rows * cols;
       data_.resize(total);

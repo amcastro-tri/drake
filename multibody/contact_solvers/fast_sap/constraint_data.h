@@ -15,7 +15,7 @@ namespace fast_sap {
 template <typename T>
 class ConstraintDataPool {
  public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(ConstraintDataPool);
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(ConstraintDataPool);
 
   using VectorXPool = EigenPool<VectorX<T>>;
   using VectorXView = VectorXPool::ElementView;

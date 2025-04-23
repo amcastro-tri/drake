@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <numeric>
 #include <vector>
 
 #include "drake/common/drake_assert.h"
@@ -58,25 +59,63 @@ class PatchConstraintDataPool {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(PatchConstraintDataPool);
 
+  using Vector3Pool = EigenPool<Vector3<T>>;
+  using Vector3View = Vector3Pool::ElementView;
+  using ConstVector3View = Vector3Pool::ConstElementView;
+  using Matrix3Pool = EigenPool<Matrix3<T>>;
+  using Matrix3View = Matrix3Pool::ElementView;
+  using ConstMatrix3View = Matrix3Pool::ConstElementView;
+  using MatrixXPool = EigenPool<MatrixX<T>>;
+  using MatrixXView = MatrixXPool::ElementView;
+  using ConstMatrixXView = MatrixXPool::ConstElementView;
+
+  // The number of patches in the pool.
   int num_patches() const { return num_patches_; }
+
+  // The total number of contact pairs among all patches.
+  int num_pairs() const { return num_pairs_; }
 
   /* Default constructor for an empty pool. */
   PatchConstraintDataPool() = default;
 
+  PatchConstraintDataPool(const std::vector<int>& patch_size,
+                          const std::vector<int>& num_velocities) {
+    Resize(patch_size, num_velocities);
+  }
+
   /* @param num_equations Number of contact pairs for the k-th patch.
      @param num_velocities Number of velocities for the k-th patch. */
   void Resize(const std::vector<int>& patch_size,
-              const std::vector<int>& num_velocities)
-      : num_patches_(ssize(patch_size)) {
+              const std::vector<int>& num_velocities) {
     DRAKE_ASSERT(patch_size.size() == num_velocities.size());
-    vc_.Resize(patch_size);
-    gamma_.Resize(patch_size);
+    num_patches_ = ssize(patch_size);
+    num_pairs_ = std::accumulate(patch_size.begin(), patch_size.end(), 0);
+    vc_.Resize(num_pairs_);
+    gamma_.Resize(num_pairs_);
     gradient_.Resize(num_velocities);
     H_.Resize(num_velocities, num_velocities);
   }
 
+  const ConstVector3View& vc(int pair_index) const {
+    DRAKE_ASSERT(0 <= pair_index && pair_index < num_pairs());
+    return vc_[pair_index];
+  }
+  Vector3View& vc(int pair_index) {
+    DRAKE_ASSERT(0 <= pair_index && pair_index < num_pairs());
+    return vc_[pair_index];
+  }
+  const ConstVector3View& gamma(int pair_index) const {
+    DRAKE_ASSERT(0 <= pair_index && pair_index < num_pairs());
+    return gamma_[pair_index];
+  }
+  Vector3View& gamma(int pair_index) {
+    DRAKE_ASSERT(0 <= pair_index && pair_index < num_pairs());
+    return gamma_[pair_index];
+  }
+
  private:
   int num_patches_{0};
+  int num_pairs_{0};
 
   T cost;
 
@@ -84,11 +123,9 @@ class PatchConstraintDataPool {
   EigenPool<Vector3<T>> vc_;     // contact velocity.
   EigenPool<Vector3<T>> gamma_;  // Per contact pair impulse.
 
-  // ∇ℓₖ = -Jₖᵀ⋅γₖ, of size num_patches().
-  EigenPool<VectorX<T>> gradient_;
-
-  // Patch Hessian matrix, Hₖ = Jₖᵀ⋅Gₖ⋅Jₖ, of size num_patches().
-  EigenPool<MatrixX<T>> H_;
+  // Per-patch quantities, of size num_patches():
+  EigenPool<VectorX<T>> gradient_;  // ∇ℓₖ = -Jₖᵀ⋅γₖ
+  EigenPool<MatrixX<T>> H_;         // Hₖ = Jₖᵀ⋅Gₖ⋅Jₖ
 };
 
 }  // namespace fast_sap

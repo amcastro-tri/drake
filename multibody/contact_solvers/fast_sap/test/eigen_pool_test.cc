@@ -16,6 +16,11 @@ namespace multibody {
 namespace contact_solvers {
 namespace fast_sap {
 
+const Eigen::Matrix3d S33 =
+    (Eigen::Matrix3d() << 4, 1, 2,
+                          1, 5, 3,
+                          2, 3, 6).finished();  
+
 GTEST_TEST(EigenPoolTest, ColumnVectorConstructor) {
   vector<int> sizes = {3, 2, 4};
   EigenPool<Eigen::VectorXd> pool(sizes);
@@ -55,6 +60,18 @@ GTEST_TEST(EigenPoolTest, Matrix3Constructor) {
   EXPECT_EQ(pool[0].cols(), kDim);
   EXPECT_EQ(pool[1].rows(), kDim);
   EXPECT_EQ(pool[1].cols(), kDim);
+}
+
+GTEST_TEST(EigenPoolTest, PushBack) {
+  EigenPool<Eigen::Matrix3d> pool;  
+
+  std::vector<Matrix3d> data = {S33, 2.0 * S33, 3.0 * S33};
+  pool.PushBack(data);
+
+  EXPECT_EQ(pool.size(), 3);
+  for (int i = 0; i < pool.size(); ++i) {
+    EXPECT_EQ(Matrix3d(pool[i]), data[i]);
+  }
 }
 
 }  // namespace fast_sap

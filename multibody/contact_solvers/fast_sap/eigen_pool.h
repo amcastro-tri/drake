@@ -52,6 +52,9 @@ class EigenPool {
     storage_ = Storage(shapes);
   }
 
+  /* Adds data at the end of the pool. */
+  void PushBack(const std::vector<EigenType>& data) { storage_.PushBack(data); }
+
   // Constructor for a pool of `size` fixed-size Eigen types.
   // @pre EigenType is a fixed size Eigen type.
   void Resize(int size) { storage_.Resize(size); }
@@ -97,6 +100,25 @@ class EigenPool {
     std::vector<ElementView> maps_;
 
     Storage() = default;
+
+    void PushBack(const std::vector<EigenType>& data) {
+      // Increase capacity if needed.
+      int new_data_capacity = data_.size();
+      for (const auto& d : data) {
+        new_data_capacity += d.size();
+      }
+      data_.reserve(new_data_capacity);
+      const int new_maps_capacity = maps_.size() + data.size();
+      maps_.reserve(new_maps_capacity);      
+
+      // Append data.
+      Scalar* ptr = data_.data() + data_.size();
+      for (const auto& e : data) {        
+        data_.insert(data_.end(), e.data(), e.data() + e.size());
+        maps_.emplace_back(ptr, e.rows(), e.cols());
+        ptr += e.size();
+      }
+    }
 
     void Resize(int num_elements) {
       static_assert(EigenType::SizeAtCompileTime != Eigen::Dynamic,

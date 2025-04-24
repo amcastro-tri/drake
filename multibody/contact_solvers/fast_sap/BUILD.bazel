@@ -84,4 +84,14 @@ drake_cc_googletest(
     ],
 )
 
+drake_cc_googletest(
+    name = "two_spheres_test",
+    deps = [
+        "//common/test_utilities:eigen_matrix_compare",
+        "//multibody/parsing:parser",
+        "//systems/framework:diagram_builder",
+    ],
+)
+
+
 add_lint_tests()

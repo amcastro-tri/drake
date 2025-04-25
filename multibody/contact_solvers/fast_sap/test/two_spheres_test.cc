@@ -247,6 +247,124 @@ SapContactProblem<double> MakeSapProblem(double time_step,
   return problem;
 }
 
+void AddPatchConstraints(const MultibodyPlant<double>& plant,
+                         const Context<double>& context,
+                         SapModel<double>* model) {
+  const int nv = plant.num_velocities();
+
+  const Eigen::VectorBlock<const VectorXd> v0 = plant.GetVelocities(context);
+
+  // Add contact constraints for hydro.
+  const std::vector<geometry::ContactSurface<double>> surfaces =
+      CalcContactSurfaces(plant, context);
+
+  const SceneGraphInspector<double>& inspector =
+      plant.EvalSceneGraphInspector(context);
+
+  Matrix6X<double> Jv_WAc_W(6, nv);
+  Matrix6X<double> Jv_WBc_W(6, nv);
+  const auto& world_frame = plant.world_frame();
+
+  // TODO(amcastro-tri): This should be retrieved from the default contact
+  // properties.
+  const double kDefaultDissipation = 50.0;
+
+  pool->Resize(num_patches, num_pairs, /* max_jacobian_columns */);
+
+  const int num_surfaces = surfaces.size();
+  for (int surface_index = 0; surface_index < num_surfaces; ++surface_index) {
+    const auto& s = surfaces[surface_index];
+    const bool M_is_compliant = s.HasGradE_M();
+    const bool N_is_compliant = s.HasGradE_N();
+    DRAKE_DEMAND(M_is_compliant || N_is_compliant);
+
+    // Retrieve participating geometries and bodies.
+    const FrameId Mid = inspector.GetFrameId(s.id_M());
+    const FrameId Nid = inspector.GetFrameId(s.id_N());
+    const RigidBody<double>* bodyA = plant.GetBodyFromFrameId(Mid);
+    const RigidBody<double>* bodyB = plant.GetBodyFromFrameId(Nid);
+    DRAKE_DEMAND(bodyA != nullptr && bodyB != nullptr);
+
+    const auto& X_WA = bodyA->EvalPoseInWorld(context);
+    const auto& X_WB = bodyB->EvalPoseInWorld(context);
+    const Vector3d& p_WAo = X_WA.translation();
+    const Vector3d& p_WBo = X_WB.translation();
+    const auto& R_WA = X_WA.rotation();
+    const auto& R_WB = X_WB.rotation();
+
+    // Get hydro properties.
+    const double Em = multibody::internal::GetHydroelasticModulus(
+        s.id_M(), std::numeric_limits<double>::infinity(), inspector);
+    const double En = multibody::internal::GetHydroelasticModulus(
+        s.id_N(), std::numeric_limits<double>::infinity(), inspector);
+    const double d = multibody::internal::GetCombinedHuntCrossleyDissipation(
+        s.id_M(), s.id_N(), Em, En, kDefaultDissipation, inspector);
+    const double mu = multibody::internal::GetCombinedDynamicCoulombFriction(
+        s.id_M(), s.id_N(), inspector);
+
+    // Write spatial velocity Jacobians for this patch.
+    plant.CalcJacobianSpatialVelocity(
+        context, JacobianWrtVariable::kV, bodyA->body_frame(), Vector3d::Zero(),
+        world_frame, world_frame, &Jv_WAc_W);
+    plant.CalcJacobianSpatialVelocity(
+        context, JacobianWrtVariable::kV, bodyB->body_frame(), Vector3d::Zero(),
+        world_frame, world_frame, &Jv_WBc_W);
+
+    // We are building a problem with a single clique.
+    const int num_cliques = 1;
+    std::array<int, 2> cliques = {0};
+    const double vs = plant.stiction_tolerance();
+    constexpr double sigma = 1.0e-3;
+    PatchConstraintParamsView<double>& patch_params = model->AddPatchConstraint(
+        num_cliques, cliques, Jv_WAc_W, Jv_WBc_W, d, mu, vs, sigma,
+        /* PatchConstraintApproximation::kLagged */);
+
+    for (int face = 0; face < s.num_faces(); ++face) {
+      const double Ae = s.area(face);  // Face element area.
+      if (Ae > 1.0e-14) {        
+        const Vector3d& nhat_BA_W = s.face_normal(face);
+        const double gM = M_is_compliant
+                              ? s.EvaluateGradE_M_W(face).dot(nhat_BA_W)
+                              : std::numeric_limits<double>::infinity();
+        const double gN = N_is_compliant
+                              ? -s.EvaluateGradE_N_W(face).dot(nhat_BA_W)
+                              : std::numeric_limits<double>::infinity();
+        constexpr double kGradientEpsilon = 1.0e-14;
+        if (gM < kGradientEpsilon || gN < kGradientEpsilon) {
+          continue;
+        }
+        const double g = 1.0 / (1.0 / gM + 1.0 / gN);
+        const Vector3d& p_WC = s.centroid(face);
+
+        const Vector3d p_AoC_W = p_WC - p_WAo;
+        const Vector3d p_BoC_W = p_WC - p_WBo;
+
+        const Vector3d nhat_AB_W = -nhat_BA_W;
+        math::RotationMatrixd R_WC =
+            math::RotationMatrixd::MakeFromOneVector(nhat_AB_W, 2);        
+
+        const Vector3d v_AcBc_W = Jv_AcBc_W * v0;
+        const Vector3d v_AcBc_C = R_WC.transpose() * v_AcBc_W;
+        const double vn0 = v_AcBc_C(2);
+
+        // Pressure at the quadrature point.
+        const Vector3d tri_centroid_barycentric(1 / 3., 1 / 3., 1 / 3.);
+        const double p0 =
+            s.is_triangle()
+                ? s.tri_e_MN().Evaluate(face, tri_centroid_barycentric)
+                : s.poly_e_MN().EvaluateCartesian(face, p_WC);
+
+        const double fn0 = Ae * p0;
+        const double k = Ae * g;
+
+        patch_params.AddPair(fn0, k, R_WC, p_AoC_W, p_BoC_W);
+      }
+    }
+  }
+
+  return pool;
+}
+
 TEST_F(TwoSpheres, GetContact) {
   SetInContact(0.001);
 

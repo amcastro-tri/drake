@@ -8,19 +8,12 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/contact_solvers/fast_sap/sap_data.h"
+#include "drake/multibody/contact_solvers/fast_sap/patch_constraint_data.h"
 
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
 namespace fast_sap {
-
-// Forward declare constraint types.
-
-template <typename T>
-using SapConstraintVariant =
-    std::variant<SapPatchConstraint<T>, SapUnilateralConstraint<T>,
-                 SapQuadraticCostConstraint<T>>;
 
 /* A model of the SAP problem.
 
@@ -38,25 +31,45 @@ class SapModel {
       ℓ(v) = 1/2‖v‖²−r⋅v + ℓ(vc). */
   SapModel(double time_step, std::vector<MatrixX<T>> A, VectorX<T> r);
 
-  // Reserves memory for a fixed number of constraints.
-  void ReserveContactConstraints(int num_constraints);
-  void ReserveLimitConstraints(int num_constraints);
-
   // Resets quadratic and linear cost terms.
   // All contact constraints are removed and all other constraints remain.
   // Call AddConstraint() to incorporate new contact constraints.
   // @note No memory allocation is performed.
-  void Reset(std::vector<MatrixX<T>> A, VectorX<T> r);
+  void Reset(double time_step, std::vector<MatrixX<T>> A, VectorX<T> r);  
 
-  /* The set of constraints is closed. These methods allow to add specific
-   constraint types to the model.
-   These methods do not allocate memory if the number of constraints is below
-   the specified capacity with Reserve(). */
-  int AddConstraint(SapPatchConstraint<T> constraint);
+  /* Adds a patch constraint.
+
+    @warning We must call AddPir() on the returned view as many times needed
+    before calling the next AddPatchConstraint().
+
+    TODO: can we enforce this??? some sort of guard in the view? so that when it
+    goes out of scope it tells the pool we are ready for a new patch?
+
+
+    @param cliques clique[0] and clique[1] provide the clique index for body A
+    and B, respectively. The clique index is negative if the body is anchored,
+    and thus its Jacobian has zero size. */
+  PatchConstraintParamsView<T> AddPatchConstraint(
+      std::array<int, 2> cliques, const Matrix6X<T>& J_WA,
+      const Matrix6X<T>& J_WB, const T& dissipation, const T& friction,
+      double vs, double sigma /*, PatchConstraintApproximation::kLagged */) {
+    const int patch_index = patch_params_pool_.num_patches();
+    const int pair_index = patch_params_pool_.num_pairs();
+
+    patch_params_pool_.Add(cliques, J_WA, J_WB, dissipation, friction, vs,
+                           sigma);
+
+    return PatchConstraintParamsView<T>(patch_index, pair_index,
+                                        &patch_params_pool_);
+  }
+
+  const PatchConstraintParamsPool<T>& patch_constraint_params() {
+    return patch_params_pool_;
+  }
 
   /* Limit constraints are added on a per-clique basis. Therefore this method
    * can only be called at most num_cliques() times. */
-  int AddConstraint(SapLimitConstraint<T> constraint);
+  //int AddConstraint(SapLimitConstraint<T> constraint);
 
   // TODO(amcastro-tri): Add these:
   //   SapActuationConstraint: actuation with effort limits. Per-clique.
@@ -68,8 +81,12 @@ class SapModel {
   /* Returns the number of cliques. */
   int num_cliques() const { return A_.size(); }
 
-  int num_constraints() const {
-    return 
+  /* Total number of constraints. */
+  int num_constraints() const { return patch_params_.num_constraints(); }
+
+  /* Total number of constraint equations. */
+  int num_constraint_equations() const {
+    return patch_params_.num_constraint_equations();
   }
 
   /* Returns the total number of generalized velocities for this problem. */
@@ -82,38 +99,19 @@ class SapModel {
     return constraints_.size();
   }
 
-  std::vector<int>& constraint_cliques(int constraint_index) const {
-    return std::visit(
-        [](auto& constraint) {
-          return constraint.constraint_cliques();
-        },
-        constraints_[constraint_index]);
-  }
-
   // Updates `data` as a function of v.
-  void CalcData(const VectorX<T>& v, SapData<T>* data) const;
+  //void CalcData(const VectorX<T>& v, SapData<T>* data) const;
 
  private:
+  ModelSizes sizes;
+
   // Input data provided at construction.
   T time_step_{0.0};           // Discrete time step.
   std::vector<MatrixX<T>> A_;  // Linear dynamics matrix.
   VectorX<T> r_;               // Cost linear term.
 
-  // Data initialized at construction from input data.
-  int nv_{0};  // Total number of generalized velocities.
-#if 0  
-  std::vector<int> velocities_start_;
-  // Gives the index of the first constraint equation for each constraint.
-  // Has size = num_constraints() + 1 and at any time:
-  // constraint_equations_start_.back() == num_constraint_equations().
-  std::vector<int> constraint_equations_start_{0};
-#endif
-
-  // Constraints. The set of possible constraints is closed.
-  // N.B. This order is important. Do NOT change it.
-  std::vector<SapConstraintVariant<T>> constraints_;
-  //std::vector<SapPatchConstraint<T>> patch_constraints_;
-  //std::vector<SapLimitConstraint<T>> limit_constraints_;
+  PatchConstraintParamsPool<T> patch_params_pool_;
+  // PatchConstraintPool<T> patch_constraints_; most likely just std::vector<PatchConstraint<T>> 
 };
 
 }  // namespace fast_sap

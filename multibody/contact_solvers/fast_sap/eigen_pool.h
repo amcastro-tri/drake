@@ -12,6 +12,141 @@ namespace multibody {
 namespace contact_solvers {
 namespace fast_sap {
 
+template <typename EigenType>
+struct DynamicSizeStorage {
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(DynamicSizeStorage);
+
+  static_assert(EigenType::SizeAtCompileTime == Eigen::Dynamic,
+                "Only for dynamics-size Eigen types.");
+
+  using Scalar = EigenType::Scalar;
+  using ElementView = Eigen::Map<EigenType>;
+  using ConstElementView = Eigen::Map<const EigenType>;
+
+  struct ElementData {
+    int index{0};  // index into Storage::data_.
+    int rows{0};   // Number of rows.
+    int cols{0};   // Number of columns.
+  };
+
+  // Index into data_ for the next Eigen element.
+  int next_data_index_{0};
+
+  // Contiguous storage for all Eigen objects in the pool.
+  std::vector<Scalar> data_;
+
+  // Properly sized maps to each element in the pool.
+  std::vector<ElementData> blocks_;
+
+  DynamicSizeStorage() = default;
+
+  void Reserve(int) {
+    throw std::logic_error("Only for fixed-size Eigen types.");
+  }
+
+  void Clear() {
+    next_data_index_ = 0;
+    data_.clear();
+    blocks_.clear();
+  }
+
+  // Capcity to store Eigen elements.
+  int elements_capacity() const { return blocks_.capacity(); }
+
+  // Capacity to store scalar entries across all elements.
+  int scalars_capacity() const { return data_.capacity(); }
+
+  // Adds new element and returns mutable view to it.
+  ElementView Add(int rows, int cols) {
+    const int index = size();
+    const int size = rows * cols;
+    data_.resize(data_.size() + size);
+    blocks_.emplace_back(next_data_index_, rows, cols);
+    next_data_index_ += size;
+    return at(index);
+  }
+
+  // Adds new element and copies `data` into it.
+  // @returns index to the new element.
+  ElementView AddAndCopy(const EigenType& data) {
+    return Add(data.rows(), data.cols()) = data;
+    // return at(size());
+  }
+
+  int size() const { return blocks_.size(); }
+  ConstElementView at(int i) const {
+    return ConstElementView(&data_.at(blocks_[i].index), blocks_[i].rows,
+                            blocks_[i].cols);
+  }
+  ElementView at(int i) {
+    return ElementView(&data_.at(blocks_[i].index), blocks_[i].rows,
+                       blocks_[i].cols);
+  }
+};
+
+template <typename EigenType>
+struct FixedSizeStorage {
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(FixedSizeStorage);
+
+  static_assert(EigenType::SizeAtCompileTime != Eigen::Dynamic,
+                "Only for fixed-size Eigen types.");
+
+  using Scalar = EigenType::Scalar;
+  using ElementView = EigenType&;
+  using ConstElementView = const EigenType&;
+
+  // Contiguous storage for all Eigen objects in the pool.
+  std::vector<EigenType> data_;
+
+  FixedSizeStorage() = default;
+
+  void Reserve(int capacity) { data_.reserve(capacity); }
+
+  void Clear() {
+    data_.clear();
+  }
+
+  // Capcity to store Eigen elements.
+  int elements_capacity() const { return data_.capacity(); }
+
+  // Capacity to store scalar entries across all elements.
+  int scalars_capacity() const {
+    return data_.capacity() * EigenType::SizeAtCompileTime;
+  }
+
+  // Adds new element and returns mutable view to it.
+  ElementView Add(int rows, int cols) {
+    DRAKE_ASSERT(rows == EigenType::RowsAtCompileTime);
+    DRAKE_ASSERT(cols == EigenType::ColsAtCompileTime);
+    const int index = size();
+    data_.emplace_back();
+    return at(index);
+  }
+
+  // Adds new element and copies `data` into it.
+  // @returns index to the new element.
+  ElementView AddAndCopy(const EigenType& data) {
+    return Add(data.rows(), data.cols()) = data;
+  }
+
+  int size() const { return data_.size(); }
+  ConstElementView at(int i) const { return data_.at(i); }
+  ElementView at(int i) { return data_.at(i); }
+};
+
+// Choose fixed-size storage.
+template <typename EigenType, int size_at_compile_time>
+struct StorageSelector {
+  using Storage = FixedSizeStorage<EigenType>;
+};
+
+
+// Choose dynamic-size storage.
+template <typename EigenType>
+struct StorageSelector<EigenType, Eigen::Dynamic> {
+  using Storage = DynamicSizeStorage<EigenType>;
+};
+
 /* A replacement for std::vector<MatrixX<T>> that offers a contiguous layout of
  memory.
 
@@ -26,11 +161,20 @@ class EigenPool {
   static_assert(is_eigen_type<EigenType>::value, "Must be an Eigen type.");
 
   using Scalar = EigenType::Scalar;
-  using ElementView = Eigen::Map<EigenType>;
-  using ConstElementView = Eigen::Map<const EigenType>;
+  using Storage =
+      typename StorageSelector<EigenType,
+                               EigenType::SizeAtCompileTime>::Storage;
+  using ElementView = typename Storage::ElementView;
+  using ConstElementView = typename Storage::ConstElementView;
 
   /* Default constructor for an empty pool. */
   EigenPool() = default;
+
+  void Reserve(int num_elements) {
+    static_assert(EigenType::SizeAtCompileTime != Eigen::Dynamic,
+                  "Only for fixed-size Eigen types.");
+    storage_.Reserve(num_elements);
+  }
 
   /* Adds element of the specified size and returns mutable to it. */
   ElementView Add(int rows, int cols) { return storage_.Add(rows, cols); }
@@ -77,182 +221,6 @@ class EigenPool {
   const std::vector<Scalar>& data() const { return storage_.data_; }
 
  private:
-  // TODO(amcastro-tri): Specialize Storage to fixed-size Eigen elements, so
-  // that it simply resolves to std::vector<EigenType>. E.g.
-  // std::vector<Vector3>.
-  struct Storage {
-    DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(Storage);
-
-    struct ElementData {
-      int index{0};  // index into Storage::data_.
-      int rows{0};   // Number of rows.
-      int cols{0};   // Number of columns.
-    };
-
-    // Index into data_ for the next Eigen element.
-    int next_data_index_{0};
-
-    // Contiguous storage for all Eigen objects in the pool.
-    std::vector<Scalar> data_;
-
-    // Properly sized maps to each element in the pool.
-    std::vector<ElementData> blocks_;
-
-    Storage() = default;
-
-    void Clear() {
-      next_data_index_ = 0;
-      data_.clear();
-      blocks_.clear();
-    }
-
-    // Capcity to store Eigen elements.
-    int elements_capacity() const { return blocks_.capacity(); }
-
-    // Capacity to store scalar entries across all elements.
-    int scalars_capacity() const { return data_.capacity(); }
-
-    // Adds new element and returns mutable view to it.
-    ElementView Add(int rows, int cols) {
-      const int index = size();
-      const int size = rows * cols;
-      data_.resize(data_.size() + size);
-      blocks_.emplace_back(next_data_index_, rows, cols);
-      next_data_index_ += size;
-      return at(index);
-    }
-
-    // Adds new element and copies `data` into it.
-    // @returns index to the new element.
-    ElementView AddAndCopy(const EigenType& data) {
-      return Add(data.rows(), data.cols()) = data;
-      //return at(size());      
-    }
-
-#if 0
-    void PushBack(const std::vector<EigenType>& data) {
-      // Increase capacity if needed.
-      int new_data_capacity = data_.size();
-      for (const auto& d : data) {
-        new_data_capacity += d.size();
-      }
-      data_.reserve(new_data_capacity);
-      const size_t new_maps_capacity = maps_.size() + data.size();
-
-      // If capacity changes, we must re-point the maps.
-      if (maps_.capacity() < new_maps_capacity) {
-        maps_.reserve(new_maps_capacity);
-        Scalar* ptr = data_.data();  // The very first scalar.
-        for (auto& m : maps_) {
-          // Use placement new to re-point each map.
-          new (&m) Eigen::Map<EigenType>(ptr, m.rows(), m.cols());
-          ptr += m.size();
-        }
-      }
-
-      // Append data.
-      Scalar* ptr = data_.data() + data_.size();
-      for (const auto& e : data) {
-        data_.insert(data_.end(), e.data(), e.data() + e.size());
-        maps_.emplace_back(ptr, e.rows(), e.cols());
-        ptr += e.size();
-      }
-    }
-
-    void Resize(int num_elements) {
-      static_assert(EigenType::SizeAtCompileTime != Eigen::Dynamic,
-                    "Only for fixed-size Eigen types.");
-      const int total = EigenType::SizeAtCompileTime * num_elements;
-      data_.resize(total);
-      maps_.reserve(num_elements);
-      Scalar* ptr = data_.data();
-      for (int i = 0; i < num_elements; ++i) {
-        maps_.emplace_back(ptr);  // Fixed-size map.
-        ptr += EigenType::SizeAtCompileTime;
-      }
-    }
-
-    void Resize(const std::vector<int>& sizes) {
-      static_assert(EigenType::ColsAtCompileTime == 1,
-                    "Only for column vectors.");
-      int total = 0;
-      for (int s : sizes) total += s;
-      data_.resize(total);
-
-      maps_.reserve(ssize(sizes));
-      Scalar* ptr = data_.data();
-      for (int s : sizes) {
-        maps_.emplace_back(ptr, s, 1);  // Always one column.
-        ptr += s;
-      }
-    }
-
-    void Resize(const std::vector<int>& rows, const std::vector<int>& cols) {
-      DRAKE_ASSERT(rows.size() == cols.size());
-      const int num_elements = ssize(rows);
-      int total = 0;
-      for (int i = 0; i < num_elements; ++i) {
-        total += rows[i] * cols[i];
-      }
-      data_.resize(total);
-
-      maps_.reserve(num_elements);
-      Scalar* ptr = data_.data();
-      for (int i = 0; i < num_elements; ++i) {
-        maps_.emplace_back(ptr, rows[i], cols[i]);
-        ptr += rows[i] * cols[i];
-      }
-    }
-
-    explicit Storage(const std::vector<int>& sizes) {
-      static_assert(EigenType::ColsAtCompileTime == 1,
-                    "Only for column vectors.");
-      Resize(sizes);
-    }
-
-    Storage(const std::vector<int>& rows, const std::vector<int>& cols) {
-      Resize(rows, cols);
-    }
-
-    /* Constructor for a pool of matrices with the provided `shapes`.
-     @pre For fixed size matrices, "shapes" must match the compile-time sizes.
-   */
-    explicit Storage(const std::vector<std::pair<int, int>>& shapes) {
-      int total = 0;
-      for (const auto& [rows, cols] : shapes) total += rows * cols;
-      data_.resize(total);
-
-      maps_.reserve(ssize(shapes));
-      Scalar* ptr = data_.data();
-      for (const auto& [rows, cols] : shapes) {
-        maps_.emplace_back(ptr, rows, cols);
-        ptr += rows * cols;
-      }
-    }
-#endif
-
-    int size() const { return blocks_.size(); }
-    ConstElementView at(int i) const {
-      return ConstElementView(&data_.at(blocks_[i].index), blocks_[i].rows,
-                              blocks_[i].cols);
-    }
-    ElementView at(int i) {
-      return ElementView(&data_.at(blocks_[i].index), blocks_[i].rows,
-                         blocks_[i].cols);
-    }
-  };
-
-  static void ValidShapes(const std::vector<std::pair<int, int>>& shapes) {
-    for (const auto& [rows, cols] : shapes) {
-      if ((EigenType::RowsAtCompileTime != Eigen::Dynamic &&
-           rows != EigenType::RowsAtCompileTime) ||
-          (EigenType::ColsAtCompileTime != Eigen::Dynamic &&
-           cols != EigenType::ColsAtCompileTime)) {
-        throw std::logic_error("Shape does not match compile time sizes.");
-      }
-    }
-  }
-
   Storage storage_;
 };
 

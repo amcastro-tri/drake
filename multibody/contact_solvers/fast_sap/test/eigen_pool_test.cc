@@ -66,12 +66,16 @@ GTEST_TEST(EigenPoolTest, Matrix3Constructor) {
 
 GTEST_TEST(EigenPoolTest, PushBack) {
   EigenPool<Eigen::Matrix3d> pool;
-  EXPECT_EQ(pool.size(), 0);
+  EXPECT_EQ(pool.size(), 0);  
 
   std::vector<Matrix3d> data = {S33, 2.0 * S33, 3.0 * S33};
   pool.PushBack(data);
   EXPECT_EQ(pool.size(), 3);
-  
+
+  // Internally, pool should pretty much resolve to a
+  // std::vector<Eigen::Matrix3d>.
+  EXPECT_EQ(sizeof(pool), sizeof(std::vector<Eigen::Matrix3d>));
+
   for (int i = 0; i < pool.size(); ++i) {
     EXPECT_EQ(Matrix3d(pool[i]), data[i]);
   }

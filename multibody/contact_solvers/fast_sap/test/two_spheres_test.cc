@@ -2,9 +2,12 @@
 
 #include <gtest/gtest.h>
 
+
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/geometry/scene_graph_inspector.h"
 #include "drake/multibody/contact_solvers/contact_configuration.h"
+#include "drake/multibody/contact_solvers/fast_sap/sap_model.h"
+#include "drake/multibody/contact_solvers/fast_sap/eigen_pool.h"
 #include "drake/multibody/contact_solvers/sap/sap_constraint_jacobian.h"
 #include "drake/multibody/contact_solvers/sap/sap_hunt_crossley_constraint.h"
 #include "drake/multibody/contact_solvers/sap/sap_solver.h"
@@ -32,6 +35,16 @@ using Eigen::VectorXd;
 
 namespace drake {
 namespace multibody {
+
+class MultibodyPlantTester {
+ public:
+  MultibodyPlantTester() = default;
+  static VectorXd AssembleActuationInput(const MultibodyPlant<double>& plant,
+                                         const Context<double>& context) {
+    return plant.AssembleActuationInput(context);
+  }
+};
+
 namespace contact_solvers {
 namespace fast_sap {
 
@@ -247,6 +260,37 @@ SapContactProblem<double> MakeSapProblem(double time_step,
   return problem;
 }
 
+// Accumulates actuation inputs.
+// TODO(amcastro-tri):
+//  1. Include external spatial forces.
+//  2. split PD from non-PD actuation.
+void AccumulateActuationInput(const MultibodyPlant<double>& plant,
+                              const Context<double>& context,
+                              VectorXd* actuation_w_pd,
+                              VectorXd* actuation_wo_pd) {
+  DRAKE_DEMAND(actuation_w_pd != nullptr);
+  DRAKE_DEMAND(actuation_w_pd->size() == plant.num_velocities());
+  DRAKE_DEMAND(actuation_wo_pd != nullptr);
+  DRAKE_DEMAND(actuation_wo_pd->size() == plant.num_velocities());
+  // actuation_w_pd->setZero();
+  // actuation_wo_pd->setZero();
+  if (plant.num_actuators() > 0) {
+    const VectorXd u =
+        MultibodyPlantTester::AssembleActuationInput(plant, context);
+    for (JointActuatorIndex actuator_index : plant.GetJointActuatorIndices()) {
+      const JointActuator<double>& actuator =
+          plant.get_joint_actuator(actuator_index);
+      const Joint<double>& joint = actuator.joint();
+      // We only support actuators on single dof joints for now.
+      DRAKE_DEMAND(joint.num_velocities() == 1);
+      const int v_index = joint.velocity_start();
+      VectorXd& actuation =
+          actuator.has_controller() ? *actuation_w_pd : *actuation_wo_pd;
+      actuation[v_index] += u[actuator.input_start()];
+    }
+  }
+}
+
 void AddPatchConstraints(const MultibodyPlant<double>& plant,
                          const Context<double>& context,
                          SapModel<double>* model) {
@@ -266,8 +310,8 @@ void AddPatchConstraints(const MultibodyPlant<double>& plant,
   const auto& world_frame = plant.world_frame();
 
   // Pool of patch parameters.
-  PatchConstraintParamsPool<double>& constraint_params =
-      model->patch_constraint_params();
+  //PatchConstraintParamsPool<double>& constraint_params =
+  //    model->patch_constraint_params();
 
   // TODO(amcastro-tri): This should be retrieved from the default contact
   // properties.
@@ -279,7 +323,11 @@ void AddPatchConstraints(const MultibodyPlant<double>& plant,
     num_pairs += s.num_faces();
   }
   const int num_surfaces = surfaces.size();
-  params.Resize(num_surfaces, num_pairs, nv);
+  (void) num_pairs;
+
+  model->ClearPatchConstraints();
+  //constraint_params.Reserve(num_surfaces, num_pairs /* pairs capacity */,
+ //                           nv /* max clique size */);  
 
   for (int surface_index = 0; surface_index < num_surfaces; ++surface_index) {
     const auto& s = surfaces[surface_index];
@@ -298,8 +346,6 @@ void AddPatchConstraints(const MultibodyPlant<double>& plant,
     const auto& X_WB = bodyB->EvalPoseInWorld(context);
     const Vector3d& p_WAo = X_WA.translation();
     const Vector3d& p_WBo = X_WB.translation();
-    const auto& R_WA = X_WA.rotation();
-    const auto& R_WB = X_WB.rotation();
 
     // Get hydro properties.
     const double Em = multibody::internal::GetHydroelasticModulus(
@@ -318,15 +364,16 @@ void AddPatchConstraints(const MultibodyPlant<double>& plant,
     plant.CalcJacobianSpatialVelocity(context, JacobianWrtVariable::kV,
                                       bodyB->body_frame(), Vector3d::Zero(),
                                       world_frame, world_frame, &Jv_WBc_W);
+    const Vector6d V_WA0 = Jv_WAc_W * v0;
+    const Vector6d V_WB0 = Jv_WBc_W * v0;
 
     // We are building a problem with a single clique.
     std::array<int, 2> cliques = {0, 0};  // Both bodies are on clique 0 always.
     const double vs = plant.stiction_tolerance();
     constexpr double sigma = 1.0e-3;
-    const int pairs_capacity = s.num_faces();
-    const PatchConstraint<double>& constraint =
-        model->AddPatchConstraint(cliques, Jv_WAc_W, Jv_WBc_W, d, mu, vs, sigma
-                                  /* PatchConstraintApproximation::kLagged */);
+    model->AddPatchConstraint(
+        cliques, V_WA0, Jv_WAc_W, V_WB0, Jv_WBc_W, d, mu, vs, sigma
+        /* PatchConstraintApproximation::kLagged */);
 
     for (int face = 0; face < s.num_faces(); ++face) {
       const double Ae = s.area(face);  // Face element area.
@@ -349,11 +396,7 @@ void AddPatchConstraints(const MultibodyPlant<double>& plant,
 
       const Vector3d nhat_AB_W = -nhat_BA_W;
       math::RotationMatrixd R_WC =
-          math::RotationMatrixd::MakeFromOneVector(nhat_AB_W, 2);
-
-      const Vector3d v_AcBc_W = Jv_AcBc_W * v0;
-      const Vector3d v_AcBc_C = R_WC.transpose() * v_AcBc_W;
-      const double vn0 = v_AcBc_C(2);
+          math::RotationMatrixd::MakeFromOneVector(nhat_AB_W, 2);            
 
       // Pressure at the quadrature point.
       const Vector3d tri_centroid_barycentric(1 / 3., 1 / 3., 1 / 3.);
@@ -365,9 +408,41 @@ void AddPatchConstraints(const MultibodyPlant<double>& plant,
       const double fn0 = Ae * p0;
       const double k = Ae * g;
 
-      constraint.AddPair(fn0, k, R_WC, p_AoC_W, p_BoC_W, &constraint_params);
+      model->AddPatchPair(fn0, k, R_WC.matrix(), p_AoC_W, p_BoC_W);
     }
   }
+}
+
+void UpdateSapModel(const MultibodyPlant<double>& plant,
+                    const Context<double>& context, double time_step,
+                    SapModel<double>* model) {
+  // N.B. we can retrieve spanning forest (tree) like so:
+  // const SpanningForest& tree = internal::GetInternalTree(plant).forest();
+
+  // TODO: consider moving these into a workspace struct.
+  const int nv = plant.num_velocities();
+  //MatrixXd M(nv, nv);
+  EigenPool<MatrixXd> Apool;
+  VectorXd u_no_pd(nv);
+  VectorXd u_w_pd(nv);
+  VectorXd r(nv);
+
+  //const VectorX<T> diagonal_inertia = CalcEffectiveDamping(context);
+
+  // Linearized dynamics matrix for a single clique.
+  EigenPool<MatrixXd>::ElementView M = Apool.Add(nv, nv);
+  plant.CalcMassMatrix(context, &M);  
+
+  // r = u₀ + M⋅v₀ - C(q₀,v₀)
+  const Eigen::VectorBlock<const VectorXd> v0 = plant.GetVelocities(context);
+  AccumulateActuationInput(plant, context, &u_w_pd, &u_no_pd);
+  plant.CalcBiasTerm(context, &r);
+  r = -r;       // r = -C(q₀, v₀)
+  r += M * v0;  // r += M⋅v₀
+  r += u_no_pd;  // r += u.
+
+  model->Reset(time_step, Apool, r);
+  AddPatchConstraints(plant, context, model);
 }
 
 TEST_F(TwoSpheres, GetContact) {
@@ -407,6 +482,12 @@ TEST_F(TwoSpheres, GetContact) {
 
   fmt::print("Acc. ratio : {}\n", accel_ratio);
   fmt::print("Mass ratio : {}\n", mass_ratio);
+
+  SapModel<double> model;
+  UpdateSapModel(*plant_, *plant_context_, time_step, &model);
+  EXPECT_EQ(model.num_cliques(), 1);
+  EXPECT_EQ(model.num_velocities(), plant_->num_velocities());
+  EXPECT_EQ(model.num_patch_constraints(), 1);
 }
 
 }  // namespace fast_sap

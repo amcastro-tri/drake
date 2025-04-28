@@ -19,7 +19,7 @@ struct DynamicSizeStorage {
   static_assert(EigenType::SizeAtCompileTime == Eigen::Dynamic,
                 "Only for dynamics-size Eigen types.");
 
-  using Scalar = EigenType::Scalar;
+  using Scalar = typename EigenType::Scalar;
   using ElementView = Eigen::Map<EigenType>;
   using ConstElementView = Eigen::Map<const EigenType>;
 
@@ -40,15 +40,13 @@ struct DynamicSizeStorage {
 
   DynamicSizeStorage() = default;
 
-  void Reserve(int) {
-    throw std::logic_error("Only for fixed-size Eigen types.");
-  }
-
   void Clear() {
     next_data_index_ = 0;
     data_.clear();
     blocks_.clear();
   }
+
+  void PushBack(const EigenType& data) { AddAndCopy(data); }
 
   // Capcity to store Eigen elements.
   int elements_capacity() const { return blocks_.capacity(); }
@@ -61,7 +59,7 @@ struct DynamicSizeStorage {
     const int index = size();
     const int size = rows * cols;
     data_.resize(data_.size() + size);
-    blocks_.emplace_back(next_data_index_, rows, cols);
+    blocks_.push_back({next_data_index_, rows, cols});
     next_data_index_ += size;
     return at(index);
   }
@@ -91,7 +89,7 @@ struct FixedSizeStorage {
   static_assert(EigenType::SizeAtCompileTime != Eigen::Dynamic,
                 "Only for fixed-size Eigen types.");
 
-  using Scalar = EigenType::Scalar;
+  using Scalar = typename EigenType::Scalar;
   using ElementView = EigenType&;
   using ConstElementView = const EigenType&;
 
@@ -99,8 +97,6 @@ struct FixedSizeStorage {
   std::vector<EigenType> data_;
 
   FixedSizeStorage() = default;
-
-  void Reserve(int capacity) { data_.reserve(capacity); }
 
   void Clear() {
     data_.clear();
@@ -128,6 +124,8 @@ struct FixedSizeStorage {
   ElementView AddAndCopy(const EigenType& data) {
     return Add(data.rows(), data.cols()) = data;
   }
+
+  void PushBack(const EigenType& data) { data_.push_back(data); }
 
   int size() const { return data_.size(); }
   ConstElementView at(int i) const { return data_.at(i); }
@@ -160,7 +158,7 @@ class EigenPool {
 
   static_assert(is_eigen_type<EigenType>::value, "Must be an Eigen type.");
 
-  using Scalar = EigenType::Scalar;
+  using Scalar = typename EigenType::Scalar;
   using Storage =
       typename StorageSelector<EigenType,
                                EigenType::SizeAtCompileTime>::Storage;
@@ -175,6 +173,17 @@ class EigenPool {
                   "Only for fixed-size Eigen types.");
     storage_.Reserve(num_elements);
   }
+
+  // Reserves memory for `num_elements` of at most `max_size` scalars each.
+  // For fixed size EigenType, max_size is ignored.
+  void Reserve(int num_elements, int max_size) {
+    storage_.Reserve(num_elements, max_size);
+  }
+
+  /* Clears data. Capacity is not changed, and thus memory is not freed. */
+  void Clear() { storage_.Clear(); }
+
+  void PushBack(const EigenType& data) { storage_.PushBack(data); }
 
   /* Adds element of the specified size and returns mutable to it. */
   ElementView Add(int rows, int cols) { return storage_.Add(rows, cols); }
@@ -191,10 +200,7 @@ class EigenPool {
     for (const auto& d : data) {
       AddAndCopy(d);
     }
-  }
-
-  /* Clears data. Capacity is not changed, and thus memory is not freed. */
-  void Clear() { storage_.Clear(); }
+  }  
 
   /* Returns the number of elements in the pool. */
   int size() const { return storage_.size(); }

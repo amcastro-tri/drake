@@ -45,11 +45,29 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "patch_constraint",
+    hdrs = ["patch_constraint.h"],
+    deps = [
+        "//common:essential",
+        ":patch_constraint_data",
+    ],
+)
+
+drake_cc_library(
     name = "patch_constraint_data",
     hdrs = ["patch_constraint_data.h"],
     deps = [
         "//common:essential",
         ":eigen_pool",
+    ],
+)
+
+drake_cc_library(
+    name = "sap_model",
+    hdrs = ["sap_model.h"],
+    deps = [
+        "//common:essential",
+        ":patch_constraint",
     ],
 )
 
@@ -91,6 +109,7 @@ drake_cc_googletest(
         "//common/test_utilities:eigen_matrix_compare",
         "//multibody/parsing:parser",
         "//systems/framework:diagram_builder",
+        ":sap_model",
     ],
 )
 

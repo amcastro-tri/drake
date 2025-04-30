@@ -1,5 +1,7 @@
 #pragma once
 
+#include <numeric>
+#include <utility>
 #include <vector>
 
 // #include "drake/common/default_scalars.h"
@@ -11,6 +13,21 @@ namespace drake {
 namespace multibody {
 namespace contact_solvers {
 namespace fast_sap {
+
+template <typename Derived>
+struct is_fixed_size
+    : std::bool_constant<is_eigen_type<Derived>::value &&
+                         Derived::SizeAtCompileTime != Eigen::Dynamic> {};
+template <typename EigenType>
+constexpr bool is_fixed_size_v = is_fixed_size<EigenType>::value;
+
+template <typename T>
+constexpr bool is_fixed_size_vector_v =
+    is_eigen_vector<T>::value && is_fixed_size_v<T>;
+
+template <typename T>
+constexpr bool is_dynamic_size_vector_v =
+    is_eigen_vector<T>::value && !is_fixed_size_v<T>;    
 
 template <typename EigenType>
 struct DynamicSizeStorage {
@@ -39,6 +56,39 @@ struct DynamicSizeStorage {
   std::vector<ElementData> blocks_;
 
   DynamicSizeStorage() = default;
+
+  /* Resizes pool to store VectorX elements of the specified sizes. */
+  void Resize(const std::vector<int>& sizes) {
+    static_assert(is_dynamic_size_vector_v<EigenType>);
+    Clear();
+    const int total_size = std::accumulate(sizes.begin(), sizes.end(), 0);
+    data_.reserve(total_size);
+    blocks_.reserve(ssize(sizes));
+    for (int sz : sizes) {
+      Add(sz, 1);
+    }
+  }
+
+  void Resize(const std::vector<int>& rows, const std::vector<int>& cols) {
+    static_assert(!is_fixed_size_v<EigenType>);
+    DRAKE_ASSERT(rows.size() == cols.size());
+    Clear();
+    int total_size = 0;
+    for (int i = 0; i < ssize(rows); ++i) {
+      total_size += rows[i] * cols[i];
+    }
+    data_.reserve(total_size);
+    blocks_.reserve(ssize(rows));
+    for (int i = 0; i < ssize(rows); ++i) {
+      const int r = EigenType::RowsAtCompileTime >= 0
+                        ? EigenType::RowsAtCompileTime
+                        : rows[i];
+      const int c = EigenType::ColsAtCompileTime >= 0
+                        ? EigenType::ColsAtCompileTime
+                        : cols[i];
+      Add(r, c);
+    }
+  }
 
   void Clear() {
     next_data_index_ = 0;
@@ -101,6 +151,12 @@ struct FixedSizeStorage {
   void Clear() {
     data_.clear();
   }
+
+  /* Resizes storage to store `num_elements`. */
+  void Resize(int num_elements) { data_.resize(num_elements); }
+
+  /* Reserves storage to store `num_elements`. Size is not modified. */
+  void Reserve(int num_elements) { data_.reserve(num_elements); }
 
   // Capcity to store Eigen elements.
   int elements_capacity() const { return data_.capacity(); }
@@ -168,10 +224,34 @@ class EigenPool {
   /* Default constructor for an empty pool. */
   EigenPool() = default;
 
-  void Reserve(int num_elements) {
-    static_assert(EigenType::SizeAtCompileTime != Eigen::Dynamic,
-                  "Only for fixed-size Eigen types.");
+  void Reserve(int num_elements)
+    requires is_fixed_size_v<EigenType>
+  {  // NOLINT(whitespace/braces)
     storage_.Reserve(num_elements);
+  }
+
+  /* Resizes the pool to store num_elements.
+   Only available for fixed size Eigen tpes. */
+  void Resize(int num_elements)
+    requires is_fixed_size_v<EigenType>
+  { // NOLINT(whitespace/braces)
+    storage_.Resize(num_elements);
+  }
+
+  /* Resize for a pool of VectorX elements of the given `sizes`. */
+  void Resize(const std::vector<int>& sizes)
+    requires is_dynamic_size_vector_v<EigenType>
+  {  // NOLINT(whitespace/braces)
+    storage_.Resize(sizes);
+  }
+
+  /* Resize for a pool of matrices with the specified `rows` and `cols`.
+   rows (cols) are ignored if the rows (cols) of EigenType are fixed at compile
+   time. */
+  void Resize(const std::vector<int>& rows, const std::vector<int>& cols)
+    requires (!is_fixed_size_v<EigenType>)
+  {  // NOLINT(whitespace/braces)
+    storage_.Resize(rows, cols);
   }
 
   // Reserves memory for `num_elements` of at most `max_size` scalars each.

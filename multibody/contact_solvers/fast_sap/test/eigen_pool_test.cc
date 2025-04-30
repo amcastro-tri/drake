@@ -9,6 +9,7 @@
 
 using Eigen::Matrix3d;
 using Eigen::MatrixXd;
+using Eigen::VectorXd;
 using std::pair;
 using std::vector;
 
@@ -64,9 +65,85 @@ GTEST_TEST(EigenPoolTest, Matrix3Constructor) {
 }
 #endif
 
+GTEST_TEST(EigenPoolTest, ResizeForFixedSizedElements) {
+  EigenPool<Matrix3d> pool;
+  EXPECT_EQ(pool.size(), 0);
+
+  pool.Reserve(10);
+  EXPECT_EQ(pool.size(), 0);
+
+  // We already reserved.
+  {
+    drake::test::LimitMalloc guard;
+    pool.Resize(3);
+  }
+  EXPECT_EQ(pool.size(), 3);
+
+  for (int i = 0; i < pool.size(); ++i) {
+    pool[i] = i * S33;
+  }
+  pool.PushBack(S33);
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(pool[i], Matrix3d(i * S33));
+  }
+  EXPECT_EQ(pool[3], S33);
+
+  pool.Clear();
+  EXPECT_EQ(pool.size(), 0);
+}
+
+GTEST_TEST(EigenPoolTest, ResizeForPoolsOfVectorX) {
+  EigenPool<VectorXd> pool;
+  // pool.Resize(3); Doesn't compile, is_fixed_size_v<MatrixXd> is "false".
+
+  std::vector<int> sizes = {3, 5, 7};
+  {
+    // We expect two allocations. One for scalars and one for meta-data (sizes).
+    drake::test::LimitMalloc guard({.max_num_allocations = 2});
+    pool.Resize(sizes);
+    // N.B. pool.Resize(sizes, sizes) is valid also, though "cols" is ignored.
+  }
+  EXPECT_EQ(pool.size(), 3);
+  EXPECT_EQ(pool[0].size(), 3);
+  EXPECT_EQ(pool[1].size(), 5);
+  EXPECT_EQ(pool[2].size(), 7);
+
+  for (int i = 0; i < ssize(sizes); ++i) {
+    VectorXd x = VectorXd::LinSpaced(sizes[i], 1.0, 10.0);
+    pool[i] = x;
+    const auto& const_pool = pool;
+    EXPECT_EQ(const_pool[i], x);
+  }
+}
+
+GTEST_TEST(EigenPoolTest, ResizeForPoolsOfMatrixX) {
+  EigenPool<MatrixXd> pool;
+  std::vector<int> rows = {3, 5, 7};
+  std::vector<int> cols = {1, 2, 3};
+  // pool.Resize(rows) Doesn't even compile since it's only for vectors.
+
+  {
+    // We expect two allocations. One for scalars and one for meta-data (sizes).
+    drake::test::LimitMalloc guard({.max_num_allocations = 2});
+    pool.Resize(rows, cols);
+  }
+  EXPECT_EQ(pool.size(), 3);
+  EXPECT_EQ(pool[0].size(), 3);
+  EXPECT_EQ(pool[1].size(), 10);
+  EXPECT_EQ(pool[2].size(), 21);
+
+  for (int i = 0; i < ssize(rows); ++i) {
+    MatrixXd A = VectorXd::LinSpaced(rows[i] * cols[i], 1.0, 10.0)
+                     .reshaped(rows[i], cols[i]);
+    pool[i] = A;
+    const auto& const_pool = pool;
+    EXPECT_EQ(const_pool[i], A);
+  }
+}
+
 GTEST_TEST(EigenPoolTest, PushBack) {
   EigenPool<Eigen::Matrix3d> pool;
-  EXPECT_EQ(pool.size(), 0);  
+  EXPECT_EQ(pool.size(), 0);
 
   std::vector<Matrix3d> data = {S33, 2.0 * S33, 3.0 * S33};
   pool.PushBack(data);
@@ -102,7 +179,7 @@ GTEST_TEST(EigenPoolTest, PushBack) {
       ptr += 9;
     }
   }
-#endif  
+#endif
 
   // We allow allocation here.
   pool.PushBack(data);

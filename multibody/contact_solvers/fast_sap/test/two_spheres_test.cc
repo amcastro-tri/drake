@@ -2,12 +2,11 @@
 
 #include <gtest/gtest.h>
 
-
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/geometry/scene_graph_inspector.h"
 #include "drake/multibody/contact_solvers/contact_configuration.h"
-#include "drake/multibody/contact_solvers/fast_sap/sap_model.h"
 #include "drake/multibody/contact_solvers/fast_sap/eigen_pool.h"
+#include "drake/multibody/contact_solvers/fast_sap/sap_model.h"
 #include "drake/multibody/contact_solvers/sap/sap_constraint_jacobian.h"
 #include "drake/multibody/contact_solvers/sap/sap_hunt_crossley_constraint.h"
 #include "drake/multibody/contact_solvers/sap/sap_solver.h"
@@ -16,6 +15,7 @@
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/plant/multibody_plant_config_functions.h"
 #include "drake/systems/framework/diagram_builder.h"
+#include "drake/common/test_utilities/limit_malloc.h"
 
 using drake::geometry::FrameId;
 using drake::geometry::SceneGraphInspector;
@@ -310,7 +310,7 @@ void AddPatchConstraints(const MultibodyPlant<double>& plant,
   const auto& world_frame = plant.world_frame();
 
   // Pool of patch parameters.
-  //PatchConstraintParamsPool<double>& constraint_params =
+  // PatchConstraintParamsPool<double>& constraint_params =
   //    model->patch_constraint_params();
 
   // TODO(amcastro-tri): This should be retrieved from the default contact
@@ -323,11 +323,11 @@ void AddPatchConstraints(const MultibodyPlant<double>& plant,
     num_pairs += s.num_faces();
   }
   const int num_surfaces = surfaces.size();
-  (void) num_pairs;
+  (void)num_pairs;
 
   model->ClearPatchConstraints();
-  //constraint_params.Reserve(num_surfaces, num_pairs /* pairs capacity */,
- //                           nv /* max clique size */);  
+  // constraint_params.Reserve(num_surfaces, num_pairs /* pairs capacity */,
+  //                           nv /* max clique size */);
 
   for (int surface_index = 0; surface_index < num_surfaces; ++surface_index) {
     const auto& s = surfaces[surface_index];
@@ -396,7 +396,7 @@ void AddPatchConstraints(const MultibodyPlant<double>& plant,
 
       const Vector3d nhat_AB_W = -nhat_BA_W;
       math::RotationMatrixd R_WC =
-          math::RotationMatrixd::MakeFromOneVector(nhat_AB_W, 2);            
+          math::RotationMatrixd::MakeFromOneVector(nhat_AB_W, 2);
 
       // Pressure at the quadrature point.
       const Vector3d tri_centroid_barycentric(1 / 3., 1 / 3., 1 / 3.);
@@ -421,24 +421,24 @@ void UpdateSapModel(const MultibodyPlant<double>& plant,
 
   // TODO: consider moving these into a workspace struct.
   const int nv = plant.num_velocities();
-  //MatrixXd M(nv, nv);
+  // MatrixXd M(nv, nv);
   EigenPool<MatrixXd> Apool;
   VectorXd u_no_pd(nv);
   VectorXd u_w_pd(nv);
   VectorXd r(nv);
 
-  //const VectorX<T> diagonal_inertia = CalcEffectiveDamping(context);
+  // const VectorX<T> diagonal_inertia = CalcEffectiveDamping(context);
 
   // Linearized dynamics matrix for a single clique.
   EigenPool<MatrixXd>::ElementView M = Apool.Add(nv, nv);
-  plant.CalcMassMatrix(context, &M);  
+  plant.CalcMassMatrix(context, &M);
 
   // r = u₀ + M⋅v₀ - C(q₀,v₀)
   const Eigen::VectorBlock<const VectorXd> v0 = plant.GetVelocities(context);
   AccumulateActuationInput(plant, context, &u_w_pd, &u_no_pd);
   plant.CalcBiasTerm(context, &r);
-  r = -r;       // r = -C(q₀, v₀)
-  r += M * v0;  // r += M⋅v₀
+  r = -r;        // r = -C(q₀, v₀)
+  r += M * v0;   // r += M⋅v₀
   r += u_no_pd;  // r += u.
 
   model->Reset(time_step, Apool, r);
@@ -488,6 +488,53 @@ TEST_F(TwoSpheres, GetContact) {
   EXPECT_EQ(model.num_cliques(), 1);
   EXPECT_EQ(model.num_velocities(), plant_->num_velocities());
   EXPECT_EQ(model.num_patch_constraints(), 1);
+}
+
+TEST_F(TwoSpheres, MakeData) {
+  const double penetration = 0.002;
+  const double time_step = 0.01;
+  SetInContact(penetration);
+  const int nv = plant_->num_velocities();
+
+  SapModel<double> model;
+  UpdateSapModel(*plant_, *plant_context_, time_step, &model);
+  EXPECT_EQ(model.num_cliques(), 1);
+  EXPECT_EQ(model.num_velocities(), nv);
+  EXPECT_EQ(model.num_patch_constraints(), 1);
+  EXPECT_EQ(model.clique_sizes(), std::vector<int>({nv}));
+
+  const PatchConstraintParamsPool<double>& patch_params =
+      model.patch_constraint_params();
+  EXPECT_EQ(patch_params.num_patches(), 1);
+  EXPECT_EQ(patch_params.total_num_pairs(), 4);
+  EXPECT_EQ(patch_params.patch_sizes(), std::vector<int>({4}));
+
+  SapData<double> data;
+  model.ResizeData(&data);
+  EXPECT_EQ(data.num_velocities(), model.num_velocities());
+  EXPECT_EQ(data.num_patches(), 1);
+
+  // Clear patch constraints and verify resizing data does not allocate.  
+  model.ClearPatchConstraints();
+  EXPECT_EQ(model.num_velocities(), nv);
+  EXPECT_EQ(model.num_patch_constraints(), 0);
+  {
+    drake::test::LimitMalloc guard;
+    model.ResizeData(&data);
+  }
+  EXPECT_EQ(model.num_velocities(), nv);
+  EXPECT_EQ(data.num_patches(), 0);
+
+  // Update problem. There should be no allocations for the same problem size.
+  // TODO(amcastro-tri): Move this function within the guard. You'll need a
+  // pre-allocated workspace for this function.
+  UpdateSapModel(*plant_, *plant_context_, time_step, &model);
+  {
+    drake::test::LimitMalloc guard;
+    model.ResizeData(&data);
+  }
+  EXPECT_EQ(model.num_velocities(), nv);
+  EXPECT_EQ(data.num_patches(), 1);
 }
 
 }  // namespace fast_sap

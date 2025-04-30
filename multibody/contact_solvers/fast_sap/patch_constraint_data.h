@@ -82,6 +82,7 @@ class PatchConstraintParamsPool {
   void Reserve(int num_patches, int num_pairs_capacity, int max_clique_size) {
     // per-patch data.
     num_pairs_.reserve(num_patches);
+    patch_num_velocities_.reserve(num_patches);
     JA_first_col_.reserve(num_patches);
     JB_first_col_.reserve(num_patches);
     J_WA_cols_.Reserve(num_patches * max_clique_size);
@@ -108,13 +109,18 @@ class PatchConstraintParamsPool {
                         const Matrix6X<T>& J_WA, const Vector6<T>& V_WB,
                         const Matrix6X<T>& J_WB, const T& dissipation,
                         const T& friction, double vs, double sigma) {
+    if (cliques[0] < 0) DRAKE_ASSERT(J_WA.cols() == 0);
+    if (cliques[1] < 0) DRAKE_ASSERT(J_WB.cols() == 0);
+
     const int index = num_patches();
 
     num_pairs_.push_back(0);
     cliques_.push_back(cliques);
     const int Anv = J_WA.cols();
     const int Bnv = J_WB.cols();
-    cliques_nv_.push_back({Anv, Bnv});
+    cliques_nv_.push_back({Anv, Bnv});    
+
+    patch_num_velocities_.push_back(Anv + Bnv);
 
     V_WA_.PushBack(V_WA);
     V_WB_.PushBack(V_WB);
@@ -140,10 +146,13 @@ class PatchConstraintParamsPool {
   }
 
   /* Adds per-pair data associated with the per-patch data last added with
-  PushBackPatchData(). */
+  PushBackPatchData(), that is, the patch with index equal to num_patches() - 1. */
   void PushBackPairData(const T& fn0, const T& stiffness,
                         const Matrix3<T>& R_WC, const Vector3<T>& p_AoC_W,
                         const Vector3<T>& p_BoC_W) {
+    const int patch_index = num_patches() - 1;
+    ++num_pairs_[patch_index];
+
     fn0_.push_back(fn0);
     stiffness_.push_back(stiffness);
     R_WC_.PushBack(R_WC);
@@ -154,16 +163,25 @@ class PatchConstraintParamsPool {
   /* Clears memory, no memory is freed, and the capacity remains the same. 
    After this call num_patches() and num_pairs() equal zero. */
   void Clear() {
-    // Clear all pools.
+    // Clear per-patch pools.
     num_pairs_.clear();
     cliques_.clear();
     cliques_nv_.clear();
-    JA_first_col_.clear();
-    JB_first_col_.clear();
+    patch_num_velocities_.clear();
+    V_WA_.Clear();
+    V_WB_.Clear();
     dissipation_.clear();
     friction_.clear();
     stiction_tolerance_.clear();
     sigma_.clear();
+
+    // Jacobian pools.
+    JA_first_col_.clear();
+    JB_first_col_.clear();
+    J_WA_cols_.Clear();
+    J_WB_cols_.Clear();
+
+    // Clear per-pair pools.    
     p_AoC_W_.Clear();
     p_BoC_W_.Clear();
     R_WC_.Clear();
@@ -177,6 +195,14 @@ class PatchConstraintParamsPool {
 
   int num_patches() const { return ssize(num_pairs_); }
 
+  /* Returns the sizes of all patches in the pool. */
+  const std::vector<int>& patch_sizes() const { return num_pairs_; }
+
+  /* Returns the number of velocities involved per patch. */
+  const std::vector<int>& patch_num_velocities() const {
+    return patch_num_velocities_;
+  }
+
   /* Total number of pairs across all patches. */
   int total_num_pairs() const { return ssize(fn0_); }
 
@@ -185,7 +211,6 @@ class PatchConstraintParamsPool {
     return num_pairs_[patch_index];
   }
 
-  std::vector<int>& num_pairs() { return num_pairs_; }
   T& fn0(int pair) { return fn0_[pair]; }
   T& stiffness(int pair) { return stiffness_[pair]; }
   Matrix3<T>& R_WC(int pair) { return R_WC_[pair]; }
@@ -197,20 +222,22 @@ class PatchConstraintParamsPool {
   std::vector<int> num_pairs_;  // Number of pairs per patch.
   std::vector<std::array<int, 2>> cliques_;
   std::vector<std::array<int, 2>> cliques_nv_;
+  std::vector<int> patch_num_velocities_;  // Num. velocities per patch.
+  EigenPool<Vector6<T>> V_WA_;  // A's spatial velocity at current step.
+  EigenPool<Vector6<T>> V_WB_;  // B's spatial velocity at current step.
+  std::vector<T> dissipation_;       // Hunt & Crossley dissipation.
+  std::vector<T> friction_;          // Friction coefficient.
+  std::vector<double> stiction_tolerance_;
+  std::vector<double> sigma_;
+
   // Pointers into the first column of the Jacobian columns pool. Of size
   // num_pairs() + 1. first_col_[pair_index] corresponds to the first column of
   // pair_index. first_col_[num_pairs()] corresponds to the total number of
   // non-zero columns.
   std::vector<int> JA_first_col_;
-  std::vector<int> JB_first_col_;
-  EigenPool<Vector6<T>> V_WA_;  // A's spatial velocity at current step.
-  EigenPool<Vector6<T>> V_WB_;  // B's spatial velocity at current step.
+  std::vector<int> JB_first_col_;    
   EigenPool<Vector6<T>> J_WA_cols_;  // Spatial velocity Jacobian columns for A.
-  EigenPool<Vector6<T>> J_WB_cols_;  // Spatial velocity Jacobian columns for B.
-  std::vector<T> dissipation_;       // Hunt & Crossley dissipation.
-  std::vector<T> friction_;          // Friction coefficient.
-  std::vector<double> stiction_tolerance_;
-  std::vector<double> sigma_;
+  EigenPool<Vector6<T>> J_WB_cols_;  // Spatial velocity Jacobian columns for B.  
 
   // Pools of size total_num_pairs_.
   EigenPool<Vector3<T>> p_AoC_W_;  // Contact point position.
@@ -220,21 +247,10 @@ class PatchConstraintParamsPool {
   std::vector<T> fn0_;             // Previous time step normal force.
 };
 
-#if 0
 template <typename T>
 class PatchConstraintDataPool {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(PatchConstraintDataPool);
-
-  using Vector3Pool = EigenPool<Vector3<T>>;
-  using Vector3View = Vector3Pool::ElementView;
-  using ConstVector3View = Vector3Pool::ConstElementView;
-  using Matrix3Pool = EigenPool<Matrix3<T>>;
-  using Matrix3View = Matrix3Pool::ElementView;
-  using ConstMatrix3View = Matrix3Pool::ConstElementView;
-  using MatrixXPool = EigenPool<MatrixX<T>>;
-  using MatrixXView = MatrixXPool::ElementView;
-  using ConstMatrixXView = MatrixXPool::ConstElementView;
 
   // The number of patches in the pool.
   int num_patches() const { return num_patches_; }
@@ -250,7 +266,7 @@ class PatchConstraintDataPool {
     Resize(patch_size, num_velocities);
   }
 
-  /* @param num_equations Number of contact pairs for the k-th patch.
+  /* @param patch_size Number of contact pairs for the k-th patch.
      @param num_velocities Number of velocities for the k-th patch. */
   void Resize(const std::vector<int>& patch_size,
               const std::vector<int>& num_velocities) {
@@ -263,19 +279,19 @@ class PatchConstraintDataPool {
     H_.Resize(num_velocities, num_velocities);
   }
 
-  const ConstVector3View& vc(int pair_index) const {
+  const Vector3<T>& vc(int pair_index) const {
     DRAKE_ASSERT(0 <= pair_index && pair_index < num_pairs());
     return vc_[pair_index];
   }
-  Vector3View& vc(int pair_index) {
+  Vector3<T>& vc(int pair_index) {
     DRAKE_ASSERT(0 <= pair_index && pair_index < num_pairs());
     return vc_[pair_index];
   }
-  const ConstVector3View& gamma(int pair_index) const {
+  const Vector3<T>& gamma(int pair_index) const {
     DRAKE_ASSERT(0 <= pair_index && pair_index < num_pairs());
     return gamma_[pair_index];
   }
-  Vector3View& gamma(int pair_index) {
+  Vector3<T>& gamma(int pair_index) {
     DRAKE_ASSERT(0 <= pair_index && pair_index < num_pairs());
     return gamma_[pair_index];
   }
@@ -294,7 +310,6 @@ class PatchConstraintDataPool {
   EigenPool<VectorX<T>> gradient_;  // ∇ℓₖ = -Jₖᵀ⋅γₖ
   EigenPool<MatrixX<T>> H_;         // Hₖ = Jₖᵀ⋅Gₖ⋅Jₖ
 };
-#endif
 
 }  // namespace fast_sap
 }  // namespace contact_solvers

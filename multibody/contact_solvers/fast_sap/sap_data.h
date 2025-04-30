@@ -26,20 +26,26 @@ class SapData {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(SapData);
 
-  // @param clique_sizes Number of velocities for the c-th clique.
-  // @param patch_sizes Size of each patch constraint.
-  // @param num_velocities Number of velocities involved in .
-  SapData(const SapModelSizes& model_sizes) {
-    const int nv = model_sizes.num_velocities;
+  /* Default constructor for empty data. */
+  SapData() = default;
+
+  /* @param num_velocities Total number of generalized velocities.
+     @param patch_sizes Number of contact pairs for each patch.
+     @param patch_num_velocities Number of participating velocities per patch.
+     */
+  void Resize(int num_velocities, const std::vector<int>& clique_sizes,
+              const std::vector<int>& patch_sizes,
+              const std::vector<int>& patch_num_velocities) {
+    const int nv = num_velocities;
     v_.resize(nv);
     cost_gradient_.resize(nv);
-    cost_hessian_.resize(nv);
-
-    patch_constraints_pool_.Resize(model_sizes.patch_sizes,
-                                   model_sizes.constraints.num_velocities);
+    cost_hessian_.resize(nv, nv);
+    patch_constraints_data_.Resize(patch_sizes, patch_num_velocities);
   }
 
   int num_velocities() const { return v_.size(); }
+
+  int num_patches() const { return patch_constraints_data_.num_patches(); }
 
  private:
   // Generalized velocities of the model.
@@ -52,7 +58,7 @@ class SapData {
   MatrixX<T> cost_hessian_;  // Square matrix of size num_velocities().
 
   // Type-specific constraint pools.
-  PatchConstraintDataPool<T> patch_constraints_pool_;
+  PatchConstraintDataPool<T> patch_constraints_data_;
 };
 
 }  // namespace fast_sap

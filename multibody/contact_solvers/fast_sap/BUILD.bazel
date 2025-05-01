@@ -49,13 +49,13 @@ drake_cc_library(
     hdrs = ["patch_constraint.h"],
     deps = [
         "//common:essential",
-        ":patch_constraint_data",
+        ":patch_constraint_data_pool",
     ],
 )
 
 drake_cc_library(
-    name = "patch_constraint_data",
-    hdrs = ["patch_constraint_data.h"],
+    name = "patch_constraint_data_pool",
+    hdrs = ["patch_constraint_data_pool.h"],
     deps = [
         "//common:essential",
         ":eigen_pool",
@@ -68,15 +68,17 @@ drake_cc_library(
     deps = [
         "//common:essential",
         ":eigen_pool",
-        ":patch_constraint_data",
+        ":patch_constraint_data_pool",
     ],
 )
 
 drake_cc_library(
     name = "sap_model",
+    srcs = ["sap_model.cc"],
     hdrs = ["sap_model.h"],
     deps = [
         "//common:essential",
+        "//common:default_scalars",
         ":patch_constraint",
         ":sap_data",
     ],

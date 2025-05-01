@@ -21,18 +21,18 @@ namespace fast_sap {
  It models the discrete momentum equation:
     A⋅v = r + Jᵀ⋅γ,
  which corresponds to the convex cost:
-    ℓ(v) = 1/2‖v‖²−r⋅v + ℓ(vc). 
+    ℓ(v) = 1/2‖v‖²−r⋅v + ℓ(vc).
 
 [Castro et al., 2021] Castro A., Permenter F. and Han X., 2021. An Unconstrained
 Convex Formulation of Compliant Contact. Available at
 https://arxiv.org/abs/2110.10107 */
 template <typename T>
-class SapModel {
+class PooledSapModel {
  public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(SapModel);
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(PooledSapModel);
 
   // Constructor for an empty model.
-  SapModel() = default;
+  PooledSapModel() = default;
 
   /* Resets quadratic and linear cost terms.
    All contact constraints are removed and all other constraints remain.
@@ -50,16 +50,19 @@ class SapModel {
     A_ = A;
     num_velocities_ = 0;
     clique_sizes_.reserve(A.size());
+    clique_start_.reserve(A.size() + 1);
+    clique_start_.push_back(0);
     for (int c = 0; c < A.size(); ++c) {
       DRAKE_ASSERT(A[c].rows() == A[c].cols());
       const int clique_nv = A[c].rows();
       num_velocities_ += clique_nv;
       clique_sizes_.push_back(clique_nv);
+      // Here we are pushing the start for the next clique, c+1.
+      clique_start_.push_back(clique_start_.back() + clique_nv);
     }
     r_ = r;
     DRAKE_ASSERT(r_.size() == num_velocities_);
-    patch_constraints_.clear();
-    patch_params_pool_.Clear();
+    patch_constraints_pool_.Clear();
   }
 
   /* Returns the number of cliques. */
@@ -75,14 +78,14 @@ class SapModel {
 
   /* Total number of constraint equations. */
   int num_constraint_equations() const {
-    return patch_params_pool_.num_constraint_equations();
+    return patch_constraints_pool_.num_constraint_equations();
   }
 
   /* Adds a patch constraint.
 
     @param cliques clique[0] and clique[1] provide the clique index for body A
     and B, respectively. The clique index is negative if the body is anchored,
-    and thus its Jacobian has zero size. 
+    and thus its Jacobian has zero size.
 
     @note cliques[0] < 0 implies J_WA.size() = 0.
     @note cliques[1] < 0 implies J_WB.size() = 0.
@@ -94,9 +97,8 @@ class SapModel {
       const T& dissipation, const T& friction, double vs,
       double sigma /*, PatchConstraintApproximation::kLagged */) {
     const int patch_index = num_patch_constraints();
-    patch_constraints_.emplace_back(patch_index);
-    patch_params_pool_.PushBackPatchData(cliques, V_WA0, J_WA, V_WB0, J_WB,
-                                         dissipation, friction, vs, sigma);
+    patch_constraints_pool_.PushBackPatchData(cliques, V_WA0, J_WA, V_WB0, J_WB,
+                                              dissipation, friction, vs, sigma);
     return patch_index;
   }
 
@@ -104,58 +106,71 @@ class SapModel {
   AddPatchConstraint(). */
   void AddPatchPair(const T& fn0, const T& stiffness, const Matrix3<T>& R_WC,
                     const Vector3<T>& p_AoC_W, const Vector3<T>& p_BoC_W) {
-    patch_params_pool_.PushBackPairData(fn0, stiffness, R_WC, p_AoC_W, p_BoC_W);
+    patch_constraints_pool_.PushBackPairData(fn0, stiffness, R_WC, p_AoC_W,
+                                             p_BoC_W);
   }
 
-  PatchConstraintParamsPool<T>& patch_constraint_params() {
-    return patch_params_pool_;
+  PatchConstraintsPool<T>& patch_constraints_pool() {
+    return patch_constraints_pool_;
   }
 
   /* Clears patch constraints. No memory is freed. */
-  void ClearPatchConstraints() {
-    patch_constraints_.clear();
-    patch_params_pool_.Clear();
-  }
+  void ClearPatchConstraints() { patch_constraints_pool_.Clear(); }
 
   /* Limit constraints are added on a per-clique basis. Therefore this method
    * can only be called at most num_cliques() times. */
-  //int AddConstraint(SapLimitConstraint<T> constraint);
+  // int AddConstraint(SapLimitConstraint<T> constraint);
 
   // TODO(amcastro-tri): Add these:
   //   SapActuationConstraint: actuation with effort limits. Per-clique.
   //   SapHolonomicConstraint: usually one or two cliques. Consider among more
   //   than two cliques?
   //   SapUnilateralConstraint: things like tendons. Maybe SapLimitConstraint
-  //   covers this?  
+  //   covers this?
 
-  int num_patch_constraints() const { return ssize(patch_constraints_); }  
+  int num_patch_constraints() const {
+    return patch_constraints_pool_.num_patches();
+  }
 
   /* Resizes data accordingly to store data for this model.
    No allocations are required if data's capacity is already enough. */
   void ResizeData(SapData<T>* data) const {
     data->Resize(num_velocities_, clique_sizes_,
-                 patch_params_pool_.patch_sizes(),
-                 patch_params_pool_.patch_num_velocities());
+                 patch_constraints_pool_.patch_sizes(),
+                 patch_constraints_pool_.patch_num_velocities());
   }
 
   // Updates `data` as a function of v.
-  //void CalcData(const VectorX<T>& v, SapData<T>* data) const;
+  void CalcData(const VectorX<T>& v, SapData<T>* data) const;
 
  private:
+  // Helpers to access the subset of elements from clique vectors (e.g.
+  // generalized velocities.)
+  Eigen::VectorBlock<const VectorX<T>> clique_segment(
+      int clique, const VectorX<T>& x) const;
+  Eigen::VectorBlock<VectorX<T>> clique_segment(int clique,
+                                                VectorX<T>* x) const;
+
+  void CalcMomentumTerms(const SapData<T>& data,
+                         typename SapData<T>::Cache* cache) const;
+
   // Input data provided at construction.
-  T time_step_{0.0};           // Discrete time step.  
+  T time_step_{0.0};         // Discrete time step.
   EigenPool<MatrixX<T>> A_;  // Linear dynamics matrix.
-  VectorX<T> r_;               // Cost linear term
+  VectorX<T> r_;             // Cost linear term
 
   // Total number of generalized velocities. = sum(clique_sizes_).
-  int num_velocities_{0};  
-  std::vector<int> clique_sizes_;  // Number of velocities per patch.
+  int num_velocities_{0};
+  std::vector<int> clique_start_;  // Clique first velocity.
+  std::vector<int> clique_sizes_;  // Number of velocities per clique.
 
-  std::vector<PatchConstraint<T>> patch_constraints_;
-  PatchConstraintParamsPool<T> patch_params_pool_;
+  PatchConstraintsPool<T> patch_constraints_pool_;
 };
 
 }  // namespace fast_sap
 }  // namespace contact_solvers
 }  // namespace multibody
 }  // namespace drake
+
+extern template class ::drake::multibody::contact_solvers::fast_sap::PooledSapModel<
+    double>;

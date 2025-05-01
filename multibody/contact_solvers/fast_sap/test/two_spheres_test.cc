@@ -1,8 +1,9 @@
-// Add SAP header?
+#include <limits>
 
 #include <gtest/gtest.h>
 
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
+#include "drake/common/test_utilities/limit_malloc.h"
 #include "drake/geometry/scene_graph_inspector.h"
 #include "drake/multibody/contact_solvers/contact_configuration.h"
 #include "drake/multibody/contact_solvers/fast_sap/eigen_pool.h"
@@ -15,7 +16,6 @@
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/plant/multibody_plant_config_functions.h"
 #include "drake/systems/framework/diagram_builder.h"
-#include "drake/common/test_utilities/limit_malloc.h"
 
 using drake::geometry::FrameId;
 using drake::geometry::SceneGraphInspector;
@@ -23,6 +23,7 @@ using drake::math::RigidTransformd;
 using drake::multibody::contact_solvers::internal::ContactConfiguration;
 using drake::multibody::contact_solvers::internal::SapConstraintJacobian;
 using drake::multibody::contact_solvers::internal::SapContactProblem;
+using drake::multibody::contact_solvers::internal::SapModel;
 using drake::multibody::contact_solvers::internal::SapHuntCrossleyApproximation;
 using drake::multibody::contact_solvers::internal::SapHuntCrossleyConstraint;
 using drake::multibody::contact_solvers::internal::SapSolver;
@@ -47,6 +48,8 @@ class MultibodyPlantTester {
 
 namespace contact_solvers {
 namespace fast_sap {
+
+const double kEps  = std::numeric_limits<double>::epsilon();    
 
 class TwoSpheres : public testing::Test {
  public:
@@ -293,7 +296,7 @@ void AccumulateActuationInput(const MultibodyPlant<double>& plant,
 
 void AddPatchConstraints(const MultibodyPlant<double>& plant,
                          const Context<double>& context,
-                         SapModel<double>* model) {
+                         PooledSapModel<double>* model) {
   const int nv = plant.num_velocities();
 
   const Eigen::VectorBlock<const VectorXd> v0 = plant.GetVelocities(context);
@@ -413,9 +416,9 @@ void AddPatchConstraints(const MultibodyPlant<double>& plant,
   }
 }
 
-void UpdateSapModel(const MultibodyPlant<double>& plant,
-                    const Context<double>& context, double time_step,
-                    SapModel<double>* model) {
+void UpdatePooledSapModel(const MultibodyPlant<double>& plant,
+                          const Context<double>& context, double time_step,
+                          PooledSapModel<double>* model) {
   // N.B. we can retrieve spanning forest (tree) like so:
   // const SpanningForest& tree = internal::GetInternalTree(plant).forest();
 
@@ -483,8 +486,8 @@ TEST_F(TwoSpheres, GetContact) {
   fmt::print("Acc. ratio : {}\n", accel_ratio);
   fmt::print("Mass ratio : {}\n", mass_ratio);
 
-  SapModel<double> model;
-  UpdateSapModel(*plant_, *plant_context_, time_step, &model);
+  PooledSapModel<double> model;
+  UpdatePooledSapModel(*plant_, *plant_context_, time_step, &model);
   EXPECT_EQ(model.num_cliques(), 1);
   EXPECT_EQ(model.num_velocities(), plant_->num_velocities());
   EXPECT_EQ(model.num_patch_constraints(), 1);
@@ -496,25 +499,25 @@ TEST_F(TwoSpheres, MakeData) {
   SetInContact(penetration);
   const int nv = plant_->num_velocities();
 
-  SapModel<double> model;
-  UpdateSapModel(*plant_, *plant_context_, time_step, &model);
+  PooledSapModel<double> model;
+  UpdatePooledSapModel(*plant_, *plant_context_, time_step, &model);
   EXPECT_EQ(model.num_cliques(), 1);
   EXPECT_EQ(model.num_velocities(), nv);
   EXPECT_EQ(model.num_patch_constraints(), 1);
   EXPECT_EQ(model.clique_sizes(), std::vector<int>({nv}));
 
-  const PatchConstraintParamsPool<double>& patch_params =
-      model.patch_constraint_params();
-  EXPECT_EQ(patch_params.num_patches(), 1);
-  EXPECT_EQ(patch_params.total_num_pairs(), 4);
-  EXPECT_EQ(patch_params.patch_sizes(), std::vector<int>({4}));
+  const PatchConstraintsPool<double>& patch_constraints =
+      model.patch_constraints_pool();
+  EXPECT_EQ(patch_constraints.num_patches(), 1);
+  EXPECT_EQ(patch_constraints.total_num_pairs(), 4);
+  EXPECT_EQ(patch_constraints.patch_sizes(), std::vector<int>({4}));
 
   SapData<double> data;
   model.ResizeData(&data);
   EXPECT_EQ(data.num_velocities(), model.num_velocities());
   EXPECT_EQ(data.num_patches(), 1);
 
-  // Clear patch constraints and verify resizing data does not allocate.  
+  // Clear patch constraints and verify resizing data does not allocate.
   model.ClearPatchConstraints();
   EXPECT_EQ(model.num_velocities(), nv);
   EXPECT_EQ(model.num_patch_constraints(), 0);
@@ -528,13 +531,54 @@ TEST_F(TwoSpheres, MakeData) {
   // Update problem. There should be no allocations for the same problem size.
   // TODO(amcastro-tri): Move this function within the guard. You'll need a
   // pre-allocated workspace for this function.
-  UpdateSapModel(*plant_, *plant_context_, time_step, &model);
+  UpdatePooledSapModel(*plant_, *plant_context_, time_step, &model);
   {
     drake::test::LimitMalloc guard;
     model.ResizeData(&data);
   }
   EXPECT_EQ(model.num_velocities(), nv);
   EXPECT_EQ(data.num_patches(), 1);
+}
+
+TEST_F(TwoSpheres, CalcData) {
+  const double penetration = 0.002;
+  const double time_step = 0.01;
+  SetInContact(penetration);
+  const int nv = plant_->num_velocities();
+
+  PooledSapModel<double> model;
+  UpdatePooledSapModel(*plant_, *plant_context_, time_step, &model);
+  EXPECT_EQ(model.num_cliques(), 1);
+  EXPECT_EQ(model.num_velocities(), nv);
+  //EXPECT_EQ(model.num_patch_constraints(), 1);
+
+  SapData<double> data;
+  model.ResizeData(&data);
+  EXPECT_EQ(data.num_velocities(), model.num_velocities());
+  //EXPECT_EQ(data.num_patches(), 1);
+
+  const VectorXd v = VectorXd::LinSpaced(nv, -0.5, 0.5);
+  model.CalcData(v, &data);
+
+  // Compute a reference solution.
+  SapContactProblem<double> problem =
+      MakeSapProblem(time_step, *plant_, *plant_context_);
+  SapModel<double> sap_model(&problem);
+  auto context = sap_model.MakeContext();
+  sap_model.GetMutableVelocities(context.get()) = v;
+  double reference_cost = sap_model.EvalCost(*context);
+  // N.B. momentum_cost = 1/2⋅(v-v*)ᵀ⋅A⋅(v-v*)
+  const double ref_mom_cost = sap_model.EvalMomentumCost(*context);
+  fmt::print("Ref. Cost: {}\n", reference_cost);
+  fmt::print("Ref. Mom. Cost: {}\n", ref_mom_cost);
+
+
+  // N.B. momentum_cost = 1/2⋅vᵀ⋅A⋅v - rᵀ⋅v
+  fmt::print("Cost: {}\n", data.cache().cost);
+  // For this problem, v* = 0, and then r = 0 and both sap_model and model
+  // momentum costs match.
+  EXPECT_NEAR(data.cache().momentum_cost, ref_mom_cost, kEps);
+
 }
 
 }  // namespace fast_sap

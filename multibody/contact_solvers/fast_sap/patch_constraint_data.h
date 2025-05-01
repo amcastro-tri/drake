@@ -27,11 +27,11 @@ namespace fast_sap {
 */
 
 // A bunch of std::vector with the actual memory storage for all params in a
-// SapModel
+// PooledSapModel
 template <typename T>
-class PatchConstraintParamsPool {
+class PatchConstraintsPool {
  public:
-  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(PatchConstraintParamsPool);
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(PatchConstraintsPool);
 
   using JacobianView = Eigen::Map<Matrix6X<T>>;
 
@@ -40,7 +40,7 @@ class PatchConstraintParamsPool {
   int num_constraint_equations() { return 3 * total_num_pairs(); }
 
   /* Constructor for an empty pool. */
-  PatchConstraintParamsPool() {
+  PatchConstraintsPool() {
     JA_first_col_.push_back(0);
     JB_first_col_.push_back(0);
   }

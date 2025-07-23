@@ -26,6 +26,7 @@
 #include "drake/geometry/proximity/make_mesh_from_vtk.h"
 #include "drake/geometry/proximity/make_sphere_field.h"
 #include "drake/geometry/proximity/make_sphere_mesh.h"
+#include "drake/geometry/proximity/mesh_to_vtk.h"
 #include "drake/geometry/proximity/obj_to_surface_mesh.h"
 #include "drake/geometry/proximity/polygon_to_triangle_mesh.h"
 #include "drake/geometry/proximity/tessellation_strategy.h"
@@ -37,18 +38,18 @@ namespace internal {
 namespace hydroelastic {
 namespace {
 
-VolumeMesh<double> RemoveNegativeVolumes(const VolumeMesh<double>& mesh) {
-  std::vector<VolumeElement> tets;
-  for (int e = 0; e < mesh.num_elements(); ++e) {
-    const double vol = mesh.CalcTetrahedronVolume(e);
-    if (vol > 0) {
-      tets.push_back(mesh.element(e));
-    }
-  }
-  std::vector<Vector3<double>> verts = mesh.vertices();
+// VolumeMesh<double> RemoveNegativeVolumes(const VolumeMesh<double>& mesh) {
+//   std::vector<VolumeElement> tets;
+//   for (int e = 0; e < mesh.num_elements(); ++e) {
+//     const double vol = mesh.CalcTetrahedronVolume(e);
+//     if (vol > 0) {
+//       tets.push_back(mesh.element(e));
+//     }
+//   }
+//   std::vector<Vector3<double>> verts = mesh.vertices();
 
-  return VolumeMesh<double>(std::move(tets), std::move(verts));
-}
+//   return VolumeMesh<double>(std::move(tets), std::move(verts));
+// }
 
 // Decide whether a shape is primitive for vanished-checking purposes. (See
 // Geometries::is_vanished() documentation).  This reifier expects that
@@ -93,10 +94,12 @@ using std::make_unique;
 
 SoftMesh::SoftMesh(
     std::unique_ptr<VolumeMesh<double>> mesh,
-    std::unique_ptr<VolumeMeshFieldLinear<double, double>> pressure)
+    std::unique_ptr<VolumeMeshFieldLinear<double, double>> pressure,
+    std::unique_ptr<TriangleSurfaceMesh<double>> collision_mesh)
     : mesh_(std::move(mesh)),
       pressure_(std::move(pressure)),
-      bvh_(std::make_unique<Bvh<Obb, VolumeMesh<double>>>(*mesh_)) {
+      bvh_(std::make_unique<Bvh<Obb, VolumeMesh<double>>>(*mesh_)),
+      collision_mesh_(std::move(collision_mesh)) {
   DRAKE_ASSERT(mesh_.get() == &pressure_->mesh());
   tri_to_tet_ = std::make_unique<std::vector<TetFace>>();
   surface_mesh_ = std::make_unique<TriangleSurfaceMesh<double>>(
@@ -105,6 +108,39 @@ SoftMesh::SoftMesh(
   surface_mesh_bvh_ =
       std::make_unique<Bvh<Obb, TriangleSurfaceMesh<double>>>(*surface_mesh_);
   mesh_topology_ = std::make_unique<VolumeMeshTopology>(*mesh_);
+
+  if (collision_mesh_ != nullptr) {
+    // Build the topology of the DynamicBVHs.
+    collision_mesh_vertex_bvh_ = std::make_unique<DynamicBvh>(
+        collision_mesh_->num_vertices(), [this](int i) -> Aabb {
+          const Vector3<double>& v = collision_mesh_->vertex(i);
+          return Aabb(v, Vector3<double>::Zero());
+        });
+    collision_mesh_edge_bvh_ = std::make_unique<DynamicBvh>(
+        collision_mesh_->num_vertices(), [this](int i) -> Aabb {
+          const auto [v0_idx, v1_idx] = collision_mesh_->edge(i);
+          const Vector3<double>& v0 = collision_mesh_->vertex(v0_idx);
+          const Vector3<double>& v1 = collision_mesh_->vertex(v1_idx);
+          Vector3<double> min_corner = v0.cwiseMin(v1);
+          Vector3<double> max_corner = v0.cwiseMax(v1);
+
+          return Aabb((min_corner + max_corner) / 2,
+                      (max_corner - min_corner) / 2);
+        });
+    collision_mesh_face_bvh_ = std::make_unique<DynamicBvh>(
+        collision_mesh_->num_elements(), [this](int i) -> Aabb {
+          const SurfaceTriangle& tri = collision_mesh_->element(i);
+          const Vector3<double>& v0 = collision_mesh_->vertex(tri.vertex(0));
+          const Vector3<double>& v1 = collision_mesh_->vertex(tri.vertex(1));
+          const Vector3<double>& v2 = collision_mesh_->vertex(tri.vertex(2));
+
+          Vector3<double> min_corner = v0.cwiseMin(v1).cwiseMin(v2);
+          Vector3<double> max_corner = v0.cwiseMax(v1).cwiseMax(v2);
+
+          return Aabb((min_corner + max_corner) / 2,
+                      (max_corner - min_corner) / 2);
+        });
+  }
 }
 
 SoftMesh& SoftMesh::operator=(const SoftMesh& s) {
@@ -121,6 +157,16 @@ SoftMesh& SoftMesh::operator=(const SoftMesh& s) {
   surface_mesh_bvh_ = std::make_unique<Bvh<Obb, TriangleSurfaceMesh<double>>>(
       s.surface_mesh_bvh());
   mesh_topology_ = std::make_unique<VolumeMeshTopology>(s.mesh_topology());
+  if (s.has_collision_mesh()) {
+    collision_mesh_ =
+        make_unique<TriangleSurfaceMesh<double>>(s.collision_mesh());
+    collision_mesh_vertex_bvh_ =
+        std::make_unique<DynamicBvh>(s.collision_mesh_vertex_bvh());
+    collision_mesh_edge_bvh_ =
+        std::make_unique<DynamicBvh>(s.collision_mesh_edge_bvh());
+    collision_mesh_face_bvh_ =
+        std::make_unique<DynamicBvh>(s.collision_mesh_face_bvh());
+  }
   return *this;
 }
 
@@ -410,54 +456,138 @@ void WarnNoSoftRepresentation(std::string_view shape_type_name) {
 
 std::optional<SoftGeometry> MakeSoftRepresentation(
     const Sphere& sphere, const ProximityProperties& props) {
-  const double margin = NonNegativeDouble("Sphere", "soft")
-                            .Extract(props, kHydroGroup, kMargin, 0.0);
-  const Sphere inflated_sphere(sphere.radius() + margin);
-
   PositiveDouble positive_validator("Sphere", "soft");
-  // First, create the mesh.
+  NonNegativeDouble non_negative_validator("Sphere", "soft");
   const double edge_length =
       positive_validator.Extract(props, kHydroGroup, kRezHint);
-  // If nothing is said, let's go for the *cheap* tessellation strategy.
-  const TessellationStrategy strategy =
-      props.GetPropertyOrDefault(kHydroGroup, "tessellation_strategy",
-                                 TessellationStrategy::kSingleInteriorVertex);
-  auto inflated_mesh = make_unique<VolumeMesh<double>>(
-      MakeSphereVolumeMesh<double>(inflated_sphere, edge_length, strategy));
+  const double margin =
+      non_negative_validator.Extract(props, kHydroGroup, kMargin, 0.0);
+  const double barrier =
+      non_negative_validator.Extract(props, kHydroGroup, kBarrier, 0.0);
 
-  const double hydroelastic_modulus =
-      positive_validator.Extract(props, kHydroGroup, kElastic);
+  // To prototype the epsilon log-barrier region, we will repurpose the margin
+  // parameter to create an offset surface volume mesh for use with the
+  // hydroelastic contact surface query.
+  if (barrier > 0) {
+    auto surface_mesh = make_unique<TriangleSurfaceMesh<double>>(
+        MakeSphereSurfaceMesh<double>(sphere, edge_length));
 
-  auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
-      MakeSpherePressureField(inflated_sphere, inflated_mesh.get(),
-                              hydroelastic_modulus, margin));
+    auto extruded_mesh = make_unique<VolumeMesh<double>>(
+        MakeExtrudedMesh(*surface_mesh, margin + barrier));
 
-  return SoftGeometry(SoftMesh(std::move(inflated_mesh), std::move(pressure)));
+    // There first N vertices are the vertices of the original surface mesh and
+    // all should have an indicator value of 1.0 indicating that they are on the
+    // rigid core, where N = surface_mesh->num_vertices().
+    const double surface_epsilon = -margin / barrier;
+    std::vector<double> extruded_values(extruded_mesh->num_vertices(),
+                                        surface_epsilon);
+    for (int i = 0; i < surface_mesh->num_vertices(); ++i) {
+      extruded_values[i] = 1.0;
+    }
+
+    // For now assume all tetrahedra have positive volume.
+
+    // Replace mesh with one that only has positive tetrahedra volumes. This
+    // doesn't change the vertex count.
+    // extruded_mesh =
+    //     make_unique<VolumeMesh<double>>(RemoveNegativeVolumes(*extruded_mesh));
+
+    // DRAKE_DEMAND(ssize(inflated_values) == extruded_mesh->num_vertices());
+
+    auto extruded_field = make_unique<VolumeMeshFieldLinear<double, double>>(
+        std::move(extruded_values), extruded_mesh.get(),
+        MeshGradientMode::
+            kOkOrThrow /* what MakeVolumeMeshPressureField() uses. */);
+
+    return SoftGeometry(SoftMesh(std::move(extruded_mesh),
+                                 std::move(extruded_field),
+                                 std::move(surface_mesh)));
+  } else {
+    // Volumetric Hydro (no collision mesh)
+    const Sphere inflated_sphere(sphere.radius() + margin);
+
+    // If nothing is said, let's go for the *cheap* tessellation strategy.
+    const TessellationStrategy strategy =
+        props.GetPropertyOrDefault(kHydroGroup, "tessellation_strategy",
+                                   TessellationStrategy::kSingleInteriorVertex);
+    auto inflated_mesh = make_unique<VolumeMesh<double>>(
+        MakeSphereVolumeMesh<double>(inflated_sphere, edge_length, strategy));
+
+    // Store an extent field for log barrier hydro.
+    auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
+        MakeSpherePressureField(inflated_sphere, inflated_mesh.get(), 1.0,
+                                margin));
+
+    return SoftGeometry(
+        SoftMesh(std::move(inflated_mesh), std::move(pressure)));
+  }
 }
 
 std::optional<SoftGeometry> MakeSoftRepresentation(
     const Box& box, const ProximityProperties& props) {
-  const double margin = NonNegativeDouble("Box", "soft")
-                            .Extract(props, kHydroGroup, kMargin, 0.0);
+  NonNegativeDouble non_negative_validator("Box", "soft");
+  const double margin =
+      non_negative_validator.Extract(props, kHydroGroup, kMargin, 0.0);
+  const double barrier =
+      non_negative_validator.Extract(props, kHydroGroup, kBarrier, 0.0);
 
-  // Define the shape of the "inflated" hydroelastic geometry to include the
-  // margin. We inflate all faces of the box a distance "margin" along the
-  // outward normal.
-  const Box inflated_box(box.size() + Vector3<double>::Constant(2.0 * margin));
+  // To prototype the epsilon log-barrier region, we will repurpose the margin
+  // parameter to create an offset surface volume mesh for use with the
+  // hydroelastic contact surface query.
+  if (barrier > 0) {
+    auto surface_mesh = make_unique<TriangleSurfaceMesh<double>>(
+        MakeBoxSurfaceMeshWithSymmetricTriangles<double>(box));
 
-  // First, create an inflated mesh.
-  auto inflated_mesh = make_unique<VolumeMesh<double>>(
-      MakeBoxVolumeMeshWithMaAndSymmetricTriangles<double>(inflated_box));
+    auto extruded_mesh = make_unique<VolumeMesh<double>>(
+        MakeExtrudedMesh(*surface_mesh, margin + barrier));
 
-  const double hydroelastic_modulus =
-      PositiveDouble("Box", "soft").Extract(props, kHydroGroup, kElastic);
+    // There first N vertices are the vertices of the original surface mesh and
+    // all should have an indicator value of 1.0 indicating that they are on the
+    // rigid core, where N = surface_mesh->num_vertices().
+    const double surface_epsilon = -margin / barrier;
+    std::vector<double> extruded_values(extruded_mesh->num_vertices(),
+                                        surface_epsilon);
+    for (int i = 0; i < surface_mesh->num_vertices(); ++i) {
+      extruded_values[i] = 1.0;
+    }
 
-  auto pressure =
-      make_unique<VolumeMeshFieldLinear<double, double>>(MakeBoxPressureField(
-          inflated_box, inflated_mesh.get(), hydroelastic_modulus, margin));
+    // For now assume all tetrahedra have positive volume.
 
-  return SoftGeometry(SoftMesh(std::move(inflated_mesh), std::move(pressure)));
-}
+    // Replace mesh with one that only has positive tetrahedra volumes. This
+    // doesn't change the vertex count.
+    // extruded_mesh =
+    //     make_unique<VolumeMesh<double>>(RemoveNegativeVolumes(*extruded_mesh));
+
+    // DRAKE_DEMAND(ssize(inflated_values) == extruded_mesh->num_vertices());
+
+    auto extruded_field = make_unique<VolumeMeshFieldLinear<double, double>>(
+        std::move(extruded_values), extruded_mesh.get(),
+        MeshGradientMode::
+            kOkOrThrow /* what MakeVolumeMeshPressureField() uses. */);
+
+    return SoftGeometry(SoftMesh(std::move(extruded_mesh),
+                                 std::move(extruded_field),
+                                 std::move(surface_mesh)));
+  } else {
+    // Volumetric Hydro (no collision mesh).
+    // Define the shape of the "inflated" hydroelastic geometry to include the
+    // margin. We inflate all faces of the box a distance "margin" along the
+    // outward normal.
+    const Box inflated_box(box.size() +
+                           Vector3<double>::Constant(2.0 * margin));
+
+    // First, create an inflated mesh.
+    auto inflated_mesh = make_unique<VolumeMesh<double>>(
+        MakeBoxVolumeMeshWithMaAndSymmetricTriangles<double>(inflated_box));
+
+    // Store an extent field.
+    auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
+        MakeBoxPressureField(inflated_box, inflated_mesh.get(), 1.0, margin));
+
+    return SoftGeometry(
+        SoftMesh(std::move(inflated_mesh), std::move(pressure)));
+  }
+ }
 
 std::optional<SoftGeometry> MakeSoftRepresentation(
     const Cylinder& cylinder, const ProximityProperties& props) {
@@ -570,70 +700,55 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
 
 std::optional<SoftGeometry> MakeSoftRepresentation(
     const Mesh& mesh_spec, const ProximityProperties& props) {
-  const double hydroelastic_modulus =
-      PositiveDouble("Mesh", "soft").Extract(props, kHydroGroup, kElastic);
-
-  std::unique_ptr<VolumeMesh<double>> mesh;
+  std::unique_ptr<TriangleSurfaceMesh<double>> surface_mesh;
   std::unique_ptr<VolumeMesh<double>> inflated_mesh;
   std::unique_ptr<VolumeMeshFieldLinear<double, double>> inflated_field;
-  std::map<int, int> split_vertices_map;
+  NonNegativeDouble non_negative_validator("Mesh", "soft");
+  const double margin =
+      non_negative_validator.Extract(props, kHydroGroup, kMargin, 0.0);
+  const double barrier =
+      non_negative_validator.Extract(props, kHydroGroup, kBarrier, 0.0);
 
-  const double margin = NonNegativeDouble("Mesh", "soft")
-                            .Extract(props, kHydroGroup, kMargin, 0.0);
+  DRAKE_DEMAND(barrier > 0);
 
   if (mesh_spec.extension() == ".vtk") {
-    // If they've explicitly provided a .vtk file, we'll treat it as it is a
-    // volume mesh. If that's not true, we'll get an error.
-    mesh = make_unique<VolumeMesh<double>>(
-        MakeVolumeMeshFromVtk<double>(mesh_spec));
+    surface_mesh = make_unique<TriangleSurfaceMesh<double>>(
+        ConvertVolumeToSurfaceMesh(MakeVolumeMeshFromVtk<double>(mesh_spec)));
   } else {
-    // Otherwise, we'll create a compliant representation of its convex hull.
-    mesh = make_unique<VolumeMesh<double>>(MakeConvexVolumeMesh<double>(
-        MakeTriangleFromPolygonMesh(mesh_spec.GetConvexHull())));
+    surface_mesh = make_unique<TriangleSurfaceMesh<double>>(
+        ReadObjToTriangleSurfaceMesh(mesh_spec.source(), mesh_spec.scale3()));
   }
 
-  inflated_mesh = make_unique<VolumeMesh<double>>(
-      MakeInflatedMesh(*mesh, margin, &split_vertices_map));
+  auto extruded_mesh = make_unique<VolumeMesh<double>>(
+      MakeExtrudedMesh(*surface_mesh, margin + barrier));
 
-  // N.B. The inflated mesh might have different topology than the original
-  // mesh. This makes calling MakeVolumeMeshPressureField() on the inflated mesh
-  // problematic. Instead, we use the original "non-inflated" mesh to compute
-  // a pressure field with the given margin value and apply that to the inflated
-  // mesh. If no vertices are duplicated, the mapping between the two meshes
-  // is a simple one-to-one correspondence. For duplicate vertices, we use the
-  // mapping provided by MakeInflatedMesh() assign the same pressure values to
-  // duplicated vertices as assigned to the original.
-
-  // Pressure field computed using the original mesh but with margin.
-  VolumeMeshFieldLinear<double, double> field =
-      MakeVolumeMeshPressureField(mesh.get(), hydroelastic_modulus, margin);
-
-  // The "inflated" field will contain pressure values at the original vertices
-  // and, if added by MakeInflatedMesh(), on split vertices.
-  const std::vector<double>& values = field.values();
-  std::vector<double> inflated_values(values.size() +
-                                      split_vertices_map.size());
-  std::copy(values.begin(), values.end(), inflated_values.begin());
-
-  // Copy values from their corresponding original vertex for split vertices.
-  for (auto& [v_split, v_original] : split_vertices_map) {
-    inflated_values[v_split] = values[v_original];
+  // There first N vertices are the vertices of the original surface mesh and
+  // all should have an indicator value of 1.0 indicating that they are on the
+  // rigid core, where N = surface_mesh->num_vertices().
+  const double surface_epsilon = -margin / barrier;
+  std::vector<double> extruded_values(extruded_mesh->num_vertices(),
+                                      surface_epsilon);
+  for (int i = 0; i < surface_mesh->num_vertices(); ++i) {
+    extruded_values[i] = 1.0;
   }
+
+  // For now assume all tetrahedra have positive volume.
 
   // Replace mesh with one that only has positive tetrahedra volumes. This
   // doesn't change the vertex count.
-  inflated_mesh =
-      make_unique<VolumeMesh<double>>(RemoveNegativeVolumes(*inflated_mesh));
+  // extruded_mesh =
+  //     make_unique<VolumeMesh<double>>(RemoveNegativeVolumes(*extruded_mesh));
 
-  DRAKE_DEMAND(ssize(inflated_values) == inflated_mesh->num_vertices());
+  // DRAKE_DEMAND(ssize(inflated_values) == extruded_mesh->num_vertices());
 
-  inflated_field = make_unique<VolumeMeshFieldLinear<double, double>>(
-      std::move(inflated_values), inflated_mesh.get(),
+  auto extruded_field = make_unique<VolumeMeshFieldLinear<double, double>>(
+      std::move(extruded_values), extruded_mesh.get(),
       MeshGradientMode::
           kOkOrThrow /* what MakeVolumeMeshPressureField() uses. */);
 
-  return SoftGeometry(
-      SoftMesh(std::move(inflated_mesh), std::move(inflated_field)));
+  return SoftGeometry(SoftMesh(std::move(extruded_mesh),
+                               std::move(extruded_field),
+                               std::move(surface_mesh)));
 }
 
 }  // namespace hydroelastic

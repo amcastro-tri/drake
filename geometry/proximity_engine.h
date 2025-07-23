@@ -316,6 +316,14 @@ class ProximityEngine {
   /* Implementation of GeometryState::HasCollisions().  */
   bool HasCollisions() const;
 
+  /* Implementation of GeometryState::IsFeasibleTrajectory().  */
+  template <typename T1 = T>
+  typename std::enable_if_t<scalar_predicate<T1>::is_bool, bool>
+  IsFeasibleTrajectory(
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_prev,
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>&
+          X_WGs_next);
+
   //@}
 
   /* The representation of every geometry that was successfully requested for

@@ -99,6 +99,8 @@ void CenicIntegrator<T>::DoInitialize() {
       this->get_system().AllocateTimeDerivatives());
   x_next_half_2_ = dynamic_pointer_cast_or_throw<DiagramContinuousState<T>>(
       this->get_system().AllocateTimeDerivatives());
+  x_prev_ = dynamic_pointer_cast_or_throw<DiagramContinuousState<T>>(
+      this->get_system().AllocateTimeDerivatives());
 }
 
 template <typename T>
@@ -106,8 +108,12 @@ bool CenicIntegrator<T>::DoStep(const T& h) {
   // TODO(vincekurtz): consider delaying this to encourage cache hits
   Context<T>& context = *this->get_mutable_context();
   ContinuousState<T>& x_next = context.get_mutable_continuous_state();
+  x_prev_->SetFrom(context.get_continuous_state());
   const Context<T>& plant_context = plant().GetMyContextFromRoot(context);
   const T t0 = context.get_time();
+
+  std::unordered_map<GeometryId, math::RigidTransform<T>> X_WGs_prev =
+      GetAllGeometryPosesInWorld();
 
   // Track whether error control rejected the last step. If so, we can reuse
   // constraints and geometry queries from the previous solve.
@@ -149,7 +155,8 @@ bool CenicIntegrator<T>::DoStep(const T& h) {
   } else {
     // Build the full model around (q₀, v₀, h).
     builder().UpdateModel(plant_context, h, actuation_feedback_opt,
-                          external_feedback_opt, &model_at_x0_);
+                          external_feedback_opt, get_solver_parameters().beta,
+                          &model_at_x0_);
   }
 
   // Solve for the full step x_{t+h}. We'll need this regardless of whether
@@ -168,6 +175,22 @@ bool CenicIntegrator<T>::DoStep(const T& h) {
   } else {
     // We're using error control, and will compare with two half-sized steps.
 
+    // Check feasibility of the full step before proceeding.
+
+    // Set the state to the result of the full step to check feasibility.
+    x_next.get_mutable_vector().SetFrom(x_next_full_->get_vector());
+    context.SetTimeAndNoteContinuousStateChange(t0 + h);
+
+    std::unordered_map<GeometryId, math::RigidTransform<T>> X_WGs_next =
+        GetAllGeometryPosesInWorld();
+
+    if (!this->IsFeasibleTrajectory(X_WGs_prev, X_WGs_next)) {
+      fmt::print("Full step at t={} with h={} rejected: infeasible.\n", t0, h);
+      x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
+      context.SetTimeAndNoteContinuousStateChange(t0);
+      return false;
+    }
+
     // First half-step to (t + h/2) uses the average of v_t and v_{t+1} as the
     // initial guess. Note that this solve starts from the same initial state as
     // the full step, so we can reuse all of the constraints, avoiding expensive
@@ -184,11 +207,24 @@ bool CenicIntegrator<T>::DoStep(const T& h) {
     x_next.get_mutable_vector().SetFrom(x_next_half_1_->get_vector());
     context.SetTimeAndNoteContinuousStateChange(t0 + 0.5 * h);
 
+    // Check the feasibility of the first half-step. N.B. X_WGs_prev are the
+    // same as those used by the full step.
+    X_WGs_next = GetAllGeometryPosesInWorld();
+
+    if (!this->IsFeasibleTrajectory(X_WGs_prev, X_WGs_next)) {
+      fmt::print("1st half step at t={} with h={} rejected: infeasible.\n", t0,
+                 0.5 * h);
+      x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
+      context.SetTimeAndNoteContinuousStateChange(t0);
+      return false;
+    }
+
     // Now we can take the second half-step. We'll use the solution of the full
     // step as our initial guess here. We can't reuse the ICF constraints, but
     // we will reuse the linearizations of any external systems, if they exist.
     builder().UpdateModel(plant_context, 0.5 * h, actuation_feedback_opt,
-                          external_feedback_opt, &model_at_xh_);
+                          external_feedback_opt, get_solver_parameters().beta,
+                          &model_at_xh_);
     v_guess = x_next_full_->get_substate(plant_subsystem_index_)
                   .get_generalized_velocity()
                   .CopyToVector();
@@ -198,6 +234,19 @@ bool CenicIntegrator<T>::DoStep(const T& h) {
     // accurate than the full step, and we have it anyway).
     x_next.get_mutable_vector().SetFrom(x_next_half_2_->get_vector());
     context.SetTimeAndNoteContinuousStateChange(t0 + h);
+
+    // Check the feasibility of the second half-step. N.B. X_WGs_prev are now
+    // the poses from the first half-step.
+    X_WGs_prev = std::move(X_WGs_next);
+    X_WGs_next = GetAllGeometryPosesInWorld();
+
+    if (!this->IsFeasibleTrajectory(X_WGs_prev, X_WGs_next)) {
+      fmt::print("2nd half step at t={} with h={} rejected: infeasible.\n",
+                 t0 + 0.5 * h, 0.5 * h);
+      x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
+      context.SetTimeAndNoteContinuousStateChange(t0);
+      return false;
+    }
 
     // Estimate the error as the difference between the full step and the
     // two half-steps.
@@ -441,6 +490,32 @@ T CenicIntegrator<T>::CalcStateChangeNorm(
   using std::isnan;
   if (isnan(x_norm)) return std::numeric_limits<T>::quiet_NaN();
   return x_norm;
+}
+
+template <typename T>
+const std::unordered_map<GeometryId, math::RigidTransform<T>>&
+CenicIntegrator<T>::GetAllGeometryPosesInWorld() const {
+  const Context<T>& context = this->get_context();
+  const MultibodyPlant<T>& plant = this->plant();
+  const Context<T>& plant_context = plant.GetMyContextFromRoot(context);
+  auto& query_object =
+      plant.get_geometry_query_input_port()
+          .template Eval<geometry::QueryObject<T>>(plant_context);
+  return query_object.GetAllPosesInWorld();
+}
+
+template <typename T>
+bool CenicIntegrator<T>::IsFeasibleTrajectory(
+    const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_prev,
+    const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_next)
+    const {
+  const Context<T>& context = this->get_context();
+  const MultibodyPlant<T>& plant = this->plant();
+  const Context<T>& plant_context = plant.GetMyContextFromRoot(context);
+  auto& query_object =
+      plant.get_geometry_query_input_port()
+          .template Eval<geometry::QueryObject<T>>(plant_context);
+  return query_object.IsFeasibleTrajectory(X_WGs_prev, X_WGs_next);
 }
 
 template <typename T>

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <limits>
+#include <ranges>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -21,6 +22,7 @@
 #include "drake/geometry/proximity/deformable_contact_internal.h"
 #include "drake/geometry/proximity/distance_to_point_callback.h"
 #include "drake/geometry/proximity/distance_to_shape_callback.h"
+#include "drake/geometry/proximity/feasibility_calculator.h"
 #include "drake/geometry/proximity/find_collision_candidates_callback.h"
 #include "drake/geometry/proximity/hydroelastic_calculator.h"
 #include "drake/geometry/proximity/hydroelastic_internal.h"
@@ -820,6 +822,102 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
   }
 
   template <typename T1 = T>
+  typename std::enable_if_t<scalar_predicate<T1>::is_bool, bool>
+  IsFeasibleTrajectory(
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_prev,
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>&
+          X_WGs_next) {
+
+    auto key_view =
+        std::views::keys(hydroelastic_geometries().soft_geometries());
+    std::vector<GeometryId> soft_ids{key_view.begin(), key_view.end()};
+    std::vector<GeometryId> surface_soft_ids;
+
+    const int num_soft = ssize(soft_ids);
+    // Set all of the moving frames.
+    for (int i = 0; i < num_soft; ++i) {
+      hydroelastic::SoftGeometry& soft_geometry =
+          hydroelastic_geometries_.mutable_soft_geometry(soft_ids[i]);
+
+      if (soft_geometry.soft_mesh().has_collision_mesh()) {
+        const math::RigidTransform<double>& X_WG_prev =
+            convert_to_double(X_WGs_prev.at(soft_ids[i]));
+        const math::RigidTransform<double>& X_WG_next =
+            convert_to_double(X_WGs_next.at(soft_ids[i]));
+
+        soft_geometry.mutable_soft_mesh()
+            .mutable_collision_mesh_vertex_bvh()
+            .SetMovingFrames(X_WG_prev, X_WG_next);
+        soft_geometry.mutable_soft_mesh()
+            .mutable_collision_mesh_edge_bvh()
+            .SetMovingFrames(X_WG_prev, X_WG_next);
+        soft_geometry.mutable_soft_mesh()
+            .mutable_collision_mesh_face_bvh()
+            .SetMovingFrames(X_WG_prev, X_WG_next);
+        surface_soft_ids.push_back(soft_ids[i]);
+      }
+    }
+
+    const int num_surface_soft = ssize(surface_soft_ids);
+
+    if (num_surface_soft == 0) {
+      return true;
+    }
+
+    // Leaves of the candidate level broadphase BVH are just the root nodes of
+    // the individual per-geometry dynamic BVH. The root nodes moving query bv's
+    // are guaranteed to be cached because SetMovingFrames() was called above.
+    AabbCalculator broadphase_calculator = [this, &surface_soft_ids](int i) -> Aabb {
+      return this->hydroelastic_geometries()
+          .soft_geometry(surface_soft_ids[i])
+          .soft_mesh()
+          .collision_mesh_vertex_bvh()
+          .root_node()
+          .moving_query_bv();
+    };
+    // If the bvh has never been built, build it in the current configuration,
+    // otherwise refit.
+    if (feasibility_bvh_.num_leaves() == 0) {
+      feasibility_bvh_.Build(num_surface_soft, broadphase_calculator);
+    } else {
+      DRAKE_ASSERT(feasibility_bvh_.num_leaves() == num_surface_soft);
+      feasibility_bvh_.Refit(broadphase_calculator);
+    }
+
+    // Filter and sort collision candidates.
+    std::vector<std::pair<int, int>> geometry_index_pairs =
+        feasibility_bvh_.GetCollisionCandidates(feasibility_bvh_);
+    std::erase_if(geometry_index_pairs,
+                  [this, &surface_soft_ids](const std::pair<int, int>& pair) {
+                    return !this->collision_filter_.CanCollideWith(
+                        surface_soft_ids[pair.first], surface_soft_ids[pair.second]);
+                  });
+
+    // Transform the pairs of indices into sorted pairs of GeometryId.
+    std::vector<SortedPair<GeometryId>> geometry_pairs(
+        geometry_index_pairs.size());
+    std::transform(
+        geometry_index_pairs.begin(), geometry_index_pairs.end(),
+        geometry_pairs.begin(), [&surface_soft_ids](const std::pair<int, int>& pair) {
+          return SortedPair(surface_soft_ids[pair.first], surface_soft_ids[pair.second]);
+        });
+    // Sort the sorted pairs of GeometryIds.
+    std::sort(geometry_pairs.begin(), geometry_pairs.end());
+
+
+    hydroelastic::FeasibilityCalculator calculator(&hydroelastic_geometries_,
+                                                   &X_WGs_prev, &X_WGs_next);
+
+    for (const auto& [id_A, id_B] : geometry_pairs) {
+      if (!calculator.IsFeasibleTrajectory(id_A, id_B)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  template <typename T1 = T>
   typename std::enable_if_t<scalar_predicate<T1>::is_bool,
                             std::vector<ContactSurface<T>>>
   ComputeContactSurfaces(
@@ -847,6 +945,8 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     }
     CullFlatten(&surface_ptrs, &surfaces);
     DRAKE_ASSERT(IsSortedByOrder(surfaces));
+
+
     return surfaces;
   }
 
@@ -1293,6 +1393,9 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
 
   // Data for ComputeSignedDistanceToPoint from meshes (Mesh and Convex).
   std::unordered_map<GeometryId, MeshDistanceBoundary> mesh_sdf_data_{};
+
+  // BVH of AABBs for broad phase collision detection for feasibility checks.
+  DynamicBvh feasibility_bvh_;
 };
 
 template <typename T>
@@ -1476,6 +1579,16 @@ bool ProximityEngine<T>::HasCollisions() const {
 }
 
 template <typename T>
+template <typename T1>
+typename std::enable_if_t<scalar_predicate<T1>::is_bool, bool>
+ProximityEngine<T>::IsFeasibleTrajectory(
+    const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_prev,
+    const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_next)
+    {
+  return impl_->IsFeasibleTrajectory(X_WGs_prev, X_WGs_next);
+}
+
+template <typename T>
 std::vector<PenetrationAsPointPair<T>>
 ProximityEngine<T>::ComputePointPairPenetration(
     const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs)
@@ -1570,7 +1683,8 @@ DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
 
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     (&ProximityEngine<T>::template ComputeContactSurfaces<T>,
-     &ProximityEngine<T>::template ComputeContactSurfacesWithFallback<T>));
+     &ProximityEngine<T>::template ComputeContactSurfacesWithFallback<T>,
+     &ProximityEngine<T>::template IsFeasibleTrajectory<T>));
 
 template void ProximityEngine<double>::ComputeDeformableContact<double>(
     DeformableContact<double>*) const;

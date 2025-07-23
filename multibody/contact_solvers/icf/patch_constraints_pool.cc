@@ -98,6 +98,206 @@ Matrix6<T> ShiftFromTheLeft(const Matrix6<T>& G, const Vector3<T>& p) {
   return R;
 }
 
+// Barrier model functions
+
+template <typename T>
+void RegularizedBarrierModel<T>::Resize(int capacity) {
+  e0_.resize(capacity);
+  delta_.resize(capacity);
+  d_.resize(capacity);
+  A0_E_star_.resize(capacity);
+  effective_mass_.resize(capacity);
+  v_delta_.resize(capacity);
+  v_hat_.resize(capacity);
+  N_v_hat_.resize(capacity);
+  e_nr_.resize(capacity);
+  n_e_nr_.resize(capacity);
+  N_bias_.resize(capacity);
+}
+
+template <typename T>
+void RegularizedBarrierModel<T>::SetPair(const int pk, const T& dt, const T& e0, const T& delta,
+                                         const T& d, const T& A0_E_star,
+                                         const T& effective_mass) {
+  e0_[pk] = e0;
+  delta_[pk] = delta;
+  d_[pk] = d;
+  A0_E_star_[pk] = A0_E_star;
+  effective_mass_[pk] = effective_mass;
+
+  this->UpdateTimeStep(pk, dt);
+}
+
+template <typename T>
+void RegularizedBarrierModel<T>::UpdateTimeStep(const int pk, const T& dt) {
+  using std::max;
+  using std::min;
+  using std::sqrt;
+
+  v_delta_[pk] = 2 * delta_[pk] / dt;
+  const T vx = v_delta_[pk] * e0_[pk];
+  const T vd = 1.0 / (d_[pk] + 1.0e-20);
+
+  const T k_lin = A0_E_star_[pk] / (2 * delta_[pk]);
+  const T k_nr = effective_mass_[pk] / (dt * dt);
+  const T r = k_lin / k_nr;
+
+  e_nr_[pk] = min(max(0.0, 0.5 * (1.0 - sqrt(r))), 0.5 - 1e-8);
+
+  n_e_nr_[pk] = n_e(pk, dt, e_nr_[pk]);
+  const T v_nr = (e0_[pk] - e_nr_[pk]) * v_delta_[pk];
+  N_bias_[pk] = calc_N_e(pk, dt, v_nr) - calc_N_linear(pk, dt, v_nr);
+  // Must be calculated *after* e_nr is calculated.
+  v_hat_[pk] = min(vx, vd);
+  N_v_hat_[pk] = calc_N(pk, dt, v_hat_[pk]);
+
+  using std::isnan;
+  if (isnan(n_e_nr_[pk]) || isnan(N_bias_[pk]) || isnan(N_v_hat_[pk])) {
+    fmt::print("k_lin: {}\n", k_lin);
+    fmt::print("k_nr: {}\n", k_nr);
+    fmt::print("r: {}\n", r);
+    fmt::print("sqrt(r): {}\n", sqrt(r));
+    fmt::print("delta: {}\n\n",   delta_[pk]);
+    fmt::print("dt: {}\n", dt);
+    fmt::print("e0: {}\n", e0_[pk]);
+    fmt::print("d: {}\n", d_[pk]);
+    fmt::print("A0*E*: {}\n", A0_E_star_[pk]);
+    fmt::print("m/epsilon: {}\n", effective_mass_[pk]);
+    fmt::print("v_delta: {}\n", v_delta_[pk]);
+    fmt::print("e_nr: {}\n", e_nr_[pk]);
+    fmt::print("n(e_nr): {}\n", n_e_nr_[pk]);
+    fmt::print("v_nr: {}\n", v_nr);
+    fmt::print("N_bias: {}\n", N_bias_[pk]);
+    fmt::print("vhat: {}\n", v_hat_[pk]);
+    fmt::print("N(vhat): {}\n", N_v_hat_[pk]);
+    throw std::logic_error("asdf");
+  }
+}
+
+template <typename T>
+T RegularizedBarrierModel<T>::dn_e_dv(const int pk, const T& dt, const T& e) const {
+  return -dt * A0_E_star_[pk] / (1 - 2 * e) / (1 - 2 * e) / v_delta_[pk];
+}
+
+template <typename T>
+T RegularizedBarrierModel<T>::n_e(const int pk, const T& dt, const T& e) const {
+  return dt * A0_E_star_[pk] * (e / (1 - 2 * e));
+}
+
+template <typename T>
+T RegularizedBarrierModel<T>::dn_e_dv_tilde(const int pk, const T& dt, const T& e) const {
+  if (e >= e_nr_[pk]) {
+    return -effective_mass_[pk];
+  }
+  return dn_e_dv(pk, dt, e);
+}
+
+template <typename T>
+T RegularizedBarrierModel<T>::n_e_tilde(const int pk, const T& dt, const T& e) const {
+  if (e >= e_nr_[pk]) {
+    return v_delta_[pk] * effective_mass_[pk] * (e - e_nr_[pk]) + n_e_nr_[pk];
+  }
+  return n_e(pk, dt, e);
+}
+
+template <typename T>
+T RegularizedBarrierModel<T>::calc_dn(const int pk, const T& dt, const T& v) const {
+  const T e = e0_[pk] - v / v_delta_[pk];
+  return dn_e_dv_tilde(pk, dt, e) * (1 - d_[pk] * v) - d_[pk] * n_e_tilde(pk, dt, e);
+}
+
+template <typename T>
+T RegularizedBarrierModel<T>::calc_n(const int pk, const T& dt, const T& v) const {
+  const T e = e0_[pk] - v / v_delta_[pk];
+  return n_e_tilde(pk, dt, e) * (1 - d_[pk] * v);
+}
+
+template <typename T>
+T RegularizedBarrierModel<T>::calc_N_linear(const int pk, const T& /* dt */,
+                                            const T& v) const {
+  // clang-format off
+      // Integrate the function wrt v:
+      // n = [v_delta * effective_mass * (e - e_nr) + n_e_nr]⋅(1 - d⋅v)
+      //   = [v_delta * effective_mass * (e0 - e_nr - v / v_delta) + n_e_nr]⋅(1 - d⋅v)
+      //   = (a - b⋅v)⋅(1 - d⋅v)
+      //    = a + (-b - a⋅d)⋅v + (b⋅d)⋅v²
+      //
+      // Where:
+      //   a = v_delta * effective_mass * (e0 - e_pnr) + n_e_nr
+      //   b = effective_mass
+      //
+      // Then:
+      // N = a⋅v + (-b - a⋅d)/2⋅v² + (b⋅d)/3⋅v³
+  // clang-format on
+  const T a =
+      v_delta_[pk] * effective_mass_[pk] * (e0_[pk] - e_nr_[pk]) + n_e_nr_[pk];
+  const T b = effective_mass_[pk];
+  const T& d = d_[pk];
+  return ((0.5 * (-b - a * d) + (b * d / 3.0) * v) * v + a) * v;
+}
+
+template <typename T>
+T RegularizedBarrierModel<T>::calc_N_e(const int pk, const T& dt, const T& v) const {
+  using std::log;
+  // Integrate nₑ⋅(1 - d⋅v) wrt v
+
+  // Wolfram alpha says that for:
+  //   n(v; ε₀) = [C⋅(a + b⋅v)/(1 - a - b⋅v)]⋅(1 - d⋅v)
+  // Where:
+  //   C = δt⋅A₀⋅E*
+  //   a = ε₀
+  //   b = -δt/(2⋅delta) = -1/v_delta
+  // The antiderivative is:
+  //   N⁺(v; ε₀) = C⋅(b⋅v⋅(b⋅(d⋅v - 2) + 2⋅d) - 2⋅((a-1)⋅d + b)⋅log(1 - a -
+  //   b⋅v) / (2⋅b⋅b)
+  const T C = dt * A0_E_star_[pk];
+  const T a = e0_[pk];
+  const T b = -1 / v_delta_[pk];
+  const T& d = d_[pk];
+  // return C *
+  //        (b * v * (b * (d * v - 2) + 2 * d) -
+  //         2 * ((a - 1) * d + b) * log(1 - a - b * v)) /
+  //        (2 * b * b);
+
+  // Wolfram alpha says that:
+  //   Integral of C (a + b*v)*(1 - d*v)/(1 - 2*(a + b*v))
+  // gives:
+  //   C (2 b x (d + b (-2 + d x)) + (-2 b + d - 2 a d) Log[1 - 2 a - 2 b
+  //   x])/(8 b^2)
+  return C *
+         (2 * b * v * (d + b * (-2 + d * v)) +
+          (-2 * b + d - 2 * a * d) * log(1 - 2 * a - 2 * b * v)) /
+         (8 * b * b);
+}
+
+template <typename T>
+T RegularizedBarrierModel<T>::calc_N(const int pk, const T& dt, const T& v) const {
+  using std::log;
+  const T e = e0_[pk] - v / v_delta_[pk];
+  if (e >= e_nr_[pk]) {
+    return calc_N_linear(pk, dt, v) + N_bias_[pk];
+  } else {
+    return calc_N_e(pk, dt, v);
+  }
+}
+
+template <typename T>
+void RegularizedBarrierModel<T>::CalcLogBarrierQuantities(const int pk,
+                                                          const T& dt,    
+                                                          const T& v, T* N,
+                                                          T* n,
+                                                          T* dn_dvn) const {
+  if (v >= v_hat_[pk]) {
+    *dn_dvn = 0;
+    *n = 0;
+    *N = N_v_hat_[pk];
+  } else {
+    *dn_dvn = calc_dn(pk, dt, v);
+    *n = calc_n(pk, dt, v);
+    *N = calc_N(pk, dt, v);
+  }
+}
+
 /* Computes the normal impulse and derivative associated with an individual
 contact using a discrete Hunt-Crossley model. The normal impulse is
 
@@ -219,13 +419,14 @@ void PatchConstraintsPool<T>::Resize(std::span<const int> num_pairs_per_patch) {
   static_friction_.resize(num_patches);
   dynamic_friction_.resize(num_patches);
   Rt_.resize(num_patches);
+  beta_.resize(num_patches);
 
   // Per-pair data.
   p_BC_W_.Resize(num_pairs, 3, 1);
   normal_W_.Resize(num_pairs, 3, 1);
   stiffness_.resize(num_pairs);
   fn0_.resize(num_pairs);
-  n0_.resize(num_pairs);
+  vn0_.resize(num_pairs);
   net_friction_.resize(num_pairs);
 
   // Start indexes for each patch.
@@ -235,6 +436,16 @@ void PatchConstraintsPool<T>::Resize(std::span<const int> num_pairs_per_patch) {
     pair_data_start_[i] = previous_total;
     previous_total += num_pairs_[i];
   }
+
+  // Resize barrier model.
+  barrier_model_.Resize(num_pairs);
+}
+
+template <typename T>
+void PatchConstraintsPool<T>::UpdateTimeStep(const T& dt) {
+  for (int pk = 0; pk < this->total_num_pairs(); ++pk) {
+    barrier_model_.UpdateTimeStep(pk, dt);
+  }
 }
 
 template <typename T>
@@ -242,7 +453,8 @@ void PatchConstraintsPool<T>::SetPatch(int patch_index, int bodyA, int bodyB,
                                        const T& dissipation,
                                        const T& static_friction,
                                        const T& dynamic_friction,
-                                       const Vector3<T>& p_AB_W) {
+                                       const Vector3<T>& p_AB_W,
+                                       const T& beta) {
   DRAKE_ASSERT(patch_index >= 0 && patch_index < num_patches());
   DRAKE_DEMAND(bodyA != bodyB);               // Same body never makes sense.
   DRAKE_DEMAND(!model().is_anchored(bodyB));  // B is never anchored.
@@ -253,6 +465,7 @@ void PatchConstraintsPool<T>::SetPatch(int patch_index, int bodyA, int bodyB,
   static_friction_[patch_index] = static_friction;
   dynamic_friction_[patch_index] = dynamic_friction;
   p_AB_W_[patch_index] = p_AB_W;
+  beta_[patch_index] = beta;
 
   const int num_cliques =
       (model().is_anchored(bodyA) || model().is_anchored(bodyB)) ? 1 : 2;
@@ -307,15 +520,12 @@ void PatchConstraintsPool<T>::SetPair(const int patch_index,
     v_AcBc_W -= (v_WA + w_WA.cross(p_AC_W));
   }
 
-  // N.B. the normal component is n₀ = (δt fₙ₀))₊(1−dvₙ₀)₊, where
+  // N.B. the normal component is n₀ = (δt fₙ₀)₊(1−dvₙ₀)₊, where
   // (·)₊ = max(0, ·). However, model.time_step() may change between when the
   // constraint is set and when the problem is solved. Thus we only store
-  // n₀ = (fₙ₀)₊(1−dvₙ₀)₊ here and scale by δt later in CalcData.
-  const T& d = dissipation_[patch_index];
+  // vₙ₀ here and compute n₀ later in CalcData.
   const T vn0 = v_AcBc_W.dot(normal_W);
-  const T damping = max(0.0, 1.0 - d * vn0);
-  const T n0 = max(0.0, fn0) * damping;
-  n0_[i] = n0;
+  vn0_[i] = vn0;
 
   // Coefficient of friction is determined based on previous velocity. This
   // allows us to consider a Streibeck-like curve while maintaining a convex
@@ -332,6 +542,87 @@ void PatchConstraintsPool<T>::SetPair(const int patch_index,
   const T mu =
       (mu_s - mu_d) * 0.5 * (1 - (sigmoid(s - 10) / sigmoid(10))) + mu_d;
   net_friction_[i] = mu;
+}
+
+template <typename T>
+void PatchConstraintsPool<T>::SetPairLogBarrier(const int patch_index,
+                                                const int pair_index,
+                                                const Vector3<T>& p_BoC_W,
+                                                const Vector3<T>& normal_W,
+                                                const T& A0_E_star, const T& e0,
+                                                const T& delta) {
+  using std::max;
+  DRAKE_ASSERT(patch_index >= 0 && patch_index < num_patches());
+  DRAKE_ASSERT(pair_index >= 0 && pair_index < num_pairs_[patch_index]);
+  const int i = patch_pair_index(patch_index, pair_index);
+
+  p_BC_W_[i] = p_BoC_W;
+  normal_W_[i] = normal_W;
+  fn0_[i] = std::numeric_limits<T>::quiet_NaN();  // Not used in log barrier.
+  stiffness_[i] = std::numeric_limits<T>::quiet_NaN();  // Not used in log barrier.
+
+  // Pre-computed quantities.
+  const int num_cliques = num_cliques_[patch_index];
+
+  // First clique.
+  const Vector6<T>& V_WB = model().V_WB0(bodies_[patch_index].first);
+  const auto w_WB = V_WB.template head<3>();
+  const auto v_WB = V_WB.template tail<3>();
+  Vector3<T> v_AcBc_W = v_WB + w_WB.cross(p_BoC_W);
+
+  // Second clique.
+  if (num_cliques == 2) {
+    const Vector6<T>& V_WA = model().V_WB0(bodies_[patch_index].second);
+    const Vector3<T> p_AC_W = p_AB_W_[patch_index] + p_BoC_W;
+    const auto w_WA = V_WA.template head<3>();
+    const auto v_WA = V_WA.template tail<3>();
+    v_AcBc_W -= (v_WA + w_WA.cross(p_AC_W));
+  }
+
+  // N.B. the normal component is n₀ = (δt fₙ₀)₊(1−dvₙ₀)₊, where
+  // (·)₊ = max(0, ·). However, model.time_step() may change between when the
+  // constraint is set and when the problem is solved. Thus we only store
+  // vₙ₀ here and compute n₀ later in CalcData.
+  const T vn0 = v_AcBc_W.dot(normal_W);
+  vn0_[i] = vn0;
+
+  // Coefficient of friction is determined based on previous velocity. This
+  // allows us to consider a Streibeck-like curve while maintaining a convex
+  // formulation.
+  const T vt0 = (v_AcBc_W - vn0 * normal_W).norm();
+  const T s = vt0 / stiction_tolerance_;
+  const T& mu_s = static_friction_[patch_index];
+  const T& mu_d = dynamic_friction_[patch_index];
+
+  auto sigmoid = [](const T& x) -> T {
+    return x / sqrt(1 + x * x);
+  };
+
+  const T mu =
+      (mu_s - mu_d) * 0.5 * (1 - (sigmoid(s - 10) / sigmoid(10))) + mu_d;
+  net_friction_[i] = mu;
+
+  // Compute per-patch regularization of friction. We use a "spherical body
+  // approximation" for the estimation of the Delassus operator. A sphere has
+  // gyration radius of g = 5/2 R (with R the radius). A contact will happen
+  // at distance R from the CoM.
+  // Thus the Delassus operator will be:
+  //   W = 1/m⋅[I₃   0
+  //           [ 0   R²/g²]
+  // It's RMS norm will be w = sqrt(7)/m ≈ 2.65/m.
+  T w = 2.65 / model().body_mass(bodies_[patch_index].first);
+  if (num_cliques == 2) {
+    w += 2.65 / model().body_mass(bodies_[patch_index].second);
+  }
+
+  const T& d = dissipation_[patch_index];
+
+  // Effective-mass m / ε where ε = β^2 / 4 π^2
+  constexpr double pi = std::numbers::pi;
+  const T effective_mass =
+      (4.0 * pi * pi) / (w * beta_[patch_index] * beta_[patch_index]);
+  barrier_model_.SetPair(i, model().time_step(), e0, delta, d, A0_E_star,
+                         effective_mass);
 }
 
 template <typename T>
@@ -540,8 +831,11 @@ T PatchConstraintsPool<T>::CalcLaggedHuntCrossleyModel(
   const T& mu = net_friction_[pk];
   const T& d = dissipation_[p];
   const T& stiffness = stiffness_[pk];
-  const T& n0 = n0_[pk] * dt;
+
   const T& fe0 = fn0_[pk];
+  const T& vn0 = vn0_[pk];
+  const T damping = max(0.0, 1.0 - d * vn0);
+  const T n0 = dt * max(0.0, fe0) * damping;
 
   // Regularization for the stiction tolerance
   const T sap_stiction_tolerance = mu * Rt_[p] * n0;
@@ -576,6 +870,82 @@ T PatchConstraintsPool<T>::CalcLaggedHuntCrossleyModel(
 
   // Constraint Hessian, including both friction and normal force contributions.
   *G = mu * n0 / (vt_soft + vs) * M - dgn_dvn * Pn;
+
+  return cost;
+}
+
+template <typename T>
+T PatchConstraintsPool<T>::CalcLaggedLogBarrierModel(
+    int p, int k, const Vector3<T>& v_AcBc_W, Vector3<T>* gamma_Bc_W,
+    Matrix3<T>* G) const {
+  using std::max;
+  const int pk = patch_pair_index(p, k);
+  const Vector3<T>& normal_W = normal_W_[pk];
+  const T& dt = model().time_step();
+
+  // Data.
+  const T& mu = net_friction_[pk];
+  const T& d = dissipation_[p];
+  const T& e0 = barrier_model_.e0(pk);
+  const T& vn0 = vn0_[pk];
+
+  // Calculate n0.
+  const T n0 =
+      barrier_model_.n_e_tilde(pk, dt, max(e0, 0.0)) * max(0.0, 1.0 - d * vn0);
+
+  // Regularization for the stiction tolerance
+  const T sap_stiction_tolerance = mu * Rt_[p] * n0;
+  const T vs = max(stiction_tolerance_, sap_stiction_tolerance);
+
+  // Normal velocity. Positive when bodies move apart.
+  const T vn = v_AcBc_W.dot(normal_W);
+  const Vector3<T> vt_AcBc_W = v_AcBc_W - vn * normal_W;
+  const T vt_soft = SoftNorm(vt_AcBc_W, vs);
+  const Vector3<T> t_hat_W = vt_AcBc_W / (vt_soft + vs);
+
+  T N, n, dn_dvn;
+  barrier_model_.CalcLogBarrierQuantities(pk, dt, vn, &N, &n, &dn_dvn);
+
+  using std::isnan;
+  if (isnan(N) || isnan(n) || isnan(dn_dvn)) {
+    fmt::print(
+        "pk = {}, dt = {}, vn = {}, e0 = {}, n0 = {}, N = {}, n = {}, dn_dvn = "
+        "{}\n",
+        pk, dt, vn, e0, n0, N, n, dn_dvn);
+    fmt::print("barrier_model\n");
+    fmt::print("e0: {}\n", barrier_model_.e0(pk));
+    fmt::print("delta: {}\n", barrier_model_.delta(pk));
+    fmt::print("dissipation: {}\n", barrier_model_.d(pk));
+    fmt::print("A0_E_star: {}\n", barrier_model_.A0_E_star(pk));
+    fmt::print("effective_mass: {}\n", barrier_model_.effective_mass(pk));
+    fmt::print("v_delta: {}\n", barrier_model_.v_delta(pk));
+    fmt::print("v_hat: {}\n", barrier_model_.v_hat(pk));
+    fmt::print("N_v_hat: {}\n", barrier_model_.N_v_hat(pk));
+    fmt::print("e_nr: {}\n", barrier_model_.e_nr(pk));
+    fmt::print("n_e_nr: {}\n", barrier_model_.n_e_nr(pk));
+    fmt::print("N_bias: {}\n", barrier_model_.N_bias(pk));
+    throw std::runtime_error(
+        "PatchConstraintsPool::CalcLaggedLogBarrierModel(): NaN detected in "
+        "barrier model quantities.");
+  }
+
+  // Cost
+  const T cost = mu * vt_soft * n0 - N;
+
+  // Impulse
+  *gamma_Bc_W = -mu * t_hat_W * n0 + n * normal_W;
+
+  // Hessian
+  // Pn is SPD projection matrix with eigenvalues {1, 0, 0}.
+  const Matrix3<T> Pn = normal_W * normal_W.transpose();
+  // Pt is SPD with eigenvalues {‖t̂‖², 0, 0}. Since ‖t̂‖² < 1, Pt is not a
+  // projection matrix (not important though, just a remark).
+  const Matrix3<T> Pt = t_hat_W * t_hat_W.transpose();
+  // M = Pperp(t) * Pperp(n) is SPD with eigenvalues {1 - ‖t̂‖², 0, 1}, all
+  // positive since ‖t̂‖ < 1.
+  const Matrix3<T> M = Matrix3<T>::Identity() - Pt - Pn;
+
+  *G = mu * n0 / (vt_soft + vs) * M - dn_dvn * Pn;
 
   return cost;
 }
@@ -676,8 +1046,10 @@ void PatchConstraintsPool<T>::CalcPatchQuantities(
 
       Vector3<T> gamma_Bc_W;
       Matrix3<T> Gk;
+      // For now just hard code to Log Barrier patches. Later add a parameter to
+      // the model to switch between hydro and log-barrier.
       cost_pool->at(p) +=
-          CalcLaggedHuntCrossleyModel(p, k, v_AcBc_W, &gamma_Bc_W, &Gk);
+          CalcLaggedLogBarrierModel(p, k, v_AcBc_W, &gamma_Bc_W, &Gk);
 
       // Shift from Ck to B and accumulate.
       const Vector3<T>& p_BC_W = p_BC_W_[pk];

@@ -37,7 +37,8 @@ PYBIND11_MODULE(cenic, m) {
         .def_readwrite("ls_tolerance", &IcfSolverParameters::ls_tolerance)
         .def_readwrite("alpha_max", &IcfSolverParameters::alpha_max)
         .def_readwrite(
-            "print_solver_stats", &IcfSolverParameters::print_solver_stats);
+            "print_solver_stats", &IcfSolverParameters::print_solver_stats)
+        .def_readwrite("beta", &IcfSolverParameters::beta);
   }
 
   auto bind_nonsymbolic_scalar_types = [&m](auto dummy) {

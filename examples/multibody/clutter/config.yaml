@@ -4,7 +4,7 @@ config:
   # Config for `class Simulator`.
   simulator_config:
     integration_scheme: "cenic"
-    accuracy: 1e-3
+    accuracy: 1e-1
     max_step_size: 0.1
     use_error_control: true
     publish_every_time_step: true
@@ -17,7 +17,7 @@ config:
     # contact forces are displayed.
     time_step: 0.0
     # Use point contact. (Alternatively, you can use "hydroelastic".)
-    contact_model: "point"
+    contact_model: "hydroelastic"
     # Stiction tolerance [m/s].
     stiction_tolerance: 1.0e-4
     # Discrete contact solver. Options are: "tamsi", "sap", "lagged", "similar".
@@ -32,7 +32,7 @@ config:
       # Material stiffness [Pa].
       hydroelastic_modulus: 1.0e7
       # Resolution hint for the spheres [m].
-      resolution_hint: 0.02
+      resolution_hint: 0.01
       # Friction [unitless].
       dynamic_friction: 0.5
       static_friction: 0.5
@@ -42,13 +42,17 @@ config:
       relaxation_time: 0.01
       # Material stiffness [N/m].
       point_stiffness: 1.0e5
+      # LogBarrier margin [m].
+      margin: 1e-3
+      # LogBarrier barrier [m].
+      barrier: 1e-4
   # Adds visualization; to disable it, delete this entire stanza.
   visualization_config:
     publish_period: .inf
     # Whether to visualize forces (true) or not (false).
     publish_contacts: false
     # Whether to visualize collision geometry (true) or not (false).
-    publish_proximity: false
+    publish_proximity: true
   # Config for `class IcfSolver`. Only used when integration_scheme is "cenic".
   icf_solver_config:
     # Main solver tolerance in fixed-step mode; minimum scaled tolerance with
@@ -66,23 +70,25 @@ config:
     alpha_max: 1.0
     # Whether to print statistics to the console.
     print_solver_stats: false
+    # ICF regularization parameter.
+    beta: 0.1
   clutter_config:
     # Physical parameters.
     # - The density of all objects, in kg/m³.
     density: 1000.0
     # Contact geometry parameters.
     # - Emulate multicontact by adding spheres to the faces of box geometries.
-    emulate_box_multicontact: true
+    emulate_box_multicontact: false
     # - Multi-contact emulation. We place num_sphere x num_spheres_per_face on
     #   each box face, when emulate_box_multicontact = true.
     num_spheres_per_face: 3
     # - Enable box vs. box contact.
-    enable_box_box_collision: false
+    enable_box_box_collision: true
     # - Adds collision points at the corners of each box.
     add_box_corners: false
     # Scenario parameters.
     # - Number of piles (1-4).
-    num_piles: 4 
+    num_piles: 1
     # - Number of object per pile.
     objects_per_pile: 5
     # - Initial distance between objects in the pile.

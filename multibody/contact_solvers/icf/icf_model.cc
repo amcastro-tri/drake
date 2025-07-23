@@ -307,6 +307,9 @@ void IcfModel<T>::UpdateTimeStep(const T& time_step) {
   r_ = Av0_ - time_step * k0();
 
   params_->time_step = time_step;
+
+  // Update time step dependent quantities in the patch constraints.
+  patch_constraints_pool_.UpdateTimeStep(time_step);
 }
 
 template <typename T>

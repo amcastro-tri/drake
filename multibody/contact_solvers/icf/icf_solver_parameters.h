@@ -23,6 +23,7 @@ struct IcfSolverParameters {
     a->Visit(DRAKE_NVP(ls_tolerance));
     a->Visit(DRAKE_NVP(alpha_max));
     a->Visit(DRAKE_NVP(print_solver_stats));
+    a->Visit(DRAKE_NVP(beta));
   }
 
   /** Outer solver iteration limit */
@@ -65,6 +66,9 @@ struct IcfSolverParameters {
 
   /** Whether to print stats to the console. */
   bool print_solver_stats{false};
+
+  /** LogBarrier beta parameter. */
+  double beta{0.1};
 };
 
 }  // namespace icf

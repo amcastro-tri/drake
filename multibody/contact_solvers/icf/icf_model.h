@@ -63,6 +63,8 @@ struct IcfParameters {
 
   // Starting index in the velocity vector for each clique, size nc + 1.
   std::vector<int> clique_start;
+
+  T beta{0.1};  // LogBarrier beta parameter.
 };
 
 /* This class defines a convex ICF problem,

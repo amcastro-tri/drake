@@ -10,9 +10,11 @@
 
 #include "drake/common/copyable_unique_ptr.h"
 #include "drake/common/drake_assert.h"
+#include "drake/common/eigen_types.h"
 #include "drake/geometry/geometry_ids.h"
 #include "drake/geometry/geometry_roles.h"
 #include "drake/geometry/proximity/bvh.h"
+#include "drake/geometry/proximity/dynamic_bvh.h"
 #include "drake/geometry/proximity/triangle_surface_mesh.h"
 #include "drake/geometry/proximity/volume_mesh_field.h"
 #include "drake/geometry/proximity/volume_mesh_topology.h"
@@ -39,8 +41,10 @@ class SoftMesh {
  public:
   SoftMesh() = default;
 
-  SoftMesh(std::unique_ptr<VolumeMesh<double>> mesh,
-           std::unique_ptr<VolumeMeshFieldLinear<double, double>> pressure);
+  SoftMesh(
+      std::unique_ptr<VolumeMesh<double>> mesh,
+      std::unique_ptr<VolumeMeshFieldLinear<double, double>> pressure,
+      std::unique_ptr<TriangleSurfaceMesh<double>> collision_mesh = nullptr);
 
   SoftMesh(const SoftMesh& s) { *this = s; }
   SoftMesh& operator=(const SoftMesh& s);
@@ -88,6 +92,45 @@ class SoftMesh {
     return *mesh_topology_;
   }
 
+  /* Returns whether this SoftMesh has a valid collision mesh. */
+  bool has_collision_mesh() const { return collision_mesh_ != nullptr; }
+
+  /* The collision mesh associated with this SoftMesh. */
+  const TriangleSurfaceMesh<double>& collision_mesh() const {
+    DRAKE_DEMAND(collision_mesh_ != nullptr);
+    return *collision_mesh_;
+  }
+
+  /* A dynamic BVH of the vertices of the mesh provided by `collision_mesh()` */
+  const DynamicBvh& collision_mesh_vertex_bvh() const {
+    return *collision_mesh_vertex_bvh_;
+  }
+
+  /* Mutable version of `collision_mesh_vertex_bvh()` */
+  DynamicBvh& mutable_collision_mesh_vertex_bvh() {
+    return *collision_mesh_vertex_bvh_;
+  }
+
+  /* A dynamic BVH of the edges of the mesh provided by `collision_mesh()` */
+  const DynamicBvh& collision_mesh_edge_bvh() const {
+    return *collision_mesh_edge_bvh_;
+  }
+
+  /* Mutable version of `collision_mesh_edge_bvh()` */
+  DynamicBvh& mutable_collision_mesh_edge_bvh() {
+    return *collision_mesh_edge_bvh_;
+  }
+
+  /* A dynamic BVH of the faces of the mesh provided by `collision_mesh()` */
+  const DynamicBvh& collision_mesh_face_bvh() const {
+    return *collision_mesh_face_bvh_;
+  }
+
+  /* Mutable version of `collision_mesh_face_bvh()` */
+  DynamicBvh& mutable_collision_mesh_face_bvh() {
+    return *collision_mesh_face_bvh_;
+  }
+
  private:
   // TODO(SeanCurtis-TRI): Determine if there is a need for these to all be
   // unique_ptr and remove the indirection if not necessary.
@@ -98,6 +141,10 @@ class SoftMesh {
   std::unique_ptr<Bvh<Obb, TriangleSurfaceMesh<double>>> surface_mesh_bvh_;
   std::unique_ptr<VolumeMeshTopology> mesh_topology_;
   std::unique_ptr<std::vector<TetFace>> tri_to_tet_;
+  std::unique_ptr<TriangleSurfaceMesh<double>> collision_mesh_;
+  std::unique_ptr<DynamicBvh> collision_mesh_vertex_bvh_;
+  std::unique_ptr<DynamicBvh> collision_mesh_edge_bvh_;
+  std::unique_ptr<DynamicBvh> collision_mesh_face_bvh_;
 };
 
 /* Defines a soft half space. The half space is defined such that the half
@@ -171,6 +218,14 @@ class SoftGeometry {
   /* Returns a reference to the SoftMesh -- calling this will throw if
    is_half_space() returns `true`.  */
   const SoftMesh& soft_mesh() const {
+    if (is_half_space()) {
+      throw std::runtime_error(
+          "SoftGeometry::soft_mesh() cannot be invoked for soft half space.");
+    }
+    return std::get<SoftMesh>(geometry_);
+  }
+
+  SoftMesh& mutable_soft_mesh() {
     if (is_half_space()) {
       throw std::runtime_error(
           "SoftGeometry::soft_mesh() cannot be invoked for soft half space.");
@@ -371,9 +426,18 @@ class Geometries final : public ShapeReifier {
    primitive). */
   bool is_vanished(GeometryId id) const;
 
+  const std::unordered_map<GeometryId, SoftGeometry>& soft_geometries() const {
+    return soft_geometries_;
+  }
+
   /* Returns the representation of the soft geometry with the given `id`.
    @pre hydroelastic_type(id) returns HydroelasticType::kSoft.  */
   const SoftGeometry& soft_geometry(GeometryId id) const {
+    DRAKE_DEMAND(hydroelastic_type(id) == HydroelasticType::kSoft);
+    return soft_geometries_.at(id);
+  }
+
+  SoftGeometry& mutable_soft_geometry(GeometryId id) {
     DRAKE_DEMAND(hydroelastic_type(id) == HydroelasticType::kSoft);
     return soft_geometries_.at(id);
   }

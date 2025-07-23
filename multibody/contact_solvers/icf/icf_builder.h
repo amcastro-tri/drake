@@ -53,17 +53,18 @@ class IcfBuilder {
          actuation forces τ = clamp(-Kᵤ⋅v + b, e).
   @param external_feedback Optional linearization data (Kₑ, bₑ) for external
          forces τ = -Kₑ⋅v + bₑ.
+  @param beta The ICF regularization parameter β.
   @param model The IcfModel to update. */
   void UpdateModel(const systems::Context<T>& context, const T& time_step,
                    std::optional<LinearFeedbackGains<T>> actuation_feedback,
                    std::optional<LinearFeedbackGains<T>> external_feedback,
-                   IcfModel<T>* model);
+                   double beta, IcfModel<T>* model);
 
   /* Updates the IcfModel for a problem without actuation or external force
    * constraints. */
   void UpdateModel(const systems::Context<T>& context, const T& time_step,
-                   IcfModel<T>* model) {
-    UpdateModel(context, time_step, std::nullopt, std::nullopt, model);
+                   double beta, IcfModel<T>* model) {
+    UpdateModel(context, time_step, std::nullopt, std::nullopt, beta, model);
   }
 
   /* Updates only the time step δt. All other model data remains unchanged. */
@@ -94,6 +95,11 @@ class IcfBuilder {
   /* Sets hydroelastic contact constraints in the model
   @pre AllocatePatchConstraints() has already been called. */
   void SetPatchConstraintsForHydroelasticContact(
+      const systems::Context<T>& context, IcfModel<T>* model) const;
+
+  /* Sets log barrier contact constraints in the model
+  @pre AllocatePatchConstraints() has already been called. */
+  void SetPatchConstraintsForLogBarrierContact(
       const systems::Context<T>& context, IcfModel<T>* model) const;
 
   /* Resizes the model to accommodate coupler constraints. */

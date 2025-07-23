@@ -4,6 +4,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -28,6 +29,7 @@ using contact_solvers::icf::internal::IcfModel;
 using contact_solvers::icf::internal::IcfSolver;
 using contact_solvers::icf::internal::IcfSolverStats;
 using contact_solvers::icf::internal::LinearFeedbackGains;
+using geometry::GeometryId;
 
 /**
  * An experimental implicit integrator that solves a convex ICF problem to
@@ -208,6 +210,14 @@ class CenicIntegrator final : public systems::IntegratorBase<T> {
   T CalcStateChangeNorm(
       const systems::ContinuousState<T>& dx_state) const final;
 
+  bool IsFeasibleTrajectory(
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_prev,
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_next)
+      const;
+
+  const std::unordered_map<GeometryId, math::RigidTransform<T>>&
+  GetAllGeometryPosesInWorld() const;
+
   // The multibody plant used as the basis of the convex optimization problem.
   const MultibodyPlant<T>& plant_;
   const systems::SubsystemIndex plant_subsystem_index_;
@@ -241,6 +251,8 @@ class CenicIntegrator final : public systems::IntegratorBase<T> {
   std::unique_ptr<systems::DiagramContinuousState<T>> x_next_half_1_;
   // x_{t+h/2+h/2}
   std::unique_ptr<systems::DiagramContinuousState<T>> x_next_half_2_;
+  // x_{t} for reset on Step rejection.
+  std::unique_ptr<systems::DiagramContinuousState<T>> x_prev_;
 };
 
 }  // namespace multibody

@@ -2905,6 +2905,11 @@ primarily on the integrator's accuracy prediction. This value will not
 be computed for integrators that do not support error estimation and
 NaN will be returned.)""";
         } get_ideal_next_step_size;
+        // Symbol: drake::systems::IntegratorBase::get_informed_next_step_size
+        struct /* get_informed_next_step_size */ {
+          // Source: drake/systems/analysis/integrator_base.h
+          const char* doc = R"""()""";
+        } get_informed_next_step_size;
         // Symbol: drake::systems::IntegratorBase::get_initial_step_size_target
         struct /* get_initial_step_size_target */ {
           // Source: drake/systems/analysis/integrator_base.h

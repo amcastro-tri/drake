@@ -22,6 +22,55 @@ namespace internal {
 template <typename T>
 class IcfModel;
 
+template <typename T>
+class RegularizedBarrierModel {
+ public:
+  RegularizedBarrierModel() = default;
+
+  void SetPair(const int pk, const T& dt, const T& e0, const T& delta,
+               const T& d, const T& A0_E_star, const T& effective_mass);
+  void UpdateTimeStep(const int pk, const T& time_step);
+  void Resize(int capacity);
+
+  T dn_e_dv(const int pk, const T& dt, const T& e) const;
+  T n_e(const int pk, const T& dt, const T& e) const;
+  T dn_e_dv_tilde(const int pk, const T& dt, const T& e) const;
+  T n_e_tilde(const int pk, const T& dt, const T& e) const;
+  T calc_dn(const int pk, const T& dt, const T& v) const;
+  T calc_n(const int pk, const T& dt, const T& v) const;
+  T calc_N_linear(const int pk, const T& dt, const T& v) const;
+  T calc_N_e(const int pk, const T& dt, const T& v) const;
+  T calc_N(const int pk, const T& dt, const T& v) const;
+  void CalcLogBarrierQuantities(const int pk, const T& dt, const T& v, T* N,
+                                T* n, T* dn_dvn) const;
+
+  const T& e0(const int pk) const { return e0_[pk]; }
+  const T& delta(const int pk) const { return delta_[pk]; }
+  const T& d(const int pk) const { return d_[pk]; }
+  const T& A0_E_star(const int pk) const { return A0_E_star_[pk]; }
+  const T& effective_mass(const int pk) const { return effective_mass_[pk]; }
+  const T& v_delta(const int pk) const { return v_delta_[pk]; }
+  const T& v_hat(const int pk) const { return v_hat_[pk]; }
+  const T& N_v_hat(const int pk) const { return N_v_hat_[pk]; }
+  const T& e_nr(const int pk) const { return e_nr_[pk]; }
+  const T& n_e_nr(const int pk) const { return n_e_nr_[pk]; }
+  const T& N_bias(const int pk) const { return N_bias_[pk]; }
+
+ private:
+  std::vector<T> e0_;
+  std::vector<T> delta_;
+  std::vector<T> d_;
+  std::vector<T> A0_E_star_;
+  std::vector<T> effective_mass_;
+  // Computed quantities
+  std::vector<T> v_delta_;
+  std::vector<T> v_hat_;
+  std::vector<T> N_v_hat_;
+  std::vector<T> e_nr_;
+  std::vector<T> n_e_nr_;
+  std::vector<T> N_bias_;
+};
+
 /* A pool of contact constraints organized by patches. Each patch involves two
 bodies and one (point contact) or more (hydroelastic) contact pairs.
 
@@ -75,6 +124,8 @@ class PatchConstraintsPool {
     stiction_tolerance_ = stiction_tolerance;
   }
 
+  void UpdateTimeStep(const T& dt);
+
   /* Resizes to store the given patches and pairs.
 
   @param num_pairs_per_patch Number of contact pairs for each patch.
@@ -96,7 +147,7 @@ class PatchConstraintsPool {
   @pre B is always dynamic (not anchored). */
   void SetPatch(int patch_index, int bodyA, int bodyB, const T& dissipation,
                 const T& static_friction, const T& dynamic_friction,
-                const Vector3<T>& p_AB_W);
+                const Vector3<T>& p_AB_W, const T& beta = T(0.1));
 
   /* Sets the contact pair data for the given patch and pair index.
 
@@ -114,6 +165,10 @@ class PatchConstraintsPool {
   void SetPair(const int patch_index, const int pair_index,
                const Vector3<T>& p_BoC_W, const Vector3<T>& normal_W,
                const T& fn0, const T& stiffness);
+
+  void SetPairLogBarrier(const int patch_index, const int pair_index,
+                         const Vector3<T>& p_BoC_W, const Vector3<T>& normal_W,
+                         const T& A0_E_star, const T& e0, const T& delta);
 
   /* Computes the sparsity pattern for the pool. That is, cliques i is connected
   to clique j > i iff sparsity[i] contains j. */
@@ -164,6 +219,9 @@ class PatchConstraintsPool {
   T CalcLaggedHuntCrossleyModel(int p, int k, const Vector3<T>& v_AcBc_W,
                                 Vector3<T>* gamma_Bc_W, Matrix3<T>* G) const;
 
+  T CalcLaggedLogBarrierModel(int p, int k, const Vector3<T>& v_AcBc_W,
+                              Vector3<T>* gamma_Bc_W, Matrix3<T>* G) const;
+
   /* Computes relative spatial velocities V_AbB_W for each patch, given body
   spatial velocities V_WB. When A is anchored, V_WA = 0 and V_AbB_W = V_WB. */
   void CalcConstraintVelocities(const EigenPool<Vector6<T>>& V_WB_pool,
@@ -209,18 +267,24 @@ class PatchConstraintsPool {
   std::vector<T> static_friction_;
   std::vector<T> dynamic_friction_;
 
+  // Beta parameter per patch for the ICF model.
+  std::vector<T> beta_;
+
   // Data per pair. Indexed by patch_pair_index(p, k).
   std::vector<int> pair_data_start_;  // Starting index for each patch.
   EigenPool<Vector3<T>> p_BC_W_;      // Position of contact point from body A.
   EigenPool<Vector3<T>> normal_W_;    // Contact normals.
   std::vector<T> stiffness_;          // Linear stiffness, N/m.
   std::vector<T> fn0_;                // Previous time step normal force.
-  std::vector<T> n0_;                 // Previous time step impulse.
+  std::vector<T> vn0_;                // Previous time step normal velocity.
 
   // The net friction coefficient for each pair. Computed by interpolating
   // between static and dynamic coefficients based on the relative contact
   // velocity of this pair at the previous time step.
   std::vector<T> net_friction_;
+
+  // The regularized barrier model for all contact pairs.
+  RegularizedBarrierModel<T> barrier_model_;
 };
 
 }  // namespace internal

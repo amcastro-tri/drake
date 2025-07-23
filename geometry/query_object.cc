@@ -86,6 +86,16 @@ const RigidTransform<T>& QueryObject<T>::GetPoseInWorld(
 }
 
 template <typename T>
+const std::unordered_map<GeometryId, math::RigidTransform<T>>&
+QueryObject<T>::GetAllPosesInWorld() const {
+  ThrowIfNotCallable();
+
+  FullPoseUpdate();
+  const GeometryState<T>& state = geometry_state();
+  return state.get_all_poses_in_world();
+}
+
+template <typename T>
 const VectorX<T>& QueryObject<T>::GetConfigurationsInWorld(
     GeometryId geometry_id) const {
   ThrowIfNotCallable();
@@ -149,6 +159,19 @@ bool QueryObject<T>::HasCollisions() const {
   FullPoseAndConfigurationUpdate();
   const GeometryState<T>& state = geometry_state();
   return state.HasCollisions();
+}
+
+template <typename T>
+template <typename T1>
+typename std::enable_if_t<scalar_predicate<T1>::is_bool, bool>
+QueryObject<T>::IsFeasibleTrajectory(
+    const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_prev,
+    const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_next)
+    const {
+  ThrowIfNotCallable();
+
+  const GeometryState<T>& state = geometry_state();
+  return state.IsFeasibleTrajectory(X_WGs_prev, X_WGs_next);
 }
 
 template <typename T>
@@ -299,7 +322,8 @@ const GeometryState<T>& QueryObject<T>::geometry_state() const {
 
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     (&QueryObject<T>::template ComputeContactSurfaces<T>,
-     &QueryObject<T>::template ComputeContactSurfacesWithFallback<T>));
+     &QueryObject<T>::template ComputeContactSurfacesWithFallback<T>,
+     &QueryObject<T>::template IsFeasibleTrajectory<T>));
 
 template void QueryObject<double>::ComputeDeformableContact<double>(
     internal::DeformableContact<double>*) const;

@@ -173,6 +173,9 @@ class QueryObject {
    is deformable.  */
   const math::RigidTransform<T>& GetPoseInWorld(GeometryId geometry_id) const;
 
+  const std::unordered_map<GeometryId, math::RigidTransform<T>>&
+  GetAllPosesInWorld() const;
+
   /** Reports the configuration of the deformable geometry indicated by
    `deformable_geometry_id` relative to the world frame.
    @sa GetPoseInWorld().
@@ -482,6 +485,17 @@ class QueryObject {
    @warning For Mesh shapes, their convex hulls are used in this query. It is
             *not* computationally efficient or particularly accurate.  */
   bool HasCollisions() const;
+
+  /** Reports true if there are _any_ collisions between unfiltered pairs of
+   compliant hydroelastic geometries that both specify an alternative rigid core
+   "collision_mesh" purely for overlap queries. Uses linear CCD on the vertex
+   positions interpolated between X_WGs_prev and X_WGs_next. */
+  template <typename T1 = T>
+  typename std::enable_if_t<scalar_predicate<T1>::is_bool, bool>
+  IsFeasibleTrajectory(
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_prev,
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_next)
+      const;
 
   //@}
 

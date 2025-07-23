@@ -840,6 +840,11 @@ Serialization" for background.)""";
           // Source: drake/geometry/scene_graph_config.h
           const char* doc = R"""(Throws if the values are inconsistent.)""";
         } ValidateOrThrow;
+        // Symbol: drake::geometry::DefaultProximityProperties::barrier
+        struct /* barrier */ {
+          // Source: drake/geometry/scene_graph_config.h
+          const char* doc = R"""()""";
+        } barrier;
         // Symbol: drake::geometry::DefaultProximityProperties::compliance_type
         struct /* compliance_type */ {
           // Source: drake/geometry/scene_graph_config.h
@@ -1001,6 +1006,7 @@ R"""(See also:
         } static_friction;
         auto Serialize__fields() const {
           return std::array{
+            std::make_pair("barrier", barrier.doc),
             std::make_pair("compliance_type", compliance_type.doc),
             std::make_pair("dynamic_friction", dynamic_friction.doc),
             std::make_pair("hunt_crossley_dissipation", hunt_crossley_dissipation.doc),
@@ -2518,6 +2524,12 @@ R"""(Implementation of SceneGraph::HasRenderer().)""";
           const char* doc =
 R"""(Implementation of SceneGraphInspector::IsDeformableGeometry().)""";
         } IsDeformableGeometry;
+        // Symbol: drake::geometry::GeometryState::IsFeasibleTrajectory
+        struct /* IsFeasibleTrajectory */ {
+          // Source: drake/geometry/geometry_state.h
+          const char* doc =
+R"""(Implementation of QueryObject::IsFeasibleTrajectoryCollisions().)""";
+        } IsFeasibleTrajectory;
         // Symbol: drake::geometry::GeometryState::IsValidGeometryName
         struct /* IsValidGeometryName */ {
           // Source: drake/geometry/geometry_state.h
@@ -2782,6 +2794,11 @@ R"""(Implementation of SceneGraph::collision_filter_manager().)""";
           const char* doc =
 R"""(Implementation of SceneGraphInspector::GetGeometryVersion().)""";
         } geometry_version;
+        // Symbol: drake::geometry::GeometryState::get_all_poses_in_world
+        struct /* get_all_poses_in_world */ {
+          // Source: drake/geometry/geometry_state.h
+          const char* doc = R"""()""";
+        } get_all_poses_in_world;
         // Symbol: drake::geometry::GeometryState::get_configurations_in_world
         struct /* get_configurations_in_world */ {
           // Source: drake/geometry/geometry_state.h
@@ -6222,6 +6239,11 @@ Returns:
     remain constant for a fixed population but can change as geometry
     ids are added/removed).)""";
         } FindCollisionCandidates;
+        // Symbol: drake::geometry::QueryObject::GetAllPosesInWorld
+        struct /* GetAllPosesInWorld */ {
+          // Source: drake/geometry/query_object.h
+          const char* doc = R"""()""";
+        } GetAllPosesInWorld;
         // Symbol: drake::geometry::QueryObject::GetConfigurationsInWorld
         struct /* GetConfigurationsInWorld */ {
           // Source: drake/geometry/query_object.h
@@ -6312,6 +6334,16 @@ Warning:
     For Mesh shapes, their convex hulls are used in this query. It is
     not* computationally efficient or particularly accurate.)""";
         } HasCollisions;
+        // Symbol: drake::geometry::QueryObject::IsFeasibleTrajectory
+        struct /* IsFeasibleTrajectory */ {
+          // Source: drake/geometry/query_object.h
+          const char* doc =
+R"""(Reports true if there are *any* collisions between unfiltered pairs of
+compliant hydroelastic geometries that both specify an alternative
+rigid core "collision_mesh" purely for overlap queries. Uses linear
+CCD on the vertex positions interpolated between X_WGs_prev and
+X_WGs_next.)""";
+        } IsFeasibleTrajectory;
         // Symbol: drake::geometry::QueryObject::QueryObject<T>
         struct /* ctor */ {
           // Source: drake/geometry/query_object.h

@@ -418,6 +418,9 @@ class GeometryState {
   const math::RigidTransform<T>& get_pose_in_world(
       GeometryId geometry_id) const;
 
+  const std::unordered_map<GeometryId, math::RigidTransform<T>>&
+  get_all_poses_in_world() const;
+
   /** Implementation of QueryObject::ComputeAabbInWorld(GeometryId).  */
   std::optional<Aabb> ComputeAabbInWorld(GeometryId geometry_id) const;
 
@@ -615,6 +618,17 @@ class GeometryState {
 
   /** Implementation of QueryObject::HasCollisions().  */
   bool HasCollisions() const { return geometry_engine_->HasCollisions(); }
+
+  /** Implementation of QueryObject::IsFeasibleTrajectoryCollisions().
+   */
+  template <typename T1 = T>
+  typename std::enable_if_t<scalar_predicate<T1>::is_bool, bool>
+  IsFeasibleTrajectory(
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_prev,
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_next)
+      const {
+    return geometry_engine_->IsFeasibleTrajectory(X_WGs_prev, X_WGs_next);
+  }
 
   //@}
 

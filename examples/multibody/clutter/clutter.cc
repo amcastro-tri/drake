@@ -22,6 +22,7 @@
 #include "drake/multibody/parsing/package_map.h"
 #include "drake/multibody/plant/compliant_contact_manager.h"
 #include "drake/multibody/plant/multibody_plant_config_functions.h"
+#include "drake/multibody/tree/prismatic_joint.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_config_functions.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
@@ -53,6 +54,10 @@ using drake::multibody::RigidBody;
 using drake::multibody::SpatialInertia;
 using drake::multibody::UnitInertia;
 using drake::multibody::contact_solvers::icf::IcfSolverParameters;
+using drake::systems::IntegratorBase;
+using Eigen::Translation3d;
+using Eigen::Vector3d;
+using drake::multibody::PrismaticJoint;
 using drake::multibody::contact_solvers::internal::SapHessianFactorizationType;
 using drake::multibody::contact_solvers::internal::SapSolverParameters;
 using drake::multibody::internal::CompliantContactManager;
@@ -240,7 +245,7 @@ void AddSink(const ClutterConfig& clutter_config,
           const RigidTransformd& X_WB,
           const Vector4<double>& color) -> const RigidBody<double>& {
     const auto& wall = AddBox(clutter_config, name, dimensions, wall_mass,
-                              /* rigid = */ true, color, false, true, plant);
+                              /* rigid = */ false, color, false, true, plant);
     plant->WeldFrames(plant->world_frame(), wall.body_frame(), X_WB);
     return wall;
   };
@@ -356,7 +361,7 @@ std::vector<BodyIndex> AddObjects(const ClutterConfig& clutter_config,
   std::vector<BodyIndex> bodies;
   for (int i = 1; i <= num_objects; ++i) {
     const auto& color = colors[(i - 1) % colors.size()];
-    const std::string name = "object" + std::to_string(i + num_bodies);
+    const std::string name = "object" + std::to_string(i + num_bodies - 1);
 
     double e = clutter_config.scale_factor > 0 ? i - 1 : num_objects - i;
     double scale = std::pow(std::abs(clutter_config.scale_factor), e);
@@ -407,10 +412,9 @@ void SetObjectsIntoAPile(const ClutterConfig& clutter_config,
   int i = 1;
   for (auto body_index : bodies) {
     const auto& body = plant.get_body(body_index);
-    if (body.is_floating_base_body()) {
       double e = clutter_config.scale_factor > 0 ? i - 1 : num_objects - i;
       double scale = std::pow(std::abs(clutter_config.scale_factor), e);
-
+    if (body.is_floating_base_body()) {
       if (clutter_config.random_offsets) {
         const RotationMatrixd R_WB =
             UniformlyRandomRotationMatrix<double>(&generator);
@@ -422,10 +426,12 @@ void SetObjectsIntoAPile(const ClutterConfig& clutter_config,
         const Vector3d p_WB = offset + Vector3d(0.0, 0.0, z);
         plant.SetFreeBodyPose(plant_context, body, RigidTransformd(p_WB));
       }
-
-      z += delta_z * scale;
-      ++i;
+    } else {
+      plant.GetJointByName<PrismaticJoint>(body.name())
+          .set_translation(plant_context, z);
     }
+    z += delta_z * scale;
+    ++i;
   }
 }
 
@@ -465,8 +471,8 @@ int do_main() {
 
   plant.Finalize();
 
-  fmt::print("Num positions: {:d}\n", plant.num_positions());
-  fmt::print("Num velocities: {:d}\n", plant.num_velocities());
+  // fmt::print("Num positions: {:d}\n", plant.num_positions());
+  // fmt::print("Num velocities: {:d}\n", plant.num_velocities());
 
   // Publish contact results for visualization.
   std::shared_ptr<Meshcat> meshcat{nullptr};

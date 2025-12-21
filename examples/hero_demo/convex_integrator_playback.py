@@ -12,7 +12,11 @@ from pydrake.common.yaml import yaml_load_file, yaml_dump
 from pydrake.geometry import StartMeshcat
 from pydrake.multibody.parsing import Parser, PackageMap
 from pydrake.multibody.plant import AddMultibodyPlantSceneGraph
-from pydrake.multibody.tree import PdControllerGains
+from pydrake.multibody.tree import (
+    MultibodyForces,
+    PdControllerGains,
+    JacobianWrtVariable,
+)
 from pydrake.systems.analysis import (
     Simulator,
     SimulatorConfig,
@@ -38,6 +42,76 @@ arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument("--visualize", type=int, default=1)
 arg_parser.add_argument("--log_times", type=int, default=0)
 args = arg_parser.parse_args()
+
+class TaskSpaceController(LeafSystem):
+    """A simple task space controller."""
+
+    def __init__(self, plant, ee_frame, Kp, Kd, reg):
+        """Constructs task space controller.
+
+        Args:
+            plant: Model of the plant used for control.
+            ee_frame: The frame we want to control.
+            Kp: Proportional gain, in 1/s^2.
+            Kd: Derivative gain, in 1/s.
+            reg: regularization paramter.
+        """
+        super().__init__()
+        self.plant = plant
+        self.ee_frame = ee_frame
+        self.Kp = Kp
+        self.Kd = Kd
+        self.reg = reg
+
+        nv = plant.num_velocities()
+        nu = plant.num_actuators()
+        assert nu == nv, f"Expected nu == nv, got nu={nu}, nv={nv}"
+
+
+        self.actuation_port = self.DeclareVectorOutputPort("actuation", nu, self.CalcTaskSpaceControl)
+
+    def CalcTaskSpaceControl(self, context, output):
+        # Hard code position.
+        pd = np.array([-0.222873676491324, 0.20536765291831566, 0.46121892590365016])
+
+        plant = self.plant
+        world_frame = plant.plant.world_frame()
+        J = plant.CalcJacobianTranslationalVelocity(
+                context=context,
+                with_respect_to=JacobianWrtVariable.kV,
+                frame_B=self.ee_frame,
+                p_BoBi_B=np.zeros(3),
+                frame_A=world_frame,
+                frame_E=world_frame)
+        
+        b = plant.CalcBiasTranslationalAcceleration(
+            context=context,
+            with_respect_to=JacobianWrtVariable.kV,
+            frame_B=self.ee_frame,
+            p_BoBi_B=np.zeros(3),
+            frame_A=world_frame,
+            frame_E=world_frame)
+        
+        # Use PD in task space to compute desired acceleration ad.
+        X_WE = self.ee_frame.CalcPoseInWorld(context=context)
+        p_WE = X_WE.translational()
+        V_WE = self.ee_frame.CalcSpatialVelocityInWorld(context=context)
+        v_WE = V_WE.translational()
+        ad = -self.Kp*(p_WE-pd) - self.Kd * v_WE
+
+        # vdot = J^T (J J^T + lam^2 I)^(-1) (a - b)    
+        lam = self.reg
+        m, n = J.shape
+        y = ad - b                          # (m,)
+        A = J @ J.T + (lam**2) * np.eye(m)  # (m, m)
+        w = np.linalg.solve(A, y)            # solve A w = y
+        vdot = J.T @ w                       # (n,)
+
+        # Perform inverse dynamics to compute generalized torques.
+        tau = plant.CalcInverseDynamics(context, vdot, MultibodyForces(plant))
+        
+        output.set_value(tau)
+
 
 
 class JointTargetSource(LeafSystem):
@@ -184,6 +258,12 @@ builder = DiagramBuilder()
 plant, scene_graph = AddMultibodyPlantSceneGraph(builder, time_step=0.0)
 parser = Parser(builder)
 
+controller_data = data["controller"]
+print(controller_data["model_file"])
+ctrl_plant = MultbodyPlant(time_step=0)
+Parser(ctrl_plant).AddModels(FindResourceOrThrow(controller_data["model_file"]))
+ctrl_plant.Finalize()
+
 remote_params = PackageMap.RemoteParams(
     urls=[
         "https://github.com/ToyotaResearchInstitute/lbm_eval/releases/download/1.1.0/lbm_eval_models-1.1.0-py3-none-any.whl"
@@ -252,6 +332,9 @@ right_arm = plant.GetModelInstanceByName("right::panda")
 left_gripper = plant.GetModelInstanceByName("left::panda_hand")
 right_gripper = plant.GetModelInstanceByName("right::panda_hand")
 
+right_panda = plant.GetModelInstanceByName("right::panda")
+right_ee = plant.GetBodyByName("panda_link8", right_panda).body_frame()
+
 builder.Connect(
     joint_target_source.GetOutputPort("left_arm"),
     left_arm_ctrl.get_input_port_desired_state(),
@@ -265,16 +348,26 @@ builder.Connect(
     plant.get_actuation_input_port(left_arm),
 )
 
+#builder.Connect(
+#    joint_target_source.GetOutputPort("right_arm"),
+#    right_arm_ctrl.get_input_port_desired_state(),
+#)
+#builder.Connect(
+#    plant.get_state_output_port(right_arm),
+#    right_arm_ctrl.get_input_port_estimated_state(),
+#)
+#builder.Connect(
+#    right_arm_ctrl.get_output_port_control(),
+#    plant.get_actuation_input_port(right_arm),
+#)
+
+task_tau = 0.1  # time constant in seconds.
+task_Kp = 1.0 / (task_tau**2)
+task_Kd = 1.0 / task_tau
+task_reg = 1e-3
+task_space_controller = builder.AddSystem(TaskSpaceController(ctrl_plant, right_ee, task_Kp, task_Kd, task_reg))
 builder.Connect(
-    joint_target_source.GetOutputPort("right_arm"),
-    right_arm_ctrl.get_input_port_desired_state(),
-)
-builder.Connect(
-    plant.get_state_output_port(right_arm),
-    right_arm_ctrl.get_input_port_estimated_state(),
-)
-builder.Connect(
-    right_arm_ctrl.get_output_port_control(),
+    task_space_controller.actuation_port,
     plant.get_actuation_input_port(right_arm),
 )
 
@@ -334,6 +427,11 @@ simulator = Simulator(diagram, context)
 ApplySimulatorConfig(config, simulator)
 integrator = simulator.get_mutable_integrator()
 simulator.Initialize()
+
+# Print end effector pose initial condition.
+plant_context = diagram.GetSubsystemContext(subsystem=plant, context=context)
+X_WRe = right_ee.CalcPoseInWorld(context=plant_context)
+print(f"X_WRe = {X_WRe}")
 
 if args.visualize:
     input("Waiting for meshcat... press [ENTER] to continue")

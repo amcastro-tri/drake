@@ -675,3 +675,5 @@ preconditions:
   num_sample_attempts: 100
   constraints: {}
 ros_node_name: hardware_station_simulation
+controller:
+  model_file: package://drake_models/franka_description/urdf/panda_arm_link5split.urdf
